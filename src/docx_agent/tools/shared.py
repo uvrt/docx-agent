@@ -116,7 +116,18 @@ def save_document(call: Any, doc: str, name: str, format: str) -> Result:
     if document.package.kind in ("docm", "dotm") and extension in ("docm", "dotm"):
         kind = extension
     data = serialise(document, kind)
-    return Result(summary=f"Saved {name} for the application", data=call.output(name, format, data))
+    result = Result(summary=f"Saved {name} for the application", data=call.output(name, format, data))
+    result.data["coverage"] = _coverage(call)
+    return result
+
+
+def _coverage(call: Any) -> dict[str, Any]:
+    """How much of the document docx2svg could lay out (``coverage_facts``): a check
+    that passed on a complete layout is told from one that could not see everything."""
+    try:
+        return call.document.layout().coverage_facts()
+    except ToolError as error:
+        return {"error": f"{error.code}: {error.message}"}
 
 
 # -- S6 find_text ------------------------------------------------------------------------------
@@ -178,13 +189,18 @@ def replace_text(call: Any, doc: str, find: str, replace: str, expect: str, rege
 # -- S8 render ---------------------------------------------------------------------------------
 
 
-def render_pages(data: bytes, pages: list[int], width: int) -> tuple[list[bytes], int]:
-    """In a worker: the pages as PNGs at ``width`` pixels, and the page count."""
+def render_pages(data: bytes, pages: list[int], width: int) -> tuple[list[bytes], int, dict | None]:
+    """In a worker: the pages as PNGs at ``width`` pixels, the page count, and the layout's
+    coverage (``coverage_facts``; ``None`` from a docx2svg without it)."""
     import docx2svg
 
-    pngs = docx2svg.convert_docx_to_png(data, docx2svg.ConvertOptions(pages=pages, width=width))
+    from ..layout import coverage_facts
+
+    options = docx2svg.ConvertOptions(pages=pages, width=width)
+    pngs = docx2svg.convert_docx_to_png(data, options)
     count = len(docx2svg.convert_docx_to_svg(data)) if len(pngs) < len(pages) else -1
-    return list(pngs), count
+    coverage = getattr(options, "coverage", None)
+    return list(pngs), count, coverage_facts(coverage) if coverage is not None else None
 
 
 def png_size(data: bytes) -> tuple[int, int]:
@@ -201,20 +217,26 @@ def render(call: Any, doc: str, slides: list | None = None, pages: list[int] | N
     entry = call.entry
     wanted = [p for p in pages if entry.render_cache.get((entry.version, p, width)) is None]
     if wanted:
-        pngs, count = call.run(render_pages, call.document.to_bytes(), wanted, width,
-                               timeout=call.limits.render_timeout)
+        pngs, count, coverage = call.run(render_pages, call.document.to_bytes(), wanted, width,
+                                         timeout=call.limits.render_timeout)
         if len(pngs) < len(wanted):
             raise ToolError("not_found", f"the document has {count} page(s)", field="pages",
                             valid_options=list(range(1, count + 1))[:50])
         for number, png in zip(wanted, pngs):
             entry.render_cache.put((entry.version, number, width), png)
+        if coverage is not None:
+            call.document._tool_render_coverage = (entry.version, coverage)
     images = []
     for number in pages:
         png = entry.render_cache.get((entry.version, number, width))
         w, h = png_size(png)
         images.append(call.image(png, w, h, label=f"page {number}").describe())
-    return Result(summary=f"Rendered page(s) {', '.join(map(str, pages))} (final view: changes accepted, "
-                  "comments hidden)", data={"pages": pages})
+    result = Result(summary=f"Rendered page(s) {', '.join(map(str, pages))} (final view: changes accepted, "
+                    "comments hidden)", data={"pages": pages})
+    version, coverage = getattr(call.document, "_tool_render_coverage", (None, None))
+    if coverage is not None and version == entry.version:
+        result.data["coverage"] = coverage
+    return result
 
 
 # -- S9 check ----------------------------------------------------------------------------------
@@ -254,6 +276,9 @@ def _layout_facts(call: Any, pages: list[int] | None) -> dict[str, Any]:
     facts: dict[str, Any] = {"pages": layout.page_count, "complete": layout.pages_known is not None}
     if layout.stopped is not None:
         facts["stopped"] = {"page": layout.stopped.page, "reason": layout.stopped.reason, "at": layout.stopped.at}
+    # The whole of it: blocks laid out, header and footer stops, faces substituted or
+    # missing -- so "the check passed" is told from "the check could not see everything".
+    facts["coverage"] = layout.coverage_facts()
     seen = getattr(document, "_tool_seen_layout", None)
     if seen is not None and seen is not layout:
         reflow = reflow_json(layout.compare(seen))

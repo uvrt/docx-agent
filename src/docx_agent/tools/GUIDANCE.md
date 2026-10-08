@@ -13,6 +13,7 @@ come from trial 3 (Sonnet 5.5), its fix round and the Haiku 5.5 trial; the tool 
 |---|---|---|
 | `validate` | every changing call, `check` | validation problems the call added (`new`) or removed (`fixed`) against the document as opened |
 | reflow | changing calls (documents of 20 pages or fewer, once laid out), `check` with `reflow` | the pages the change moved; whether layout completed (`complete`, `stopped`) |
+| `coverage` | `check` with `reflow`, `render`, `save_document` | how much of the document the layout covers. `complete` is false when a block, a header or footer, or a face could not be laid out. It also gives the blocks laid out, where the layout stopped, and the faces substituted or missing. |
 | fields | `check` with `fields` | the fields (TOC, page numbers, cross-references, captions) and their cached results: a cache is only as fresh as the last `word_fields update` |
 | `warnings` | every call | what the library noticed and did (an unknown construct kept, a style imported, a legacy option removed) |
 | `renamed` | changing calls | old paragraph id -> new one; the old id keeps working |
@@ -24,6 +25,9 @@ come from trial 3 (Sonnet 5.5), its fix round and the Haiku 5.5 trial; the tool 
 
 How to use them:
 
+- **A check is only as good as its coverage.** A reflow or a render of a partial layout
+  says nothing about the pages past the stop. When `coverage.complete` is false, report
+  what could not be checked; don't present it as checked.
 - **Validation is the gate.** Every Word output in the trials opened in Word without a
   prompt, because the save refuses what Word would repair. Keep it on.
 - **Fields are caches.** After moving headings or adding a caption or cross-reference, a

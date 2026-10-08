@@ -37,6 +37,10 @@ with Toolbox(TOOLS, formats=[FORMAT], groups=GROUPS) as toolbox:
   changes while `word_set_tracking` is on, and returns `checks`: the `validate()` delta
   against the document as opened and, once the document was laid out, the pages the change
   reflowed (for 20 pages or fewer; beyond, `check` reports them).
+- **`check` (with `reflow`), `render` and `save_document` return `coverage`**: how much
+  docx2svg could lay out. `complete` is false when a block, a header or footer, or a face
+  could not be laid out. Coverage also gives the stop and the faces substituted with open
+  ones. A check on a partial layout is not a passed check.
 - **Layout runs in the toolbox's worker pool** through `Document.converter`, under a 30 s
   deadline: past it the worker is killed, the call reports `timeout` and changes nothing.
 - **Saving refuses new validation problems**; only the application may allow them

@@ -662,3 +662,56 @@ def test_a_picture_in_a_paragraph_of_its_own_centred(box, session):
     assert inspected["blocks"][0]["effective"]["alignment"] == "center"
     ok(box, session, "undo", doc=d)
     assert paragraph not in [p.id for p in document(session).paragraphs()]
+
+
+# -- coverage: "the check passed" against "the check could not see everything" ---------------
+
+
+def _vml_first() -> bytes:
+    """A document whose first paragraph holds a VML shape, which docx2svg does not lay out:
+    its layout stops there, on any machine, whatever faces it has."""
+    import io
+    import zipfile
+
+    w = ('xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
+         'xmlns:v="urn:schemas-microsoft-com:vml"')
+    rel = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+    body = ('<w:p><w:r><w:pict><v:rect style="position:absolute;width:100pt;height:20pt" fillcolor="#4472c4"/>'
+            '</w:pict></w:r><w:r><w:t>A shape.</w:t></w:r></w:p><w:p><w:r><w:t>After it.</w:t></w:r></w:p>')
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("[Content_Types].xml", (
+            '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" '
+            'ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" '
+            'ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/'
+            'vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>'))
+        archive.writestr("_rels/.rels", (
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship '
+            f'Id="rId1" Type="{rel}/officeDocument" Target="word/document.xml"/></Relationships>'))
+        archive.writestr("word/document.xml", f'<w:document {w}><w:body>{body}<w:sectPr/></w:body></w:document>')
+    return buffer.getvalue()
+
+
+def test_check_render_and_save_say_how_much_was_laid_out(box, session):
+    d = open_doc(session)
+    reflow = ok(box, session, "check", doc=d, include=["reflow"]).data["reflow"]
+    coverage = reflow["coverage"]
+    assert isinstance(coverage["complete"], bool) and coverage["pages"] == reflow["pages"]
+    # A complete coverage has no stop; a body stop is the reflow's stop too.
+    assert ("stop" in coverage) == ("stopped" in reflow)
+    assert coverage["complete"] is False or ("stop" not in coverage and "missing_fonts" not in coverage)
+    rendered = ok(box, session, "render", doc=d, pages=[1], width=400)
+    assert rendered.data["coverage"] == coverage
+    saved = ok(box, session, "save_document", doc=d, name="agreement.docx", format="docx")
+    assert saved.data["coverage"] == coverage
+
+
+def test_a_layout_that_stops_is_not_complete(box, session):
+    d = session.open(_vml_first(), "shape.docx")
+    reflow = ok(box, session, "check", doc=d, include=["reflow"]).data["reflow"]
+    coverage = reflow["coverage"]
+    assert coverage["complete"] is False
+    assert coverage["stop"]["reason"] == "drawing" and coverage["stop"]["page"] == 1
+    assert coverage["stop"]["at"] == reflow["stopped"]["at"] and coverage["stop"]["at"].startswith("p")
+    assert coverage["blocks_laid_out"] == [0, 2]
+    assert ok(box, session, "save_document", doc=d, name="shape.docx", format="docx").data["coverage"] == coverage
