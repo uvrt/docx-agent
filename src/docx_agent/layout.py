@@ -82,7 +82,7 @@ def coverage_facts(coverage, *, at: str | None = None, stopped: "Stop | None" = 
     out": docx2svg's coverage (:class:`docx2svg.coverage.Coverage`, or its ``as_dict()``),
     compact.  ``complete`` is true only when every block was laid out, every header,
     footer and text box drawn and every face found; ``substituted_fonts`` names the faces
-    laid out with an open substitute (``(approximate)`` where it is not metric-compatible);
+    laid out with an open substitute (``(approximate)`` where it is not metric compatible);
     ``stop`` is where the layout stopped, ``at`` the block's id when known."""
     if coverage is None:  # a docx2svg without coverage: what the stop alone says
         facts = {"complete": stopped is None}

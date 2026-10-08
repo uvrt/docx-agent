@@ -32,7 +32,7 @@ Rendering and reflow feedback lay the document out with docx2svg, which measures
 glyph with the face Word uses. Install the document's faces where the layout runs:
 
 - **Office installed:** nothing to do.
-- **No Office:** install the open metric-compatible substitutes (Debian/Ubuntu: `sudo
+- **No Office:** install the open metric compatible substitutes (Debian/Ubuntu: `sudo
   apt-get install fonts-crosextra-carlito fonts-crosextra-caladea fonts-liberation`;
   macOS: `brew install --cask font-carlito font-caladea font-liberation`). With Carlito in place
   of Calibri, and Liberation Sans, Serif and Mono in place of Arial, Times New Roman and

@@ -19,7 +19,6 @@ snapshot commit; the development history before it is summarised here.
 - The invalid `\h` escape in `to_markdown`'s docstring is fixed. CI now compiles the
   sources with syntax warnings as errors.
 - README: which fonts the layout needs, and the open substitutes.
-
 - `undo` refuses ooxml-edit 0.12's `scope` (`invalid_arguments`): a document undoes
   document-wide, since every edit shares its body part.
 - `edit_chart` `add` makes a radar chart (`chart_type: "radar"`), as Word inserts one:
