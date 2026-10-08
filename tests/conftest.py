@@ -173,7 +173,12 @@ def _office_faces_absent() -> bool:
 OFFICE_FACES_ABSENT = _office_faces_absent()
 
 
-def _skip_if_a_face_is_absent(warnings) -> None:
+def _skip_if_a_face_is_absent(warnings, coverage=None) -> None:
+    # docx2svg's coverage names the faces it found nowhere, whatever the stop is called (a
+    # footnote in an absent face stops as "footnote not measurable").
+    missing = getattr(coverage, "missing_fonts", None)
+    if missing:
+        pytest.skip(f"a face this document is laid out in is not installed here: {', '.join(missing)}")
     for warning in warnings:  # docx2svg's (code, message, page) tuples or its Warning objects
         code, message = (warning.code, warning.message) if hasattr(warning, "code") else warning[:2]
         if code in _FACE_ABSENT or (code.startswith("layout-stopped:") and "cannot be measured" in message):
@@ -192,13 +197,13 @@ def _skip_where_faces_are_absent(monkeypatch):
 
     def checked_lay_out(source, options):
         result = lay_out(source, options)
-        _skip_if_a_face_is_absent(result[0].warnings)
+        _skip_if_a_face_is_absent(result[0].warnings, getattr(result[0], "coverage", None))
         return result
 
     def checked_convert(document, **options):
         # A tool layer's worker pool lays out in another process: read what came back.
         conversion = convert(document, **options)
-        _skip_if_a_face_is_absent(conversion.layout.warnings)
+        _skip_if_a_face_is_absent(conversion.layout.warnings, getattr(conversion.layout, "coverage", None))
         return conversion
 
     monkeypatch.setattr(docx2svg, "_lay_out", checked_lay_out)
