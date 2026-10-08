@@ -30,7 +30,6 @@ pptx-agent finds pptx2svg's.
 from __future__ import annotations
 
 import contextlib
-import fcntl
 import hashlib
 import os
 import subprocess
@@ -38,6 +37,11 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
+
+try:
+    import fcntl
+except ImportError:  # Windows: there is no Word oracle there (it drives Word on macOS)
+    fcntl = None
 
 WORD_APP = Path("/Applications/Microsoft Word.app")
 EXPORT_SCRIPT = Path(

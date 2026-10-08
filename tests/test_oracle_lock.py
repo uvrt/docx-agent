@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-import fcntl
 import sys
 
 import pytest
+
+fcntl = pytest.importorskip("fcntl")  # flock is POSIX's; the Word oracle runs on macOS
 
 import oracle
 
