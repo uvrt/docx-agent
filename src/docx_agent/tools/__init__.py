@@ -10,6 +10,7 @@ An application puts these in a :class:`ooxml_edit.tools.Toolbox` with the docx
     session = toolbox.session(clock=my_clock)
     d1 = session.open(docx_bytes, name="agreement.docx")
     tools = toolbox.definitions("anthropic", groups="core")
+    openai_tools = toolbox.definitions("openai-responses")   # or "openai-chat"
     result = toolbox.dispatch(session, "describe", {"doc": d1})
 
 Everything is in memory: documents and inputs are bytes under handles, saved files go to
@@ -21,6 +22,9 @@ runs in the toolbox's worker pool under ``Limits.layout_timeout`` (30 s).
 The shared tools (``open_document``, ``save_document``, ``find_text``, ``render``...) are
 one definition for every format (``ooxml_edit.tools.shared``); this package gives their
 Word handlers.
+
+How to run them with each provider (Claude, OpenAI Responses, Chat Completions):
+``README.md`` in this package.
 """
 
 from __future__ import annotations
