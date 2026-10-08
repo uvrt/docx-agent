@@ -1327,7 +1327,9 @@ are the write half's.
     `<!-- d:3 text-box -->` and `<!-- /d:3 -->`.
   - *Fields*: the cached result is the text. *Content controls*: their content between
     `<!-- cc:301 text -->` and `<!-- /cc:301 -->`, inline or as blocks (kind, tag, title).
-    *Breaks*: a line break `\` + newline, a page or column break `<!-- page break -->`, a
+    *Breaks*: a line break `\` + newline -- or `<br>` where it ends its paragraph, since
+    CommonMark has no hard break at a block's end (a cover page's trailing Shift+Enter read
+    back as a literal backslash before) -- a page or column break `<!-- page break -->`, a
     section break `<!-- s:<id> section break: continuous -->` after its paragraph.
     *Headers and footers* after the body with `headers=True`, each under
     `<!-- story: header1 (header) -->`.
@@ -1452,7 +1454,7 @@ and one revision group with tracking on.
   | `[t](#name)` | `w:hyperlink w:anchor="name"` | the anchor |
   | `![alt](src "title")` | an inline picture, natural size (capped to the text width), `descr` the alt text, `name` the title | `![alt](d:<id> "name")` |
   | `[^label]` | a footnote: footnote text, the reference run in footnote reference (as Word writes it), parts made as measured | `[^fn:<id>]` with its definition |
-  | hard break | `w:br` | `\` at a line's end |
+  | hard break, `<br>` | `w:br` | `\` at a line's end; `<br>` for one that ends the paragraph |
   | raw HTML | refused (`html="refuse"`), or its text (`"text"`); comments (ids) dropped | -- |
 
   Footnote paragraphs are in footnote text (a row the map now has; the reader already read
