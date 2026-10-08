@@ -26,6 +26,38 @@ pip install "ooxml-common @ git+https://github.com/uvrt/ooxml-common@main" \
 pip install "docx-agent @ git+https://github.com/uvrt/docx-agent@main"
 ```
 
+## Fonts
+
+Rendering and reflow feedback lay the document out with docx2svg, which measures every
+glyph with the face Word uses. Install the document's faces where the layout runs:
+
+- **Office installed:** nothing to do.
+- **No Office:** install the open metric compatible substitutes (Debian/Ubuntu: `sudo
+  apt-get install fonts-crosextra-carlito fonts-crosextra-caladea fonts-liberation`;
+  macOS: `brew install --cask font-carlito font-caladea font-liberation`). With Carlito in place
+  of Calibri, and Liberation Sans, Serif and Mono in place of Arial, Times New Roman and
+  Courier New, lines and pages break where they do in Word. Symbol and Wingdings bullets are laid out from
+  metrics recorded from Word's copies.
+- **Without a face and its substitute** (Aptos, Cambria, Calibri Light...), the layout
+  stops at the first paragraph in that face, and everything after it is unknown, never
+  guessed.
+
+docx2svg reports every substitution, and never uses a substitute when the real face is
+installed. Details and the fidelity to expect:
+[docx2svg's README](https://github.com/uvrt/docx2svg#fonts).
+
+`check` (with `reflow`), `render` and `save_document` return the layout's **coverage**,
+so a check that passed is told apart from one that could not see everything. It holds:
+
+- `complete`
+- the pages laid out, with Word's saved page count when the layout stopped
+- the blocks laid out, out of the total
+- where the layout stopped, by block id
+- header and footer stops
+- the faces substituted or missing
+
+In the library, `doc.layout().coverage_facts()` returns the same.
+
 ## Example
 
 ```python

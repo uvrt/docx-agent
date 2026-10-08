@@ -6,6 +6,19 @@ snapshot commit; the development history before it is summarised here.
 
 ## Unreleased
 
+- `check` (with `reflow`), `render` and `save_document` return `coverage`, from docx2svg's
+  coverage summary: whether the layout is complete, the blocks laid out, where it stopped
+  (by id), header and footer stops, and the faces substituted with open ones or missing.
+  "Check passed" can now be told apart from "couldn't check". In the library:
+  `DocumentLayout.coverage` and `coverage_facts()`. Needs docx2svg with
+  `docx2svg.coverage`.
+- Markdown: a line break that ends its paragraph (a cover page's Shift+Enter) is written
+  as `<br>`. It was written as `\`, which CommonMark reads back as a literal backslash at
+  the end of a block. When reading Markdown, `<br>`, `<br/>` and `<br />` are line breaks,
+  and a paragraph that is only `<br>` is a paragraph of line breaks.
+- The invalid `\h` escape in `to_markdown`'s docstring is fixed. CI now compiles the
+  sources with syntax warnings as errors.
+- README: which fonts the layout needs, and the open substitutes.
 - `undo` refuses ooxml-edit 0.12's `scope` (`invalid_arguments`): a document undoes
   document-wide, since every edit shares its body part.
 - `edit_chart` `add` makes a radar chart (`chart_type: "radar"`), as Word inserts one:

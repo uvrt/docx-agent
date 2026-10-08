@@ -230,8 +230,15 @@ def _inline(inline: list, *, line_start: bool = True, table: bool = False) -> st
         elif isinstance(item, m.Break):
             close_link()
             close_all()
-            out.append("\\\n")
-            at_start = True
+            if _ends_block(items, k):
+                # CommonMark has no hard break at the end of a block (``Title\\`` reads
+                # back as a backslash): a trailing break -- a cover page's Shift+Enter --
+                # is ``<br>``, which the reader takes back as a break.
+                out.append("<br>")
+                at_start = False
+            else:
+                out.append("\\\n")
+                at_start = True
         elif isinstance(item, m.Image):
             title = f' "{_title(item.title)}"' if item.title else ""
             out.append(f"![{_escape(item.alt, table=table)}]({_destination(item.src)}{title})")
@@ -245,6 +252,12 @@ def _inline(inline: list, *, line_start: bool = True, table: bool = False) -> st
     close_link()
     close_all()
     return _edge_spaces("".join(out))
+
+
+def _ends_block(items: list, k: int) -> bool:
+    """Whether nothing but breaks, whitespace and comments follows ``items[k]``."""
+    return all(isinstance(i, m.Break) or (isinstance(i, m.Text) and not i.text.strip())
+               or (isinstance(i, m.Html) and i.text.startswith("<!--")) for i in items[k + 1:])
 
 
 def _order(items: list, k: int):

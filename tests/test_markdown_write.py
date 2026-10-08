@@ -613,3 +613,80 @@ def test_a_note_part_declares_only_the_ignorable_prefixes_it_uses():
     notes = document.package.tree("word/footnotes.xml")
     assert "wp14" not in (notes.get("{http://schemas.openxmlformats.org/markup-compatibility/2006}Ignorable") or "")
     assert notes.find(f".//{W}footnote/{W}p/{W}pPr/{W}pStyle") is not None
+
+
+# -- a line break at the end of a paragraph --------------------------------------------------
+#
+# CommonMark has no hard line break at the end of a block (spec 6.7: "Hard line breaks are
+# for separating inline content within a block"): ``Title\`` reads back as the text
+# ``Title\``.  A trailing ``w:br`` -- a cover page's Shift+Enter after its title -- is
+# written as ``<br>`` instead, which reads back as a break.
+
+
+def _body_texts(document: Document) -> list[str]:
+    return [p.text for p in document.stories[0].paragraphs]
+
+
+def _no_backslash_ends_a_block(markdown: str) -> bool:
+    """No line ending in ``\\`` is the last of its block (a mid-paragraph break is one)."""
+    lines = markdown.split("\n")
+    return not any(line.endswith("\\") and (k + 1 == len(lines) or not lines[k + 1].strip())
+                   for k, line in enumerate(lines))
+
+
+@pytest.mark.parametrize("text", [
+    "Cover title\v",
+    "Cover title\v\v",
+    "Line one\vline two\v",
+    "\v",
+    "\v\vAfter two breaks\v",
+])
+def test_a_trailing_line_break_reads_back_as_a_break(text):
+    document = blank()
+    paragraph = document.insert_markdown("placeholder").blocks[0]
+    document.paragraph(paragraph).set_text(text)
+    markdown = document.to_markdown(ids=False)
+    assert _no_backslash_ends_a_block(markdown), markdown
+    again = blank()
+    again.insert_markdown(markdown)
+    assert _body_texts(again) == [text]
+
+
+def test_a_cover_page_round_trips():
+    document = blank()
+    blocks = document.insert_markdown("Title\n\nSubtitle\n\nAuthor\n\nIntroduction text.").blocks
+    for identifier, text in zip(blocks, ["Annual report\v\v", "Subtitle\v\v\v", "Prepared by A. Author\vOctober\v",
+                                         "Introduction text."]):
+        document.paragraph(identifier).set_text(text)
+    markdown = document.to_markdown(ids=False)
+    assert _no_backslash_ends_a_block(markdown), markdown
+    assert markdown.startswith("Annual report<br><br>\n")
+    again = blank()
+    again.insert_markdown(markdown)
+    assert _body_texts(again) == _body_texts(document)
+    # And the ids view, whose comments sit before and after the blocks, reads the same.
+    again = blank()
+    again.insert_markdown(document.to_markdown())
+    assert _body_texts(again) == _body_texts(document)
+
+
+@pytest.mark.parametrize("markdown", ["Title<br>", "Title<br/>", "Title<BR />", "Title\\\n<br>"])
+def test_br_in_markdown_is_a_line_break(markdown):
+    from docx_agent.markdown.parse import parse_model
+    from docx_agent.markdown import model as m
+
+    blocks = parse_model(markdown)
+    assert len(blocks) == 1 and isinstance(blocks[0], m.Paragraph)
+    breaks = sum(isinstance(item, m.Break) for item in blocks[0].inline)
+    assert breaks == (2 if "\\" in markdown else 1)
+    assert not any(isinstance(item, m.Html) for item in blocks[0].inline)
+
+
+def test_a_paragraph_of_only_a_break_is_not_an_html_block():
+    from docx_agent.markdown.parse import parse_model
+    from docx_agent.markdown import model as m
+
+    blocks = parse_model("<br>\n\n<br><br>\n")
+    assert [type(b) for b in blocks] == [m.Paragraph, m.Paragraph]
+    assert [len(b.inline) for b in blocks] == [1, 2]
+    assert all(isinstance(item, m.Break) for b in blocks for item in b.inline)

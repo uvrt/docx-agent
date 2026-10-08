@@ -32,6 +32,26 @@ jobs:
           python -m pip install "docx2svg[png] @ git+https://github.com/uvrt/docx2svg@main"
           python -m pip install -e .[dev,png]
 
+      # The open metric compatible substitutes, as docx2svg's CI installs them (its README,
+      # "Fonts"): docx2svg then lays the Calibri, Arial, Times New Roman and Courier New
+      # fixtures out where a runner has no Office, so the render, reflow and field tests
+      # run rather than skip (tests/conftest.py skips only where a face is still absent:
+      # Cambria, Georgia, Aptos).  Never a font file in the repository.  Windows has the
+      # real faces, so nothing is added there.
+      - name: Install the open substitute fonts (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends fonts-crosextra-carlito fonts-crosextra-caladea fonts-liberation
+      - name: Install the open substitute fonts (macOS)
+        if: runner.os == 'macOS'
+        run: brew install --cask font-carlito font-caladea font-liberation
+
+      # A docstring's invalid escape ("\h") is a SyntaxWarning (3.12+; a DeprecationWarning
+      # before), printed once at the first compile and easy to miss: fail on it here.
+      - name: Compile with syntax warnings as errors
+        run: python -W error::SyntaxWarning -W error::DeprecationWarning -m compileall -q -f src tests tools examples
+
       # The Word oracle tests are opt-in (`-m oracle`) and need macOS with Microsoft Word,
       # which no runner has; the provider tests need an API key, which CI does not hold;
       # the tests that read docx2svg's checkout (its probe observations and tools) skip

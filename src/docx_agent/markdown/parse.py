@@ -12,7 +12,8 @@ swapped (ROADMAP.md, "Dialect and parser").
   ``("quote", blocks)``, ``("list", ordered, start, items)`` (an item is a tuple of blocks),
   ``("table", header, rows, aligns)``, ``("hr",)``, ``("footnote", label, blocks)``;
 * inline -- ``("t", text, marks, href)`` with adjacent alike texts merged,
-  ``("html", text)``, ``("br",)``, ``("img", alt, src, title, href)``, ``("fn", label)``.
+  ``("html", text)``, ``("br",)`` (a hard break, or ``<br>``: an HTML block of nothing but
+  ``<br>`` is a paragraph of them), ``("img", alt, src, title, href)``, ``("fn", label)``.
 
 What normalisation forgets, because Markdown does not keep it: list markers and
 delimiters, emphasis delimiters, whitespace at the ends of a block or a line, a paragraph
@@ -31,6 +32,17 @@ from mdit_py_plugins.footnote import footnote_plugin
 from . import model as m
 
 _COMMENT = re.compile(r"<!--(.*?)-->", re.DOTALL)
+#: ``<br>``, ``<br/>``, ``<br />`` in any case: a line break, as in HTML.  The renderer writes
+#: a line break that ends its block so (CommonMark has no hard break at a block's end), and
+#: a Markdown author may write one anywhere.
+_BR = re.compile(r"<br\s*/?>", re.IGNORECASE)
+_BRS = re.compile(r"\s*(?:<br\s*/?>\s*)+", re.IGNORECASE)
+
+
+def _breaks_only(content: str) -> int:
+    """How many ``<br>`` an HTML block is, when it is nothing else (a paragraph of line
+    breaks: CommonMark reads a line that is one ``<br>`` as an HTML block); else 0."""
+    return len(_BR.findall(content)) if _BRS.fullmatch(content) else 0
 _ALIGN = re.compile(r"text-align:\s*(left|center|right)")
 
 
@@ -105,6 +117,8 @@ def _blocks(tokens, i: int, env: dict, until: str | None) -> tuple[list, int]:
 
 
 def _html_block(content: str) -> list:
+    if _breaks_only(content):
+        return [("p", (("br",),) * _breaks_only(content))]
     stripped = content.strip()
     comments = _COMMENT.findall(stripped)
     if comments and _COMMENT.sub("", stripped).strip() == "":
@@ -147,7 +161,7 @@ def _inline(children, env: dict) -> tuple:
             items.append(("t", token.content, frozenset(marks + ["code"]), href))
         elif kind in ("softbreak",):
             items.append(("t", "\n", frozenset(marks), href))
-        elif kind == "hardbreak":
+        elif kind == "hardbreak" or (kind == "html_inline" and _BR.fullmatch(token.content)):
             items.append(("br",))
         elif kind == "html_inline":
             items.append(("html", token.content))
@@ -261,7 +275,8 @@ def model_inline(inline: list, *, heading: bool = False, cell: bool = False) -> 
 
 def normalise_inline(items: list) -> tuple:
     """Merge alike texts, drop empty ones, and forget whitespace at the ends of the block
-    and around hard breaks (Markdown keeps none of it).  Tabs count as spaces."""
+    and around hard breaks (Markdown keeps none of it).  Tabs count as spaces.  A break at
+    the end of the block is kept: written ``<br>``, it reads back."""
     merged: list = []
     for item in items:
         if item[0] == "t":
@@ -290,8 +305,6 @@ def normalise_inline(items: list) -> tuple:
             final[-1] = ("t", final[-1][1] + item[1]) + item[2:]
         else:
             final.append(item)
-    while final and final[-1][0] == "br":
-        final.pop()
     return tuple(final)
 
 
@@ -332,7 +345,9 @@ def _model_blocks(tokens, i: int, env: dict, until: str | None) -> tuple[list, i
         if kind == "html_block":
             stripped = token.content.strip()
             comments = _COMMENT.findall(stripped)
-            if comments and _COMMENT.sub("", stripped).strip() == "":
+            if _breaks_only(token.content):
+                out.append(m.Paragraph([m.Break() for _ in range(_breaks_only(token.content))]))
+            elif comments and _COMMENT.sub("", stripped).strip() == "":
                 out += [m.Comment(c.strip()) for c in comments]
             else:
                 out.append(m.HtmlBlock(token.content))
@@ -417,7 +432,7 @@ def _model_inline(children, env: dict) -> list:
             items.append(m.Text(token.content, frozenset(marks + ["code"]), href))
         elif kind == "softbreak":
             items.append(m.Text(" ", frozenset(marks), href))
-        elif kind == "hardbreak":
+        elif kind == "hardbreak" or (kind == "html_inline" and _BR.fullmatch(token.content)):
             items.append(m.Break())
         elif kind == "html_inline":
             items.append(m.Html(token.content))

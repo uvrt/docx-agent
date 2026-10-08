@@ -147,7 +147,7 @@ def to_markdown(document: "Document", range: str | None = None, *, view: str = "
     comments of those stories show where they are attached, as the body's do.
 
     In the ``markup`` view a field's result is marked where it is
-    (``<!-- field: REF RefIncident \h -->section 4<!-- /field -->``), so computed text
+    (``<!-- field: REF RefIncident \\h -->section 4<!-- /field -->``), so computed text
     (cross-references, page numbers, a table of contents) is told from typed text.  A heading
     a list numbers says so in its id comment (``numbered: list``, its number written before
     its text as Word draws it); one whose number is typed into its text says

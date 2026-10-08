@@ -77,6 +77,44 @@ class Unknown:
         return False
 
 
+def coverage_facts(coverage, *, at: str | None = None, stopped: "Stop | None" = None) -> dict:
+    """What a caller needs to tell "laid out and nothing wrong" from "could not lay it all
+    out": docx2svg's coverage (:class:`docx2svg.coverage.Coverage`, or its ``as_dict()``),
+    compact.  ``complete`` is true only when every block was laid out, every header,
+    footer and text box drawn and every face found; ``substituted_fonts`` names the faces
+    laid out with an open substitute (``(approximate)`` where it is not metric compatible);
+    ``stop`` is where the layout stopped, ``at`` the block's id when known."""
+    if coverage is None:  # a docx2svg without coverage: what the stop alone says
+        facts = {"complete": stopped is None}
+        if stopped is not None:
+            facts["stop"] = {"page": stopped.page, "reason": stopped.reason, "at": stopped.at}
+        return facts
+    data = coverage if isinstance(coverage, dict) else coverage.as_dict()
+    facts = {"complete": data["complete"], "pages": data["pages"],
+             "blocks_laid_out": [data["blocks_laid_out"], data["blocks"]]}
+    if data["estimate_source"] == "app.xml":
+        facts["pages_estimated"] = data["estimated_pages"]
+    stop = data.get("stop")
+    if stop:
+        facts["stop"] = {"page": stop["page"], "reason": stop["reason"], "at": at or stop.get("path"),
+                         "message": _short(stop["message"])}
+    if data["story_stops"]:
+        facts["story_stops"] = [{"page": s["page"], "reason": s["reason"], "message": _short(s["message"])}
+                                for s in data["story_stops"][:5]]
+    if data["substituted_fonts"]:
+        facts["substituted_fonts"] = [f"{s['family']} -> {s['substitute']}"
+                                      + ("" if s["metric_compatible"] else " (approximate)")
+                                      for s in data["substituted_fonts"]]
+    if data["missing_fonts"]:
+        facts["missing_fonts"] = list(data["missing_fonts"])
+    return facts
+
+
+def _short(text: str, limit: int = 160) -> str:
+    text = " ".join((text or "").split())
+    return text if len(text) <= limit else text[:limit - 1] + "\u2026"
+
+
 @dataclass(frozen=True)
 class Stop:
     """Where docx2svg stopped: the 1-based page, why, and the block it stopped at."""
@@ -135,6 +173,13 @@ class DocumentLayout:
                 at = _block_id(document, document.package.document_part(), page.stop.path)
                 self.stopped = Stop(page.number + 1, page.stop.reason, at or page.stop.path)
                 break
+        #: docx2svg's :class:`docx2svg.coverage.Coverage`: how much of the document this
+        #: layout covers (``None`` from a docx2svg that predates it).
+        self.coverage = getattr(layout, "coverage", None)
+
+    def coverage_facts(self) -> dict:
+        """:func:`coverage_facts` of this layout, its stop named by this API's id."""
+        return coverage_facts(self.coverage, at=self.stopped.at if self.stopped else None, stopped=self.stopped)
 
     # -- what is known -----------------------------------------------------------------------
 
