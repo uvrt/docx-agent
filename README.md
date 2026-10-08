@@ -12,6 +12,9 @@ It builds on [`ooxml-edit`](https://github.com/uvrt/ooxml-edit) (the lxml-based 
 package, ordered insertion and undo, and its charts subpackage) and renders and lays out
 through [`docx2svg`](https://github.com/uvrt/docx2svg).
 
+To give a model the document as tool calls (Claude, or OpenAI's Responses and Chat
+Completions APIs): [using the tools with a model provider](src/docx_agent/tools/README.md).
+
 ## Install
 
 Not on PyPI yet. Python 3.10+. The siblings install from git:
@@ -71,7 +74,7 @@ oracle tests are local-only (macOS with Word) and skip elsewhere, including CI.
 - [docs/common-tasks.md](docs/common-tasks.md) -- short recipes for what an agent does most
 - [docs/api-tour.md](docs/api-tour.md) -- what is covered, and a tour of the API
 - [docs/tools.md](docs/tools.md) -- the tool layer for a model
-- [SUPPORTED.md](src/docx_agent/tools/SUPPORTED.md), [GUIDANCE.md](src/docx_agent/tools/GUIDANCE.md) -- the agent tools
+- [tools/README.md](src/docx_agent/tools/README.md), [SUPPORTED.md](src/docx_agent/tools/SUPPORTED.md), [GUIDANCE.md](src/docx_agent/tools/GUIDANCE.md) -- the agent tools
 - [ROADMAP.md](ROADMAP.md) -- phases, decisions and what Word was measured to write
 - [CHANGELOG.md](CHANGELOG.md), [CONTRIBUTING.md](CONTRIBUTING.md) (running the tests)
 
