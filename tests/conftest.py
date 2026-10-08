@@ -153,9 +153,11 @@ def pytest_collection_modifyitems(config, items):
 # The fixtures are laid out (by docx2svg) in the faces Word uses -- Calibri, Cambria,
 # Georgia, Aptos -- which only a machine with Office has.  Without one, docx2svg stops the
 # layout where a paragraph cannot be measured, and a test of a render, a reflow or a field's
-# page number then says nothing about this code.  On such a machine (every CI runner), a
-# test whose layout reports a face absent skips; where the faces are installed, nothing
-# here applies.
+# page number then says nothing about this code.  On such a machine, a test whose layout
+# reports a face absent skips; where the faces are installed, nothing here applies.  CI's
+# Linux and macOS runners install the open substitutes (Carlito, Liberation), which docx2svg
+# lays Calibri, Arial, Times New Roman and Courier New out with, so only a document in a
+# face without one (Cambria, Georgia, Aptos) skips there.
 
 _OFFICE_FACES = ("Calibri", "Cambria", "Georgia", "Aptos")
 _FACE_ABSENT = ("layout-stopped:unmeasurable", "layout-stopped:no face metrics", "line-numbers-not-drawn")
