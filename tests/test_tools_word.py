@@ -582,6 +582,9 @@ def test_undo_gives_back_the_original_bytes_and_redo_the_edit(box, session):
     assert document(session).to_bytes() == original
     ok(box, session, "undo", doc=d, redo=True)
     assert document(session).to_bytes() == edited
+    # A document undoes document-wide: every edit shares its body part, so no scope.
+    error = fails(box, session, "undo", "invalid_arguments", doc=d, scope="1")
+    assert error.field == "scope" and document(session).to_bytes() == edited
 
 
 # -- batch and checks ----------------------------------------------------------------------------
