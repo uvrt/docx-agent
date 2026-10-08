@@ -51,6 +51,19 @@ def test_a_chart_after_a_heading_is_not_a_heading():
     assert not (new.style_name or "").lower().startswith("heading")
 
 
+def test_a_radar_chart_has_word_s_legend_at_the_top():
+    document = report()
+    edit = document.insert_chart(document.paragraphs()[1].id, "radar", MONTHS,
+                                 VOLUMES + [{"name": "Target", "values": [130, 130, 130, 130]}])
+    chart = document.chart(edit.id)
+    assert chart.chart_type == "radar"
+    assert chart.workbook_values()["series"][1]["values"]["values"] == [130] * 4
+    legend = chart._root().find(".//{http://schemas.openxmlformats.org/drawingml/2006/chart}"
+                                "legendPos")
+    assert legend.get("val") == "t"
+    assert document.validate() == []
+
+
 def test_width_keeps_word_s_ratio_and_undo_restores():
     document = report()
     before = document.to_bytes()
