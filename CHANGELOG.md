@@ -6,6 +6,8 @@ snapshot commit; the development history before it is summarised here.
 
 ## Unreleased
 
+- `undo` refuses ooxml-edit 0.12's `scope` (`invalid_arguments`): a document undoes
+  document-wide, since every edit shares its body part.
 - `edit_chart` `add` makes a radar chart (`chart_type: "radar"`), as Word inserts one:
   lines in the theme's accents, the legend at the top (measured on Office for Mac 16).
   Without `position`, a new chart's legend is where the application puts it. Needs

@@ -16,7 +16,10 @@ by 400 for edit_chart's add, data-label and gap-width actions (11,056 -> 11,402)
 the place of a separate word_insert_chart; the core is unchanged.  Post-T4 lowered it:
 word_insert_table and list_documents went (no model called them; a new table is Markdown),
 11,402 -> 11,080 estimated, the core unchanged at 2,384.  The radar chart type in
-edit_chart's enum added 3 (11,083); the guard stays.
+edit_chart's enum added 3 (11,083); the guard stays.  ooxml-edit 0.12's optional scope on
+the shared undo added 33 to the core (2,384 -> 2,417, about 3,577 counted by the proxy) and
+to every definition (11,116), though a Word document refuses it (it undoes document-wide);
+budget and guard stay.
 """
 
 from __future__ import annotations
