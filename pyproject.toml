@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "docx-agent"
+version = "0.0.1"
+description = "An AI-editable Word layer: inspect, edit and re-render .docx documents losslessly"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+authors = [{ name = "Evert Koks" }]
+keywords = ["docx", "word", "ooxml", "agent", "llm", "editing"]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Office/Business :: Office Suites",
+  "Topic :: Text Processing :: Markup :: XML",
+]
+# ooxml-edit is the format-neutral editing core (the OPC package, ordered insertion, undo),
+# extracted from pptx-agent; 0.2 brings its charts subpackage (charts, their workbooks and
+# SmartArt), which docx-agent hosts in Word's drawings, and 0.2.2 Chart.workbook_values() and
+# content_types_with(); 0.7.0 the shared describe, edit_chart's read action and Tool.reads,
+# which docx_agent.tools builds on.  ooxml-common (standard library only, and docx2svg's
+# own dependency) is named for what docx-agent imports from it directly: from 0.4.6 the
+# package kinds (ooxml_common.kinds).  docx2svg renders and lays out, and is a hard dependency by
+# decision (ROADMAP.md, "Decisions", 9): it is standard-library only, so it costs little,
+# and reflow feedback is part of every edit's answer.  Neither is on PyPI yet: install them
+# first from sibling checkouts (`pip install -e ../ooxml-edit -e ../ooxml-common
+# -e ../docx2svg`) or from GitHub.  markdown-it-py (with mdit-py-plugins for footnotes) is the
+# Markdown parser, by decision (ROADMAP.md, "Decisions", 2): it reads to_markdown's output back
+# for the reverse-parse check and checks a block's inline Markdown before it is written.
+dependencies = ["lxml>=4.9", "ooxml-edit>=0.10.0", "ooxml-common>=0.4.6", "docx2svg>=0.1", "markdown-it-py>=3.0", "mdit-py-plugins>=0.4"]
+
+[project.optional-dependencies]
+# PNG output goes through docx2svg's rasteriser extra.
+png = ["docx2svg[png]>=0.1"]
+dev = ["pytest>=7", "pytest-xdist>=3"]
+
+[project.urls]
+Repository = "https://github.com/uvrt/docx-agent"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# The oracle drives the real Microsoft Word, one instance per machine; opt in with
+# `pytest -m oracle` (ROADMAP.md, "Word is one instance per machine").
+addopts = "-m 'not oracle'"
+markers = [
+  "oracle: drives Microsoft Word on macOS (one instance per machine); skips when Word is in use",
+  "slow: an exhaustive sweep, run with --run-slow (ROADMAP.md, \"Testing strategy\")",
+  "provider: calls a model provider's API online; skipped without its API key",
+]

@@ -1,0 +1,39 @@
+{
+ "footnote": {
+  "content_types": [
+   "/word/endnotes.xml",
+   "/word/footnotes.xml"
+  ],
+  "endnotes.xml": "\r\n<w:endnotes mc:Ignorable=\"w14 w15 w16se w16cid w16 w16cex w16sdtdh w16sdtfl w16du wp14\"><w:endnote w:type=\"separator\" w:id=\"-1\"><w:p><w:pPr><w:spacing w:after=\"0\" w:line=\"240\" w:lineRule=\"auto\"/></w:pPr><w:r><w:separator/></w:r></w:p></w:endnote><w:endnote w:type=\"continuationSeparator\" w:id=\"0\"><w:p><w:pPr><w:spacing w:after=\"0\" w:line=\"240\" w:lineRule=\"auto\"/></w:pPr><w:r><w:continuationSeparator/></w:r></w:p></w:endnote></w:endnotes>",
+  "footnotes.xml": "\r\n<w:footnotes mc:Ignorable=\"w14 w15 w16se w16cid w16 w16cex w16sdtdh w16sdtfl w16du wp14\"><w:footnote w:type=\"separator\" w:id=\"-1\"><w:p><w:pPr><w:spacing w:after=\"0\" w:line=\"240\" w:lineRule=\"auto\"/></w:pPr><w:r><w:separator/></w:r></w:p></w:footnote><w:footnote w:type=\"continuationSeparator\" w:id=\"0\"><w:p><w:pPr><w:spacing w:after=\"0\" w:line=\"240\" w:lineRule=\"auto\"/></w:pPr><w:r><w:continuationSeparator/></w:r></w:p></w:footnote><w:footnote w:id=\"1\"><w:p><w:pPr><w:pStyle w:val=\"Voetnoottekst\"/><w:rPr><w:lang w:val=\"nl-NL\"/></w:rPr></w:pPr><w:r><w:rPr><w:rStyle w:val=\"Voetnootmarkering\"/></w:rPr><w:footnoteRef/></w:r><w:r><w:t xml:space=\"preserve\"> </w:t></w:r><w:r><w:rPr><w:lang w:val=\"nl-NL\"/></w:rPr><w:t>No Reference</w:t></w:r></w:p></w:footnote></w:footnotes>",
+  "parts": [
+   "word/endnotes.xml",
+   "word/footnotes.xml"
+  ],
+  "reference": "<w:p><w:r><w:t>Probe paragraph 3</w:t></w:r><w:r><w:rPr><w:rStyle w:val=\"Voetnootmarkering\"/></w:rPr><w:footnoteReference w:id=\"1\"/></w:r></w:p>",
+  "relationships": [
+   "endnotes",
+   "footnotes"
+  ],
+  "settings": [
+   "<w:footnotePr><w:footnote w:id=\"-1\"/><w:footnote w:id=\"0\"/></w:footnotePr>",
+   "<w:endnotePr><w:endnote w:id=\"-1\"/><w:endnote w:id=\"0\"/></w:endnotePr>"
+  ]
+ },
+ "table": {
+  "cell": "<w:tcPr><w:tcW w:w=\"3008\" w:type=\"dxa\"/></w:tcPr>",
+  "grid": [
+   3008,
+   3009,
+   3009
+  ],
+  "properties": "<w:tblPr><w:tblStyle w:val=\"Tabelraster\"/><w:tblW w:w=\"0\" w:type=\"auto\"/><w:tblLayout w:type=\"fixed\"/><w:tblLook w:val=\"04A0\" w:firstRow=\"1\" w:lastRow=\"0\" w:firstColumn=\"1\" w:lastColumn=\"0\" w:noHBand=\"0\" w:noVBand=\"1\"/></w:tblPr>",
+  "text_width": 9026
+ },
+ "typing_at_the_end": {
+  "accept": "<w:p><w:r><w:t>Plain first.</w:t></w:r></w:p><w:p><w:pPr><w:pStyle w:val=\"Kop1\"/></w:pPr><w:r><w:t>A heading last.</w:t></w:r></w:p><w:p><w:r><w:t>First new.</w:t></w:r></w:p><w:p><w:r><w:t>Second new.</w:t></w:r></w:p>",
+  "reject": "<w:p><w:r><w:t>Plain first.</w:t></w:r></w:p><w:p><w:pPr><w:pPrChange w:id=\"0\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"><w:pPr><w:pStyle w:val=\"Kop1\"/></w:pPr></w:pPrChange></w:pPr><w:r><w:t>A heading last.</w:t></w:r></w:p>",
+  "typed": "<w:p><w:r><w:t>Plain first.</w:t></w:r></w:p><w:p><w:pPr><w:pStyle w:val=\"Kop1\"/><w:rPr><w:ins w:id=\"0\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"/></w:rPr></w:pPr><w:r><w:t>A heading last.</w:t></w:r></w:p><w:p><w:pPr><w:rPr><w:ins w:id=\"1\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"/></w:rPr></w:pPr><w:ins w:id=\"2\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"><w:r><w:t>First new.</w:t></w:r></w:ins></w:p><w:p><w:pPr><w:pPrChange w:id=\"3\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"><w:pPr><w:pStyle w:val=\"Kop1\"/></w:pPr></w:pPrChange></w:pPr><w:ins w:id=\"4\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"><w:r><w:t>Second new.</w:t></w:r></w:ins></w:p>"
+ },
+ "word": "16.106 (macOS), Dutch interface"
+}

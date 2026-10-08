@@ -1,0 +1,238 @@
+{
+ "task": "w1-template-report",
+ "clock": "2026-10-07T09:00:00+00:00",
+ "blobs": [
+  "draft.md",
+  "northwind-report.dotx"
+ ],
+ "calls": [
+  {
+   "tool": "new_document",
+   "arguments": {
+    "kind": "docx",
+    "template_blob": "b2",
+    "title": "Annual Water Quality Report 2025",
+    "author": "Northwind Water Authority",
+    "name": "annual-water-quality-report.docx"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Made annual-water-quality-report.docx as d1",
+    "created": [
+     "d1"
+    ],
+    "data_sha": "c9df37bec6dcfc17"
+   }
+  },
+  {
+   "tool": "describe",
+   "arguments": {
+    "doc": "d1"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Described annual-water-quality-report.docx",
+    "data_sha": "43e487a7c6921c18"
+   }
+  },
+  {
+   "tool": "word_read",
+   "arguments": {
+    "doc": "d1",
+    "stories": "all"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Read the document (final)",
+    "data_sha": "c09d9625eb021f12"
+   }
+  },
+  {
+   "tool": "word_styles",
+   "arguments": {
+    "doc": "d1",
+    "action": "list",
+    "kind": "paragraph"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "19 style(s)",
+    "data_sha": "fa6dcb45006ed6cf"
+   }
+  },
+  {
+   "tool": "word_insert_markdown",
+   "arguments": {
+    "doc": "d1",
+    "blob": "b1",
+    "at": "end",
+    "style_map": [
+     {
+      "element": "h1",
+      "style": "Report Title"
+     },
+     {
+      "element": "h2",
+      "style": "Heading 1"
+     },
+     {
+      "element": "h3",
+      "style": "Heading 2"
+     },
+     {
+      "element": "paragraph",
+      "style": "Report Body"
+     }
+    ]
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Inserted 27 block(s)",
+    "created": [
+     "p:5FCB534E",
+     "p:4C32E1FB",
+     "p:16425160",
+     "p:3B212964",
+     "p:12972045",
+     "p:4B50F4CD",
+     "p:77B9C794",
+     "p:69E36C9F",
+     "p:058B17C9",
+     "p:6A70E1A8",
+     "p:73D22116",
+     "p:7C9523C2",
+     "p:599FE6A2",
+     "p:20FFCF19",
+     "t:60D6847F",
+     "p:3EB3FF6C",
+     "p:767E7C15",
+     "p:2F9E5978",
+     "p:654112D5",
+     "p:31B189E1",
+     "p:4329EC82",
+     "p:439BA4A8",
+     "p:70439822",
+     "p:11698B22",
+     "p:05252BEE",
+     "p:3052721F",
+     "p:43450195",
+     "p:78481EA1",
+     "p:20C1ECE5",
+     "p:41D60541",
+     "p:6FCDB881",
+     "p:55291651",
+     "p:30AEBD05",
+     "p:05F235FF",
+     "p:3B981BD3",
+     "p:7246E0D2",
+     "p:76D8DF86",
+     "p:2858FDA4",
+     "p:5832C491",
+     "p:58A00099",
+     "p:178A91E8",
+     "p:155E1469",
+     "p:501EA2C0",
+     "p:77D549B7",
+     "p:145D2F5A",
+     "p:68A8FA7E",
+     "p:7BE1A003",
+     "p:42B49479",
+     "p:7044C786",
+     "p:222313BB",
+     "p:4EB57B2A",
+     "p:25D3FA36"
+    ],
+    "removed": [
+     "p:5FCB534E"
+    ],
+    "warnings": [
+     "style added: Strong (Strong), as Word writes it",
+     "style added: Emphasis (Emphasis), as Word writes it",
+     "style added: List Bullet (ListBullet), as Word writes it",
+     "style added: Hyperlink (Hyperlink), as Word writes it",
+     "style added: Table Grid (TableGrid), as Word writes it",
+     "style added: List Number (ListNumber), as Word writes it"
+    ],
+    "data_sha": "631ebe33d0c9bd0a"
+   }
+  },
+  {
+   "tool": "word_read",
+   "arguments": {
+    "doc": "d1"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Read the document (final)",
+    "data_sha": "bdec0665640fb9e8"
+   }
+  },
+  {
+   "tool": "word_fields",
+   "arguments": {
+    "doc": "d1",
+    "action": "insert_toc",
+    "after": "p:4C32E1FB",
+    "levels": "1-2"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Inserted a table of contents fld:body/0",
+    "created": [
+     "fld:body/0",
+     "p:37491D3A",
+     "p:78A22D80",
+     "p:329A541A",
+     "p:1ECCF74F",
+     "p:33FB62DC",
+     "p:7123CF1D",
+     "p:0061C2CE",
+     "p:141B495C",
+     "p:41466755",
+     "p:279A4C0B"
+    ]
+   }
+  },
+  {
+   "tool": "word_read",
+   "arguments": {
+    "doc": "d1",
+    "view": "markup",
+    "stories": "all"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Read the document (markup)",
+    "data_sha": "9a24fc09eec5cac4"
+   }
+  },
+  {
+   "tool": "check",
+   "arguments": {
+    "doc": "d1"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Checked validate, reflow, fields",
+    "data_sha": "373ef05ce78f4351"
+   }
+  },
+  {
+   "tool": "save_document",
+   "arguments": {
+    "doc": "d1",
+    "name": "annual-water-quality-report.docx",
+    "format": "docx"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Saved annual-water-quality-report.docx for the application",
+    "data_sha": "567d5a290934da6d"
+   }
+  }
+ ],
+ "output": {
+  "name": "annual-water-quality-report.docx",
+  "sha256": "3d5a7094df0332c3adde2d4e169b15bbc07719735302c09de08d7c23f0c462b3"
+ }
+}

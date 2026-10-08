@@ -1,0 +1,966 @@
+{
+ "applied": [
+  [
+   "heading1",
+   "heading 1"
+  ],
+  [
+   "heading2",
+   "heading 2"
+  ],
+  [
+   "heading3",
+   "heading 3"
+  ],
+  [
+   "heading4",
+   "heading 4"
+  ],
+  [
+   "heading5",
+   "heading 5"
+  ],
+  [
+   "heading6",
+   "heading 6"
+  ],
+  [
+   "heading7",
+   "heading 7"
+  ],
+  [
+   "heading8",
+   "heading 8"
+  ],
+  [
+   "heading9",
+   "heading 9"
+  ],
+  [
+   "title",
+   "Title"
+  ],
+  [
+   "subtitle",
+   "Subtitle"
+  ],
+  [
+   "quote",
+   "Quote"
+  ],
+  [
+   "intense quote",
+   "Intense Quote"
+  ],
+  [
+   "list paragraph",
+   "List Paragraph"
+  ],
+  [
+   "list bullet",
+   "List Bullet"
+  ],
+  [
+   "list bullet2",
+   "List Bullet 2"
+  ],
+  [
+   "list bullet3",
+   "List Bullet 3"
+  ],
+  [
+   "list bullet4",
+   "List Bullet 4"
+  ],
+  [
+   "list bullet5",
+   "List Bullet 5"
+  ],
+  [
+   "list number",
+   "List Number"
+  ],
+  [
+   "list number2",
+   "List Number 2"
+  ],
+  [
+   "list number3",
+   "List Number 3"
+  ],
+  [
+   "list number4",
+   "List Number 4"
+  ],
+  [
+   "list number5",
+   "List Number 5"
+  ],
+  [
+   "caption",
+   "caption"
+  ],
+  [
+   "html pre",
+   "HTML Preformatted"
+  ],
+  [
+   "block quotation",
+   "Block Text"
+  ],
+  [
+   "body text",
+   "Body Text"
+  ],
+  [
+   "footnote text",
+   "footnote text"
+  ],
+  [
+   "endnote text",
+   "endnote text"
+  ],
+  [
+   "header",
+   "header"
+  ],
+  [
+   "footer",
+   "footer"
+  ],
+  [
+   "toc heading",
+   "TOC Heading"
+  ],
+  [
+   "plain text",
+   "Plain Text"
+  ],
+  [
+   "bibliography",
+   "Bibliography"
+  ],
+  [
+   "strong",
+   "Strong"
+  ],
+  [
+   "emphasis",
+   "Emphasis"
+  ],
+  [
+   "subtle emphasis",
+   "Subtle Emphasis"
+  ],
+  [
+   "intense emphasis",
+   "Intense Emphasis"
+  ],
+  [
+   "book title",
+   "Book Title"
+  ],
+  [
+   "subtle reference",
+   "Subtle Reference"
+  ],
+  [
+   "intense reference",
+   "Intense Reference"
+  ],
+  [
+   "hyperlink",
+   "Hyperlink"
+  ],
+  [
+   "hyperlink followed",
+   "FollowedHyperlink"
+  ],
+  [
+   "html code",
+   "HTML Code"
+  ],
+  [
+   "footnote reference",
+   "footnote reference"
+  ],
+  [
+   "endnote reference",
+   "endnote reference"
+  ]
+ ],
+ "default_lists": {
+  "abstracts": [
+   {
+    "id": "0",
+    "levels": [
+     {
+      "ilvl": "0",
+      "ind": {
+       "hanging": "360",
+       "left": "1492"
+      },
+      "lvlText": "%1.",
+      "numFmt": "decimal",
+      "pStyle": "List Number 5"
+     }
+    ],
+    "multiLevelType": "singleLevel"
+   },
+   {
+    "id": "1",
+    "levels": [
+     {
+      "ilvl": "0",
+      "ind": {
+       "hanging": "360",
+       "left": "1209"
+      },
+      "lvlText": "%1.",
+      "numFmt": "decimal",
+      "pStyle": "List Number 4"
+     }
+    ],
+    "multiLevelType": "singleLevel"
+   },
+   {
+    "id": "2",
+    "levels": [
+     {
+      "ilvl": "0",
+      "ind": {
+       "hanging": "360",
+       "left": "926"
+      },
+      "lvlText": "%1.",
+      "numFmt": "decimal",
+      "pStyle": "List Number 3"
+     }
+    ],
+    "multiLevelType": "singleLevel"
+   },
+   {
+    "id": "3",
+    "levels": [
+     {
+      "ilvl": "0",
+      "ind": {
+       "hanging": "360",
+       "left": "643"
+      },
+      "lvlText": "%1.",
+      "numFmt": "decimal",
+      "pStyle": "List Number 2"
+     }
+    ],
+    "multiLevelType": "singleLevel"
+   },
+   {
+    "id": "4",
+    "levels": [
+     {
+      "ilvl": "0",
+      "ind": {
+       "hanging": "360",
+       "left": "1492"
+      },
+      "lvlText": "",
+      "numFmt": "bullet",
+      "pStyle": "List Bullet 5"
+     }
+    ],
+    "multiLevelType": "singleLevel"
+   },
+   {
+    "id": "5",
+    "levels": [
+     {
+      "ilvl": "0",
+      "ind": {
+       "hanging": "360",
+       "left": "1209"
+      },
+      "lvlText": "",
+      "numFmt": "bullet",
+      "pStyle": "List Bullet 4"
+     }
+    ],
+    "multiLevelType": "singleLevel"
+   },
+   {
+    "id": "6",
+    "levels": [
+     {
+      "ilvl": "0",
+      "ind": {
+       "hanging": "360",
+       "left": "926"
+      },
+      "lvlText": "",
+      "numFmt": "bullet",
+      "pStyle": "List Bullet 3"
+     }
+    ],
+    "multiLevelType": "singleLevel"
+   },
+   {
+    "id": "7",
+    "levels": [
+     {
+      "ilvl": "0",
+      "ind": {
+       "hanging": "360",
+       "left": "643"
+      },
+      "lvlText": "",
+      "numFmt": "bullet",
+      "pStyle": "List Bullet 2"
+     }
+    ],
+    "multiLevelType": "singleLevel"
+   },
+   {
+    "id": "8",
+    "levels": [
+     {
+      "ilvl": "0",
+      "ind": {
+       "hanging": "360",
+       "left": "360"
+      },
+      "lvlText": "%1.",
+      "numFmt": "decimal",
+      "pStyle": "List Number"
+     }
+    ],
+    "multiLevelType": "singleLevel"
+   },
+   {
+    "id": "9",
+    "levels": [
+     {
+      "ilvl": "0",
+      "ind": {
+       "hanging": "360",
+       "left": "360"
+      },
+      "lvlText": "",
+      "numFmt": "bullet",
+      "pStyle": "List Bullet"
+     }
+    ],
+    "multiLevelType": "singleLevel"
+   },
+   {
+    "id": "10",
+    "levels": [
+     {
+      "ilvl": "0",
+      "ind": {
+       "hanging": "360",
+       "left": "720"
+      },
+      "lvlText": "",
+      "numFmt": "bullet",
+      "pStyle": null
+     }
+    ],
+    "multiLevelType": "singleLevel"
+   },
+   {
+    "id": "11",
+    "levels": [
+     {
+      "ilvl": "0",
+      "ind": {
+       "hanging": "360",
+       "left": "720"
+      },
+      "lvlText": "%1.",
+      "numFmt": "decimal",
+      "pStyle": null
+     }
+    ],
+    "multiLevelType": "singleLevel"
+   }
+  ],
+  "paragraphs": [
+   {
+    "numId": "11",
+    "style": "List Paragraph"
+   },
+   {
+    "numId": "11",
+    "style": "List Paragraph"
+   },
+   {
+    "numId": "12",
+    "style": "List Paragraph"
+   },
+   {
+    "numId": "12",
+    "style": "List Paragraph"
+   }
+  ]
+ },
+ "pictures": {
+  "300 dpi 300x150 px": {
+   "cx": 914400,
+   "cy": 457200
+  },
+  "no-density 96x48 px": {
+   "cx": 609600,
+   "cy": 304800
+  }
+ },
+ "style_ids_localised": {
+  "Bibliography": "Bibliografie",
+  "Block Text": "Bloktekst",
+  "Body Text": "Plattetekst",
+  "Book Title": "Titelvanboek",
+  "Citaat Char": "CitaatChar",
+  "Default Paragraph Font": "Standaardalinea-lettertype",
+  "Duidelijk citaat Char": "DuidelijkcitaatChar",
+  "Eindnoottekst Char": "EindnoottekstChar",
+  "Emphasis": "Nadruk",
+  "FollowedHyperlink": "GevolgdeHyperlink",
+  "HTML - vooraf opgemaakt Char": "HTML-voorafopgemaaktChar",
+  "HTML Code": "HTMLCode",
+  "HTML Preformatted": "HTML-voorafopgemaakt",
+  "Hyperlink": "Hyperlink",
+  "Intense Emphasis": "Intensievebenadrukking",
+  "Intense Quote": "Duidelijkcitaat",
+  "Intense Reference": "Intensieveverwijzing",
+  "Kop 1 Char": "Kop1Char",
+  "Kop 2 Char": "Kop2Char",
+  "Kop 3 Char": "Kop3Char",
+  "Kop 4 Char": "Kop4Char",
+  "Kop 5 Char": "Kop5Char",
+  "Kop 6 Char": "Kop6Char",
+  "Kop 7 Char": "Kop7Char",
+  "Kop 8 Char": "Kop8Char",
+  "Kop 9 Char": "Kop9Char",
+  "Koptekst Char": "KoptekstChar",
+  "List Bullet": "Lijstopsomteken",
+  "List Bullet 2": "Lijstopsomteken2",
+  "List Bullet 3": "Lijstopsomteken3",
+  "List Bullet 4": "Lijstopsomteken4",
+  "List Bullet 5": "Lijstopsomteken5",
+  "List Number": "Lijstnummering",
+  "List Number 2": "Lijstnummering2",
+  "List Number 3": "Lijstnummering3",
+  "List Number 4": "Lijstnummering4",
+  "List Number 5": "Lijstnummering5",
+  "List Paragraph": "Lijstalinea",
+  "No List": "Geenlijst",
+  "Normal": "Standaard",
+  "Normal Table": "Standaardtabel",
+  "Ondertitel Char": "OndertitelChar",
+  "Plain Text": "Tekstzonderopmaak",
+  "Platte tekst Char": "PlattetekstChar",
+  "Quote": "Citaat",
+  "Strong": "Zwaar",
+  "Subtitle": "Ondertitel",
+  "Subtle Emphasis": "Subtielebenadrukking",
+  "Subtle Reference": "Subtieleverwijzing",
+  "TOC Heading": "Kopvaninhoudsopgave",
+  "Tekst zonder opmaak Char": "TekstzonderopmaakChar",
+  "Titel Char": "TitelChar",
+  "Title": "Titel",
+  "Voetnoottekst Char": "VoetnoottekstChar",
+  "Voettekst Char": "VoettekstChar",
+  "caption": "Bijschrift",
+  "endnote reference": "Eindnootmarkering",
+  "endnote text": "Eindnoottekst",
+  "footer": "Voettekst",
+  "footnote reference": "Voetnootmarkering",
+  "footnote text": "Voetnoottekst",
+  "header": "Koptekst",
+  "heading 1": "Kop1",
+  "heading 2": "Kop2",
+  "heading 3": "Kop3",
+  "heading 4": "Kop4",
+  "heading 5": "Kop5",
+  "heading 6": "Kop6",
+  "heading 7": "Kop7",
+  "heading 8": "Kop8",
+  "heading 9": "Kop9"
+ },
+ "styles": {
+  "Bibliography": {
+   "refs": {
+    "basedOn": "Normal",
+    "next": "Normal"
+   },
+   "type": "paragraph"
+  },
+  "Block Text": {
+   "refs": {
+    "basedOn": "Normal"
+   },
+   "type": "paragraph"
+  },
+  "Body Text": {
+   "refs": {
+    "basedOn": "Normal",
+    "link": "Body Text Char"
+   },
+   "type": "paragraph"
+  },
+  "Body Text Char": {
+   "refs": {
+    "basedOn": "Default Paragraph Font",
+    "link": "Body Text"
+   },
+   "type": "character"
+  },
+  "Book Title": {
+   "refs": {
+    "basedOn": "Default Paragraph Font"
+   },
+   "type": "character"
+  },
+  "Default Paragraph Font": {
+   "refs": {},
+   "type": "character"
+  },
+  "Emphasis": {
+   "refs": {
+    "basedOn": "Default Paragraph Font"
+   },
+   "type": "character"
+  },
+  "Endnote Text Char": {
+   "refs": {
+    "basedOn": "Default Paragraph Font",
+    "link": "endnote text"
+   },
+   "type": "character"
+  },
+  "FollowedHyperlink": {
+   "refs": {
+    "basedOn": "Default Paragraph Font"
+   },
+   "type": "character"
+  },
+  "Footer Char": {
+   "refs": {
+    "basedOn": "Default Paragraph Font",
+    "link": "footer"
+   },
+   "type": "character"
+  },
+  "Footnote Text Char": {
+   "refs": {
+    "basedOn": "Default Paragraph Font",
+    "link": "footnote text"
+   },
+   "type": "character"
+  },
+  "HTML Code": {
+   "refs": {
+    "basedOn": "Default Paragraph Font"
+   },
+   "type": "character"
+  },
+  "HTML Preformatted": {
+   "refs": {
+    "basedOn": "Normal",
+    "link": "HTML Preformatted Char"
+   },
+   "type": "paragraph"
+  },
+  "HTML Preformatted Char": {
+   "refs": {
+    "basedOn": "Default Paragraph Font",
+    "link": "HTML Preformatted"
+   },
+   "type": "character"
+  },
+  "Header Char": {
+   "refs": {
+    "basedOn": "Default Paragraph Font",
+    "link": "header"
+   },
+   "type": "character"
+  },
+  "Heading 1 Char": {
+   "refs": {
+    "basedOn": "Default Paragraph Font",
+    "link": "heading 1"
+   },
+   "type": "character"
+  },
+  "Heading 2 Char": {
+   "refs": {
+    "basedOn": "Default Paragraph Font",
+    "link": "heading 2"
+   },
+   "type": "character"
+  },
+  "Heading 3 Char": {
+   "refs": {
+    "basedOn": "Default Paragraph Font",
+    "link": "heading 3"
+   },
+   "type": "character"
+  },
+  "Heading 4 Char": {
+   "refs": {
+    "basedOn": "Default Paragraph Font",
+    "link": "heading 4"
+   },
+   "type": "character"
+  },
+  "Heading 5 Char": {
+   "refs": {
+    "basedOn": "Default Paragraph Font",
+    "link": "heading 5"
+   },
+   "type": "character"
+  },
+  "Heading 6 Char": {
+   "refs": {
+    "basedOn": "Default Paragraph Font",
+    "link": "heading 6"
+   },
+   "type": "character"
+  },
+  "Heading 7 Char": {
+   "refs": {
+    "basedOn": "Default Paragraph Font",
+    "link": "heading 7"
+   },
+   "type": "character"
+  },
+  "Heading 8 Char": {
+   "refs": {
+    "basedOn": "Default Paragraph Font",
+    "link": "heading 8"
+   },
+   "type": "character"
+  },
+  "Heading 9 Char": {
+   "refs": {
+    "basedOn": "Default Paragraph Font",
+    "link": "heading 9"
+   },
+   "type": "character"
+  },
+  "Hyperlink": {
+   "refs": {
+    "basedOn": "Default Paragraph Font"
+   },
+   "type": "character"
+  },
+  "Intense Emphasis": {
+   "refs": {
+    "basedOn": "Default Paragraph Font"
+   },
+   "type": "character"
+  },
+  "Intense Quote": {
+   "refs": {
+    "basedOn": "Normal",
+    "link": "Intense Quote Char",
+    "next": "Normal"
+   },
+   "type": "paragraph"
+  },
+  "Intense Quote Char": {
+   "refs": {
+    "basedOn": "Default Paragraph Font",
+    "link": "Intense Quote"
+   },
+   "type": "character"
+  },
+  "Intense Reference": {
+   "refs": {
+    "basedOn": "Default Paragraph Font"
+   },
+   "type": "character"
+  },
+  "List Bullet": {
+   "refs": {
+    "basedOn": "Normal"
+   },
+   "type": "paragraph"
+  },
+  "List Bullet 2": {
+   "refs": {
+    "basedOn": "Normal"
+   },
+   "type": "paragraph"
+  },
+  "List Bullet 3": {
+   "refs": {
+    "basedOn": "Normal"
+   },
+   "type": "paragraph"
+  },
+  "List Bullet 4": {
+   "refs": {
+    "basedOn": "Normal"
+   },
+   "type": "paragraph"
+  },
+  "List Bullet 5": {
+   "refs": {
+    "basedOn": "Normal"
+   },
+   "type": "paragraph"
+  },
+  "List Number": {
+   "refs": {
+    "basedOn": "Normal"
+   },
+   "type": "paragraph"
+  },
+  "List Number 2": {
+   "refs": {
+    "basedOn": "Normal"
+   },
+   "type": "paragraph"
+  },
+  "List Number 3": {
+   "refs": {
+    "basedOn": "Normal"
+   },
+   "type": "paragraph"
+  },
+  "List Number 4": {
+   "refs": {
+    "basedOn": "Normal"
+   },
+   "type": "paragraph"
+  },
+  "List Number 5": {
+   "refs": {
+    "basedOn": "Normal"
+   },
+   "type": "paragraph"
+  },
+  "List Paragraph": {
+   "refs": {
+    "basedOn": "Normal"
+   },
+   "type": "paragraph"
+  },
+  "No List": {
+   "refs": {},
+   "type": "numbering"
+  },
+  "Normal": {
+   "refs": {},
+   "type": "paragraph"
+  },
+  "Normal Table": {
+   "refs": {},
+   "type": "table"
+  },
+  "Plain Text": {
+   "refs": {
+    "basedOn": "Normal",
+    "link": "Plain Text Char"
+   },
+   "type": "paragraph"
+  },
+  "Plain Text Char": {
+   "refs": {
+    "basedOn": "Default Paragraph Font",
+    "link": "Plain Text"
+   },
+   "type": "character"
+  },
+  "Quote": {
+   "refs": {
+    "basedOn": "Normal",
+    "link": "Quote Char",
+    "next": "Normal"
+   },
+   "type": "paragraph"
+  },
+  "Quote Char": {
+   "refs": {
+    "basedOn": "Default Paragraph Font",
+    "link": "Quote"
+   },
+   "type": "character"
+  },
+  "Strong": {
+   "refs": {
+    "basedOn": "Default Paragraph Font"
+   },
+   "type": "character"
+  },
+  "Subtitle": {
+   "refs": {
+    "basedOn": "Normal",
+    "link": "Subtitle Char",
+    "next": "Normal"
+   },
+   "type": "paragraph"
+  },
+  "Subtitle Char": {
+   "refs": {
+    "basedOn": "Default Paragraph Font",
+    "link": "Subtitle"
+   },
+   "type": "character"
+  },
+  "Subtle Emphasis": {
+   "refs": {
+    "basedOn": "Default Paragraph Font"
+   },
+   "type": "character"
+  },
+  "Subtle Reference": {
+   "refs": {
+    "basedOn": "Default Paragraph Font"
+   },
+   "type": "character"
+  },
+  "TOC Heading": {
+   "refs": {
+    "basedOn": "heading 1",
+    "next": "Normal"
+   },
+   "type": "paragraph"
+  },
+  "Title": {
+   "refs": {
+    "basedOn": "Normal",
+    "link": "Title Char",
+    "next": "Normal"
+   },
+   "type": "paragraph"
+  },
+  "Title Char": {
+   "refs": {
+    "basedOn": "Default Paragraph Font",
+    "link": "Title"
+   },
+   "type": "character"
+  },
+  "caption": {
+   "refs": {
+    "basedOn": "Normal",
+    "next": "Normal"
+   },
+   "type": "paragraph"
+  },
+  "endnote reference": {
+   "refs": {
+    "basedOn": "Default Paragraph Font"
+   },
+   "type": "character"
+  },
+  "endnote text": {
+   "refs": {
+    "basedOn": "Normal",
+    "link": "Endnote Text Char"
+   },
+   "type": "paragraph"
+  },
+  "footer": {
+   "refs": {
+    "basedOn": "Normal",
+    "link": "Footer Char"
+   },
+   "type": "paragraph"
+  },
+  "footnote reference": {
+   "refs": {
+    "basedOn": "Default Paragraph Font"
+   },
+   "type": "character"
+  },
+  "footnote text": {
+   "refs": {
+    "basedOn": "Normal",
+    "link": "Footnote Text Char"
+   },
+   "type": "paragraph"
+  },
+  "header": {
+   "refs": {
+    "basedOn": "Normal",
+    "link": "Header Char"
+   },
+   "type": "paragraph"
+  },
+  "heading 1": {
+   "refs": {
+    "basedOn": "Normal",
+    "link": "Heading 1 Char",
+    "next": "Normal"
+   },
+   "type": "paragraph"
+  },
+  "heading 2": {
+   "refs": {
+    "basedOn": "Normal",
+    "link": "Heading 2 Char",
+    "next": "Normal"
+   },
+   "type": "paragraph"
+  },
+  "heading 3": {
+   "refs": {
+    "basedOn": "Normal",
+    "link": "Heading 3 Char",
+    "next": "Normal"
+   },
+   "type": "paragraph"
+  },
+  "heading 4": {
+   "refs": {
+    "basedOn": "Normal",
+    "link": "Heading 4 Char",
+    "next": "Normal"
+   },
+   "type": "paragraph"
+  },
+  "heading 5": {
+   "refs": {
+    "basedOn": "Normal",
+    "link": "Heading 5 Char",
+    "next": "Normal"
+   },
+   "type": "paragraph"
+  },
+  "heading 6": {
+   "refs": {
+    "basedOn": "Normal",
+    "link": "Heading 6 Char",
+    "next": "Normal"
+   },
+   "type": "paragraph"
+  },
+  "heading 7": {
+   "refs": {
+    "basedOn": "Normal",
+    "link": "Heading 7 Char",
+    "next": "Normal"
+   },
+   "type": "paragraph"
+  },
+  "heading 8": {
+   "refs": {
+    "basedOn": "Normal",
+    "link": "Heading 8 Char",
+    "next": "Normal"
+   },
+   "type": "paragraph"
+  },
+  "heading 9": {
+   "refs": {
+    "basedOn": "Normal",
+    "link": "Heading 9 Char",
+    "next": "Normal"
+   },
+   "type": "paragraph"
+  }
+ },
+ "word": "16.106 (macOS), Dutch interface"
+}

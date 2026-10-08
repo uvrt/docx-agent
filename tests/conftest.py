@@ -1,0 +1,148 @@
+import os
+import tempfile
+from datetime import datetime, timezone
+from pathlib import Path
+
+import pytest
+
+FIXTURE_DIR = Path(__file__).parent / "fixtures"
+#: E6's new document, written where the corpus is read from (``new/document``): every gate
+#: and every phase's edit set holds for a document docx-agent made, as for one it opened.
+NEW_DOCUMENT = Path(tempfile.gettempdir()) / "docx-agent-tests" / "new" / "document.docx"
+#: Its creation date: fixed, so its bytes -- and the oracle's cache -- are the same each run.
+NEW_CREATED = datetime(2026, 10, 4, tzinfo=timezone.utc)
+
+
+def new_document() -> Path:
+    """``Document.new()``'s document, written (atomically: xdist's workers each collect) when
+    it is not there or differs."""
+    from docx_agent import Document
+
+    data = Document.new(created=NEW_CREATED).to_bytes()
+    if not NEW_DOCUMENT.exists() or NEW_DOCUMENT.read_bytes() != data:
+        NEW_DOCUMENT.parent.mkdir(parents=True, exist_ok=True)
+        staged = NEW_DOCUMENT.with_name(f".{os.getpid()}.docx")
+        staged.write_bytes(data)
+        os.replace(staged, NEW_DOCUMENT)
+    return NEW_DOCUMENT
+
+
+def fixture_paths() -> list[Path]:
+    return sorted(FIXTURE_DIR.glob("*/*.docx")) + [new_document()]
+
+
+def fixture_id(path: Path) -> str:
+    return f"{path.parent.name}/{path.stem}"
+
+
+@pytest.fixture(params=fixture_paths(), ids=fixture_id)
+def docx_path(request) -> Path:
+    """Every fixture in turn -- the corpus a test must hold for, not one happy document."""
+    return request.param
+
+
+@pytest.fixture(scope="session")
+def markup_doc() -> Path:
+    """docx-agent's own fixture: every id edge case and the markup text reading walks."""
+    return FIXTURE_DIR / "generated" / "ids-and-markup.docx"
+
+
+@pytest.fixture(scope="session")
+def long_doc() -> Path:
+    """36 pages in docx2svg's layout, no paraIds: the multi-page reflow fixture."""
+    return FIXTURE_DIR / "samplelib" / "sample-long.docx"
+
+
+MARKDOWN_DIR = FIXTURE_DIR / "generated" / "markdown"
+#: The chart and SmartArt documents Word saved (``tools/make_chart_fixtures.py``).
+CHARTS_DIR = FIXTURE_DIR / "generated" / "charts"
+
+
+def reading_paths() -> list[Path]:
+    """The corpus, E2's own fixtures and the chart documents (``generated/markdown`` and
+    ``generated/charts``, one level below the corpus so the other phases' suites and the Word
+    oracle keep theirs): what every reader is held to."""
+    return fixture_paths() + sorted(MARKDOWN_DIR.glob("*.docx")) + sorted(CHARTS_DIR.glob("*.docx"))
+
+
+@pytest.fixture(params=reading_paths(), ids=fixture_id)
+def reading_path(request) -> Path:
+    return request.param
+
+
+@pytest.fixture(scope="session")
+def constructs_doc() -> Path:
+    return MARKDOWN_DIR / "constructs.docx"
+
+
+@pytest.fixture(scope="session")
+def review_doc() -> Path:
+    return MARKDOWN_DIR / "review.docx"
+
+
+@pytest.fixture(scope="session")
+def dutch_doc() -> Path:
+    return MARKDOWN_DIR / "dutch-template.docx"
+
+
+#: The fixtures the heaviest per-fixture suites hold by default -- Word-authored with tables
+#: in mode 14, a document of every id edge case and revisions, a localised template with
+#: lists, and E6's new document; ``--run-slow`` holds them on every fixture.
+REPRESENTATIVE = {"wordto/sample-with-table", "generated/ids-and-markup", "generated/lists-and-styles",
+                  "new/document"}
+#: Those suites, by test function: each runs on :data:`REPRESENTATIVE` by default and on every
+#: fixture with ``--run-slow``.
+SWEPT = {
+    "test_e1_operations.py::test_operation",
+    "test_e3_invariant.py::test_accept_all_is_the_edit_and_reject_all_the_original",
+    "test_e3_operations.py::test_tracked_operation",
+    "test_e3_render.py::test_e3_edits_render_and_read",
+    "test_e4_operations.py::test_operation",
+    "test_e4_operations.py::test_operation_renders_and_places_what_it_made",
+    "test_e4_tracked.py::test_accept_all_is_the_edit_and_reject_all_the_original",
+    "test_e5_operations.py::test_operation",
+    "test_e5_operations.py::test_operation_renders_and_places_what_it_made",
+    "test_e5_tracked.py::test_accept_all_is_the_edit_and_reject_all_the_original",
+    "test_markdown_write.py::test_the_corpus_round_trips_in_every_fixture",
+    "test_markdown_write.py::test_tracked_insertion_accepts_to_the_edit_and_rejects_to_the_original",
+    "test_e6_copy.py::test_every_fixture_copies_into_a_new_document_and_another",
+    "test_e6_upgrade.py::test_every_fixture_upgrades_and_reports_its_reflow",
+}
+#: Randomised sweeps: the seeds held by default (``--run-slow``: every seed).
+SEEDS = {"test_e5_table_sweep.py::test_sweep_keeps_the_grid": {"0", "1"},
+         "test_e5_table_sweep.py::test_sweep_tracked_accepts_and_rejects": {"0"}}
+
+
+def _sweep_kept(item) -> bool:
+    """Whether the default run holds this item of a swept suite."""
+    key = f"{Path(str(item.fspath)).name}::{item.originalname}"
+    if key in SEEDS:
+        return item.callspec.id in SEEDS[key] if hasattr(item, "callspec") else True
+    if key not in SWEPT or not hasattr(item, "callspec"):
+        return True
+    for value in item.callspec.params.values():
+        if isinstance(value, Path):
+            return fixture_id(value) in REPRESENTATIVE
+    return True
+
+
+def pytest_addoption(parser):
+    parser.addoption("--run-slow", action="store_true", default=False,
+                     help="also run the exhaustive sweeps marked slow (ROADMAP.md, \"Testing strategy\")")
+
+
+def pytest_collection_modifyitems(config, items):
+    """The slow sweeps run with ``--run-slow``.  The Word oracle never runs under xdist's
+    parallel workers (ROADMAP.md, "Word is one instance per machine"): there, its tests
+    skip; run ``pytest -m oracle`` without ``-n``."""
+    if not config.getoption("--run-slow"):
+        later = pytest.mark.skip(reason="an exhaustive sweep: run with --run-slow")
+        for item in items:
+            if item.get_closest_marker("slow") is not None or not _sweep_kept(item):
+                item.add_marker(later)
+    if not os.environ.get("PYTEST_XDIST_WORKER"):
+        return
+    serial = pytest.mark.skip(reason="the Word oracle runs serially: pytest -m oracle, without -n")
+    for item in items:
+        if item.get_closest_marker("oracle") is not None:
+            item.add_marker(serial)

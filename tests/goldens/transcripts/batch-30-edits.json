@@ -1,0 +1,464 @@
+{
+ "task": "batch-30-edits",
+ "clock": "2026-10-07T09:00:00+00:00",
+ "fixture": "wordto/sample-10pages.docx",
+ "open": [
+  "sample-10pages.docx"
+ ],
+ "calls": [
+  {
+   "tool": "word_set_tracking",
+   "arguments": {
+    "doc": "d1",
+    "on": true,
+    "author": "Claude"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Tracking on, as Claude",
+    "data_sha": "ec60fd32c07c245f"
+   }
+  },
+  {
+   "tool": "batch",
+   "arguments": {
+    "ops": [
+     {
+      "tool": "word_insert_text",
+      "arguments": {
+       "doc": "d1",
+       "items": [
+        {
+         "target": "p@body/2",
+         "where": "after",
+         "text": " (Reviewed: point 1.)",
+         "ref": "e1"
+        },
+        {
+         "target": "p@body/3",
+         "where": "after",
+         "text": " (Reviewed: point 2.)",
+         "ref": "e2"
+        },
+        {
+         "target": "p@body/5",
+         "where": "after",
+         "text": " (Reviewed: point 3.)",
+         "ref": "e3"
+        },
+        {
+         "target": "p@body/6",
+         "where": "after",
+         "text": " (Reviewed: point 4.)",
+         "ref": "e4"
+        },
+        {
+         "target": "p@body/9",
+         "where": "after",
+         "text": " (Reviewed: point 5.)",
+         "ref": "e5"
+        },
+        {
+         "target": "p@body/10",
+         "where": "after",
+         "text": " (Reviewed: point 6.)",
+         "ref": "e6"
+        },
+        {
+         "target": "p@body/12",
+         "where": "after",
+         "text": " (Reviewed: point 7.)",
+         "ref": "e7"
+        },
+        {
+         "target": "p@body/13",
+         "where": "after",
+         "text": " (Reviewed: point 8.)",
+         "ref": "e8"
+        },
+        {
+         "target": "p@body/15",
+         "where": "after",
+         "text": " (Reviewed: point 9.)",
+         "ref": "e9"
+        },
+        {
+         "target": "p@body/16",
+         "where": "after",
+         "text": " (Reviewed: point 10.)",
+         "ref": "e10"
+        },
+        {
+         "target": "p@body/19",
+         "where": "after",
+         "text": " (Reviewed: point 11.)",
+         "ref": "e11"
+        },
+        {
+         "target": "p@body/20",
+         "where": "after",
+         "text": " (Reviewed: point 12.)",
+         "ref": "e12"
+        },
+        {
+         "target": "p@body/22",
+         "where": "after",
+         "text": " (Reviewed: point 13.)",
+         "ref": "e13"
+        },
+        {
+         "target": "p@body/23",
+         "where": "after",
+         "text": " (Reviewed: point 14.)",
+         "ref": "e14"
+        },
+        {
+         "target": "p@body/26",
+         "where": "after",
+         "text": " (Reviewed: point 15.)",
+         "ref": "e15"
+        },
+        {
+         "target": "p@body/27",
+         "where": "after",
+         "text": " (Reviewed: point 16.)",
+         "ref": "e16"
+        },
+        {
+         "target": "p@body/29",
+         "where": "after",
+         "text": " (Reviewed: point 17.)",
+         "ref": "e17"
+        },
+        {
+         "target": "p@body/30",
+         "where": "after",
+         "text": " (Reviewed: point 18.)",
+         "ref": "e18"
+        },
+        {
+         "target": "p@body/33",
+         "where": "after",
+         "text": " (Reviewed: point 19.)",
+         "ref": "e19"
+        },
+        {
+         "target": "p@body/34",
+         "where": "after",
+         "text": " (Reviewed: point 20.)",
+         "ref": "e20"
+        },
+        {
+         "target": "p@body/65",
+         "where": "after",
+         "text": " (Reviewed: point 21.)",
+         "ref": "e21"
+        },
+        {
+         "target": "p@body/66",
+         "where": "after",
+         "text": " (Reviewed: point 22.)",
+         "ref": "e22"
+        },
+        {
+         "target": "p@body/67",
+         "where": "after",
+         "text": " (Reviewed: point 23.)",
+         "ref": "e23"
+        },
+        {
+         "target": "p@body/68",
+         "where": "after",
+         "text": " (Reviewed: point 24.)",
+         "ref": "e24"
+        },
+        {
+         "target": "p@body/69",
+         "where": "after",
+         "text": " (Reviewed: point 25.)",
+         "ref": "e25"
+        },
+        {
+         "target": "p@body/2",
+         "where": "before",
+         "text": "Note 1: ",
+         "ref": "e26"
+        },
+        {
+         "target": "p@body/3",
+         "where": "before",
+         "text": "Note 2: ",
+         "ref": "e27"
+        },
+        {
+         "target": "p@body/5",
+         "where": "before",
+         "text": "Note 3: ",
+         "ref": "e28"
+        },
+        {
+         "target": "p@body/6",
+         "where": "before",
+         "text": "Note 4: ",
+         "ref": "e29"
+        },
+        {
+         "target": "p@body/9",
+         "where": "before",
+         "text": "Note 5: ",
+         "ref": "e30"
+        }
+       ]
+      }
+     },
+     {
+      "tool": "word_comments",
+      "arguments": {
+       "doc": "d1",
+       "action": "add",
+       "items": [
+        {
+         "target": "$e1",
+         "text": "Check point 1 with the author."
+        },
+        {
+         "target": "$e4",
+         "text": "Check point 4 with the author."
+        },
+        {
+         "target": "$e7",
+         "text": "Check point 7 with the author."
+        },
+        {
+         "target": "$e10",
+         "text": "Check point 10 with the author."
+        },
+        {
+         "target": "$e13",
+         "text": "Check point 13 with the author."
+        },
+        {
+         "target": "$e16",
+         "text": "Check point 16 with the author."
+        },
+        {
+         "target": "$e19",
+         "text": "Check point 19 with the author."
+        },
+        {
+         "target": "$e22",
+         "text": "Check point 22 with the author."
+        },
+        {
+         "target": "$e25",
+         "text": "Check point 25 with the author."
+        },
+        {
+         "target": "$e28",
+         "text": "Check point 28 with the author."
+        }
+       ]
+      }
+     }
+    ]
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Ran 2 op(s) as one step: Inserted text at 30 place(s); add: 10 comment(s)",
+    "changed": [
+     "p:16425160",
+     "p:3B212964",
+     "p:4B50F4CD",
+     "p:77B9C794",
+     "p:6A70E1A8",
+     "p:73D22116",
+     "p:599FE6A2",
+     "p:20FFCF19",
+     "p:767E7C15",
+     "p:2F9E5978",
+     "p:4329EC82",
+     "p:439BA4A8",
+     "p:11698B22",
+     "p:05252BEE",
+     "p:78481EA1",
+     "p:20C1ECE5",
+     "p:6FCDB881",
+     "p:55291651",
+     "p:3B981BD3",
+     "p:7246E0D2",
+     "p:29D52CA6",
+     "p:1867FB25",
+     "p:0B93D885",
+     "p:4D7C3CE4",
+     "p:68870121"
+    ],
+    "created": [
+     "c:76FCC91F",
+     "c:4C9866FD",
+     "c:22CB2567",
+     "c:5E432F44",
+     "c:777AEE05",
+     "c:327384A6",
+     "c:7B3D7FF3",
+     "c:19FF935E",
+     "c:06480F14",
+     "c:0D2C5052"
+    ],
+    "renamed": {
+     "p@body/0": "p:5FCB534E",
+     "p@body/1": "p:4C32E1FB",
+     "p@body/2": "p:16425160",
+     "p@body/3": "p:3B212964",
+     "p@body/4": "p:12972045",
+     "p@body/5": "p:4B50F4CD",
+     "p@body/6": "p:77B9C794",
+     "p@body/7": "p:69E36C9F",
+     "p@body/8": "p:058B17C9",
+     "p@body/9": "p:6A70E1A8",
+     "p@body/10": "p:73D22116",
+     "p@body/11": "p:7C9523C2",
+     "p@body/12": "p:599FE6A2",
+     "p@body/13": "p:20FFCF19",
+     "p@body/14": "p:3EB3FF6C",
+     "p@body/15": "p:767E7C15",
+     "p@body/16": "p:2F9E5978",
+     "p@body/17": "p:654112D5",
+     "p@body/18": "p:31B189E1",
+     "p@body/19": "p:4329EC82",
+     "p@body/20": "p:439BA4A8",
+     "p@body/21": "p:70439822",
+     "p@body/22": "p:11698B22",
+     "p@body/23": "p:05252BEE",
+     "p@body/24": "p:3052721F",
+     "p@body/25": "p:43450195",
+     "p@body/26": "p:78481EA1",
+     "p@body/27": "p:20C1ECE5",
+     "p@body/28": "p:41D60541",
+     "p@body/29": "p:6FCDB881",
+     "p@body/30": "p:55291651",
+     "p@body/31": "p:30AEBD05",
+     "p@body/32": "p:05F235FF",
+     "p@body/33": "p:3B981BD3",
+     "p@body/34": "p:7246E0D2",
+     "p@body/35": "p:76D8DF86",
+     "p@body/36": "p:2858FDA4",
+     "p@body/37": "p:5832C491",
+     "p@body/38": "p:58A00099",
+     "p@body/39": "p:178A91E8",
+     "p@body/40": "p:155E1469",
+     "p@body/41": "p:501EA2C0",
+     "p@body/42": "p:77D549B7",
+     "p@body/43": "p:145D2F5A",
+     "p@body/44": "p:68A8FA7E",
+     "p@body/45": "p:7BE1A003",
+     "p@body/46": "p:42B49479",
+     "p@body/47": "p:7044C786",
+     "p@body/48": "p:222313BB",
+     "p@body/49": "p:4EB57B2A",
+     "p@body/50": "p:25D3FA36",
+     "p@body/51": "p:279A4C0B",
+     "p@body/52": "p:6BD2D968",
+     "p@body/53": "p:6D562D25",
+     "p@body/54": "p:1AA685D7",
+     "p@body/55": "p:084A8B5A",
+     "p@body/56": "p:09759E30",
+     "p@body/57": "p:3D044AEF",
+     "p@body/58": "p:35B58A46",
+     "p@body/59": "p:2A410535",
+     "p@body/60": "p:1823907F",
+     "p@body/61": "p:2F12E113",
+     "p@body/62": "p:2E353B7A",
+     "p@body/63": "p:4262C6FD",
+     "p@body/64": "p:74755A3B",
+     "p@body/65": "p:29D52CA6",
+     "p@body/66": "p:1867FB25",
+     "p@body/67": "p:0B93D885",
+     "p@body/68": "p:4D7C3CE4",
+     "p@body/69": "p:68870121",
+     "t@body/0/r0": "tr:60D6847F",
+     "t@body/0/r1": "tr:78998472",
+     "t@body/0/r2": "tr:458D9849",
+     "t@body/0/r3": "tr:288021DA",
+     "t@body/0/r4": "tr:3C65A2A3",
+     "t@body/0/r5": "tr:09A74603",
+     "t@body/0/r6": "tr:3FBFF700",
+     "t@body/0": "t:60D6847F"
+    },
+    "refs": {
+     "e1": "p:16425160@238:259",
+     "e2": "p:3B212964@208:229",
+     "e3": "p:4B50F4CD@215:236",
+     "e4": "p:77B9C794@158:179",
+     "e5": "p:6A70E1A8@220:241",
+     "e6": "p:73D22116@204:225",
+     "e7": "p:599FE6A2@162:183",
+     "e8": "p:20FFCF19@192:213",
+     "e9": "p:767E7C15@178:199",
+     "e10": "p:2F9E5978@173:195",
+     "e11": "p:4329EC82@186:208",
+     "e12": "p:439BA4A8@175:197",
+     "e13": "p:11698B22@218:240",
+     "e14": "p:05252BEE@196:218",
+     "e15": "p:78481EA1@201:223",
+     "e16": "p:20C1ECE5@198:220",
+     "e17": "p:6FCDB881@211:233",
+     "e18": "p:55291651@134:156",
+     "e19": "p:3B981BD3@184:206",
+     "e20": "p:7246E0D2@182:204",
+     "e21": "p:29D52CA6@64:86",
+     "e22": "p:1867FB25@56:78",
+     "e23": "p:0B93D885@70:92",
+     "e24": "p:4D7C3CE4@54:76",
+     "e25": "p:68870121@65:87",
+     "e26": "p:16425160@0:8",
+     "e27": "p:3B212964@0:8",
+     "e28": "p:4B50F4CD@0:8",
+     "e29": "p:77B9C794@0:8",
+     "e30": "p:6A70E1A8@0:8"
+    },
+    "data_sha": "a0fe0aa2ac71f283"
+   }
+  },
+  {
+   "tool": "word_changes",
+   "arguments": {
+    "doc": "d1",
+    "action": "list"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "30 change(s)",
+    "data_sha": "11b08cfb9114ad3c"
+   }
+  },
+  {
+   "tool": "word_comments",
+   "arguments": {
+    "doc": "d1",
+    "action": "list"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "10 thread(s)",
+    "data_sha": "bc18119e4eb4daf5"
+   }
+  },
+  {
+   "tool": "save_document",
+   "arguments": {
+    "doc": "d1",
+    "name": "sample-10pages-reviewed.docx",
+    "format": "docx"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Saved sample-10pages-reviewed.docx for the application",
+    "data_sha": "185670aa08a4262f"
+   }
+  }
+ ],
+ "output": {
+  "name": "sample-10pages-reviewed.docx",
+  "sha256": "40cc74492600bfb3548da993f037a3b138d5b62e87c187fac5f5c13c3c37647a"
+ }
+}

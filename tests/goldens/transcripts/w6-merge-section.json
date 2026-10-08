@@ -1,0 +1,180 @@
+{
+ "task": "w6-merge-section",
+ "clock": "2026-10-07T09:00:00+00:00",
+ "open": [
+  "field-handbook.docx"
+ ],
+ "blobs": [
+  "safety-bulletin.docx"
+ ],
+ "calls": [
+  {
+   "tool": "describe",
+   "arguments": {
+    "doc": "d1"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Described field-handbook.docx",
+    "data_sha": "7933e47144fa1e44"
+   }
+  },
+  {
+   "tool": "word_read",
+   "arguments": {
+    "doc": "d1"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Read the document (final)",
+    "data_sha": "55c259f70729e326"
+   }
+  },
+  {
+   "tool": "open_document",
+   "arguments": {
+    "blob": "b1"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Opened safety-bulletin.docx as d2 (docx)",
+    "created": [
+     "d2"
+    ],
+    "data_sha": "6e685a6e0dde4f22"
+   }
+  },
+  {
+   "tool": "word_read",
+   "arguments": {
+    "doc": "d2"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Read the document (final)",
+    "data_sha": "4f999f34e084c488"
+   }
+  },
+  {
+   "tool": "word_styles",
+   "arguments": {
+    "doc": "d1",
+    "action": "list",
+    "in_use_only": true
+   },
+   "expect": {
+    "ok": true,
+    "summary": "5 style(s)",
+    "data_sha": "95ac762bead39b14"
+   }
+  },
+  {
+   "tool": "word_styles",
+   "arguments": {
+    "doc": "d2",
+    "action": "list",
+    "in_use_only": true
+   },
+   "expect": {
+    "ok": true,
+    "summary": "7 style(s)",
+    "data_sha": "2b3d114c5b6494b4"
+   }
+  },
+  {
+   "tool": "word_copy_from",
+   "arguments": {
+    "doc": "d1",
+    "source_doc": "d2",
+    "range": "p:654112D5..p:20C1ECE5",
+    "at": "after:p:767E7C15",
+    "styles": "use_destination",
+    "unmapped": "body",
+    "style_map": [
+     {
+      "source": "Bulletin Body",
+      "destination": "Handbook Body"
+     },
+     {
+      "source": "Bulletin Note",
+      "destination": "Handbook Body"
+     }
+    ]
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Copied 11 block(s) from d2",
+    "created": [
+     "p:4C32E1FB",
+     "p:16425160",
+     "p:3B212964",
+     "p:439BA4A8",
+     "p:70439822",
+     "p:11698B22",
+     "p:05252BEE",
+     "p:3052721F",
+     "p:43450195",
+     "p:78481EA1",
+     "p:20C1ECE5",
+     "footnotes/p:1B7C9837"
+    ],
+    "warnings": [
+     "style 'List Number' added as Word writes it"
+    ],
+    "data_sha": "49da904d50eecdff"
+   }
+  },
+  {
+   "tool": "word_read",
+   "arguments": {
+    "doc": "d1"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Read the document (final)",
+    "data_sha": "e00ee79d68f03aa4"
+   }
+  },
+  {
+   "tool": "word_styles",
+   "arguments": {
+    "doc": "d1",
+    "action": "list",
+    "in_use_only": true
+   },
+   "expect": {
+    "ok": true,
+    "summary": "6 style(s)",
+    "data_sha": "f7c10c53fdd798d4"
+   }
+  },
+  {
+   "tool": "check",
+   "arguments": {
+    "doc": "d1"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Checked validate, reflow, fields",
+    "data_sha": "bffe230fb98bf1fb"
+   }
+  },
+  {
+   "tool": "save_document",
+   "arguments": {
+    "doc": "d1",
+    "name": "field-handbook.docx",
+    "format": "docx"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Saved field-handbook.docx for the application",
+    "data_sha": "1fd8ebe54bb6046f"
+   }
+  }
+ ],
+ "output": {
+  "name": "field-handbook.docx",
+  "sha256": "960b0b8dec4c7e6e0bab79d7a98fb5c133cdd461521981563f62189d26b80bf1"
+ }
+}

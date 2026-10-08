@@ -1,0 +1,306 @@
+{
+ "task": "w10-board-pack",
+ "clock": "2026-10-07T09:00:00+00:00",
+ "open": [
+  "board-pack-q3.docx"
+ ],
+ "blobs": [
+  "finance-report.docx",
+  "operations-report.docx",
+  "people-report.docx",
+  "sales-report.docx",
+  "it-report.docx"
+ ],
+ "calls": [
+  {
+   "tool": "describe",
+   "arguments": {
+    "doc": "d1"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Described board-pack-q3.docx",
+    "data_sha": "b076aab1e969fea5"
+   }
+  },
+  {
+   "tool": "open_document",
+   "arguments": {
+    "blob": "b1"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Opened finance-report.docx as d2 (docx)",
+    "created": [
+     "d2"
+    ],
+    "data_sha": "1180d52cd0c21f1f"
+   }
+  },
+  {
+   "tool": "word_copy_from",
+   "arguments": {
+    "doc": "d1",
+    "source_doc": "d2",
+    "section_heading": "p:4C32E1FB",
+    "at": "after:p:16425160"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Copied 4 block(s) from d2",
+    "created": [
+     "p:69E36C9F",
+     "p:058B17C9",
+     "p:6A70E1A8",
+     "p:73D22116"
+    ],
+    "data_sha": "f13494a8e7123686"
+   }
+  },
+  {
+   "tool": "close_document",
+   "arguments": {
+    "doc": "d2"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Closed d2",
+    "removed": [
+     "d2"
+    ]
+   }
+  },
+  {
+   "tool": "open_document",
+   "arguments": {
+    "blob": "b2"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Opened operations-report.docx as d3 (docx)",
+    "created": [
+     "d3"
+    ],
+    "data_sha": "3094b2da6be78863"
+   }
+  },
+  {
+   "tool": "word_copy_from",
+   "arguments": {
+    "doc": "d1",
+    "source_doc": "d3",
+    "section_heading": "p:4C32E1FB",
+    "at": "after:p:3B212964"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Copied 4 block(s) from d3",
+    "created": [
+     "p:7C9523C2",
+     "p:599FE6A2",
+     "p:20FFCF19",
+     "p:3EB3FF6C"
+    ],
+    "data_sha": "ecf36c52b7a8138c"
+   }
+  },
+  {
+   "tool": "close_document",
+   "arguments": {
+    "doc": "d3"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Closed d3",
+    "removed": [
+     "d3"
+    ]
+   }
+  },
+  {
+   "tool": "open_document",
+   "arguments": {
+    "blob": "b3"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Opened people-report.docx as d4 (docx)",
+    "created": [
+     "d4"
+    ],
+    "data_sha": "6d47c30705f9e31a"
+   }
+  },
+  {
+   "tool": "word_copy_from",
+   "arguments": {
+    "doc": "d1",
+    "source_doc": "d4",
+    "section_heading": "p:4C32E1FB",
+    "at": "after:p:12972045"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Copied 4 block(s) from d4",
+    "created": [
+     "p:767E7C15",
+     "p:2F9E5978",
+     "p:654112D5",
+     "p:31B189E1"
+    ],
+    "data_sha": "b6e2632449a91793"
+   }
+  },
+  {
+   "tool": "close_document",
+   "arguments": {
+    "doc": "d4"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Closed d4",
+    "removed": [
+     "d4"
+    ]
+   }
+  },
+  {
+   "tool": "open_document",
+   "arguments": {
+    "blob": "b4"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Opened sales-report.docx as d5 (docx)",
+    "created": [
+     "d5"
+    ],
+    "data_sha": "a9a408b528840e36"
+   }
+  },
+  {
+   "tool": "word_copy_from",
+   "arguments": {
+    "doc": "d1",
+    "source_doc": "d5",
+    "section_heading": "p:4C32E1FB",
+    "at": "after:p:4B50F4CD"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Copied 4 block(s) from d5",
+    "created": [
+     "p:4329EC82",
+     "p:439BA4A8",
+     "p:70439822",
+     "p:11698B22"
+    ],
+    "data_sha": "85be9fce30b7f141"
+   }
+  },
+  {
+   "tool": "close_document",
+   "arguments": {
+    "doc": "d5"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Closed d5",
+    "removed": [
+     "d5"
+    ]
+   }
+  },
+  {
+   "tool": "open_document",
+   "arguments": {
+    "blob": "b5"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Opened it-report.docx as d6 (docx)",
+    "created": [
+     "d6"
+    ],
+    "data_sha": "986a1440c2e8fa43"
+   }
+  },
+  {
+   "tool": "word_copy_from",
+   "arguments": {
+    "doc": "d1",
+    "source_doc": "d6",
+    "section_heading": "p:4C32E1FB",
+    "at": "after:p:77B9C794"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Copied 4 block(s) from d6",
+    "created": [
+     "p:05252BEE",
+     "p:3052721F",
+     "p:43450195",
+     "p:78481EA1"
+    ],
+    "data_sha": "785cc08db1b9120a"
+   }
+  },
+  {
+   "tool": "close_document",
+   "arguments": {
+    "doc": "d6"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Closed d6",
+    "removed": [
+     "d6"
+    ]
+   }
+  },
+  {
+   "tool": "set_properties",
+   "arguments": {
+    "doc": "d1",
+    "title": "Board pack, Q3 2026",
+    "author": "Company Secretary"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Set title, author",
+    "changed": [
+     "properties"
+    ],
+    "data_sha": "5234bea682e6da03"
+   }
+  },
+  {
+   "tool": "word_read",
+   "arguments": {
+    "doc": "d1"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Read the document (final)",
+    "data_sha": "05af183ae1b2d495"
+   }
+  },
+  {
+   "tool": "save_document",
+   "arguments": {
+    "doc": "d1",
+    "name": "board-pack-q3.docx",
+    "format": "docx"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Saved board-pack-q3.docx for the application",
+    "data_sha": "de01fc3d6d47cd1c"
+   }
+  }
+ ],
+ "output": {
+  "name": "board-pack-q3.docx",
+  "sha256": "638cb38d546f80bfcf10296e5f7cf62e60f9d63dc7ed4abf554a8487457d05c4"
+ }
+}

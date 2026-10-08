@@ -1,0 +1,2658 @@
+{
+ "word": "16.106 for Mac",
+ "cache": {
+  "exported": true,
+  "saved": true,
+  "chart1": {
+   "pdf_shows_cache_name": true,
+   "pdf_shows_workbook_name": false
+  },
+  "chart2": {
+   "pdf_shows_cache_name": true,
+   "pdf_shows_workbook_name": false
+  },
+  "chart3": {
+   "pdf_shows_cache_name": true,
+   "pdf_shows_workbook_name": false
+  },
+  "pdf_shows_cache_categories": true,
+  "pdf_shows_workbook_categories": false,
+  "pdf_value_labels": [
+   "20",
+   "40",
+   "60"
+  ],
+  "saved_charts": [
+   {
+    "data": {
+     "types": [
+      "bar"
+     ],
+     "title": null,
+     "axis_titles": {
+      "category": null,
+      "value": null
+     },
+     "legend": true,
+     "format": "General",
+     "categories": [
+      "Q1",
+      "Q2",
+      "Q3",
+      "Q4"
+     ],
+     "series": [
+      {
+       "name": "Cached1",
+       "values": [
+        10,
+        20,
+        30,
+        40
+       ]
+      }
+     ]
+    },
+    "auto_update": "0",
+    "workbook_sha": "f5b158358e0babc6"
+   },
+   {
+    "data": {
+     "types": [
+      "bar"
+     ],
+     "title": null,
+     "axis_titles": {
+      "category": null,
+      "value": null
+     },
+     "legend": true,
+     "format": "General",
+     "categories": [
+      "Q1",
+      "Q2",
+      "Q3",
+      "Q4"
+     ],
+     "series": [
+      {
+       "name": "Cached2",
+       "values": [
+        10,
+        20,
+        30,
+        40
+       ]
+      }
+     ]
+    },
+    "auto_update": "0",
+    "workbook_sha": "24948f4106a8faf2"
+   },
+   {
+    "data": {
+     "types": [
+      "bar"
+     ],
+     "title": null,
+     "axis_titles": {
+      "category": null,
+      "value": null
+     },
+     "legend": true,
+     "format": "General",
+     "categories": [
+      "Q1",
+      "Q2",
+      "Q3",
+      "Q4"
+     ],
+     "series": [
+      {
+       "name": "Cached3",
+       "values": [
+        10,
+        20,
+        30,
+        40
+       ]
+      }
+     ]
+    },
+    "auto_update": "0",
+    "workbook_sha": "41d08014d0be63dd"
+   }
+  ],
+  "input_workbooks": [
+   "f5b158358e0babc6",
+   "24948f4106a8faf2",
+   "41d08014d0be63dd"
+  ]
+ },
+ "extensions": {
+  "exported": true,
+  "ours": [
+   {
+    "id": "d:1",
+    "part": "word/charts/chart1.xml",
+    "data": {
+     "types": [
+      "bar"
+     ],
+     "title": "Edited d:1",
+     "axis_titles": {
+      "category": null,
+      "value": null
+     },
+     "legend": true,
+     "format": "General",
+     "categories": [
+      "Q1",
+      "Renamed",
+      "Q3",
+      "Q4",
+      "Added"
+     ],
+     "series": [
+      {
+       "name": "North edited",
+       "values": [
+        777,
+        2.5,
+        3.5,
+        4.5,
+        null
+       ]
+      },
+      {
+       "name": "South",
+       "values": [
+        2.4,
+        4.4,
+        1.8,
+        2.8,
+        null
+       ]
+      },
+      {
+       "name": "West",
+       "values": [
+        2,
+        2,
+        3,
+        5,
+        null
+       ]
+      },
+      {
+       "name": "New series",
+       "values": [
+        5,
+        5,
+        5,
+        5,
+        5
+       ]
+      }
+     ]
+    },
+    "series": [
+     {
+      "name": "North edited",
+      "unique_id": "{00010000-0000-4000-8000-000000000000}",
+      "ext_uris": [
+       "{C3380CC4-5D6E-409C-BE32-E72D297353CC}"
+      ]
+     },
+     {
+      "name": "South",
+      "unique_id": "{00010001-0000-4000-8000-000000000001}",
+      "ext_uris": [
+       "{C3380CC4-5D6E-409C-BE32-E72D297353CC}"
+      ]
+     },
+     {
+      "name": "West",
+      "unique_id": "{00010002-0000-4000-8000-000000000002}",
+      "ext_uris": [
+       "{C3380CC4-5D6E-409C-BE32-E72D297353CC}"
+      ]
+     },
+     {
+      "name": "New series",
+      "unique_id": null,
+      "ext_uris": []
+     }
+    ],
+    "c14_style": true,
+    "c16r2_declared": true,
+    "c16r3": true,
+    "lang": "nl-NL",
+    "auto_update": "0",
+    "workbook": "word/embeddings/Microsoft_Excel-werkblad.xlsx",
+    "workbook_sha": "a45bc1b4fcd15078",
+    "formulas": [
+     "Sheet1!$B$1",
+     "Sheet1!$A$2:$A$6",
+     "Sheet1!$B$2:$B$6",
+     "Sheet1!$C$1",
+     "Sheet1!$A$2:$A$6",
+     "Sheet1!$C$2:$C$6",
+     "Sheet1!$D$1",
+     "Sheet1!$A$2:$A$6",
+     "Sheet1!$D$2:$D$6",
+     "Sheet1!$E$1",
+     "Sheet1!$A$2:$A$6",
+     "Sheet1!$E$2:$E$6"
+    ]
+   },
+   {
+    "id": "d:2",
+    "part": "word/charts/chart2.xml",
+    "data": {
+     "types": [
+      "line"
+     ],
+     "title": "Edited d:2",
+     "axis_titles": {
+      "category": null,
+      "value": null
+     },
+     "legend": true,
+     "format": "General",
+     "categories": [
+      "Jan",
+      "Renamed",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Added"
+     ],
+     "series": [
+      {
+       "name": "Visitors edited",
+       "values": [
+        777,
+        135,
+        160,
+        158,
+        190,
+        210,
+        null
+       ]
+      },
+      {
+       "name": "Signups",
+       "values": [
+        12,
+        18,
+        15,
+        22,
+        30,
+        41,
+        null
+       ]
+      },
+      {
+       "name": "New series",
+       "values": [
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5
+       ]
+      }
+     ]
+    },
+    "series": [
+     {
+      "name": "Visitors edited",
+      "unique_id": "{00020000-0000-4000-8000-000000000000}",
+      "ext_uris": [
+       "{C3380CC4-5D6E-409C-BE32-E72D297353CC}"
+      ]
+     },
+     {
+      "name": "Signups",
+      "unique_id": "{00020001-0000-4000-8000-000000000001}",
+      "ext_uris": [
+       "{C3380CC4-5D6E-409C-BE32-E72D297353CC}"
+      ]
+     },
+     {
+      "name": "New series",
+      "unique_id": null,
+      "ext_uris": []
+     }
+    ],
+    "c14_style": true,
+    "c16r2_declared": true,
+    "c16r3": true,
+    "lang": "nl-NL",
+    "auto_update": "0",
+    "workbook": "word/embeddings/Microsoft_Excel-werkblad1.xlsx",
+    "workbook_sha": "9ee4b8737693305b",
+    "formulas": [
+     "Sheet1!$B$1",
+     "Sheet1!$A$2:$A$8",
+     "Sheet1!$B$2:$B$8",
+     "Sheet1!$C$1",
+     "Sheet1!$A$2:$A$8",
+     "Sheet1!$C$2:$C$8",
+     "Sheet1!$D$1",
+     "Sheet1!$A$2:$A$8",
+     "Sheet1!$D$2:$D$8"
+    ]
+   },
+   {
+    "id": "d:3",
+    "part": "word/charts/chart3.xml",
+    "data": {
+     "types": [
+      "pie"
+     ],
+     "title": "Edited d:3",
+     "axis_titles": {},
+     "legend": true,
+     "format": "General",
+     "categories": [
+      "Apples",
+      "Renamed",
+      "Plums",
+      "Cherries",
+      "Added"
+     ],
+     "series": [
+      {
+       "name": "Share edited",
+       "values": [
+        777,
+        3.2,
+        1.4,
+        1.2,
+        null
+       ]
+      },
+      {
+       "name": "New series",
+       "values": [
+        5,
+        5,
+        5,
+        5,
+        5
+       ]
+      }
+     ]
+    },
+    "series": [
+     {
+      "name": "Share edited",
+      "unique_id": "{00030000-0000-4000-8000-000000000000}",
+      "ext_uris": [
+       "{C3380CC4-5D6E-409C-BE32-E72D297353CC}"
+      ]
+     },
+     {
+      "name": "New series",
+      "unique_id": null,
+      "ext_uris": []
+     }
+    ],
+    "c14_style": true,
+    "c16r2_declared": true,
+    "c16r3": true,
+    "lang": "nl-NL",
+    "auto_update": "0",
+    "workbook": "word/embeddings/Microsoft_Excel-werkblad2.xlsx",
+    "workbook_sha": "c915006989bf4b3d",
+    "formulas": [
+     "Sheet1!$B$1",
+     "Sheet1!$A$2:$A$6",
+     "Sheet1!$B$2:$B$6",
+     "Sheet1!$C$1",
+     "Sheet1!$A$2:$A$6",
+     "Sheet1!$C$2:$C$6"
+    ]
+   },
+   {
+    "id": "d:4",
+    "part": "word/charts/chart4.xml",
+    "data": {
+     "types": [
+      "doughnut"
+     ],
+     "title": "Edited d:4",
+     "axis_titles": {},
+     "legend": true,
+     "format": "General",
+     "categories": [
+      "Design",
+      "Renamed",
+      "Test",
+      "Added"
+     ],
+     "series": [
+      {
+       "name": "Plan edited",
+       "values": [
+        777,
+        50,
+        20,
+        null
+       ]
+      },
+      {
+       "name": "Actual",
+       "values": [
+        25,
+        60,
+        15,
+        null
+       ]
+      },
+      {
+       "name": "New series",
+       "values": [
+        5,
+        5,
+        5,
+        5
+       ]
+      }
+     ]
+    },
+    "series": [
+     {
+      "name": "Plan edited",
+      "unique_id": "{00040000-0000-4000-8000-000000000000}",
+      "ext_uris": [
+       "{C3380CC4-5D6E-409C-BE32-E72D297353CC}"
+      ]
+     },
+     {
+      "name": "Actual",
+      "unique_id": "{00040001-0000-4000-8000-000000000001}",
+      "ext_uris": [
+       "{C3380CC4-5D6E-409C-BE32-E72D297353CC}"
+      ]
+     },
+     {
+      "name": "New series",
+      "unique_id": null,
+      "ext_uris": []
+     }
+    ],
+    "c14_style": true,
+    "c16r2_declared": true,
+    "c16r3": true,
+    "lang": "nl-NL",
+    "auto_update": "0",
+    "workbook": "word/embeddings/Microsoft_Excel-werkblad3.xlsx",
+    "workbook_sha": "3f9e44691897ffdf",
+    "formulas": [
+     "Sheet1!$B$1",
+     "Sheet1!$A$2:$A$5",
+     "Sheet1!$B$2:$B$5",
+     "Sheet1!$C$1",
+     "Sheet1!$A$2:$A$5",
+     "Sheet1!$C$2:$C$5",
+     "Sheet1!$D$1",
+     "Sheet1!$A$2:$A$5",
+     "Sheet1!$D$2:$D$5"
+    ]
+   },
+   {
+    "id": "d:5",
+    "part": "word/charts/chart5.xml",
+    "data": {
+     "types": [
+      "scatter"
+     ],
+     "title": "Edited d:5",
+     "axis_titles": {
+      "category": null,
+      "value": null
+     },
+     "legend": true,
+     "format": "General",
+     "categories": [
+      0.7,
+      2.2,
+      2.6,
+      3.1,
+      4.4,
+      9.5
+     ],
+     "series": [
+      {
+       "name": "Measured edited",
+       "values": [
+        777,
+        3.2,
+        0.8,
+        4.1,
+        3.6,
+        null
+       ]
+      },
+      {
+       "name": "New series",
+       "values": [
+        5,
+        5,
+        5,
+        5,
+        5,
+        5
+       ]
+      }
+     ]
+    },
+    "series": [
+     {
+      "name": "Measured edited",
+      "unique_id": "{00050000-0000-4000-8000-000000000000}",
+      "ext_uris": [
+       "{C3380CC4-5D6E-409C-BE32-E72D297353CC}"
+      ]
+     },
+     {
+      "name": "New series",
+      "unique_id": null,
+      "ext_uris": []
+     }
+    ],
+    "c14_style": true,
+    "c16r2_declared": true,
+    "c16r3": true,
+    "lang": "nl-NL",
+    "auto_update": "0",
+    "workbook": "word/embeddings/Microsoft_Excel-werkblad4.xlsx",
+    "workbook_sha": "a506fb3c731321f0",
+    "formulas": [
+     "Sheet1!$B$1",
+     "Sheet1!$A$2:$A$7",
+     "Sheet1!$B$2:$B$7",
+     "Sheet1!$C$1",
+     "Sheet1!$A$2:$A$7",
+     "Sheet1!$C$2:$C$7"
+    ]
+   },
+   {
+    "id": "d:6",
+    "part": "word/charts/chart6.xml",
+    "data": {
+     "types": [
+      "bar",
+      "line"
+     ],
+     "title": "Edited d:6",
+     "axis_titles": {
+      "category": null,
+      "value": null
+     },
+     "legend": true,
+     "format": "General",
+     "categories": [
+      "Q1",
+      "Renamed",
+      "Q3",
+      "Q4",
+      "Added"
+     ],
+     "series": [
+      {
+       "name": "Revenue edited",
+       "values": [
+        777,
+        52,
+        61,
+        70,
+        null
+       ]
+      },
+      {
+       "name": "Cost",
+       "values": [
+        31,
+        37,
+        42,
+        45,
+        null
+       ]
+      },
+      {
+       "name": "Margin",
+       "values": [
+        9,
+        15,
+        19,
+        25,
+        null
+       ]
+      },
+      {
+       "name": "New series",
+       "values": [
+        5,
+        5,
+        5,
+        5,
+        5
+       ]
+      }
+     ]
+    },
+    "series": [
+     {
+      "name": "Revenue edited",
+      "unique_id": "{00060000-0000-4000-8000-000000000000}",
+      "ext_uris": [
+       "{C3380CC4-5D6E-409C-BE32-E72D297353CC}"
+      ]
+     },
+     {
+      "name": "Cost",
+      "unique_id": "{00060001-0000-4000-8000-000000000001}",
+      "ext_uris": [
+       "{C3380CC4-5D6E-409C-BE32-E72D297353CC}"
+      ]
+     },
+     {
+      "name": "Margin",
+      "unique_id": "{00060002-0000-4000-8000-000000000002}",
+      "ext_uris": [
+       "{C3380CC4-5D6E-409C-BE32-E72D297353CC}"
+      ]
+     },
+     {
+      "name": "New series",
+      "unique_id": null,
+      "ext_uris": []
+     }
+    ],
+    "c14_style": true,
+    "c16r2_declared": true,
+    "c16r3": true,
+    "lang": "nl-NL",
+    "auto_update": "0",
+    "workbook": "word/embeddings/Microsoft_Excel-werkblad5.xlsx",
+    "workbook_sha": "4d9345f36c3f5a46",
+    "formulas": [
+     "Sheet1!$B$1",
+     "Sheet1!$A$2:$A$6",
+     "Sheet1!$B$2:$B$6",
+     "Sheet1!$C$1",
+     "Sheet1!$A$2:$A$6",
+     "Sheet1!$C$2:$C$6",
+     "Sheet1!$D$1",
+     "Sheet1!$A$2:$A$6",
+     "Sheet1!$D$2:$D$6",
+     "Sheet1!$E$1",
+     "Sheet1!$A$2:$A$6",
+     "Sheet1!$E$2:$E$6"
+    ]
+   }
+  ],
+  "saved": [
+   {
+    "id": "d:1",
+    "part": "word/charts/chart1.xml",
+    "data": {
+     "types": [
+      "bar"
+     ],
+     "title": "Edited d:1",
+     "axis_titles": {
+      "category": null,
+      "value": null
+     },
+     "legend": true,
+     "format": "General",
+     "categories": [
+      "Q1",
+      "Renamed",
+      "Q3",
+      "Q4",
+      "Added"
+     ],
+     "series": [
+      {
+       "name": "North edited",
+       "values": [
+        777,
+        2.5,
+        3.5,
+        4.5,
+        null
+       ]
+      },
+      {
+       "name": "South",
+       "values": [
+        2.4,
+        4.4,
+        1.8,
+        2.8,
+        null
+       ]
+      },
+      {
+       "name": "West",
+       "values": [
+        2,
+        2,
+        3,
+        5,
+        null
+       ]
+      },
+      {
+       "name": "New series",
+       "values": [
+        5,
+        5,
+        5,
+        5,
+        5
+       ]
+      }
+     ]
+    },
+    "series": [
+     {
+      "name": "North edited",
+      "unique_id": "{00010000-0000-4000-8000-000000000000}",
+      "ext_uris": [
+       "{C3380CC4-5D6E-409C-BE32-E72D297353CC}"
+      ]
+     },
+     {
+      "name": "South",
+      "unique_id": "{00010001-0000-4000-8000-000000000001}",
+      "ext_uris": [
+       "{C3380CC4-5D6E-409C-BE32-E72D297353CC}"
+      ]
+     },
+     {
+      "name": "West",
+      "unique_id": "{00010002-0000-4000-8000-000000000002}",
+      "ext_uris": [
+       "{C3380CC4-5D6E-409C-BE32-E72D297353CC}"
+      ]
+     },
+     {
+      "name": "New series",
+      "unique_id": "{00000000-5958-0E42-9D81-A34D2E78D6C7}",
+      "ext_uris": [
+       "{C3380CC4-5D6E-409C-BE32-E72D297353CC}"
+      ]
+     }
+    ],
+    "c14_style": true,
+    "c16r2_declared": true,
+    "c16r3": true,
+    "lang": "nl-NL",
+    "auto_update": "0",
+    "workbook": "word/embeddings/Microsoft_Excel-werkblad.xlsx",
+    "workbook_sha": "a45bc1b4fcd15078",
+    "formulas": [
+     "Sheet1!$B$1",
+     "Sheet1!$A$2:$A$6",
+     "Sheet1!$B$2:$B$6",
+     "Sheet1!$C$1",
+     "Sheet1!$A$2:$A$6",
+     "Sheet1!$C$2:$C$6",
+     "Sheet1!$D$1",
+     "Sheet1!$A$2:$A$6",
+     "Sheet1!$D$2:$D$6",
+     "Sheet1!$E$1",
+     "Sheet1!$A$2:$A$6",
+     "Sheet1!$E$2:$E$6"
+    ]
+   },
+   {
+    "id": "d:2",
+    "part": "word/charts/chart2.xml",
+    "data": {
+     "types": [
+      "line"
+     ],
+     "title": "Edited d:2",
+     "axis_titles": {
+      "category": null,
+      "value": null
+     },
+     "legend": true,
+     "format": "General",
+     "categories": [
+      "Jan",
+      "Renamed",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Added"
+     ],
+     "series": [
+      {
+       "name": "Visitors edited",
+       "values": [
+        777,
+        135,
+        160,
+        158,
+        190,
+        210,
+        null
+       ]
+      },
+      {
+       "name": "Signups",
+       "values": [
+        12,
+        18,
+        15,
+        22,
+        30,
+        41,
+        null
+       ]
+      },
+      {
+       "name": "New series",
+       "values": [
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5
+       ]
+      }
+     ]
+    },
+    "series": [
+     {
+      "name": "Visitors edited",
+      "unique_id": "{00020000-0000-4000-8000-000000000000}",
+      "ext_uris": [
+       "{C3380CC4-5D6E-409C-BE32-E72D297353CC}"
+      ]
+     },
+     {
+      "name": "Signups",
+      "unique_id": "{00020001-0000-4000-8000-000000000001}",
+      "ext_uris": [
+       "{C3380CC4-5D6E-409C-BE32-E72D297353CC}"
+      ]
+     },
+     {
+      "name": "New series",
+      "unique_id": "{00000000-A7F4-0B4F-B3D0-49D316B8F9B0}",
+      "ext_uris": [
+       "{C3380CC4-5D6E-409C-BE32-E72D297353CC}"
+      ]
+     }
+    ],
+    "c14_style": true,
+    "c16r2_declared": true,
+    "c16r3": true,
+    "lang": "nl-NL",
+    "auto_update": "0",
+    "workbook": "word/embeddings/Microsoft_Excel-werkblad1.xlsx",
+    "workbook_sha": "9ee4b8737693305b",
+    "formulas": [
+     "Sheet1!$B$1",
+     "Sheet1!$A$2:$A$8",
+     "Sheet1!$B$2:$B$8",
+     "Sheet1!$C$1",
+     "Sheet1!$A$2:$A$8",
+     "Sheet1!$C$2:$C$8",
+     "Sheet1!$D$1",
+     "Sheet1!$A$2:$A$8",
+     "Sheet1!$D$2:$D$8"
+    ]
+   },
+   {
+    "id": "d:3",
+    "part": "word/charts/chart3.xml",
+    "data": {
+     "types": [
+      "pie"
+     ],
+     "title": "Edited d:3",
+     "axis_titles": {},
+     "legend": true,
+     "format": "General",
+     "categories": [
+      "Apples",
+      "Renamed",
+      "Plums",
+      "Cherries",
+      "Added"
+     ],
+     "series": [
+      {
+       "name": "Share edited",
+       "values": [
+        777,
+        3.2,
+        1.4,
+        1.2,
+        null
+       ]
+      },
+      {
+       "name": "New series",
+       "values": [
+        5,
+        5,
+        5,
+        5,
+        5
+       ]
+      }
+     ]
+    },
+    "series": [
+     {
+      "name": "Share edited",
+      "unique_id": "{00030000-0000-4000-8000-000000000000}",
+      "ext_uris": [
+       "{C3380CC4-5D6E-409C-BE32-E72D297353CC}"
+      ]
+     },
+     {
+      "name": "New series",
+      "unique_id": "{00000000-4574-E84C-BAD0-F38DADC42D58}",
+      "ext_uris": [
+       "{C3380CC4-5D6E-409C-BE32-E72D297353CC}"
+      ]
+     }
+    ],
+    "c14_style": true,
+    "c16r2_declared": true,
+    "c16r3": true,
+    "lang": "nl-NL",
+    "auto_update": "0",
+    "workbook": "word/embeddings/Microsoft_Excel-werkblad2.xlsx",
+    "workbook_sha": "c915006989bf4b3d",
+    "formulas": [
+     "Sheet1!$B$1",
+     "Sheet1!$A$2:$A$6",
+     "Sheet1!$B$2:$B$6",
+     "Sheet1!$C$1",
+     "Sheet1!$A$2:$A$6",
+     "Sheet1!$C$2:$C$6"
+    ]
+   },
+   {
+    "id": "d:4",
+    "part": "word/charts/chart4.xml",
+    "data": {
+     "types": [
+      "doughnut"
+     ],
+     "title": "Edited d:4",
+     "axis_titles": {},
+     "legend": true,
+     "format": "General",
+     "categories": [
+      "Design",
+      "Renamed",
+      "Test",
+      "Added"
+     ],
+     "series": [
+      {
+       "name": "Plan edited",
+       "values": [
+        777,
+        50,
+        20,
+        null
+       ]
+      },
+      {
+       "name": "Actual",
+       "values": [
+        25,
+        60,
+        15,
+        null
+       ]
+      },
+      {
+       "name": "New series",
+       "values": [
+        5,
+        5,
+        5,
+        5
+       ]
+      }
+     ]
+    },
+    "series": [
+     {
+      "name": "Plan edited",
+      "unique_id": "{00040000-0000-4000-8000-000000000000}",
+      "ext_uris": [
+       "{C3380CC4-5D6E-409C-BE32-E72D297353CC}"
+      ]
+     },
+     {
+      "name": "Actual",
+      "unique_id": "{00040001-0000-4000-8000-000000000001}",
+      "ext_uris": [
+       "{C3380CC4-5D6E-409C-BE32-E72D297353CC}"
+      ]
+     },
+     {
+      "name": "New series",
+      "unique_id": "{00000000-F73E-C34B-B108-0DA65BBDE05D}",
+      "ext_uris": [
+       "{C3380CC4-5D6E-409C-BE32-E72D297353CC}"
+      ]
+     }
+    ],
+    "c14_style": true,
+    "c16r2_declared": true,
+    "c16r3": true,
+    "lang": "nl-NL",
+    "auto_update": "0",
+    "workbook": "word/embeddings/Microsoft_Excel-werkblad3.xlsx",
+    "workbook_sha": "3f9e44691897ffdf",
+    "formulas": [
+     "Sheet1!$B$1",
+     "Sheet1!$A$2:$A$5",
+     "Sheet1!$B$2:$B$5",
+     "Sheet1!$C$1",
+     "Sheet1!$A$2:$A$5",
+     "Sheet1!$C$2:$C$5",
+     "Sheet1!$D$1",
+     "Sheet1!$A$2:$A$5",
+     "Sheet1!$D$2:$D$5"
+    ]
+   },
+   {
+    "id": "d:5",
+    "part": "word/charts/chart5.xml",
+    "data": {
+     "types": [
+      "scatter"
+     ],
+     "title": "Edited d:5",
+     "axis_titles": {
+      "category": null,
+      "value": null
+     },
+     "legend": true,
+     "format": "General",
+     "categories": [
+      0.7,
+      2.2,
+      2.6,
+      3.1,
+      4.4,
+      9.5
+     ],
+     "series": [
+      {
+       "name": "Measured edited",
+       "values": [
+        777,
+        3.2,
+        0.8,
+        4.1,
+        3.6,
+        null
+       ]
+      },
+      {
+       "name": "New series",
+       "values": [
+        5,
+        5,
+        5,
+        5,
+        5,
+        5
+       ]
+      }
+     ]
+    },
+    "series": [
+     {
+      "name": "Measured edited",
+      "unique_id": "{00050000-0000-4000-8000-000000000000}",
+      "ext_uris": [
+       "{C3380CC4-5D6E-409C-BE32-E72D297353CC}"
+      ]
+     },
+     {
+      "name": "New series",
+      "unique_id": "{00000000-0208-C54B-9E73-8E810991A09C}",
+      "ext_uris": [
+       "{C3380CC4-5D6E-409C-BE32-E72D297353CC}"
+      ]
+     }
+    ],
+    "c14_style": true,
+    "c16r2_declared": true,
+    "c16r3": true,
+    "lang": "nl-NL",
+    "auto_update": "0",
+    "workbook": "word/embeddings/Microsoft_Excel-werkblad4.xlsx",
+    "workbook_sha": "a506fb3c731321f0",
+    "formulas": [
+     "Sheet1!$B$1",
+     "Sheet1!$A$2:$A$7",
+     "Sheet1!$B$2:$B$7",
+     "Sheet1!$C$1",
+     "Sheet1!$A$2:$A$7",
+     "Sheet1!$C$2:$C$7"
+    ]
+   },
+   {
+    "id": "d:6",
+    "part": "word/charts/chart6.xml",
+    "data": {
+     "types": [
+      "bar",
+      "line"
+     ],
+     "title": "Edited d:6",
+     "axis_titles": {
+      "category": null,
+      "value": null
+     },
+     "legend": true,
+     "format": "General",
+     "categories": [
+      "Q1",
+      "Renamed",
+      "Q3",
+      "Q4",
+      "Added"
+     ],
+     "series": [
+      {
+       "name": "Revenue edited",
+       "values": [
+        777,
+        52,
+        61,
+        70,
+        null
+       ]
+      },
+      {
+       "name": "Cost",
+       "values": [
+        31,
+        37,
+        42,
+        45,
+        null
+       ]
+      },
+      {
+       "name": "Margin",
+       "values": [
+        9,
+        15,
+        19,
+        25,
+        null
+       ]
+      },
+      {
+       "name": "New series",
+       "values": [
+        5,
+        5,
+        5,
+        5,
+        5
+       ]
+      }
+     ]
+    },
+    "series": [
+     {
+      "name": "Revenue edited",
+      "unique_id": "{00060000-0000-4000-8000-000000000000}",
+      "ext_uris": [
+       "{C3380CC4-5D6E-409C-BE32-E72D297353CC}"
+      ]
+     },
+     {
+      "name": "Cost",
+      "unique_id": "{00060001-0000-4000-8000-000000000001}",
+      "ext_uris": [
+       "{C3380CC4-5D6E-409C-BE32-E72D297353CC}"
+      ]
+     },
+     {
+      "name": "Margin",
+      "unique_id": "{00060002-0000-4000-8000-000000000002}",
+      "ext_uris": [
+       "{C3380CC4-5D6E-409C-BE32-E72D297353CC}"
+      ]
+     },
+     {
+      "name": "New series",
+      "unique_id": "{00000000-97CE-AA43-AC1A-6D6A9DB46B47}",
+      "ext_uris": [
+       "{C3380CC4-5D6E-409C-BE32-E72D297353CC}"
+      ]
+     }
+    ],
+    "c14_style": true,
+    "c16r2_declared": true,
+    "c16r3": true,
+    "lang": "nl-NL",
+    "auto_update": "0",
+    "workbook": "word/embeddings/Microsoft_Excel-werkblad5.xlsx",
+    "workbook_sha": "4d9345f36c3f5a46",
+    "formulas": [
+     "Sheet1!$B$1",
+     "Sheet1!$A$2:$A$6",
+     "Sheet1!$B$2:$B$6",
+     "Sheet1!$C$1",
+     "Sheet1!$A$2:$A$6",
+     "Sheet1!$C$2:$C$6",
+     "Sheet1!$D$1",
+     "Sheet1!$A$2:$A$6",
+     "Sheet1!$D$2:$D$6",
+     "Sheet1!$E$1",
+     "Sheet1!$A$2:$A$6",
+     "Sheet1!$E$2:$E$6"
+    ]
+   }
+  ],
+  "pdf_has": {
+   "Added": true,
+   "Renamed": true,
+   "New series": true,
+   "777": false,
+   "Edited d:1": true
+  }
+ },
+ "titles": {
+  "titles": {
+   "exported": true,
+   "ours": [
+    {
+     "id": "d:1",
+     "title": "No defaults",
+     "title_xml": "<c:title><c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang=\"en-US\"/><a:t>No defaults</a:t></a:r></a:p></c:rich></c:tx><c:overlay val=\"0\"/></c:title>",
+     "axis_xml": null
+    },
+    {
+     "id": "d:2",
+     "title": "Empty defaults",
+     "title_xml": "<c:title><c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr/></a:pPr><a:r><a:rPr lang=\"en-US\"/><a:t>Empty defaults</a:t></a:r></a:p></c:rich></c:tx><c:overlay val=\"0\"/></c:title>",
+     "axis_xml": null
+    },
+    {
+     "id": "d:3",
+     "title": "Word style",
+     "title_xml": "<c:title><c:tx><c:rich><a:bodyPr rot=\"0\" spcFirstLastPara=\"1\" vertOverflow=\"ellipsis\" vert=\"horz\" wrap=\"square\" anchor=\"ctr\" anchorCtr=\"1\"/><a:lstStyle/><a:p><a:pPr><a:defRPr sz=\"1400\" b=\"0\" i=\"0\" u=\"none\" strike=\"noStrike\" kern=\"1200\" spc=\"0\" baseline=\"0\"><a:solidFill><a:schemeClr val=\"tx1\"><a:lumMod val=\"65000\"/><a:lumOff val=\"35000\"/></a:schemeClr></a:solidFill><a:latin typeface=\"+mn-lt\"/><a:ea typeface=\"+mn-ea\"/><a:cs typeface=\"+mn-cs\"/></a:defRPr></a:pPr><a:r><a:rPr lang=\"en-US\"/><a:t>Word style</a:t></a:r><a:endParaRPr lang=\"en-US\"/></a:p></c:rich></c:tx><c:overlay val=\"0\"/></c:title>",
+     "axis_xml": null
+    },
+    {
+     "id": "d:4",
+     "title": null,
+     "title_xml": "<c:title><c:overlay val=\"0\"/></c:title>",
+     "axis_xml": null
+    }
+   ],
+   "word_draws": {
+    "No defaults": {
+     "font": "ArialMT",
+     "size": 18.0,
+     "weight": 0,
+     "color": "000000",
+     "stroked": false
+    },
+    "Empty defaults": {
+     "font": "Aptos-Bold",
+     "size": 18.0,
+     "weight": 0,
+     "color": "000000",
+     "stroked": false
+    },
+    "Word style": {
+     "font": "Aptos",
+     "size": 13.92,
+     "weight": 0,
+     "color": "595959",
+     "stroked": false
+    },
+    "Series auto": {
+     "font": "Aptos-Bold",
+     "size": 18.0,
+     "weight": 0,
+     "color": "000000",
+     "stroked": false
+    },
+    "Chart Title": null,
+    "Grafiektitel": null
+   },
+   "pdf_text": [
+    "Titles.",
+    "Title none.",
+    "Title empty.",
+    "Title word.",
+    "Title auto.",
+    "0",
+    "1",
+    "2",
+    "3",
+    "A B",
+    "No defaults",
+    "0",
+    "1",
+    "2",
+    "3",
+    "A B",
+    "Empty defaults",
+    "0",
+    "1",
+    "2",
+    "3",
+    "A B",
+    "Word style",
+    "0",
+    "1",
+    "2",
+    "3",
+    "A B",
+    "Series auto"
+   ],
+   "docx2svg_draws": {
+    "No defaults": {
+     "font-family": "Arial, Arimo, sans-serif",
+     "font-size": "24",
+     "fill": "#000000"
+    },
+    "Empty defaults": {
+     "font-family": "Aptos, Carlito, sans-serif",
+     "font-size": "13.44",
+     "font-weight": "bold",
+     "fill": "#000000"
+    },
+    "Word style": {
+     "font-family": "Aptos, Carlito, sans-serif",
+     "font-size": "18.56",
+     "fill": "#595959"
+    },
+    "Series auto": null,
+    "Chart Title": null,
+    "Grafiektitel": null
+   },
+   "saved": [
+    {
+     "id": "d:1",
+     "title": "No defaults",
+     "title_xml": "<c:title><c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang=\"en-US\"/><a:t>No defaults</a:t></a:r></a:p></c:rich></c:tx><c:overlay val=\"0\"/></c:title>",
+     "axis_xml": null
+    },
+    {
+     "id": "d:2",
+     "title": "Empty defaults",
+     "title_xml": "<c:title><c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr/></a:pPr><a:r><a:rPr lang=\"en-US\"/><a:t>Empty defaults</a:t></a:r></a:p></c:rich></c:tx><c:overlay val=\"0\"/></c:title>",
+     "axis_xml": null
+    },
+    {
+     "id": "d:3",
+     "title": "Word style",
+     "title_xml": "<c:title><c:tx><c:rich><a:bodyPr rot=\"0\" spcFirstLastPara=\"1\" vertOverflow=\"ellipsis\" vert=\"horz\" wrap=\"square\" anchor=\"ctr\" anchorCtr=\"1\"/><a:lstStyle/><a:p><a:pPr><a:defRPr sz=\"1400\" b=\"0\" i=\"0\" u=\"none\" strike=\"noStrike\" kern=\"1200\" spc=\"0\" baseline=\"0\"><a:solidFill><a:schemeClr val=\"tx1\"><a:lumMod val=\"65000\"/><a:lumOff val=\"35000\"/></a:schemeClr></a:solidFill><a:latin typeface=\"+mn-lt\"/><a:ea typeface=\"+mn-ea\"/><a:cs typeface=\"+mn-cs\"/></a:defRPr></a:pPr><a:r><a:rPr lang=\"en-US\"/><a:t>Word style</a:t></a:r></a:p></c:rich></c:tx><c:overlay val=\"0\"/></c:title>",
+     "axis_xml": null
+    },
+    {
+     "id": "d:4",
+     "title": null,
+     "title_xml": "<c:title><c:overlay val=\"0\"/></c:title>",
+     "axis_xml": null
+    }
+   ]
+  },
+  "axis": {
+   "exported": true,
+   "ours": [
+    {
+     "id": "d:1",
+     "title": "Plain title",
+     "title_xml": "<c:title><c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr/></a:pPr><a:r><a:t>Plain title</a:t></a:r></a:p></c:rich></c:tx><c:overlay val=\"0\"/></c:title>",
+     "axis_xml": "<c:title><c:tx><c:rich><a:bodyPr rot=\"-5400000\" vert=\"horz\"/><a:lstStyle/><a:p><a:pPr><a:defRPr/></a:pPr><a:r><a:t>Plain axis</a:t></a:r></a:p></c:rich></c:tx><c:overlay val=\"0\"/></c:title>"
+    },
+    {
+     "id": "d:2",
+     "title": "Styled title",
+     "title_xml": "<c:title><c:tx><c:rich><a:bodyPr rot=\"0\" spcFirstLastPara=\"1\" vertOverflow=\"ellipsis\" vert=\"horz\" wrap=\"square\" anchor=\"ctr\" anchorCtr=\"1\"/><a:lstStyle/><a:p><a:pPr><a:defRPr sz=\"1400\" b=\"0\" i=\"0\" u=\"none\" strike=\"noStrike\" kern=\"1200\" spc=\"0\" baseline=\"0\"><a:solidFill><a:schemeClr val=\"tx1\"><a:lumMod val=\"65000\"/><a:lumOff val=\"35000\"/></a:schemeClr></a:solidFill><a:latin typeface=\"+mn-lt\"/><a:ea typeface=\"+mn-ea\"/><a:cs typeface=\"+mn-cs\"/></a:defRPr></a:pPr><a:r><a:rPr lang=\"en-US\"/><a:t>Styled title</a:t></a:r><a:endParaRPr lang=\"en-US\"/></a:p></c:rich></c:tx><c:overlay val=\"0\"/></c:title>",
+     "axis_xml": "<c:title><c:tx><c:rich><a:bodyPr rot=\"-5400000\" spcFirstLastPara=\"1\" vertOverflow=\"ellipsis\" vert=\"horz\" wrap=\"square\" anchor=\"ctr\" anchorCtr=\"1\"/><a:lstStyle/><a:p><a:pPr><a:defRPr sz=\"1000\" b=\"0\" i=\"0\" u=\"none\" strike=\"noStrike\" kern=\"1200\" spc=\"0\" baseline=\"0\"><a:solidFill><a:schemeClr val=\"tx1\"><a:lumMod val=\"65000\"/><a:lumOff val=\"35000\"/></a:schemeClr></a:solidFill><a:latin typeface=\"+mn-lt\"/><a:ea typeface=\"+mn-ea\"/><a:cs typeface=\"+mn-cs\"/></a:defRPr></a:pPr><a:r><a:rPr lang=\"en-US\"/><a:t>Styled axis</a:t></a:r><a:endParaRPr lang=\"en-US\"/></a:p></c:rich></c:tx><c:overlay val=\"0\"/></c:title>"
+    }
+   ],
+   "word_draws": {
+    "Plain axis": {
+     "font": "Aptos-Bold",
+     "size": 10.08,
+     "weight": 0,
+     "color": "000000",
+     "stroked": false
+    },
+    "Plain title": {
+     "font": "Aptos-Bold",
+     "size": 18.0,
+     "weight": 0,
+     "color": "000000",
+     "stroked": false
+    },
+    "Styled axis": {
+     "font": "Aptos",
+     "size": 10.08,
+     "weight": 0,
+     "color": "595959",
+     "stroked": false
+    },
+    "Styled title": {
+     "font": "Aptos",
+     "size": 13.92,
+     "weight": 0,
+     "color": "595959",
+     "stroked": false
+    }
+   },
+   "pdf_text": [
+    "Axis titles. 0123",
+    "A",
+    "B",
+    "Plain axis",
+    "Plain title",
+    "0123",
+    "A",
+    "B",
+    "Styled axis",
+    "Styled title"
+   ],
+   "docx2svg_draws": {
+    "Plain axis": null,
+    "Plain title": {
+     "font-family": "Aptos, Carlito, sans-serif",
+     "font-size": "13.44",
+     "font-weight": "bold",
+     "fill": "#000000"
+    },
+    "Styled axis": null,
+    "Styled title": {
+     "font-family": "Aptos, Carlito, sans-serif",
+     "font-size": "18.56",
+     "fill": "#595959"
+    }
+   },
+   "saved": [
+    {
+     "id": "d:1",
+     "title": "Plain title",
+     "title_xml": "<c:title><c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr/></a:pPr><a:r><a:t>Plain title</a:t></a:r></a:p></c:rich></c:tx><c:overlay val=\"0\"/></c:title>",
+     "axis_xml": "<c:title><c:tx><c:rich><a:bodyPr rot=\"-5400000\" vert=\"horz\"/><a:lstStyle/><a:p><a:pPr><a:defRPr/></a:pPr><a:r><a:t>Plain axis</a:t></a:r></a:p></c:rich></c:tx><c:overlay val=\"0\"/></c:title>"
+    },
+    {
+     "id": "d:2",
+     "title": "Styled title",
+     "title_xml": "<c:title><c:tx><c:rich><a:bodyPr rot=\"0\" spcFirstLastPara=\"1\" vertOverflow=\"ellipsis\" vert=\"horz\" wrap=\"square\" anchor=\"ctr\" anchorCtr=\"1\"/><a:lstStyle/><a:p><a:pPr><a:defRPr sz=\"1400\" b=\"0\" i=\"0\" u=\"none\" strike=\"noStrike\" kern=\"1200\" spc=\"0\" baseline=\"0\"><a:solidFill><a:schemeClr val=\"tx1\"><a:lumMod val=\"65000\"/><a:lumOff val=\"35000\"/></a:schemeClr></a:solidFill><a:latin typeface=\"+mn-lt\"/><a:ea typeface=\"+mn-ea\"/><a:cs typeface=\"+mn-cs\"/></a:defRPr></a:pPr><a:r><a:rPr lang=\"en-US\"/><a:t>Styled title</a:t></a:r></a:p></c:rich></c:tx><c:overlay val=\"0\"/></c:title>",
+     "axis_xml": "<c:title><c:tx><c:rich><a:bodyPr rot=\"-5400000\" spcFirstLastPara=\"1\" vertOverflow=\"ellipsis\" vert=\"horz\" wrap=\"square\" anchor=\"ctr\" anchorCtr=\"1\"/><a:lstStyle/><a:p><a:pPr><a:defRPr sz=\"1000\" b=\"0\" i=\"0\" u=\"none\" strike=\"noStrike\" kern=\"1200\" spc=\"0\" baseline=\"0\"><a:solidFill><a:schemeClr val=\"tx1\"><a:lumMod val=\"65000\"/><a:lumOff val=\"35000\"/></a:schemeClr></a:solidFill><a:latin typeface=\"+mn-lt\"/><a:ea typeface=\"+mn-ea\"/><a:cs typeface=\"+mn-cs\"/></a:defRPr></a:pPr><a:r><a:rPr lang=\"en-US\"/><a:t>Styled axis</a:t></a:r></a:p></c:rich></c:tx><c:overlay val=\"0\"/></c:title>"
+    }
+   ]
+  }
+ },
+ "tracking": {
+  "charts": {
+   "word_says": "revisions=0 tracking=true",
+   "ours_has_markup": false,
+   "pdf_has": {
+    "Added": true,
+    "Renamed": true,
+    "New series": true,
+    "777": false,
+    "Drafted": false,
+    "Much faster edits": false,
+    "Smaller files": false
+   },
+   "saved_has_markup": false
+  },
+  "smartart": {
+   "word_says": "revisions=0 tracking=true",
+   "ours_has_markup": false,
+   "pdf_has": {
+    "Added": false,
+    "Renamed": false,
+    "New series": false,
+    "777": false,
+    "Drafted": true,
+    "Much faster edits": true,
+    "Smaller files": true
+   },
+   "saved_has_markup": false
+  },
+  "docx_agent_warns": [
+   "UntrackedChartEdit: d:1: Word does not track a chart's data or a diagram's text: the edit is applied untracked"
+  ]
+ },
+ "places": {
+  "exported": true,
+  "ours": {
+   "docPr": [
+    3,
+    4,
+    4,
+    5,
+    8
+   ],
+   "group_members": [
+    [
+     "7",
+     "Chart 7"
+    ]
+   ],
+   "charts": [
+    "d:4",
+    "d:5/7",
+    "d:8",
+    "d:1",
+    "d:2"
+   ]
+  },
+  "pdf_has": {
+   "Cat1": true,
+   "Name1": true,
+   "Cat2": true,
+   "Name2": true,
+   "Cat4": true,
+   "Name4": true,
+   "Cat5m7": true,
+   "Name5m7": true,
+   "Cat8": true,
+   "Name8": true
+  },
+  "pdf_has_4321": false,
+  "pdf_numbers": [
+   "2000",
+   "4000",
+   "5000",
+   "6000"
+  ],
+  "saved": {
+   "docPr": [
+    3,
+    4,
+    4,
+    5,
+    8
+   ],
+   "group_members": [
+    [
+     "7",
+     "Chart 7"
+    ]
+   ],
+   "charts": [
+    "d:4",
+    "d:5/7",
+    "d:8",
+    "d:1",
+    "d:2"
+   ]
+  },
+  "saved_charts": [
+   {
+    "id": "d:4",
+    "data": {
+     "types": [
+      "bar"
+     ],
+     "title": null,
+     "axis_titles": {
+      "category": null,
+      "value": null
+     },
+     "legend": true,
+     "format": "General",
+     "categories": [
+      "Cat4",
+      "B",
+      "C"
+     ],
+     "series": [
+      {
+       "name": "Name4",
+       "values": [
+        1,
+        4321,
+        2
+       ]
+      }
+     ]
+    }
+   },
+   {
+    "id": "d:5/7",
+    "data": {
+     "types": [
+      "bar"
+     ],
+     "title": null,
+     "axis_titles": {
+      "category": null,
+      "value": null
+     },
+     "legend": true,
+     "format": "General",
+     "categories": [
+      "Cat5m7",
+      "B",
+      "C"
+     ],
+     "series": [
+      {
+       "name": "Name5m7",
+       "values": [
+        1,
+        4321,
+        2
+       ]
+      },
+      {
+       "name": "Paired",
+       "values": [
+        2,
+        4,
+        3
+       ]
+      }
+     ]
+    }
+   },
+   {
+    "id": "d:8",
+    "data": {
+     "types": [
+      "bar"
+     ],
+     "title": null,
+     "axis_titles": {
+      "category": null,
+      "value": null
+     },
+     "legend": true,
+     "format": "General",
+     "categories": [
+      "Cat8",
+      "B",
+      "C"
+     ],
+     "series": [
+      {
+       "name": "Name8",
+       "values": [
+        1,
+        4321,
+        2
+       ]
+      }
+     ]
+    }
+   },
+   {
+    "id": "d:1",
+    "data": {
+     "types": [
+      "bar"
+     ],
+     "title": null,
+     "axis_titles": {
+      "category": null,
+      "value": null
+     },
+     "legend": true,
+     "format": "General",
+     "categories": [
+      "Cat1",
+      "B",
+      "C"
+     ],
+     "series": [
+      {
+       "name": "Name1",
+       "values": [
+        1,
+        4321,
+        2
+       ]
+      }
+     ]
+    }
+   },
+   {
+    "id": "d:2",
+    "data": {
+     "types": [
+      "bar"
+     ],
+     "title": null,
+     "axis_titles": {
+      "category": null,
+      "value": null
+     },
+     "legend": true,
+     "format": "General",
+     "categories": [
+      "Cat2",
+      "B",
+      "C"
+     ],
+     "series": [
+      {
+       "name": "Name2",
+       "values": [
+        1,
+        4321,
+        2
+       ]
+      }
+     ]
+    }
+   }
+  ],
+  "saved_media": [
+   "word/media/image1.png"
+  ],
+  "input_media": [
+   "word/media/image1.png"
+  ],
+  "fallback_image_changed": {
+   "word/media/image1.png": false
+  }
+ },
+ "smartart": {
+  "model-stale": {
+   "exported": true,
+   "ours": [
+    {
+     "id": "d:1",
+     "texts": [
+      "Plan",
+      "Write",
+      "Measure",
+      "Review",
+      "Ship"
+     ],
+     "drawing": "word/diagrams/drawing1.xml",
+     "drawing_texts": [
+      "Plan",
+      "Write",
+      "Measure",
+      "Review",
+      "Ship"
+     ],
+     "presentation_points": 10
+    },
+    {
+     "id": "d:2",
+     "texts": [
+      "Objectives",
+      "Faster edits",
+      "Fewer prompts",
+      "Risks",
+      "Stale caches",
+      "Lost formulas"
+     ],
+     "drawing": "word/diagrams/drawing2.xml",
+     "drawing_texts": [
+      "Goals",
+      "Faster edits",
+      "Fewer prompts",
+      "Risks",
+      "Stale caches",
+      "Lost formulas"
+     ],
+     "presentation_points": 5
+    }
+   ],
+   "pdf_has": {
+    "Goals": false,
+    "Objectives": true,
+    "Drawn only": false,
+    "Added child": false,
+    "Risks": true,
+    "Stale caches": true,
+    "Exactly edited": false,
+    "Faster edits": true,
+    "Sixth": false
+   },
+   "saved": [
+    {
+     "id": "d:1",
+     "texts": [
+      "Plan",
+      "Write",
+      "Measure",
+      "Review",
+      "Ship"
+     ],
+     "drawing": "word/diagrams/drawing1.xml",
+     "drawing_texts": [
+      "Plan",
+      "Write",
+      "Measure",
+      "Review",
+      "Ship"
+     ],
+     "presentation_points": 10
+    },
+    {
+     "id": "d:2",
+     "texts": [
+      "Objectives",
+      "Faster edits",
+      "Fewer prompts",
+      "Risks",
+      "Stale caches",
+      "Lost formulas"
+     ],
+     "drawing": "word/diagrams/drawing2.xml",
+     "drawing_texts": [
+      "Objectives",
+      "Faster edits",
+      "Fewer prompts",
+      "Risks",
+      "Stale caches",
+      "Lost formulas"
+     ],
+     "presentation_points": 5
+    }
+   ]
+  },
+  "drawing-only": {
+   "exported": true,
+   "ours": [
+    {
+     "id": "d:1",
+     "texts": [
+      "Plan",
+      "Write",
+      "Measure",
+      "Review",
+      "Ship"
+     ],
+     "drawing": "word/diagrams/drawing1.xml",
+     "drawing_texts": [
+      "Plan",
+      "Write",
+      "Measure",
+      "Review",
+      "Ship"
+     ],
+     "presentation_points": 10
+    },
+    {
+     "id": "d:2",
+     "texts": [
+      "Goals",
+      "Faster edits",
+      "Fewer prompts",
+      "Risks",
+      "Stale caches",
+      "Lost formulas"
+     ],
+     "drawing": "word/diagrams/drawing2.xml",
+     "drawing_texts": [
+      "Drawn only",
+      "Faster edits",
+      "Fewer prompts",
+      "Risks",
+      "Stale caches",
+      "Lost formulas"
+     ],
+     "presentation_points": 5
+    }
+   ],
+   "pdf_has": {
+    "Goals": true,
+    "Objectives": false,
+    "Drawn only": false,
+    "Added child": false,
+    "Risks": true,
+    "Stale caches": true,
+    "Exactly edited": false,
+    "Faster edits": true,
+    "Sixth": false
+   },
+   "saved": [
+    {
+     "id": "d:1",
+     "texts": [
+      "Plan",
+      "Write",
+      "Measure",
+      "Review",
+      "Ship"
+     ],
+     "drawing": "word/diagrams/drawing1.xml",
+     "drawing_texts": [
+      "Plan",
+      "Write",
+      "Measure",
+      "Review",
+      "Ship"
+     ],
+     "presentation_points": 10
+    },
+    {
+     "id": "d:2",
+     "texts": [
+      "Goals",
+      "Faster edits",
+      "Fewer prompts",
+      "Risks",
+      "Stale caches",
+      "Lost formulas"
+     ],
+     "drawing": "word/diagrams/drawing2.xml",
+     "drawing_texts": [
+      "Goals",
+      "Faster edits",
+      "Fewer prompts",
+      "Risks",
+      "Stale caches",
+      "Lost formulas"
+     ],
+     "presentation_points": 5
+    }
+   ]
+  },
+  "drawing-missing": {
+   "exported": true,
+   "ours": [
+    {
+     "id": "d:1",
+     "texts": [
+      "Plan",
+      "Write",
+      "Measure",
+      "Review",
+      "Ship"
+     ],
+     "drawing": "word/diagrams/drawing1.xml",
+     "drawing_texts": [
+      "Plan",
+      "Write",
+      "Measure",
+      "Review",
+      "Ship"
+     ],
+     "presentation_points": 10
+    },
+    {
+     "id": "d:2",
+     "texts": [
+      "Goals",
+      "Faster edits",
+      "Fewer prompts",
+      "Risks",
+      "Stale caches",
+      "Lost formulas"
+     ],
+     "drawing": null,
+     "drawing_texts": null,
+     "presentation_points": 5
+    }
+   ],
+   "pdf_has": {
+    "Goals": true,
+    "Objectives": false,
+    "Drawn only": false,
+    "Added child": false,
+    "Risks": true,
+    "Stale caches": true,
+    "Exactly edited": false,
+    "Faster edits": true,
+    "Sixth": false
+   },
+   "saved": [
+    {
+     "id": "d:1",
+     "texts": [
+      "Plan",
+      "Write",
+      "Measure",
+      "Review",
+      "Ship"
+     ],
+     "drawing": "word/diagrams/drawing1.xml",
+     "drawing_texts": [
+      "Plan",
+      "Write",
+      "Measure",
+      "Review",
+      "Ship"
+     ],
+     "presentation_points": 10
+    },
+    {
+     "id": "d:2",
+     "texts": [
+      "Goals",
+      "Faster edits",
+      "Fewer prompts",
+      "Risks",
+      "Stale caches",
+      "Lost formulas"
+     ],
+     "drawing": "word/diagrams/drawing2.xml",
+     "drawing_texts": [
+      "Goals",
+      "Faster edits",
+      "Fewer prompts",
+      "Risks",
+      "Stale caches",
+      "Lost formulas"
+     ],
+     "presentation_points": 5
+    }
+   ]
+  },
+  "added-dropped": {
+   "exported": true,
+   "ours": [
+    {
+     "id": "d:1",
+     "texts": [
+      "Plan",
+      "Write",
+      "Measure",
+      "Review",
+      "Ship"
+     ],
+     "drawing": "word/diagrams/drawing1.xml",
+     "drawing_texts": [
+      "Plan",
+      "Write",
+      "Measure",
+      "Review",
+      "Ship"
+     ],
+     "presentation_points": 10
+    },
+    {
+     "id": "d:2",
+     "texts": [
+      "Goals",
+      "Faster edits",
+      "Fewer prompts",
+      "Added child",
+      "Risks",
+      "Stale caches",
+      "Lost formulas"
+     ],
+     "drawing": null,
+     "drawing_texts": null,
+     "presentation_points": 5
+    }
+   ],
+   "pdf_has": {
+    "Goals": true,
+    "Objectives": false,
+    "Drawn only": false,
+    "Added child": true,
+    "Risks": true,
+    "Stale caches": true,
+    "Exactly edited": false,
+    "Faster edits": true,
+    "Sixth": false
+   },
+   "saved": [
+    {
+     "id": "d:1",
+     "texts": [
+      "Plan",
+      "Write",
+      "Measure",
+      "Review",
+      "Ship"
+     ],
+     "drawing": "word/diagrams/drawing1.xml",
+     "drawing_texts": [
+      "Plan",
+      "Write",
+      "Measure",
+      "Review",
+      "Ship"
+     ],
+     "presentation_points": 10
+    },
+    {
+     "id": "d:2",
+     "texts": [
+      "Goals",
+      "Faster edits",
+      "Fewer prompts",
+      "Added child",
+      "Risks",
+      "Stale caches",
+      "Lost formulas"
+     ],
+     "drawing": "word/diagrams/drawing2.xml",
+     "drawing_texts": [
+      "Goals",
+      "Faster edits",
+      "Fewer prompts",
+      "Added child",
+      "Risks",
+      "Stale caches",
+      "Lost formulas"
+     ],
+     "presentation_points": 5
+    }
+   ]
+  },
+  "added-stale": {
+   "exported": true,
+   "ours": [
+    {
+     "id": "d:1",
+     "texts": [
+      "Plan",
+      "Write",
+      "Measure",
+      "Review",
+      "Ship"
+     ],
+     "drawing": "word/diagrams/drawing1.xml",
+     "drawing_texts": [
+      "Plan",
+      "Write",
+      "Measure",
+      "Review",
+      "Ship"
+     ],
+     "presentation_points": 10
+    },
+    {
+     "id": "d:2",
+     "texts": [
+      "Goals",
+      "Faster edits",
+      "Fewer prompts",
+      "Added child",
+      "Risks",
+      "Stale caches",
+      "Lost formulas"
+     ],
+     "drawing": "word/diagrams/drawing2.xml",
+     "drawing_texts": [
+      "Goals",
+      "Faster edits",
+      "Fewer prompts",
+      "Risks",
+      "Stale caches",
+      "Lost formulas"
+     ],
+     "presentation_points": 5
+    }
+   ],
+   "pdf_has": {
+    "Goals": true,
+    "Objectives": false,
+    "Drawn only": false,
+    "Added child": true,
+    "Risks": true,
+    "Stale caches": true,
+    "Exactly edited": false,
+    "Faster edits": true,
+    "Sixth": false
+   },
+   "saved": [
+    {
+     "id": "d:1",
+     "texts": [
+      "Plan",
+      "Write",
+      "Measure",
+      "Review",
+      "Ship"
+     ],
+     "drawing": "word/diagrams/drawing1.xml",
+     "drawing_texts": [
+      "Plan",
+      "Write",
+      "Measure",
+      "Review",
+      "Ship"
+     ],
+     "presentation_points": 10
+    },
+    {
+     "id": "d:2",
+     "texts": [
+      "Goals",
+      "Faster edits",
+      "Fewer prompts",
+      "Added child",
+      "Risks",
+      "Stale caches",
+      "Lost formulas"
+     ],
+     "drawing": "word/diagrams/drawing2.xml",
+     "drawing_texts": [
+      "Goals",
+      "Faster edits",
+      "Fewer prompts",
+      "Added child",
+      "Risks",
+      "Stale caches",
+      "Lost formulas"
+     ],
+     "presentation_points": 5
+    }
+   ]
+  },
+  "removed-dropped": {
+   "exported": true,
+   "ours": [
+    {
+     "id": "d:1",
+     "texts": [
+      "Plan",
+      "Write",
+      "Measure",
+      "Review",
+      "Ship"
+     ],
+     "drawing": "word/diagrams/drawing1.xml",
+     "drawing_texts": [
+      "Plan",
+      "Write",
+      "Measure",
+      "Review",
+      "Ship"
+     ],
+     "presentation_points": 10
+    },
+    {
+     "id": "d:2",
+     "texts": [
+      "Goals",
+      "Faster edits",
+      "Fewer prompts"
+     ],
+     "drawing": null,
+     "drawing_texts": null,
+     "presentation_points": 3
+    }
+   ],
+   "pdf_has": {
+    "Goals": true,
+    "Objectives": false,
+    "Drawn only": false,
+    "Added child": false,
+    "Risks": false,
+    "Stale caches": false,
+    "Exactly edited": false,
+    "Faster edits": true,
+    "Sixth": false
+   },
+   "saved": [
+    {
+     "id": "d:1",
+     "texts": [
+      "Plan",
+      "Write",
+      "Measure",
+      "Review",
+      "Ship"
+     ],
+     "drawing": "word/diagrams/drawing1.xml",
+     "drawing_texts": [
+      "Plan",
+      "Write",
+      "Measure",
+      "Review",
+      "Ship"
+     ],
+     "presentation_points": 10
+    },
+    {
+     "id": "d:2",
+     "texts": [
+      "Goals",
+      "Faster edits",
+      "Fewer prompts"
+     ],
+     "drawing": "word/diagrams/drawing2.xml",
+     "drawing_texts": [
+      "Goals",
+      "Faster edits",
+      "Fewer prompts"
+     ],
+     "presentation_points": 3
+    }
+   ]
+  },
+  "removed-stale": {
+   "exported": true,
+   "ours": [
+    {
+     "id": "d:1",
+     "texts": [
+      "Plan",
+      "Write",
+      "Measure",
+      "Review",
+      "Ship"
+     ],
+     "drawing": "word/diagrams/drawing1.xml",
+     "drawing_texts": [
+      "Plan",
+      "Write",
+      "Measure",
+      "Review",
+      "Ship"
+     ],
+     "presentation_points": 10
+    },
+    {
+     "id": "d:2",
+     "texts": [
+      "Goals",
+      "Faster edits",
+      "Fewer prompts"
+     ],
+     "drawing": "word/diagrams/drawing2.xml",
+     "drawing_texts": [
+      "Goals",
+      "Faster edits",
+      "Fewer prompts",
+      "Risks",
+      "Stale caches",
+      "Lost formulas"
+     ],
+     "presentation_points": 3
+    }
+   ],
+   "pdf_has": {
+    "Goals": true,
+    "Objectives": false,
+    "Drawn only": false,
+    "Added child": false,
+    "Risks": false,
+    "Stale caches": false,
+    "Exactly edited": false,
+    "Faster edits": true,
+    "Sixth": false
+   },
+   "saved": [
+    {
+     "id": "d:1",
+     "texts": [
+      "Plan",
+      "Write",
+      "Measure",
+      "Review",
+      "Ship"
+     ],
+     "drawing": "word/diagrams/drawing1.xml",
+     "drawing_texts": [
+      "Plan",
+      "Write",
+      "Measure",
+      "Review",
+      "Ship"
+     ],
+     "presentation_points": 10
+    },
+    {
+     "id": "d:2",
+     "texts": [
+      "Goals",
+      "Faster edits",
+      "Fewer prompts"
+     ],
+     "drawing": "word/diagrams/drawing2.xml",
+     "drawing_texts": [
+      "Goals",
+      "Faster edits",
+      "Fewer prompts"
+     ],
+     "presentation_points": 3
+    }
+   ]
+  },
+  "text-exact": {
+   "exported": true,
+   "ours": [
+    {
+     "id": "d:1",
+     "texts": [
+      "Plan",
+      "Write",
+      "Measure",
+      "Review",
+      "Ship"
+     ],
+     "drawing": "word/diagrams/drawing1.xml",
+     "drawing_texts": [
+      "Plan",
+      "Write",
+      "Measure",
+      "Review",
+      "Ship"
+     ],
+     "presentation_points": 10
+    },
+    {
+     "id": "d:2",
+     "texts": [
+      "Goals",
+      "Exactly edited",
+      "Fewer prompts",
+      "Risks",
+      "Stale caches",
+      "Lost formulas"
+     ],
+     "drawing": "word/diagrams/drawing2.xml",
+     "drawing_texts": [
+      "Goals",
+      "Exactly edited",
+      "Fewer prompts",
+      "Risks",
+      "Stale caches",
+      "Lost formulas"
+     ],
+     "presentation_points": 5
+    }
+   ],
+   "pdf_has": {
+    "Goals": true,
+    "Objectives": false,
+    "Drawn only": false,
+    "Added child": false,
+    "Risks": true,
+    "Stale caches": true,
+    "Exactly edited": true,
+    "Faster edits": false,
+    "Sixth": false
+   },
+   "saved": [
+    {
+     "id": "d:1",
+     "texts": [
+      "Plan",
+      "Write",
+      "Measure",
+      "Review",
+      "Ship"
+     ],
+     "drawing": "word/diagrams/drawing1.xml",
+     "drawing_texts": [
+      "Plan",
+      "Write",
+      "Measure",
+      "Review",
+      "Ship"
+     ],
+     "presentation_points": 10
+    },
+    {
+     "id": "d:2",
+     "texts": [
+      "Goals",
+      "Exactly edited",
+      "Fewer prompts",
+      "Risks",
+      "Stale caches",
+      "Lost formulas"
+     ],
+     "drawing": "word/diagrams/drawing2.xml",
+     "drawing_texts": [
+      "Goals",
+      "Exactly edited",
+      "Fewer prompts",
+      "Risks",
+      "Stale caches",
+      "Lost formulas"
+     ],
+     "presentation_points": 5
+    }
+   ]
+  },
+  "top-added-dropped": {
+   "exported": true,
+   "ours": [
+    {
+     "id": "d:1",
+     "texts": [
+      "Plan",
+      "Write",
+      "Measure",
+      "Review",
+      "Ship",
+      "Sixth"
+     ],
+     "drawing": null,
+     "drawing_texts": null,
+     "presentation_points": 10
+    },
+    {
+     "id": "d:2",
+     "texts": [
+      "Goals",
+      "Faster edits",
+      "Fewer prompts",
+      "Risks",
+      "Stale caches",
+      "Lost formulas"
+     ],
+     "drawing": "word/diagrams/drawing2.xml",
+     "drawing_texts": [
+      "Goals",
+      "Faster edits",
+      "Fewer prompts",
+      "Risks",
+      "Stale caches",
+      "Lost formulas"
+     ],
+     "presentation_points": 5
+    }
+   ],
+   "pdf_has": {
+    "Goals": true,
+    "Objectives": false,
+    "Drawn only": false,
+    "Added child": false,
+    "Risks": true,
+    "Stale caches": true,
+    "Exactly edited": false,
+    "Faster edits": true,
+    "Sixth": true
+   },
+   "saved": [
+    {
+     "id": "d:1",
+     "texts": [
+      "Plan",
+      "Write",
+      "Measure",
+      "Review",
+      "Ship",
+      "Sixth"
+     ],
+     "drawing": "word/diagrams/drawing1.xml",
+     "drawing_texts": [
+      "Plan",
+      "Write",
+      "Measure",
+      "Review",
+      "Ship",
+      "Sixth"
+     ],
+     "presentation_points": 12
+    },
+    {
+     "id": "d:2",
+     "texts": [
+      "Goals",
+      "Faster edits",
+      "Fewer prompts",
+      "Risks",
+      "Stale caches",
+      "Lost formulas"
+     ],
+     "drawing": "word/diagrams/drawing2.xml",
+     "drawing_texts": [
+      "Goals",
+      "Faster edits",
+      "Fewer prompts",
+      "Risks",
+      "Stale caches",
+      "Lost formulas"
+     ],
+     "presentation_points": 5
+    }
+   ]
+  }
+ },
+ "dictionary": {
+  "classes": [],
+  "commands": [
+   "edit data source",
+   "paste excel table"
+  ],
+  "properties": [
+   "has chart",
+   "paste smart cut paste",
+   "paste smart style behavior",
+   "show autocorrect smart button",
+   "smart cut paste",
+   "smart paragraph selection"
+  ],
+  "enumerators": [
+   "inline shape chart",
+   "inline shape smartart graphic",
+   "link type chart",
+   "shape type chart",
+   "shape type smartart graphic"
+  ],
+  "has_run_vb_macro": true
+ }
+}

@@ -1,0 +1,7 @@
+# Golden transcripts hold replays to recorded bytes, and some inputs are text (CSV,
+# Markdown): Git on Windows would rewrite LF to CRLF on checkout and change them.  Pin LF.
+* text=auto eol=lf
+*.docx binary
+*.dotx binary
+*.dotm binary
+*.png binary

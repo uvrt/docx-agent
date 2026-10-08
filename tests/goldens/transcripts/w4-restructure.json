@@ -1,0 +1,163 @@
+{
+ "task": "w4-restructure",
+ "clock": "2026-10-07T09:00:00+00:00",
+ "open": [
+  "security-policy.docx"
+ ],
+ "calls": [
+  {
+   "tool": "describe",
+   "arguments": {
+    "doc": "d1"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Described security-policy.docx",
+    "data_sha": "62a65f50d9388540"
+   }
+  },
+  {
+   "tool": "word_read",
+   "arguments": {
+    "doc": "d1",
+    "view": "markup"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Read the document (markup)",
+    "data_sha": "bd359d08ce32a2e0"
+   }
+  },
+  {
+   "tool": "word_move",
+   "arguments": {
+    "doc": "d1",
+    "section_heading": "p:70439822",
+    "after_section": "p:4B50F4CD"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Moved 6 block(s)",
+    "changed": [
+     "p:70439822",
+     "p:11698B22",
+     "p:05252BEE",
+     "t:60D6847F",
+     "p:05F235FF",
+     "p:3B981BD3"
+    ],
+    "data_sha": "63d122b187c7b024"
+   }
+  },
+  {
+   "tool": "word_set_text",
+   "arguments": {
+    "doc": "d1",
+    "items": [
+     {
+      "target": "p:70439822",
+      "text": "4 Data retention"
+     },
+     {
+      "target": "p:05252BEE",
+      "text": "4.1 Retention periods"
+     },
+     {
+      "target": "p:05F235FF",
+      "text": "4.2 Disposal"
+     },
+     {
+      "target": "p:7C9523C2",
+      "text": "5 Acceptable use"
+     },
+     {
+      "target": "p:2F9E5978",
+      "text": "6 Incident response"
+     }
+    ]
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Set the text of 5 paragraph(s)",
+    "changed": [
+     "p:70439822",
+     "p:05252BEE",
+     "p:05F235FF",
+     "p:7C9523C2",
+     "p:2F9E5978"
+    ]
+   }
+  },
+  {
+   "tool": "word_lists",
+   "arguments": {
+    "doc": "d1",
+    "targets": [
+     "p:31B189E1"
+    ],
+    "action": "restart",
+    "start": 1
+   },
+   "expect": {
+    "ok": true,
+    "summary": "restart: 1 paragraph(s)",
+    "changed": [
+     "p:31B189E1"
+    ],
+    "data_sha": "6de1cc3c09a9fbdf"
+   }
+  },
+  {
+   "tool": "word_fields",
+   "arguments": {
+    "doc": "d1",
+    "action": "update"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Updated fields: 4 result(s) changed",
+    "data_sha": "7f4a06874549825a"
+   }
+  },
+  {
+   "tool": "word_read",
+   "arguments": {
+    "doc": "d1",
+    "view": "markup"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Read the document (markup)",
+    "data_sha": "8028f6cd3baa503e"
+   }
+  },
+  {
+   "tool": "check",
+   "arguments": {
+    "doc": "d1"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Checked validate, reflow, fields",
+    "data_sha": "8ea0ef5d8df43b98"
+   }
+  },
+  {
+   "tool": "save_document",
+   "arguments": {
+    "doc": "d1",
+    "name": "security-policy.docx",
+    "format": "docx"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Saved security-policy.docx for the application",
+    "data_sha": "40ae048133acbadc"
+   }
+  }
+ ],
+ "output": {
+  "name": "security-policy.docx",
+  "sha256": "7aa465c411d29f5eaa9a2857396fbf01922374f8a62854f848d2d5b6db34cccd"
+ }
+}

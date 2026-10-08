@@ -1,0 +1,1318 @@
+{
+ "word": "16.106",
+ "mixed": {
+  "mode 15": {
+   "save": {
+    "mode": 15,
+    "paragraphs": {
+     "S1": "paraId replaced, textId renewed",
+     "S3": "paraId replaced, textId renewed",
+     "O1": "paraId replaced, textId kept",
+     "B1": "paraId replaced, textId kept",
+     "O2": "paraId replaced, textId added",
+     "N1": "paraId replaced, textId renewed",
+     "R1": "paraId replaced, textId kept",
+     "D1": "paraId replaced, textId kept",
+     "D2": "paraId replaced, textId renewed",
+     "T1": "paraId replaced, textId kept",
+     "S2": "paraId replaced, textId renewed",
+     "F1": "paraId replaced, textId kept",
+     "C1": "paraId replaced, textId kept",
+     "I1": "paraId replaced, textId kept"
+    },
+    "ids": {
+     "footnote ids": [
+      [
+       "5"
+      ],
+      [
+       "1"
+      ]
+     ],
+     "comment ids": [
+      [
+       "7"
+      ],
+      [
+       "1"
+      ]
+     ],
+     "insertion ids": [
+      [
+       "42"
+      ],
+      [
+       "2"
+      ]
+     ],
+     "bookmark ids": [
+      [
+       "9"
+      ],
+      [
+       "0"
+      ]
+     ]
+    }
+   },
+   "edit-other": {
+    "mode": 15,
+    "paragraphs": {
+     "S1": "paraId replaced, textId renewed",
+     "S3": "paraId replaced, textId renewed",
+     "O1": "paraId replaced, textId kept",
+     "B1": "paraId replaced, textId kept",
+     "O2": "paraId replaced, textId added",
+     "N1": "paraId replaced, textId renewed",
+     "R1": "paraId replaced, textId kept",
+     "D1": "paraId replaced, textId kept",
+     "D2": "paraId replaced, textId renewed",
+     "T1": "paraId replaced, textId kept (typed into in Word)",
+     "S2": "paraId replaced, textId renewed",
+     "F1": "paraId replaced, textId kept",
+     "C1": "paraId replaced, textId kept",
+     "I1": "paraId replaced, textId kept"
+    },
+    "ids": {
+     "footnote ids": [
+      [
+       "5"
+      ],
+      [
+       "1"
+      ]
+     ],
+     "comment ids": [
+      [
+       "7"
+      ],
+      [
+       "1"
+      ]
+     ],
+     "insertion ids": [
+      [
+       "42"
+      ],
+      [
+       "2"
+      ]
+     ],
+     "bookmark ids": [
+      [
+       "9"
+      ],
+      [
+       "0"
+      ]
+     ]
+    }
+   },
+   "comment": {
+    "mode": 15,
+    "paragraphs": {
+     "S1": "paraId replaced, textId renewed",
+     "S3": "paraId replaced, textId renewed",
+     "O1": "paraId replaced, textId kept",
+     "B1": "paraId replaced, textId kept",
+     "O2": "paraId replaced, textId added",
+     "N1": "paraId replaced, textId renewed",
+     "R1": "paraId replaced, textId kept",
+     "D1": "paraId replaced, textId kept",
+     "D2": "paraId replaced, textId renewed",
+     "T1": "paraId replaced, textId kept",
+     "S2": "paraId replaced, textId renewed",
+     "F1": "paraId replaced, textId kept",
+     "C1": "paraId replaced, textId kept",
+     "I1": "paraId replaced, textId kept"
+    },
+    "ids": {
+     "footnote ids": [
+      [
+       "5"
+      ],
+      [
+       "1"
+      ]
+     ],
+     "comment ids": [
+      [
+       "7"
+      ],
+      [
+       "1",
+       "2"
+      ]
+     ],
+     "insertion ids": [
+      [
+       "42"
+      ],
+      [
+       "3"
+      ]
+     ],
+     "bookmark ids": [
+      [
+       "9"
+      ],
+      [
+       "0"
+      ]
+     ]
+    }
+   },
+   "edit-stamped": {
+    "mode": 15,
+    "paragraphs": {
+     "S1": "paraId replaced, textId renewed",
+     "S3": "paraId replaced, textId renewed",
+     "O1": "paraId replaced, textId kept",
+     "B1": "paraId replaced, textId kept",
+     "O2": "paraId replaced, textId added",
+     "N1": "paraId replaced, textId renewed",
+     "R1": "paraId replaced, textId kept",
+     "D1": "paraId replaced, textId kept",
+     "D2": "paraId replaced, textId renewed",
+     "T1": "paraId replaced, textId kept",
+     "S2": "paraId replaced, textId renewed (typed into in Word)",
+     "F1": "paraId replaced, textId kept",
+     "C1": "paraId replaced, textId kept",
+     "I1": "paraId replaced, textId kept"
+    },
+    "ids": {
+     "footnote ids": [
+      [
+       "5"
+      ],
+      [
+       "1"
+      ]
+     ],
+     "comment ids": [
+      [
+       "7"
+      ],
+      [
+       "1"
+      ]
+     ],
+     "insertion ids": [
+      [
+       "42"
+      ],
+      [
+       "2"
+      ]
+     ],
+     "bookmark ids": [
+      [
+       "9"
+      ],
+      [
+       "0"
+      ]
+     ]
+    }
+   },
+   "save-again": {
+    "mode": 15,
+    "paragraphs": {
+     "S1": "paraId kept, textId kept",
+     "S3": "paraId kept, textId kept",
+     "O1": "paraId kept, textId kept",
+     "B1": "paraId kept, textId kept",
+     "O2": "paraId kept, textId kept",
+     "N1": "paraId kept, textId kept",
+     "R1": "paraId kept, textId kept",
+     "D1": "paraId kept, textId kept",
+     "D2": "paraId kept, textId kept",
+     "T1": "paraId kept, textId kept",
+     "S2": "paraId kept, textId kept",
+     "F1": "paraId kept, textId kept",
+     "C1": "paraId kept, textId kept",
+     "I1": "paraId kept, textId kept"
+    },
+    "ids": {
+     "footnote ids": [
+      [
+       "1"
+      ],
+      [
+       "1"
+      ]
+     ],
+     "comment ids": [
+      [
+       "1"
+      ],
+      [
+       "1"
+      ]
+     ],
+     "insertion ids": [
+      [
+       "2"
+      ],
+      [
+       "2"
+      ]
+     ],
+     "bookmark ids": [
+      [
+       "0"
+      ],
+      [
+       "0"
+      ]
+     ]
+    }
+   }
+  },
+  "mode 14": {
+   "save": {
+    "mode": 14,
+    "paragraphs": {
+     "S1": "paraId replaced, textId renewed",
+     "S3": "paraId replaced, textId renewed",
+     "O1": "paraId replaced, textId kept",
+     "B1": "paraId replaced, textId kept",
+     "O2": "paraId replaced, textId added",
+     "N1": "paraId replaced, textId renewed",
+     "R1": "paraId replaced, textId kept",
+     "D1": "paraId replaced, textId kept",
+     "D2": "paraId replaced, textId renewed",
+     "T1": "paraId replaced, textId kept",
+     "S2": "paraId replaced, textId renewed",
+     "F1": "paraId replaced, textId kept",
+     "C1": "paraId replaced, textId kept",
+     "I1": "paraId replaced, textId kept"
+    },
+    "ids": {
+     "footnote ids": [
+      [
+       "5"
+      ],
+      [
+       "1"
+      ]
+     ],
+     "comment ids": [
+      [
+       "7"
+      ],
+      [
+       "1"
+      ]
+     ],
+     "insertion ids": [
+      [
+       "42"
+      ],
+      [
+       "2"
+      ]
+     ],
+     "bookmark ids": [
+      [
+       "9"
+      ],
+      [
+       "0"
+      ]
+     ]
+    }
+   },
+   "edit-other": {
+    "mode": 14,
+    "paragraphs": {
+     "S1": "paraId replaced, textId renewed",
+     "S3": "paraId replaced, textId renewed",
+     "O1": "paraId replaced, textId kept",
+     "B1": "paraId replaced, textId kept",
+     "O2": "paraId replaced, textId added",
+     "N1": "paraId replaced, textId renewed",
+     "R1": "paraId replaced, textId kept",
+     "D1": "paraId replaced, textId kept",
+     "D2": "paraId replaced, textId renewed",
+     "T1": "paraId replaced, textId kept (typed into in Word)",
+     "S2": "paraId replaced, textId renewed",
+     "F1": "paraId replaced, textId kept",
+     "C1": "paraId replaced, textId kept",
+     "I1": "paraId replaced, textId kept"
+    },
+    "ids": {
+     "footnote ids": [
+      [
+       "5"
+      ],
+      [
+       "1"
+      ]
+     ],
+     "comment ids": [
+      [
+       "7"
+      ],
+      [
+       "1"
+      ]
+     ],
+     "insertion ids": [
+      [
+       "42"
+      ],
+      [
+       "2"
+      ]
+     ],
+     "bookmark ids": [
+      [
+       "9"
+      ],
+      [
+       "0"
+      ]
+     ]
+    }
+   },
+   "comment": {
+    "mode": 14,
+    "paragraphs": {
+     "S1": "paraId replaced, textId renewed",
+     "S3": "paraId replaced, textId renewed",
+     "O1": "paraId replaced, textId kept",
+     "B1": "paraId replaced, textId kept",
+     "O2": "paraId replaced, textId added",
+     "N1": "paraId replaced, textId renewed",
+     "R1": "paraId replaced, textId kept",
+     "D1": "paraId replaced, textId kept",
+     "D2": "paraId replaced, textId renewed",
+     "T1": "paraId replaced, textId kept",
+     "S2": "paraId replaced, textId renewed",
+     "F1": "paraId replaced, textId kept",
+     "C1": "paraId replaced, textId kept",
+     "I1": "paraId replaced, textId kept"
+    },
+    "ids": {
+     "footnote ids": [
+      [
+       "5"
+      ],
+      [
+       "1"
+      ]
+     ],
+     "comment ids": [
+      [
+       "7"
+      ],
+      [
+       "1",
+       "2"
+      ]
+     ],
+     "insertion ids": [
+      [
+       "42"
+      ],
+      [
+       "3"
+      ]
+     ],
+     "bookmark ids": [
+      [
+       "9"
+      ],
+      [
+       "0"
+      ]
+     ]
+    }
+   },
+   "edit-stamped": {
+    "mode": 14,
+    "paragraphs": {
+     "S1": "paraId replaced, textId renewed",
+     "S3": "paraId replaced, textId renewed",
+     "O1": "paraId replaced, textId kept",
+     "B1": "paraId replaced, textId kept",
+     "O2": "paraId replaced, textId added",
+     "N1": "paraId replaced, textId renewed",
+     "R1": "paraId replaced, textId kept",
+     "D1": "paraId replaced, textId kept",
+     "D2": "paraId replaced, textId renewed",
+     "T1": "paraId replaced, textId kept",
+     "S2": "paraId replaced, textId renewed (typed into in Word)",
+     "F1": "paraId replaced, textId kept",
+     "C1": "paraId replaced, textId kept",
+     "I1": "paraId replaced, textId kept"
+    },
+    "ids": {
+     "footnote ids": [
+      [
+       "5"
+      ],
+      [
+       "1"
+      ]
+     ],
+     "comment ids": [
+      [
+       "7"
+      ],
+      [
+       "1"
+      ]
+     ],
+     "insertion ids": [
+      [
+       "42"
+      ],
+      [
+       "2"
+      ]
+     ],
+     "bookmark ids": [
+      [
+       "9"
+      ],
+      [
+       "0"
+      ]
+     ]
+    }
+   },
+   "save-again": {
+    "mode": 14,
+    "paragraphs": {
+     "S1": "paraId kept, textId kept",
+     "S3": "paraId kept, textId kept",
+     "O1": "paraId kept, textId kept",
+     "B1": "paraId kept, textId kept",
+     "O2": "paraId kept, textId kept",
+     "N1": "paraId kept, textId kept",
+     "R1": "paraId kept, textId kept",
+     "D1": "paraId kept, textId kept",
+     "D2": "paraId kept, textId kept",
+     "T1": "paraId kept, textId kept",
+     "S2": "paraId kept, textId kept",
+     "F1": "paraId kept, textId kept",
+     "C1": "paraId kept, textId kept",
+     "I1": "paraId kept, textId kept"
+    },
+    "ids": {
+     "footnote ids": [
+      [
+       "1"
+      ],
+      [
+       "1"
+      ]
+     ],
+     "comment ids": [
+      [
+       "1"
+      ],
+      [
+       "1"
+      ]
+     ],
+     "insertion ids": [
+      [
+       "2"
+      ],
+      [
+       "2"
+      ]
+     ],
+     "bookmark ids": [
+      [
+       "0"
+      ],
+      [
+       "0"
+      ]
+     ]
+    }
+   }
+  },
+  "mode none": {
+   "save": {
+    "mode": 12,
+    "paragraphs": {
+     "S1": "paraId replaced, textId renewed",
+     "S3": "paraId replaced, textId renewed",
+     "O1": "paraId replaced, textId kept",
+     "B1": "paraId replaced, textId kept",
+     "O2": "paraId replaced, textId added",
+     "N1": "paraId replaced, textId renewed",
+     "R1": "paraId replaced, textId kept",
+     "D1": "paraId replaced, textId kept",
+     "D2": "paraId replaced, textId renewed",
+     "T1": "paraId replaced, textId kept",
+     "S2": "paraId replaced, textId renewed",
+     "F1": "paraId replaced, textId kept",
+     "C1": "paraId replaced, textId kept",
+     "I1": "paraId replaced, textId kept"
+    },
+    "ids": {
+     "footnote ids": [
+      [
+       "5"
+      ],
+      [
+       "1"
+      ]
+     ],
+     "comment ids": [
+      [
+       "7"
+      ],
+      [
+       "1"
+      ]
+     ],
+     "insertion ids": [
+      [
+       "42"
+      ],
+      [
+       "2"
+      ]
+     ],
+     "bookmark ids": [
+      [
+       "9"
+      ],
+      [
+       "0"
+      ]
+     ]
+    }
+   },
+   "edit-other": {
+    "mode": 12,
+    "paragraphs": {
+     "S1": "paraId replaced, textId renewed",
+     "S3": "paraId replaced, textId renewed",
+     "O1": "paraId replaced, textId kept",
+     "B1": "paraId replaced, textId kept",
+     "O2": "paraId replaced, textId added",
+     "N1": "paraId replaced, textId renewed",
+     "R1": "paraId replaced, textId kept",
+     "D1": "paraId replaced, textId kept",
+     "D2": "paraId replaced, textId renewed",
+     "T1": "paraId replaced, textId kept (typed into in Word)",
+     "S2": "paraId replaced, textId renewed",
+     "F1": "paraId replaced, textId kept",
+     "C1": "paraId replaced, textId kept",
+     "I1": "paraId replaced, textId kept"
+    },
+    "ids": {
+     "footnote ids": [
+      [
+       "5"
+      ],
+      [
+       "1"
+      ]
+     ],
+     "comment ids": [
+      [
+       "7"
+      ],
+      [
+       "1"
+      ]
+     ],
+     "insertion ids": [
+      [
+       "42"
+      ],
+      [
+       "2"
+      ]
+     ],
+     "bookmark ids": [
+      [
+       "9"
+      ],
+      [
+       "0"
+      ]
+     ]
+    }
+   },
+   "comment": {
+    "mode": 12,
+    "paragraphs": {
+     "S1": "paraId replaced, textId renewed",
+     "S3": "paraId replaced, textId renewed",
+     "O1": "paraId replaced, textId kept",
+     "B1": "paraId replaced, textId kept",
+     "O2": "paraId replaced, textId added",
+     "N1": "paraId replaced, textId renewed",
+     "R1": "paraId replaced, textId kept",
+     "D1": "paraId replaced, textId kept",
+     "D2": "paraId replaced, textId renewed",
+     "T1": "paraId replaced, textId kept",
+     "S2": "paraId replaced, textId renewed",
+     "F1": "paraId replaced, textId kept",
+     "C1": "paraId replaced, textId kept",
+     "I1": "paraId replaced, textId kept"
+    },
+    "ids": {
+     "footnote ids": [
+      [
+       "5"
+      ],
+      [
+       "1"
+      ]
+     ],
+     "comment ids": [
+      [
+       "7"
+      ],
+      [
+       "1",
+       "2"
+      ]
+     ],
+     "insertion ids": [
+      [
+       "42"
+      ],
+      [
+       "3"
+      ]
+     ],
+     "bookmark ids": [
+      [
+       "9"
+      ],
+      [
+       "0"
+      ]
+     ]
+    }
+   },
+   "edit-stamped": {
+    "mode": 12,
+    "paragraphs": {
+     "S1": "paraId replaced, textId renewed",
+     "S3": "paraId replaced, textId renewed",
+     "O1": "paraId replaced, textId kept",
+     "B1": "paraId replaced, textId kept",
+     "O2": "paraId replaced, textId added",
+     "N1": "paraId replaced, textId renewed",
+     "R1": "paraId replaced, textId kept",
+     "D1": "paraId replaced, textId kept",
+     "D2": "paraId replaced, textId renewed",
+     "T1": "paraId replaced, textId kept",
+     "S2": "paraId replaced, textId renewed (typed into in Word)",
+     "F1": "paraId replaced, textId kept",
+     "C1": "paraId replaced, textId kept",
+     "I1": "paraId replaced, textId kept"
+    },
+    "ids": {
+     "footnote ids": [
+      [
+       "5"
+      ],
+      [
+       "1"
+      ]
+     ],
+     "comment ids": [
+      [
+       "7"
+      ],
+      [
+       "1"
+      ]
+     ],
+     "insertion ids": [
+      [
+       "42"
+      ],
+      [
+       "2"
+      ]
+     ],
+     "bookmark ids": [
+      [
+       "9"
+      ],
+      [
+       "0"
+      ]
+     ]
+    }
+   },
+   "save-again": {
+    "mode": 12,
+    "paragraphs": {
+     "S1": "paraId kept, textId kept",
+     "S3": "paraId kept, textId kept",
+     "O1": "paraId kept, textId kept",
+     "B1": "paraId kept, textId kept",
+     "O2": "paraId kept, textId kept",
+     "N1": "paraId kept, textId kept",
+     "R1": "paraId kept, textId kept",
+     "D1": "paraId kept, textId kept",
+     "D2": "paraId kept, textId kept",
+     "T1": "paraId kept, textId kept",
+     "S2": "paraId kept, textId kept",
+     "F1": "paraId kept, textId kept",
+     "C1": "paraId kept, textId kept",
+     "I1": "paraId kept, textId kept"
+    },
+    "ids": {
+     "footnote ids": [
+      [
+       "1"
+      ],
+      [
+       "1"
+      ]
+     ],
+     "comment ids": [
+      [
+       "1"
+      ],
+      [
+       "1"
+      ]
+     ],
+     "insertion ids": [
+      [
+       "2"
+      ],
+      [
+       "2"
+      ]
+     ],
+     "bookmark ids": [
+      [
+       "0"
+      ],
+      [
+       "0"
+      ]
+     ]
+    }
+   }
+  }
+ },
+ "factors": {
+  "complete": {
+   "save": {
+    "mode": 15,
+    "paragraphs": {
+     "O1": "paraId kept, textId kept",
+     "T1": "paraId kept, textId kept",
+     "S2": "paraId kept, textId kept",
+     "O4": "paraId kept, textId kept"
+    }
+   }
+  },
+  "missing": {
+   "save": {
+    "mode": 15,
+    "paragraphs": {
+     "O1": "paraId dropped, textId dropped",
+     "N1": "paraId none, textId none",
+     "T1": "paraId dropped, textId dropped",
+     "S2": "paraId dropped, textId dropped",
+     "O4": "paraId dropped, textId dropped"
+    }
+   }
+  },
+  "out-of-range": {
+   "save": {
+    "mode": 15,
+    "paragraphs": {
+     "O1": "paraId dropped, textId dropped",
+     "R1": "paraId dropped, textId dropped",
+     "T1": "paraId dropped, textId dropped",
+     "S2": "paraId dropped, textId dropped",
+     "O4": "paraId dropped, textId dropped"
+    }
+   }
+  },
+  "repeat": {
+   "save": {
+    "mode": 15,
+    "paragraphs": {
+     "O1": "paraId kept, textId kept",
+     "D1": "paraId replaced, textId kept",
+     "T1": "paraId kept, textId kept",
+     "S2": "paraId kept, textId kept",
+     "O4": "paraId kept, textId kept"
+    }
+   }
+  },
+  "row": {
+   "save": {
+    "mode": 15,
+    "paragraphs": {
+     "O1": "paraId dropped, textId dropped",
+     "X1": "paraId dropped, textId dropped",
+     "T1": "paraId dropped, textId dropped",
+     "S2": "paraId dropped, textId dropped",
+     "O4": "paraId dropped, textId dropped"
+    }
+   }
+  },
+  "header": {
+   "save": {
+    "mode": 15,
+    "paragraphs": {
+     "O1": "paraId dropped, textId dropped",
+     "T1": "paraId dropped, textId dropped",
+     "S2": "paraId dropped, textId dropped",
+     "O4": "paraId dropped, textId dropped",
+     "H1": "paraId none, textId none"
+    }
+   }
+  },
+  "picture": {
+   "save": {
+    "mode": 15,
+    "paragraphs": {
+     "O1": "paraId dropped, textId dropped",
+     "T1": "paraId dropped, textId dropped",
+     "S2": "paraId dropped, textId dropped",
+     "O4": "paraId dropped, textId dropped"
+    }
+   }
+  },
+  "comment": {
+   "save": {
+    "mode": 15,
+    "paragraphs": {
+     "O1": "paraId kept, textId kept",
+     "C1": "paraId kept, textId kept",
+     "T1": "paraId kept, textId kept",
+     "S2": "paraId kept, textId kept",
+     "O4": "paraId kept, textId kept"
+    },
+    "ids": {
+     "comment ids": [
+      [
+       "7"
+      ],
+      [
+       "0"
+      ]
+     ]
+    }
+   }
+  },
+  "insertion": {
+   "save": {
+    "mode": 15,
+    "paragraphs": {
+     "O1": "paraId kept, textId kept",
+     "I1": "paraId kept, textId kept",
+     "T1": "paraId kept, textId kept",
+     "S2": "paraId kept, textId kept",
+     "O4": "paraId kept, textId kept"
+    },
+    "ids": {
+     "insertion ids": [
+      [
+       "42"
+      ],
+      [
+       "0"
+      ]
+     ]
+    }
+   }
+  },
+  "bookmark": {
+   "save": {
+    "mode": 15,
+    "paragraphs": {
+     "O1": "paraId kept, textId kept",
+     "B1": "paraId kept, textId kept",
+     "T1": "paraId kept, textId kept",
+     "S2": "paraId kept, textId kept",
+     "O4": "paraId kept, textId kept"
+    },
+    "ids": {
+     "bookmark ids": [
+      [
+       "9"
+      ],
+      [
+       "0"
+      ]
+     ]
+    }
+   }
+  },
+  "footnote": {
+   "save": {
+    "mode": 15,
+    "paragraphs": {
+     "O1": "paraId kept, textId kept",
+     "F1": "paraId kept, textId kept",
+     "T1": "paraId kept, textId kept",
+     "S2": "paraId kept, textId kept",
+     "O4": "paraId kept, textId kept"
+    },
+    "ids": {
+     "footnote ids": [
+      [
+       "5"
+      ],
+      [
+       "1"
+      ]
+     ]
+    }
+   }
+  }
+ },
+ "decided": {
+  "generated, mode 15": {
+   "save": {
+    "mode": 15,
+    "paragraphs": {
+     "O1": "paraId kept, textId kept",
+     "S3": "paraId kept, textId kept",
+     "T1": "paraId kept, textId kept",
+     "S2": "paraId kept, textId kept",
+     "O4": "paraId kept, textId kept"
+    }
+   },
+   "edit-other": {
+    "mode": 15,
+    "paragraphs": {
+     "O1": "paraId kept, textId kept",
+     "S3": "paraId kept, textId kept",
+     "T1": "paraId kept, textId renewed (typed into in Word)",
+     "S2": "paraId kept, textId kept",
+     "O4": "paraId kept, textId kept"
+    }
+   },
+   "comment": {
+    "mode": 15,
+    "paragraphs": {
+     "O1": "paraId kept, textId kept",
+     "S3": "paraId kept, textId kept",
+     "T1": "paraId kept, textId kept",
+     "S2": "paraId kept, textId kept",
+     "O4": "paraId kept, textId kept"
+    },
+    "ids": {
+     "comment ids": [
+      [],
+      [
+       "0"
+      ]
+     ]
+    }
+   },
+   "edit-stamped": {
+    "mode": 15,
+    "paragraphs": {
+     "O1": "paraId kept, textId kept",
+     "S3": "paraId kept, textId renewed (typed into in Word)",
+     "T1": "paraId kept, textId kept",
+     "S2": "paraId kept, textId kept",
+     "O4": "paraId kept, textId kept"
+    }
+   },
+   "save-again": {
+    "mode": 15,
+    "paragraphs": {
+     "O1": "paraId kept, textId kept",
+     "S3": "paraId kept, textId kept",
+     "T1": "paraId kept, textId kept",
+     "S2": "paraId kept, textId kept",
+     "O4": "paraId kept, textId kept"
+    }
+   }
+  },
+  "generated, mode 14": {
+   "save": {
+    "mode": 14,
+    "paragraphs": {
+     "O1": "paraId kept, textId kept",
+     "S3": "paraId kept, textId kept",
+     "T1": "paraId kept, textId kept",
+     "S2": "paraId kept, textId kept",
+     "O4": "paraId kept, textId kept"
+    }
+   },
+   "edit-other": {
+    "mode": 14,
+    "paragraphs": {
+     "O1": "paraId kept, textId kept",
+     "S3": "paraId kept, textId kept",
+     "T1": "paraId kept, textId renewed (typed into in Word)",
+     "S2": "paraId kept, textId kept",
+     "O4": "paraId kept, textId kept"
+    }
+   },
+   "comment": {
+    "mode": 14,
+    "paragraphs": {
+     "O1": "paraId kept, textId kept",
+     "S3": "paraId kept, textId kept",
+     "T1": "paraId kept, textId kept",
+     "S2": "paraId kept, textId kept",
+     "O4": "paraId kept, textId kept"
+    },
+    "ids": {
+     "comment ids": [
+      [],
+      [
+       "0"
+      ]
+     ]
+    }
+   },
+   "edit-stamped": {
+    "mode": 14,
+    "paragraphs": {
+     "O1": "paraId kept, textId kept",
+     "S3": "paraId kept, textId renewed (typed into in Word)",
+     "T1": "paraId kept, textId kept",
+     "S2": "paraId kept, textId kept",
+     "O4": "paraId kept, textId kept"
+    }
+   },
+   "save-again": {
+    "mode": 14,
+    "paragraphs": {
+     "O1": "paraId kept, textId kept",
+     "S3": "paraId kept, textId kept",
+     "T1": "paraId kept, textId kept",
+     "S2": "paraId kept, textId kept",
+     "O4": "paraId kept, textId kept"
+    }
+   }
+  },
+  "generated, mode none": {
+   "save": {
+    "mode": 12,
+    "paragraphs": {
+     "O1": "paraId kept, textId kept",
+     "S3": "paraId kept, textId kept",
+     "T1": "paraId kept, textId kept",
+     "S2": "paraId kept, textId kept",
+     "O4": "paraId kept, textId kept"
+    }
+   },
+   "edit-other": {
+    "mode": 12,
+    "paragraphs": {
+     "O1": "paraId kept, textId kept",
+     "S3": "paraId kept, textId kept",
+     "T1": "paraId kept, textId renewed (typed into in Word)",
+     "S2": "paraId kept, textId kept",
+     "O4": "paraId kept, textId kept"
+    }
+   },
+   "comment": {
+    "mode": 12,
+    "paragraphs": {
+     "O1": "paraId kept, textId kept",
+     "S3": "paraId kept, textId kept",
+     "T1": "paraId kept, textId kept",
+     "S2": "paraId kept, textId kept",
+     "O4": "paraId kept, textId kept"
+    },
+    "ids": {
+     "comment ids": [
+      [],
+      [
+       "0"
+      ]
+     ]
+    }
+   },
+   "edit-stamped": {
+    "mode": 12,
+    "paragraphs": {
+     "O1": "paraId kept, textId kept",
+     "S3": "paraId kept, textId renewed (typed into in Word)",
+     "T1": "paraId kept, textId kept",
+     "S2": "paraId kept, textId kept",
+     "O4": "paraId kept, textId kept"
+    }
+   },
+   "save-again": {
+    "mode": 12,
+    "paragraphs": {
+     "O1": "paraId kept, textId kept",
+     "S3": "paraId kept, textId kept",
+     "T1": "paraId kept, textId kept",
+     "S2": "paraId kept, textId kept",
+     "O4": "paraId kept, textId kept"
+    }
+   }
+  },
+  "generated, a picture, mode 15": {
+   "save": {
+    "mode": 15,
+    "paragraphs": {
+     "O1": "paraId kept, textId kept",
+     "S3": "paraId kept, textId kept",
+     "T1": "paraId kept, textId kept",
+     "S2": "paraId kept, textId kept",
+     "O4": "paraId kept, textId kept"
+    }
+   },
+   "edit-other": {
+    "mode": 15,
+    "paragraphs": {
+     "O1": "paraId kept, textId kept",
+     "S3": "paraId kept, textId kept",
+     "T1": "paraId kept, textId renewed (typed into in Word)",
+     "S2": "paraId kept, textId kept",
+     "O4": "paraId kept, textId kept"
+    }
+   },
+   "comment": {
+    "mode": 15,
+    "paragraphs": {
+     "O1": "paraId kept, textId kept",
+     "S3": "paraId kept, textId kept",
+     "T1": "paraId kept, textId kept",
+     "S2": "paraId kept, textId kept",
+     "O4": "paraId kept, textId kept"
+    },
+    "ids": {
+     "comment ids": [
+      [],
+      [
+       "0"
+      ]
+     ]
+    }
+   },
+   "edit-stamped": {
+    "mode": 15,
+    "paragraphs": {
+     "O1": "paraId kept, textId kept",
+     "S3": "paraId kept, textId renewed (typed into in Word)",
+     "T1": "paraId kept, textId kept",
+     "S2": "paraId kept, textId kept",
+     "O4": "paraId kept, textId kept"
+    }
+   },
+   "save-again": {
+    "mode": 15,
+    "paragraphs": {
+     "O1": "paraId kept, textId kept",
+     "S3": "paraId kept, textId kept",
+     "T1": "paraId kept, textId kept",
+     "S2": "paraId kept, textId kept",
+     "O4": "paraId kept, textId kept"
+    }
+   }
+  },
+  "Word-created, mode 15": {
+   "save": {
+    "mode": 15,
+    "paragraphs": {
+     "W1": "paraId kept, textId kept",
+     "S3": "paraId kept, textId kept",
+     "W2": "paraId kept, textId kept",
+     "W3": "paraId kept, textId kept",
+     "W4": "paraId kept, textId kept"
+    }
+   },
+   "edit-other": {
+    "mode": 15,
+    "paragraphs": {
+     "W1": "paraId kept, textId kept",
+     "S3": "paraId kept, textId kept",
+     "W2": "paraId kept, textId kept",
+     "W3": "paraId kept, textId renewed (typed into in Word)",
+     "W4": "paraId kept, textId kept"
+    }
+   },
+   "comment": {
+    "mode": 15,
+    "paragraphs": {
+     "W1": "paraId kept, textId kept",
+     "S3": "paraId kept, textId kept",
+     "W2": "paraId kept, textId kept",
+     "W3": "paraId kept, textId kept",
+     "W4": "paraId kept, textId kept"
+    },
+    "ids": {
+     "comment ids": [
+      [],
+      [
+       "0"
+      ]
+     ]
+    }
+   },
+   "edit-stamped": {
+    "mode": 15,
+    "paragraphs": {
+     "W1": "paraId kept, textId kept",
+     "S3": "paraId kept, textId renewed (typed into in Word)",
+     "W2": "paraId kept, textId kept",
+     "W3": "paraId kept, textId kept",
+     "W4": "paraId kept, textId kept"
+    }
+   },
+   "save-again": {
+    "mode": 15,
+    "paragraphs": {
+     "W1": "paraId kept, textId kept",
+     "S3": "paraId kept, textId kept",
+     "W2": "paraId kept, textId kept",
+     "W3": "paraId kept, textId kept",
+     "W4": "paraId kept, textId kept"
+    }
+   }
+  }
+ },
+ "word-created": {
+  "as made": {
+   "W1": [
+    null,
+    null,
+    false
+   ],
+   "W2": [
+    null,
+    null,
+    false
+   ],
+   "W3": [
+    null,
+    null,
+    false
+   ],
+   "W4": [
+    null,
+    null,
+    false
+   ]
+  },
+  "paragraph stamping": {
+   "save": {
+    "mode": 15,
+    "paragraphs": {
+     "W1": "paraId none, textId none",
+     "W2": "paraId dropped, textId dropped",
+     "W3": "paraId none, textId none",
+     "W4": "paraId none, textId none"
+    }
+   }
+  }
+ }
+}

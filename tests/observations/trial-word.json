@@ -1,0 +1,38 @@
+{
+ "_about": "What Word 16.106 for Mac did with packages whose kind and extension agree or disagree (tools/trial_probe.py): the outcome of opening and exporting each (done, or rejected: a dialog blocked it), and the content type Word's own Save As macro-enabled document writes. Regenerate with python tools/trial_probe.py.",
+ "template-as-docx": {
+  "extension": ".docx",
+  "main_content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.template.main+xml",
+  "outcome": "rejected"
+ },
+ "template-saved-docx": {
+  "extension": ".docx",
+  "main_content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml",
+  "outcome": "done"
+ },
+ "template-saved-dotx": {
+  "extension": ".dotx",
+  "main_content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.template.main+xml",
+  "outcome": "done"
+ },
+ "document-as-docm": {
+  "extension": ".docm",
+  "main_content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml",
+  "outcome": "rejected"
+ },
+ "document-saved-docm": {
+  "extension": ".docm",
+  "main_content_type": "application/vnd.ms-word.document.macroEnabled.main+xml",
+  "outcome": "done"
+ },
+ "macro-type-as-docx": {
+  "extension": ".docx",
+  "main_content_type": "application/vnd.ms-word.document.macroEnabled.main+xml",
+  "outcome": "rejected"
+ },
+ "word-saves-docm": {
+  "outcome": "done",
+  "main_content_type": "application/vnd.ms-word.document.macroEnabled.main+xml",
+  "vba_project": false
+ }
+}

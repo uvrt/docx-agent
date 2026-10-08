@@ -1,0 +1,125 @@
+{
+ "task": "w11-contract-form",
+ "clock": "2026-10-07T09:00:00+00:00",
+ "open": [
+  "services-agreement.docx"
+ ],
+ "calls": [
+  {
+   "tool": "describe",
+   "arguments": {
+    "doc": "d1"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Described services-agreement.docx",
+    "data_sha": "fcc16c70c43a7544"
+   }
+  },
+  {
+   "tool": "word_controls",
+   "arguments": {
+    "doc": "d1",
+    "action": "list"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Content controls",
+    "data_sha": "3c22932b6108ebd2"
+   }
+  },
+  {
+   "tool": "batch",
+   "arguments": {
+    "ops": [
+     {
+      "tool": "word_controls",
+      "arguments": {
+       "doc": "d1",
+       "action": "fill",
+       "control": "cc:549641114",
+       "value": "Halden Group AS"
+      }
+     },
+     {
+      "tool": "word_controls",
+      "arguments": {
+       "doc": "d1",
+       "action": "fill",
+       "control": "cc:1847487812",
+       "value": "2026-11-03"
+      }
+     },
+     {
+      "tool": "word_controls",
+      "arguments": {
+       "doc": "d1",
+       "action": "fill",
+       "control": "cc:932414698",
+       "value": "24 months"
+      }
+     },
+     {
+      "tool": "word_controls",
+      "arguments": {
+       "doc": "d1",
+       "action": "fill",
+       "control": "cc:526902900",
+       "value": "18,400"
+      }
+     },
+     {
+      "tool": "word_controls",
+      "arguments": {
+       "doc": "d1",
+       "action": "fill",
+       "control": "cc:1688320314",
+       "value": "true"
+      }
+     }
+    ]
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Ran 5 op(s) as one step: Filled cc:549641114; Filled cc:1847487812; Filled cc:932414698; Filled cc:526902900; Filled cc:1688320314",
+    "changed": [
+     "cc:549641114",
+     "cc:1847487812",
+     "cc:932414698",
+     "cc:526902900",
+     "cc:1688320314"
+    ],
+    "data_sha": "d590acad693a716d"
+   }
+  },
+  {
+   "tool": "word_controls",
+   "arguments": {
+    "doc": "d1",
+    "action": "list"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Content controls",
+    "data_sha": "9b035482c6d5a941"
+   }
+  },
+  {
+   "tool": "save_document",
+   "arguments": {
+    "doc": "d1",
+    "name": "services-agreement-halden.docx",
+    "format": "docx"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Saved services-agreement-halden.docx for the application",
+    "data_sha": "bc42455d90320ff0"
+   }
+  }
+ ],
+ "output": {
+  "name": "services-agreement-halden.docx",
+  "sha256": "68db7846b3e2f9e396fa505a0c7b0c2773bb71004407a8b152b5a7d2a260a52b"
+ }
+}

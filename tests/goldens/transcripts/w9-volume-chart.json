@@ -1,0 +1,199 @@
+{
+ "task": "w9-volume-chart",
+ "clock": "2026-10-07T09:00:00+00:00",
+ "open": [
+  "operations-report.docx"
+ ],
+ "blobs": [
+  "monthly-volumes.csv"
+ ],
+ "calls": [
+  {
+   "tool": "describe",
+   "arguments": {
+    "doc": "d1"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Described operations-report.docx",
+    "data_sha": "abeb5e9c85550b9e"
+   }
+  },
+  {
+   "tool": "read_blob",
+   "arguments": {
+    "blob": "b1"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Read 149 of 149 characters of monthly-volumes.csv",
+    "data_sha": "e96205394e3f2b7d"
+   }
+  },
+  {
+   "tool": "find_text",
+   "arguments": {
+    "doc": "d1",
+    "text": "shown in the chart below"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "1 match(es)",
+    "data_sha": "0d9e34865c4b99ef"
+   }
+  },
+  {
+   "tool": "batch",
+   "arguments": {
+    "ops": [
+     {
+      "tool": "edit_chart",
+      "arguments": {
+       "doc": "d1",
+       "target": "p:12972045",
+       "action": "add",
+       "chart_type": "line",
+       "categories": [
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep"
+       ],
+       "data": [
+        {
+         "name": "Inbound",
+         "values": [
+          41.2,
+          40.8,
+          43.5,
+          45.1,
+          46.9,
+          52.3,
+          54.0,
+          53.2,
+          55.8
+         ]
+        },
+        {
+         "name": "Outbound",
+         "values": [
+          38.5,
+          39.1,
+          40.2,
+          41.8,
+          43.6,
+          45.0,
+          50.7,
+          52.4,
+          53.1
+         ]
+        }
+       ],
+       "ref": "chart"
+      }
+     },
+     {
+      "tool": "edit_chart",
+      "arguments": {
+       "doc": "d1",
+       "target": "$chart",
+       "action": "set_axis_title",
+       "axis": "category",
+       "text": "Month"
+      }
+     },
+     {
+      "tool": "edit_chart",
+      "arguments": {
+       "doc": "d1",
+       "target": "$chart",
+       "action": "set_axis_title",
+       "axis": "value",
+       "text": "Thousand units"
+      }
+     }
+    ]
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Ran 3 op(s) as one step: Inserted a line chart d:1 in p:058B17C9; set_axis_title on d:1; set_axis_title on d:1",
+    "changed": [
+     "d:1"
+    ],
+    "created": [
+     "p:058B17C9",
+     "d:1"
+    ],
+    "refs": {
+     "chart": "d:1"
+    },
+    "data_sha": "79acc3f51482698e"
+   }
+  },
+  {
+   "tool": "word_fields",
+   "arguments": {
+    "doc": "d1",
+    "action": "insert_caption",
+    "after": "p:058B17C9",
+    "label": "Figure",
+    "text": ": Monthly shipment volumes, January to September 2026"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Inserted a caption",
+    "created": [
+     "p:78688CBC",
+     "fld:body/0"
+    ]
+   }
+  },
+  {
+   "tool": "render",
+   "arguments": {
+    "doc": "d1",
+    "pages": [
+     1
+    ]
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Rendered page(s) 1 (final view: changes accepted, comments hidden)",
+    "data_sha": "86be4e44be9d8d9e"
+   }
+  },
+  {
+   "tool": "check",
+   "arguments": {
+    "doc": "d1"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Checked validate, reflow, fields",
+    "data_sha": "3538afee42c678f0"
+   }
+  },
+  {
+   "tool": "save_document",
+   "arguments": {
+    "doc": "d1",
+    "name": "operations-report.docx",
+    "format": "docx"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Saved operations-report.docx for the application",
+    "data_sha": "6cad47b011caea77"
+   }
+  }
+ ],
+ "output": {
+  "name": "operations-report.docx",
+  "sha256": "d8d62b1ce3817f4561c90d9fc8746d89bd364e60459a6d965b0377314b7e9fdf"
+ }
+}
