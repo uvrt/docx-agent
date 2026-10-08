@@ -25,6 +25,7 @@ import pytest
 pytest.importorskip("ooxml_edit.tools.shared", reason="needs ooxml-edit 0.4 (the shared tools)")
 
 import goldens_replay  # noqa: E402
+from conftest import OFFICE_FACES_ABSENT  # noqa: E402
 
 HERE = Path(__file__).parent
 GOLDENS = HERE / "goldens"
@@ -39,6 +40,11 @@ def inputs_of(transcript: dict) -> Path:
 
 @pytest.mark.parametrize("path", TRANSCRIPTS, ids=[p.stem for p in TRANSCRIPTS])
 def test_a_golden_transcript_replays_to_the_same_results_and_bytes(path, tmp_path):
+    if sys.platform == "win32" and OFFICE_FACES_ABSENT:
+        # The transcripts' layout facts (pages, reflow, the page count saved in app.xml) were
+        # recorded on macOS with Office's faces; Windows lays out in its own copies of some
+        # of them and not others, so a replay there is not expected to be byte-identical.
+        pytest.skip("recorded with Office's faces on macOS; Windows lays out in its own")
     transcript = json.loads(path.read_text(encoding="utf-8"))
     replayed, outputs = goldens_replay.run(json.loads(path.read_text(encoding="utf-8")), inputs_of(transcript))
     assert replayed["_mismatches"] == [], replayed["_mismatches"][:2]

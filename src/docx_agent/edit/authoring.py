@@ -53,6 +53,7 @@ import os
 import urllib.parse
 import warnings
 from datetime import datetime
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from lxml import etree
@@ -392,7 +393,9 @@ def _attach(document: "Document", path: str) -> None:
         if rid:
             package.remove_relationship(part, rid)
         remove(node)
-    target = "file:///" + urllib.parse.quote(path)
+    # On Windows the path is a drive and backslashes: write it with slashes, keeping the
+    # drive's colon (file:///C:/...); elsewhere this is the path as it was.
+    target = "file:///" + urllib.parse.quote(Path(path).as_posix(), safe="/:" if os.name == "nt" else "/")
     rid = package.add_external_relationship(part, REL_ATTACHED_TEMPLATE, target)
     node = make("w:attachedTemplate")
     node.set(qn("r:id"), rid)
