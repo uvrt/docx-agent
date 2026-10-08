@@ -389,7 +389,7 @@ class ChartOps:
     def insert_chart(self: "Document", at: str, chart_type: str, categories, series, *,
                      width: float | None = None, height: float | None = None,
                      title: str | None = None, axis_titles: dict | None = None,
-                     legend: str | None = "bottom", number_format: str | None = None,
+                     legend: str | None = "default", number_format: str | None = None,
                      name: str | None = None):
         """A new chart from data, as an inline drawing, as Word inserts one: the chart part
         and an embedded workbook holding the same numbers, so Edit Data opens them
@@ -399,14 +399,14 @@ class ChartOps:
         after it, which continues that paragraph's formatting (a heading's becomes
         ``Normal``) -- or a position inside a paragraph (``p:...@12``), where it goes inline
         as a picture would.  ``chart_type`` is ``column``, ``stacked_column``, ``bar``,
-        ``stacked_bar``, ``line``, ``pie`` or ``scatter``; ``categories`` the labels (a
-        scatter chart's x values); ``series`` ``[{"name", "values"}]``, one value per
-        category.  ``width`` and ``height`` are points: Word's 432 x 252 by default, one
+        ``stacked_bar``, ``line``, ``pie``, ``scatter`` or ``radar``; ``categories`` the
+        labels (a scatter chart's x values); ``series`` ``[{"name", "values"}]``, one value
+        per category.  ``width`` and ``height`` are points: Word's 432 x 252 by default, one
         given keeps that ratio.  It looks as Word's new chart of that type looks in the
-        document's theme (measured: 14 pt title, 9 pt labels, legend at the bottom, a
-        background fill with a light border).  Returns the drawing's ``d:<id>``; one undo
-        step.  Data that cannot be charted raises ``ChartDataError`` before anything
-        changes."""
+        document's theme (measured: 14 pt title, 9 pt labels, legend at the bottom -- a
+        radar's at the top, ``legend="default"`` --, a background fill with a light border).
+        Returns the drawing's ``d:<id>``; one undo step.  Data that cannot be charted raises
+        ``ChartDataError`` before anything changes."""
         from ooxml_edit.charts import WORD_LOOK, add_chart
         from ooxml_edit.charts.create import chart_data
 

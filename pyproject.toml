@@ -36,7 +36,7 @@ classifiers = [
 # -e ../docx2svg`) or from GitHub.  markdown-it-py (with mdit-py-plugins for footnotes) is the
 # Markdown parser, by decision (ROADMAP.md, "Decisions", 2): it reads to_markdown's output back
 # for the reverse-parse check and checks a block's inline Markdown before it is written.
-dependencies = ["lxml>=4.9", "ooxml-edit>=0.10.0", "ooxml-common>=0.4.6", "docx2svg>=0.1", "markdown-it-py>=3.0", "mdit-py-plugins>=0.4"]
+dependencies = ["lxml>=4.9", "ooxml-edit>=0.11.0", "ooxml-common>=0.4.6", "docx2svg>=0.1", "markdown-it-py>=3.0", "mdit-py-plugins>=0.4"]
 
 [project.optional-dependencies]
 # PNG output goes through docx2svg's rasteriser extra.

@@ -1,0 +1,167 @@
+{
+ "task": "w14-supplier-radar",
+ "clock": "2026-10-07T09:00:00+00:00",
+ "open": [
+  "supplier-assessment.docx"
+ ],
+ "blobs": [
+  "supplier-scores.csv"
+ ],
+ "calls": [
+  {
+   "tool": "describe",
+   "arguments": {
+    "doc": "d1"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Described supplier-assessment.docx",
+    "data_sha": "d5536b89d7209d48"
+   }
+  },
+  {
+   "tool": "read_blob",
+   "arguments": {
+    "blob": "b1"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Read 142 of 142 characters of supplier-scores.csv",
+    "data_sha": "fda3690771b0f5cb"
+   }
+  },
+  {
+   "tool": "find_text",
+   "arguments": {
+    "doc": "d1",
+    "text": "compared in the chart below"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "1 match(es)",
+    "data_sha": "fbb086a9280300c1"
+   }
+  },
+  {
+   "tool": "edit_chart",
+   "arguments": {
+    "doc": "d1",
+    "target": "p:12972045",
+    "action": "add",
+    "chart_type": "radar",
+    "categories": [
+     "Quality",
+     "Price",
+     "Delivery",
+     "Sustainability",
+     "Service"
+    ],
+    "data": [
+     {
+      "name": "Brightfold",
+      "values": [
+       4.7,
+       2.9,
+       3.8,
+       4.8,
+       4.2
+      ]
+     },
+     {
+      "name": "Corrino",
+      "values": [
+       3.6,
+       4.6,
+       4.5,
+       3.1,
+       3.9
+      ]
+     },
+     {
+      "name": "Paxton",
+      "values": [
+       4.0,
+       3.8,
+       3.9,
+       3.7,
+       4.1
+      ]
+     }
+    ],
+    "ref": "chart"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Inserted a radar chart d:1 in p:058B17C9",
+    "created": [
+     "p:058B17C9",
+     "d:1"
+    ],
+    "refs": {
+     "chart": "d:1"
+    },
+    "data_sha": "9b83b2d4c50de531"
+   }
+  },
+  {
+   "tool": "word_fields",
+   "arguments": {
+    "doc": "d1",
+    "action": "insert_caption",
+    "after": "p:058B17C9",
+    "label": "Figure",
+    "text": ": Supplier scores by criterion, 1 to 5"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Inserted a caption",
+    "created": [
+     "p:78688CBC",
+     "fld:body/0"
+    ]
+   }
+  },
+  {
+   "tool": "render",
+   "arguments": {
+    "doc": "d1",
+    "pages": [
+     1
+    ]
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Rendered page(s) 1 (final view: changes accepted, comments hidden)",
+    "data_sha": "86be4e44be9d8d9e"
+   }
+  },
+  {
+   "tool": "check",
+   "arguments": {
+    "doc": "d1"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Checked validate, reflow, fields",
+    "data_sha": "3538afee42c678f0"
+   }
+  },
+  {
+   "tool": "save_document",
+   "arguments": {
+    "doc": "d1",
+    "name": "supplier-assessment.docx",
+    "format": "docx"
+   },
+   "expect": {
+    "ok": true,
+    "summary": "Saved supplier-assessment.docx for the application",
+    "data_sha": "ed0cd93566308baa"
+   }
+  }
+ ],
+ "output": {
+  "name": "supplier-assessment.docx",
+  "sha256": "726eece228fea60b69e87b9b2d089df2de71b55e4a3f6b01e1b4b3404e462114"
+ }
+}

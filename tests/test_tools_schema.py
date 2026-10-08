@@ -15,7 +15,8 @@ the rationalisation left plus a small margin: a regression guard, not a budget. 
 by 400 for edit_chart's add, data-label and gap-width actions (11,056 -> 11,402), which took
 the place of a separate word_insert_chart; the core is unchanged.  Post-T4 lowered it:
 word_insert_table and list_documents went (no model called them; a new table is Markdown),
-11,402 -> 11,080 estimated, the core unchanged at 2,384.
+11,402 -> 11,080 estimated, the core unchanged at 2,384.  The radar chart type in
+edit_chart's enum added 3 (11,083); the guard stays.
 """
 
 from __future__ import annotations

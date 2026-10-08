@@ -360,7 +360,7 @@ def _add_chart(call: Any, target: str, chart_type: str | None, categories: list[
         labels = list(need(categories, "categories"))
     if len(labels) * max(len(data), 1) > 10_000:
         raise ToolError("limit", "at most 10,000 chart values", field="data")
-    legend = None if position == "none" else (position or "bottom")
+    legend = None if position == "none" else (position or "default")
     edit = call.document.insert_chart(target, chart_type, labels, [dict(entry) for entry in data], width=width,
                                       title=text, legend=legend, number_format=number_format)
     remember(call, ref, edit.id)
