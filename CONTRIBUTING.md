@@ -99,4 +99,4 @@ The recipes in [docs/common-tasks.md](docs/common-tasks.md) are run as written b
 ## Pull requests
 
 Open pull requests against `main`. CI runs the default suite on Linux, macOS and Windows,
-Python 3.10 to 3.13, with the siblings installed from their `main` branches.
+Python 3.10 to 3.15, with the siblings installed from their `main` branches.
