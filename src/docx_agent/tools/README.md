@@ -42,6 +42,24 @@ system = toolbox.system_prompt(extra=HOUSE_RULES)          # your guidance after
 task = "In d1, change the term to 36 months, tracked, then save it as agreement.docx."
 ```
 
+**Your own fonts.** Faces kept in a folder of the application's own (licensed fonts the
+system does not search) are named once, as configuration -- never by the model:
+
+```python
+toolbox = Toolbox(TOOLS, formats=[FORMAT], groups=GROUPS, font_dirs=["/srv/app/fonts"])
+session = toolbox.session()                          # the toolbox's folders
+other = toolbox.session(font_dirs=["/srv/b/fonts"])  # or a session's own
+```
+
+Every layout and render -- the reflow in each edit's checks and in `check`, the
+`coverage` that `render`, `check` and `save_document` report, field and TOC page numbers,
+the PNGs -- then finds those faces, in the worker process too (the folders are resolved
+where the toolbox runs and handed over). They are added to the folders Word uses and
+searched after them. Without `font_dirs` the environment variable `OOXML_FONT_DIRS`
+(folders separated by `os.pathsep`) is read; `font_dirs=[]` reads neither. No tool
+definition or prompt changes. A document opened outside the tools takes the same setting
+as `Document.font_dirs`.
+
 The provider SDKs read their keys from the environment (`ANTHROPIC_API_KEY`,
 `OPENAI_API_KEY`). When the loop ends, `session.take_outputs()` holds what `save_document`
 wrote, as bytes.
