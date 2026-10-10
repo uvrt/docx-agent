@@ -51,7 +51,7 @@
    "expect": {
     "ok": true,
     "summary": "Rendered page(s) 1 (final view: changes accepted, comments hidden)",
-    "data_sha": "986171db42e8bd97"
+    "data_sha": "0fc351e1503e06d5"
    }
   },
   {
@@ -64,7 +64,7 @@
    "expect": {
     "ok": true,
     "summary": "Saved annual-report-draft.docx for the application",
-    "data_sha": "2c6ee68e0376d265"
+    "data_sha": "b7575758933e3455"
    }
   }
  ],

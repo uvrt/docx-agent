@@ -139,7 +139,7 @@
    "expect": {
     "ok": true,
     "summary": "Checked validate, reflow, fields",
-    "data_sha": "a24807b229247245"
+    "data_sha": "80c009a94af0ca97"
    }
   },
   {
@@ -152,7 +152,7 @@
    "expect": {
     "ok": true,
     "summary": "Saved security-policy.docx for the application",
-    "data_sha": "1d9e8404041deb40"
+    "data_sha": "828574df70d6685e"
    }
   }
  ],

@@ -718,3 +718,112 @@ def test_a_layout_that_stops_is_not_complete(box, session):
     assert coverage["stop"]["at"] == reflow["stopped"]["at"] and coverage["stop"]["at"].startswith("p")
     assert coverage["blocks_laid_out"] == [0, 2]
     assert ok(box, session, "save_document", doc=d, name="shape.docx", format="docx").data["coverage"] == coverage
+    assert coverage["status"] == "partial"
+
+
+def test_coverage_facts_tell_complete_approximate_and_partial_apart():
+    from docx_agent.layout import coverage_facts
+
+    def data(complete=True, approximations=(), **extra):
+        return {"complete": complete, "pages": 2, "blocks": 9, "blocks_laid_out": 9 if complete else 4,
+                "estimate_source": "layout", "estimated_pages": 2, "stop": None, "story_stops": [],
+                "substituted_fonts": [], "missing_fonts": [], "approximations": list(approximations), **extra}
+
+    path = "w:body/w:tbl[1]/w:tr[1]/w:tc[1]/w:p[1]/w:r[2]/wp:anchor[1]"
+    one = {"code": "layout-approximate:cell-drawing", "reason": "cell-drawing", "page": 1, "path": path,
+           "message": "a floating drawing in a table cell (...) is positioned by character left, which no probe "
+                      "measured in a cell: the cell's text is laid out as if text did not wrap around it"}
+    assert coverage_facts(data())["status"] == "complete" and "approximations" not in coverage_facts(data())
+    facts = coverage_facts(data(approximations=[one]))
+    assert facts["complete"] is True and facts["status"] == "approximate"
+    assert facts["approximations"] == [{"page": 1, "reason": "cell-drawing", "path": path,
+                                        "message": coverage_facts.__globals__["_short"](one["message"])}]
+    assert coverage_facts(data(complete=False, approximations=[one]))["status"] == "partial"
+    # docx2svg's own status, where it gives one, is what the facts say.
+    assert coverage_facts(data(status="approximate", approximations=[one]))["status"] == "approximate"
+    many = coverage_facts(data(approximations=[one] * 7))
+    assert len(many["approximations"]) == 5 and many["approximations_total"] == 7
+
+
+def _cell_drawing_aligned_on_its_character() -> bytes:
+    """A table whose first cell anchors a picture text wraps around, aligned against its
+    character -- a place docx2svg has not measured in a cell: it approximates it rather
+    than stop the table (docx2svg F.25), and says so in its coverage."""
+    import io
+    import struct
+    import zipfile
+    import zlib
+
+    def chunk(kind, payload):
+        return struct.pack(">I", len(payload)) + kind + payload + struct.pack(">I", zlib.crc32(kind + payload))
+
+    png = (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 2, 2, 8, 2, 0, 0, 0))
+           + chunk(b"IDAT", zlib.compress(b"\x00" + b"\xc0\x20\x20" * 2 + b"\x00" + b"\xc0\x20\x20" * 2))
+           + chunk(b"IEND", b""))
+    ns = ('xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
+          'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '
+          'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" '
+          'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
+          'xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"')
+    anchor = ('<w:r><w:drawing><wp:anchor distT="0" distB="0" distL="114300" distR="114300" simplePos="0" '
+              'relativeHeight="1" behindDoc="0" locked="0" layoutInCell="1" allowOverlap="1">'
+              '<wp:simplePos x="0" y="0"/><wp:positionH relativeFrom="character"><wp:align>left</wp:align>'
+              '</wp:positionH><wp:positionV relativeFrom="paragraph"><wp:posOffset>0</wp:posOffset></wp:positionV>'
+              '<wp:extent cx="900000" cy="500000"/><wp:effectExtent l="0" t="0" r="0" b="0"/>'
+              '<wp:wrapSquare wrapText="bothSides"/><wp:docPr id="1" name="Picture 1"/><wp:cNvGraphicFramePr/>'
+              '<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic>'
+              '<pic:nvPicPr><pic:cNvPr id="1" name="p.png"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill>'
+              '<a:blip r:embed="rId2"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm>'
+              '<a:off x="0" y="0"/><a:ext cx="900000" cy="500000"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/>'
+              '</a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:anchor></w:drawing></w:r>')
+
+    def cell(text, extra=""):
+        return (f'<w:tc><w:tcPr><w:tcW w:w="4000" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr>'
+                f'<w:p><w:r><w:t xml:space="preserve">{text} </w:t></w:r>{extra}</w:p></w:tc>')
+
+    table = ('<w:tbl><w:tblPr><w:tblW w:w="8000" w:type="dxa"/><w:tblLayout w:type="fixed"/></w:tblPr>'
+             '<w:tblGrid><w:gridCol w:w="4000"/><w:gridCol w:w="4000"/></w:tblGrid>'
+             f'<w:tr>{cell("Logo", anchor)}{cell("Title")}</w:tr><w:tr>{cell("A")}{cell("B")}</w:tr></w:tbl>')
+    body = table + "".join(f"<w:p><w:r><w:t>After the table {k}.</w:t></w:r></w:p>" for k in range(3))
+    rel = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+    styles = ('<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults>'
+              '<w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/>'
+              '<w:sz w:val="22"/></w:rPr></w:rPrDefault></w:docDefaults></w:styles>')
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("[Content_Types].xml", (
+            '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" '
+            'ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" '
+            'ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/>'
+            '<Override PartName="/word/document.xml" ContentType="application/'
+            'vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override '
+            'PartName="/word/styles.xml" ContentType="application/'
+            'vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>'))
+        archive.writestr("_rels/.rels", (
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship '
+            f'Id="rId1" Type="{rel}/officeDocument" Target="word/document.xml"/></Relationships>'))
+        archive.writestr("word/_rels/document.xml.rels", (
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            f'<Relationship Id="rId1" Type="{rel}/styles" Target="styles.xml"/>'
+            f'<Relationship Id="rId2" Type="{rel}/image" Target="media/p.png"/></Relationships>'))
+        archive.writestr("word/styles.xml", styles)
+        archive.writestr("word/media/p.png", png)
+        archive.writestr("word/document.xml", f"<w:document {ns}><w:body>{body}<w:sectPr/></w:body></w:document>")
+    return buffer.getvalue()
+
+
+def test_a_layout_that_approximates_says_where(box, session):
+    from docx2svg.coverage import Coverage
+
+    if not hasattr(Coverage, "status"):
+        pytest.skip("this docx2svg reports no approximations (it stops at such a table)")
+    d = session.open(_cell_drawing_aligned_on_its_character(), "cover.docx")
+    reflow = ok(box, session, "check", doc=d, include=["reflow"]).data["reflow"]
+    coverage = reflow["coverage"]
+    assert coverage["complete"] is True and coverage["status"] == "approximate" and "stop" not in coverage
+    assert coverage["blocks_laid_out"] == [4, 4]
+    [approximation] = coverage["approximations"]
+    assert approximation["page"] == 1 and approximation["reason"] == "cell-drawing"
+    assert approximation["path"].startswith("w:body/w:tbl[1]/w:tr[1]/w:tc[1]/w:p[1]/")
+    assert "character left" in approximation["message"]
+    assert ok(box, session, "render", doc=d, pages=[1], width=400).data["coverage"] == coverage
