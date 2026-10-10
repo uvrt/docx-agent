@@ -27,7 +27,7 @@ from typing import Any, Callable, Iterable, Iterator, Mapping, Sequence
 
 from ooxml_edit.tools import Result, ToolError, page_list, tool as _tool
 
-from ..layout import cache_key, convert_bytes
+from ..layout import cache_key, convert_bytes, layout_options
 
 #: A Word document of this many pages or fewer gets its reflow in every edit's checks.
 REFLOW_PAGES = 20
@@ -80,7 +80,7 @@ def release(entries: Iterable[Any]) -> None:
 
 def cached_layout(document: Any) -> Any:
     """The layout of the document's current state if it was laid out already, else ``None``."""
-    conversion = document._layouts.get(cache_key(document.to_bytes(), {}))
+    conversion = document._layouts.get(cache_key(document.to_bytes(), layout_options(document, {})))
     return conversion.layout if conversion is not None else None
 
 

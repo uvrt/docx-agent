@@ -6,6 +6,15 @@ snapshot commit; the development history before it is summarised here.
 
 ## Unreleased
 
+- The application's own font folders, for the tools and the library: `Toolbox(font_dirs=...)`
+  (or a session's own, ooxml-edit 0.13) sets `Document.font_dirs` on every document the
+  session opens or makes, and every layout and render uses them -- reflow, `coverage` in
+  `render`, `check` and `save_document`, fields' and a TOC's page numbers, PNGs -- in the
+  worker process too: the folders are resolved where the toolbox runs (`Document.font_dirs`,
+  else `OOXML_FONT_DIRS`) and passed as docx2svg's `font_dirs`, so they also key the layout
+  and render caches. No tool definition or prompt changes. Before, a face only in such a
+  folder was reported missing and the layout incomplete. Needs ooxml-common 0.8.0 and
+  ooxml-edit 0.13.0.
 - `check` (with `reflow`), `render` and `save_document` return `coverage`, from docx2svg's
   coverage summary: whether the layout is complete, the blocks laid out, where it stopped
   (by id), header and footer stops, and the faces substituted with open ones or missing.

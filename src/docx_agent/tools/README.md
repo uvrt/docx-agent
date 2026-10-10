@@ -13,9 +13,17 @@ provider's messages. What the tools do: [SUPPORTED.md](SUPPORTED.md); how to use
 | `definitions("openai-responses")` | the Responses API (GPT-6): the core as functions, each other group a deferred `namespace`, and `tool_search` |
 | `definitions("openai-chat", groups=[...])` | Chat Completions, which has no tool search: the core and the groups named; `toolbox.allowed_tools([...], provider="openai-chat")` narrows a turn's calls without changing `tools` |
 
-**Status.** Every model trial so far ran on Claude. The OpenAI definitions and results are
-checked offline against OpenAI's documented rules (`ooxml_edit.tools.adapters.openai_problems`)
-but have not yet been run against the OpenAI API.
+**Status.** This repository's own model trials ran on Claude. A production user ran these
+tools live on Azure OpenAI's Responses API (October 2026: the default
+`definitions("openai-responses")`, `store=False` with
+`include=["reasoning.encrypted_content"]`, images in the outputs and in a user message), and
+every task completed with the loop below as written. `items += response.output` passes the
+reasoning items (with their `encrypted_content`) and a hosted tool search's
+`tool_search_call` / `tool_search_output` back as they came; only `function_call` items are
+dispatched, by their bare `name` (a deferred tool's group arrives separately, as
+`namespace`). The OpenAI definitions and results are also checked offline against OpenAI's
+documented rules (`ooxml_edit.tools.adapters.openai_problems`, `openai_input_problems`, and
+ooxml-edit's Responses round-trip test). Chat Completions has not been run live.
 
 ## Groups
 
@@ -41,6 +49,24 @@ session.open(docx_bytes, name="agreement.docx")             # the model calls it
 system = toolbox.system_prompt(extra=HOUSE_RULES)          # your guidance after the tools'
 task = "In d1, change the term to 36 months, tracked, then save it as agreement.docx."
 ```
+
+**Your own fonts.** Faces kept in a folder of the application's own (licensed fonts the
+system does not search) are named once, as configuration -- never by the model:
+
+```python
+toolbox = Toolbox(TOOLS, formats=[FORMAT], groups=GROUPS, font_dirs=["/srv/app/fonts"])
+session = toolbox.session()                          # the toolbox's folders
+other = toolbox.session(font_dirs=["/srv/b/fonts"])  # or a session's own
+```
+
+Every layout and render -- the reflow in each edit's checks and in `check`, the
+`coverage` that `render`, `check` and `save_document` report, field and TOC page numbers,
+the PNGs -- then finds those faces, in the worker process too (the folders are resolved
+where the toolbox runs and handed over). They are added to the folders Word uses and
+searched after them. Without `font_dirs` the environment variable `OOXML_FONT_DIRS`
+(folders separated by `os.pathsep`) is read; `font_dirs=[]` reads neither. No tool
+definition or prompt changes. A document opened outside the tools takes the same setting
+as `Document.font_dirs`.
 
 The provider SDKs read their keys from the environment (`ANTHROPIC_API_KEY`,
 `OPENAI_API_KEY`). When the loop ends, `session.take_outputs()` holds what `save_document`

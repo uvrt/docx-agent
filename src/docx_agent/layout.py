@@ -463,6 +463,25 @@ def cache_key(data: bytes, options: dict) -> str:
     return hashlib.sha256(data).hexdigest() + repr(sorted(options.items()))
 
 
+def font_dirs_of(document: "Document | None") -> list[str]:
+    """The font folders ``document`` lays out and renders with: its
+    :attr:`~docx_agent.Document.font_dirs`, else ``OOXML_FONT_DIRS``
+    (:func:`ooxml_common.fonts.office.user_font_dirs`), as strings."""
+    from ooxml_common.fonts.office import user_font_dirs
+
+    return [str(path) for path in user_font_dirs(getattr(document, "font_dirs", None))]
+
+
+def layout_options(document: "Document", options: dict) -> dict:
+    """``options`` with the document's font folders (:func:`font_dirs_of`) as
+    ``font_dirs`` unless they name their own: resolved here, so a layout run in a worker
+    process -- which sees neither the document nor an environment variable set since it
+    started -- uses the same folders, and a layout with other folders is cached apart."""
+    if "font_dirs" in options:
+        return dict(options)
+    return {**options, "font_dirs": font_dirs_of(document)}
+
+
 def convert_bytes(data: bytes, options: dict) -> tuple:
     """docx2svg's conversion of a document's bytes: ``(layout, svgs, warnings)``, every one
     of them picklable.  What :func:`convert` runs unless the document names a
@@ -481,6 +500,7 @@ def convert(document: "Document", **options) -> _Conversion:
     cache among them (Aptos Display, a new document's heading face)."""
     if "pages" in options:
         raise TypeError("convert() lays out every page; select pages when rendering")
+    options = layout_options(document, options)
     data = document.to_bytes()
     key = cache_key(data, options)
     cached = document._layouts.get(key)

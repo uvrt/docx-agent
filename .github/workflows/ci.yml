@@ -25,13 +25,11 @@ jobs:
         # The siblings are not on PyPI yet, so they are installed from their repositories
         # first and `pip install -e .[dev]` then finds the requirements already satisfied.
         # They are @main, so a sibling change this repository depends on lands there first.
-        # TEMPORARY: docx2svg from its vertical-cell-wrap branch (uvrt/docx2svg#5: coverage
-        # status and approximations) until that merges; then back to @main before this merges.
         run: |
           python -m pip install --upgrade pip
           python -m pip install "ooxml-common @ git+https://github.com/uvrt/ooxml-common@main"
           python -m pip install "ooxml-edit @ git+https://github.com/uvrt/ooxml-edit@main"
-          python -m pip install "docx2svg[png] @ git+https://github.com/uvrt/docx2svg@vertical-cell-wrap"
+          python -m pip install "docx2svg[png] @ git+https://github.com/uvrt/docx2svg@main"
           python -m pip install -e .[dev,png]
 
       # The open metric compatible substitutes, as docx2svg's CI installs them (its README,
