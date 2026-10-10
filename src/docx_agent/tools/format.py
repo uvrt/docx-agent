@@ -62,6 +62,12 @@ def open_docx(data: bytes) -> Document:
     return Document.open(data)
 
 
+def configure(document: Document, session: Any) -> None:
+    """A document joining a session lays out and renders with the session's font folders
+    (``Toolbox(font_dirs=...)``; ``None``: ``OOXML_FONT_DIRS``)."""
+    document.font_dirs = session.font_dirs
+
+
 def detect(data: bytes, name: str) -> bool:
     if not data.startswith(b"PK"):
         return False
@@ -110,4 +116,5 @@ ERRORS = {
 FORMAT = DocumentFormat(
     kind=KIND, open=open_docx, detect=detect, problems=problems, problem_key=problem_key,
     warnings=(AuthoringWarning, UntrackedChartEdit, DiagramDrawingDropped, ChartDataWarning),
-    prompt=PROMPT, errors=ERRORS, summary=summary, checks=checks, strict_first=STRICT_FIRST)
+    prompt=PROMPT, errors=ERRORS, summary=summary, checks=checks, strict_first=STRICT_FIRST,
+    configure=configure)

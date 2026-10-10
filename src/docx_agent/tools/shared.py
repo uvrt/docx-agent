@@ -16,6 +16,7 @@ from ooxml_edit.tools import Result, ToolError, shared
 
 from ..edit.document import Document
 from ..edit.properties import refreshed_app
+from ..layout import font_dirs_of
 from ._base import need, outcome, page, reflow_json, remember, resolve, short, validate_delta, wrap
 
 KIND = "docx"
@@ -189,16 +190,20 @@ def replace_text(call: Any, doc: str, find: str, replace: str, expect: str, rege
 # -- S8 render ---------------------------------------------------------------------------------
 
 
-def render_pages(data: bytes, pages: list[int], width: int) -> tuple[list[bytes], int, dict | None]:
+def render_pages(data: bytes, pages: list[int], width: int, font_dirs: list[str] | None = None
+                 ) -> tuple[list[bytes], int, dict | None]:
     """In a worker: the pages as PNGs at ``width`` pixels, the page count, and the layout's
-    coverage (``coverage_facts``; ``None`` from a docx2svg without it)."""
+    coverage (``coverage_facts``; ``None`` from a docx2svg without it).  ``font_dirs`` is
+    the application's font folders, resolved by the caller (the worker sees neither the
+    session nor a variable set since it started); ``None`` leaves the worker's default."""
     import docx2svg
 
     from ..layout import coverage_facts
 
-    options = docx2svg.ConvertOptions(pages=pages, width=width)
+    options = docx2svg.ConvertOptions(pages=pages, width=width, font_dirs=font_dirs)
     pngs = docx2svg.convert_docx_to_png(data, options)
-    count = len(docx2svg.convert_docx_to_svg(data)) if len(pngs) < len(pages) else -1
+    count = (len(docx2svg.convert_docx_to_svg(data, docx2svg.ConvertOptions(font_dirs=font_dirs)))
+             if len(pngs) < len(pages) else -1)
     coverage = getattr(options, "coverage", None)
     return list(pngs), count, coverage_facts(coverage) if coverage is not None else None
 
@@ -215,26 +220,29 @@ def render(call: Any, doc: str, slides: list | None = None, pages: list[int] | N
     if len(pages) > call.limits.max_images_per_call:
         raise ToolError("limit", f"at most {call.limits.max_images_per_call} pages per call", field="pages")
     entry = call.entry
-    wanted = [p for p in pages if entry.render_cache.get((entry.version, p, width)) is None]
+    # The font folders, resolved here and handed to the worker; they key the cache, so
+    # renders with different folders do not mix.
+    fonts = tuple(font_dirs_of(call.document))
+    wanted = [p for p in pages if entry.render_cache.get((entry.version, p, width, fonts)) is None]
     if wanted:
-        pngs, count, coverage = call.run(render_pages, call.document.to_bytes(), wanted, width,
+        pngs, count, coverage = call.run(render_pages, call.document.to_bytes(), wanted, width, list(fonts),
                                          timeout=call.limits.render_timeout)
         if len(pngs) < len(wanted):
             raise ToolError("not_found", f"the document has {count} page(s)", field="pages",
                             valid_options=list(range(1, count + 1))[:50])
         for number, png in zip(wanted, pngs):
-            entry.render_cache.put((entry.version, number, width), png)
+            entry.render_cache.put((entry.version, number, width, fonts), png)
         if coverage is not None:
-            call.document._tool_render_coverage = (entry.version, coverage)
+            call.document._tool_render_coverage = ((entry.version, fonts), coverage)
     images = []
     for number in pages:
-        png = entry.render_cache.get((entry.version, number, width))
+        png = entry.render_cache.get((entry.version, number, width, fonts))
         w, h = png_size(png)
         images.append(call.image(png, w, h, label=f"page {number}").describe())
     result = Result(summary=f"Rendered page(s) {', '.join(map(str, pages))} (final view: changes accepted, "
                     "comments hidden)", data={"pages": pages})
     version, coverage = getattr(call.document, "_tool_render_coverage", (None, None))
-    if coverage is not None and version == entry.version:
+    if coverage is not None and version == (entry.version, fonts):
         result.data["coverage"] = coverage
     return result
 

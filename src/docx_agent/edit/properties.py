@@ -337,9 +337,9 @@ def text_statistics(document: "Document") -> dict:
 def layout_statistics(document: "Document") -> dict:
     """Pages and lines from docx2svg's layout of the state being saved, when it has been
     made (and laid the whole document out); nothing otherwise."""
-    from ..layout import cache_key
+    from ..layout import cache_key, layout_options
 
-    conversion = document._layouts.get(cache_key(document.to_bytes(), {}))
+    conversion = document._layouts.get(cache_key(document.to_bytes(), layout_options(document, {})))
     if conversion is None:
         return {}
     layout = conversion.layout

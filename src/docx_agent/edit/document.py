@@ -687,6 +687,14 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
     fewer bytes changed, but ids then last only until Word saves the file.
     """
 
+    #: The application's own font folders, for every layout and render of this document
+    #: -- reflow, coverage, fields' page numbers, a TOC's, PNGs: a face there is laid out
+    #: and drawn with.  ``None`` (the default) reads ``OOXML_FONT_DIRS``
+    #: (``os.pathsep``-separated); an empty tuple means none.  Added to the folders Word
+    #: uses, never in their place.  The agent tool layer sets it from its session
+    #: (``Toolbox(font_dirs=...)``); a ``font_dirs`` option given to a call wins.
+    font_dirs: "tuple[str, ...] | None" = None
+
     def __init__(self, package: WordPackage, *, stamping: str = "document") -> None:
         if stamping not in STAMPING:
             raise ValueError(f"stamping must be one of {', '.join(STAMPING)}")
@@ -1909,8 +1917,10 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
 
         from ..layout import check_options
 
+        from ..layout import layout_options
+
         check_options(options, "render_png")
-        convert = docx2svg.ConvertOptions(pages=pages, **options)
+        convert = docx2svg.ConvertOptions(pages=pages, **layout_options(self, options))
         return docx2svg.convert_docx_to_png(self.to_bytes(), convert)
 
     def __repr__(self) -> str:

@@ -29,14 +29,16 @@ classifiers = [
 # content_types_with(); 0.7.0 the shared describe, edit_chart's read action and Tool.reads,
 # which docx_agent.tools builds on.  ooxml-common (standard library only, and docx2svg's
 # own dependency) is named for what docx-agent imports from it directly: from 0.4.6 the
-# package kinds (ooxml_common.kinds).  docx2svg renders and lays out, and is a hard dependency by
+# package kinds (ooxml_common.kinds), from 0.8.0 the font folders (office.user_font_dirs,
+# OOXML_FONT_DIRS); ooxml-edit 0.13.0 Toolbox(font_dirs=...) and DocumentFormat.configure.
+# docx2svg renders and lays out, and is a hard dependency by
 # decision (ROADMAP.md, "Decisions", 9): it is standard-library only, so it costs little,
 # and reflow feedback is part of every edit's answer.  Neither is on PyPI yet: install them
 # first from sibling checkouts (`pip install -e ../ooxml-edit -e ../ooxml-common
 # -e ../docx2svg`) or from GitHub.  markdown-it-py (with mdit-py-plugins for footnotes) is the
 # Markdown parser, by decision (ROADMAP.md, "Decisions", 2): it reads to_markdown's output back
 # for the reverse-parse check and checks a block's inline Markdown before it is written.
-dependencies = ["lxml>=4.9", "ooxml-edit>=0.11.0", "ooxml-common>=0.4.6", "docx2svg>=0.1", "markdown-it-py>=3.0", "mdit-py-plugins>=0.4"]
+dependencies = ["lxml>=4.9", "ooxml-edit>=0.13.0", "ooxml-common>=0.8.0", "docx2svg>=0.1", "markdown-it-py>=3.0", "mdit-py-plugins>=0.4"]
 
 [project.optional-dependencies]
 # PNG output goes through docx2svg's rasteriser extra.
