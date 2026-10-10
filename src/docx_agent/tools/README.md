@@ -13,9 +13,17 @@ provider's messages. What the tools do: [SUPPORTED.md](SUPPORTED.md); how to use
 | `definitions("openai-responses")` | the Responses API (GPT-6): the core as functions, each other group a deferred `namespace`, and `tool_search` |
 | `definitions("openai-chat", groups=[...])` | Chat Completions, which has no tool search: the core and the groups named; `toolbox.allowed_tools([...], provider="openai-chat")` narrows a turn's calls without changing `tools` |
 
-**Status.** Every model trial so far ran on Claude. The OpenAI definitions and results are
-checked offline against OpenAI's documented rules (`ooxml_edit.tools.adapters.openai_problems`)
-but have not yet been run against the OpenAI API.
+**Status.** This repository's own model trials ran on Claude. A production user ran these
+tools live on Azure OpenAI's Responses API (October 2026: the default
+`definitions("openai-responses")`, `store=False` with
+`include=["reasoning.encrypted_content"]`, images in the outputs and in a user message), and
+every task completed with the loop below as written. `items += response.output` passes the
+reasoning items (with their `encrypted_content`) and a hosted tool search's
+`tool_search_call` / `tool_search_output` back as they came; only `function_call` items are
+dispatched, by their bare `name` (a deferred tool's group arrives separately, as
+`namespace`). The OpenAI definitions and results are also checked offline against OpenAI's
+documented rules (`ooxml_edit.tools.adapters.openai_problems`, `openai_input_problems`, and
+ooxml-edit's Responses round-trip test). Chat Completions has not been run live.
 
 ## Groups
 
