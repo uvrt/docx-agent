@@ -16,7 +16,7 @@ from ooxml_edit.tools import Result, ToolError, shared
 
 from ..edit.document import Document
 from ..edit.properties import refreshed_app
-from ..layout import font_dirs_of
+from ..layout import font_dirs_of, lay_out_unlocked
 from ._base import need, outcome, page, reflow_json, remember, resolve, short, validate_delta, wrap
 
 KIND = "docx"
@@ -35,7 +35,14 @@ def _pages_of(call: Any, slides: list | None, pages: list[int] | None) -> list[i
         call.warn("slides ignored: a document has pages")
         return pages
     call.warn("slides read as pages: a document has pages")
-    return slides
+    out = []
+    for index, item in enumerate(slides):
+        # A deck's slides may be ids (s:256); a document's pages are numbers only.
+        if isinstance(item, str) and not item.strip().isdigit():
+            raise ToolError("invalid_arguments", f"slides[{index}] is {item!r}: a document has pages, "
+                            "numbered from 1 (pages: [1])", field="pages")
+        out.append(int(item))
+    return out
 
 
 def _decks_only(name: str, use: str) -> ToolError:
@@ -223,26 +230,31 @@ def render(call: Any, doc: str, slides: list | None = None, pages: list[int] | N
     # The font folders, resolved here and handed to the worker; they key the cache, so
     # renders with different folders do not mix.
     fonts = tuple(font_dirs_of(call.document))
-    wanted = [p for p in pages if entry.render_cache.get((entry.version, p, width, fonts)) is None]
+    version = entry.version
+    wanted = [p for p in pages if entry.render_cache.get((version, p, width, fonts)) is None]
     if wanted:
-        pngs, count, coverage = call.run(render_pages, call.document.to_bytes(), wanted, width, list(fonts),
-                                         timeout=call.limits.render_timeout)
+        # The bytes are the snapshot, taken under the lock; the rasteriser works on them with
+        # the lock let go (another call may edit meanwhile), and what it draws is cached
+        # under this version, the result's.
+        data = call.document.to_bytes()
+        pngs, count, coverage = call.run_unlocked(render_pages, data, wanted, width, list(fonts),
+                                                  timeout=call.limits.render_timeout)
         if len(pngs) < len(wanted):
             raise ToolError("not_found", f"the document has {count} page(s)", field="pages",
                             valid_options=list(range(1, count + 1))[:50])
         for number, png in zip(wanted, pngs):
-            entry.render_cache.put((entry.version, number, width, fonts), png)
+            entry.render_cache.put((version, number, width, fonts), png)
         if coverage is not None:
-            call.document._tool_render_coverage = ((entry.version, fonts), coverage)
+            call.document._tool_render_coverage = ((version, fonts), coverage)
     images = []
     for number in pages:
-        png = entry.render_cache.get((entry.version, number, width, fonts))
+        png = entry.render_cache.get((version, number, width, fonts))
         w, h = png_size(png)
         images.append(call.image(png, w, h, label=f"page {number}").describe())
     result = Result(summary=f"Rendered page(s) {', '.join(map(str, pages))} (final view: changes accepted, "
                     "comments hidden)", data={"pages": pages})
-    version, coverage = getattr(call.document, "_tool_render_coverage", (None, None))
-    if coverage is not None and version == (entry.version, fonts):
+    render_version, coverage = getattr(call.document, "_tool_render_coverage", (None, None))
+    if coverage is not None and render_version == (version, fonts):
         result.data["coverage"] = coverage
     return result
 
@@ -277,8 +289,15 @@ def check(call: Any, doc: str, slides: list | None = None, pages: list[int] | No
 
 def _layout_facts(call: Any, pages: list[int] | None) -> dict[str, Any]:
     document = call.document
+    entry = call.entry
+    version = entry.version
     try:
-        layout = document.layout()
+        if call.may_unlock:
+            # Laid out with the lock let go (a check outside a batch): of this version, the
+            # one validate and fields read and the result reports.
+            layout = lay_out_unlocked(document, call.unlocked, lambda: entry.version == version)
+        else:
+            layout = document.layout()
     except ToolError as error:
         return {"error": f"{error.code}: {error.message}"}
     facts: dict[str, Any] = {"pages": layout.page_count, "complete": layout.pages_known is not None}

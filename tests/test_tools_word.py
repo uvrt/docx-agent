@@ -536,6 +536,59 @@ def test_render_pages_within_limits_and_cached_by_version(box, session):
     assert as_pages.warnings == ["slides read as pages: a document has pages"]
     both = ok(box, session, "render", doc=d, slides=[2], pages=[1], width=400)
     assert both.data["pages"] == [1] and both.warnings == ["slides ignored: a document has pages"]
+    # A deck's slides may be ids (s:256) or numbers written as strings; a document's pages
+    # are numbers only.
+    assert ok(box, session, "render", doc=d, slides=["1"], width=400).images[0].data == first.images[0].data
+    assert fails(box, session, "render", "invalid_arguments", doc=d, slides=["s:256"]).field == "pages"
+    error = fails(box, session, "render", "invalid_arguments", doc=d, pages=["1"])
+    assert error.message == "pages[0] must be a number" and error.field == "pages[0]"
+
+
+def test_a_check_lays_out_with_the_lock_let_go(box, session, monkeypatch):
+    """The layout a check reads runs on the document's bytes with the lock let go: an edit
+    made meanwhile does not wait, and the check reports the version it laid out."""
+    import threading
+
+    d = session.open((FIXTURES / "samplelib" / "sample-long.docx").read_bytes(), "long.docx")
+    started, finish = threading.Event(), threading.Event()
+    real = box.pool.run
+    first = {"call": True}
+
+    def slow(fn, *args, timeout=None, **kwargs):
+        if first.pop("call", False):
+            started.set()
+            assert finish.wait(60)
+        return real(fn, *args, timeout=timeout, **kwargs)
+
+    monkeypatch.setattr(box.pool, "run", slow)
+    before = session.entry(d).version
+    out = {}
+
+    def check():
+        try:
+            out["result"] = box.dispatch(session, "check", {"doc": d, "include": ["reflow"]})
+        except BaseException as exc:   # noqa: BLE001 -- a skip (a face absent) re-raised below
+            out["raised"] = exc
+        finally:
+            started.set()
+
+    thread = threading.Thread(target=check)
+    thread.start()
+    assert started.wait(60)
+    if "raised" in out:
+        raise out["raised"]
+    edit = ok(box, session, "replace_text", doc=d, find="dolore", replace="dolores", expect="all")
+    finish.set()
+    thread.join()
+    if "raised" in out:
+        raise out["raised"]
+    checked = out["result"]
+    assert checked.ok, checked.to_json()
+    assert "call" not in first                         # the layout was held while the edit ran
+    assert edit.version == before + 1 and checked.version == before
+    assert checked.data["reflow"]["pages"] == 36
+    again = ok(box, session, "check", doc=d, include=["reflow"])   # the edited version, afresh
+    assert again.version == before + 1 and again.data["reflow"]["pages"] == 36
 
 
 def test_check_reports_validate_reflow_and_fields(box, session):

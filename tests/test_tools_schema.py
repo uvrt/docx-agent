@@ -19,7 +19,10 @@ word_insert_table and list_documents went (no model called them; a new table is 
 edit_chart's enum added 3 (11,083); the guard stays.  ooxml-edit 0.12's optional scope on
 the shared undo added 33 to the core (2,384 -> 2,417, about 3,577 counted by the proxy) and
 to every definition (11,116), though a Word document refuses it (it undoes document-wide);
-budget and guard stay.
+budget and guard stay.  ooxml-edit 0.14's slide ids in render's and check's ``slides`` (the
+items a string: ``s:256``, ``$ref`` or a number) added 12 to the core (2,417 -> 2,429, about
+3,595 counted by the proxy) and to every definition (11,128); a document's ``pages`` stay
+numbers (``"1"`` is refused, ``pages[0] must be a number``).  Budget and guard stay.
 """
 
 from __future__ import annotations

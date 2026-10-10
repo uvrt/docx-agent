@@ -492,12 +492,19 @@ def convert_bytes(data: bytes, options: dict) -> tuple:
     return result.layout, list(result.svgs), list(convert_options.warnings)
 
 
-def convert(document: "Document", **options) -> _Conversion:
+def convert(document: "Document", *, unlocked=None, current=None, **options) -> _Conversion:
     """The document now, laid out once by :func:`docx2svg.convert_docx` -- every page, so
     the layout answers for all of them -- and cached by its bytes and the options.  Both
     :func:`lay_out` and :func:`render_svg` read it, so a render and a layout of the same
     state cost one layout.  docx2svg finds the faces Word draws itself, Office's cloud-font
-    cache among them (Aptos Display, a new document's heading face)."""
+    cache among them (Aptos Display, a new document's heading face).
+
+    ``unlocked`` (a context manager factory) runs the slow part -- docx2svg's layout of the
+    bytes -- inside it, where another thread may change ``document`` (an agent tool layer
+    lets the document's lock go there; :func:`lay_out_unlocked`).  The bytes and options are
+    taken first; after, the layout is mapped to ids on ``document`` if ``current()`` says it
+    has not changed meanwhile, else on a copy opened from those bytes (the same ids).
+    Either way it is the layout of the state the bytes were taken from, cached under them."""
     if "pages" in options:
         raise TypeError("convert() lays out every page; select pages when rendering")
     options = layout_options(document, options)
@@ -506,12 +513,27 @@ def convert(document: "Document", **options) -> _Conversion:
     cached = document._layouts.get(key)
     if cached is not None:
         return cached
-    raw, svgs, warnings = (document.converter or convert_bytes)(data, dict(options))
-    conversion = _Conversion(DocumentLayout(document, raw, warnings), list(svgs))
+    converter = document.converter or convert_bytes
+    if unlocked is None:
+        raw, svgs, warnings = converter(data, dict(options))
+    else:
+        with unlocked():
+            raw, svgs, warnings = converter(data, dict(options))
+    owner = document if current is None or current() else type(document).open(data)
+    return keep(document, key, _Conversion(DocumentLayout(owner, raw, warnings), list(svgs)))
+
+
+def keep(document: "Document", key: str, conversion: _Conversion) -> _Conversion:
+    """Cache ``conversion`` -- of the bytes and options ``key`` names -- on ``document``."""
     document._layouts[key] = conversion
     while len(document._layouts) > _CACHE_SIZE:
         document._layouts.pop(next(iter(document._layouts)))
     return conversion
+
+
+def lay_out_unlocked(document: "Document", unlocked, current) -> DocumentLayout:
+    """:func:`lay_out`, docx2svg's part run inside ``unlocked()`` (:func:`convert`)."""
+    return convert(document, unlocked=unlocked, current=current).layout
 
 
 def lay_out(document: "Document", **options) -> DocumentLayout:
