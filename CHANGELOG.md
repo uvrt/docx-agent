@@ -6,6 +6,11 @@ snapshot commit; the development history before it is summarised here.
 
 ## Unreleased
 
+- Python 3.14 and 3.15: CI runs the suite on both, on Linux, macOS and Windows, and the
+  classifiers declare them. `requires-python` stays `>=3.10`. Python 3.14 made
+  `forkserver` Linux's default start method (`fork` before); the worker pool names `spawn`
+  itself, so nothing changes, and a test now runs the layout and render tools, with the
+  application's font folders, in a worker under every start method the platform has.
 - The golden transcripts hold on every CI runner, not only on a Mac with Office: each
   recorded result also carries `data_keys` (its data's schema) and `data_sha_core` (its data
   less what the layout measures), and `tests/test_tools_goldens.py` replays every
