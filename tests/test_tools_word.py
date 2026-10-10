@@ -536,6 +536,45 @@ def test_render_pages_within_limits_and_cached_by_version(box, session):
     assert as_pages.warnings == ["slides read as pages: a document has pages"]
     both = ok(box, session, "render", doc=d, slides=[2], pages=[1], width=400)
     assert both.data["pages"] == [1] and both.warnings == ["slides ignored: a document has pages"]
+    # A deck's slides may be ids (s:256) or numbers written as strings; a document's pages
+    # are numbers only.
+    assert ok(box, session, "render", doc=d, slides=["1"], width=400).images[0].data == first.images[0].data
+    assert fails(box, session, "render", "invalid_arguments", doc=d, slides=["s:256"]).field == "pages"
+    error = fails(box, session, "render", "invalid_arguments", doc=d, pages=["1"])
+    assert error.message == "pages[0] must be a number" and error.field == "pages[0]"
+
+
+def test_a_check_lays_out_with_the_lock_let_go(box, session, monkeypatch):
+    """The layout a check reads runs on the document's bytes with the lock let go: an edit
+    made meanwhile does not wait, and the check reports the version it laid out."""
+    import threading
+
+    d = open_doc(session)
+    started, finish = threading.Event(), threading.Event()
+    real = box.pool.run
+    first = {"call": True}
+
+    def slow(fn, *args, timeout=None, **kwargs):
+        if first.pop("call", False):
+            started.set()
+            assert finish.wait(30)
+        return real(fn, *args, timeout=timeout, **kwargs)
+
+    monkeypatch.setattr(box.pool, "run", slow)
+    before = session.entry(d).version
+    out = {}
+    thread = threading.Thread(target=lambda: out.update(result=box.dispatch(session, "check", {"doc": d})))
+    thread.start()
+    assert started.wait(30)
+    edit = ok(box, session, "replace_text", doc=d, find="months", replace="weeks", expect="all")
+    finish.set()
+    thread.join()
+    checked = out["result"]
+    assert checked.ok, checked.to_json()
+    assert edit.version == before + 1 and checked.version == before
+    assert checked.data["reflow"]["pages"] == 1 and checked.data["validate"]["new"] == []
+    again = ok(box, session, "check", doc=d)          # the edited version, laid out afresh
+    assert again.version == before + 1 and again.data["reflow"]["pages"] == 1
 
 
 def test_check_reports_validate_reflow_and_fields(box, session):

@@ -6,6 +6,16 @@ snapshot commit; the development history before it is summarised here.
 
 ## Unreleased
 
+- `render` rasterises, and `check` lays out, a snapshot with the document's lock let go:
+  the bytes and version are taken under the lock (with `validate` and `fields`, which a
+  check reads from the same version), the worker draws or lays them out while other calls
+  may edit the document, and the result -- cached under the snapshot's version -- reports
+  that version. A layout finished after an edit is mapped to ids on a copy opened from the
+  snapshot's bytes. Inside a batch, unchanged. Needs ooxml-edit 0.14.0 (production
+  feedback round 3, A6).
+- `render`'s and `check`'s `slides` (read as pages) take numbers only: ooxml-edit 0.14 lets
+  a deck name slides by id there, and an id given for a document is refused, naming
+  `pages`; `pages` itself stays numeric (`"1"` is refused: `pages[0] must be a number`).
 - Python 3.14 and 3.15: CI runs the suite on both, on Linux, macOS and Windows, and the
   classifiers declare them. `requires-python` stays `>=3.10`. Python 3.14 made
   `forkserver` Linux's default start method (`fork` before); the worker pool names `spawn`
