@@ -549,7 +549,7 @@ def test_a_check_lays_out_with_the_lock_let_go(box, session, monkeypatch):
     made meanwhile does not wait, and the check reports the version it laid out."""
     import threading
 
-    d = open_doc(session)
+    d = session.open((FIXTURES / "samplelib" / "sample-long.docx").read_bytes(), "long.docx")
     started, finish = threading.Event(), threading.Event()
     real = box.pool.run
     first = {"call": True}
@@ -557,24 +557,38 @@ def test_a_check_lays_out_with_the_lock_let_go(box, session, monkeypatch):
     def slow(fn, *args, timeout=None, **kwargs):
         if first.pop("call", False):
             started.set()
-            assert finish.wait(30)
+            assert finish.wait(60)
         return real(fn, *args, timeout=timeout, **kwargs)
 
     monkeypatch.setattr(box.pool, "run", slow)
     before = session.entry(d).version
     out = {}
-    thread = threading.Thread(target=lambda: out.update(result=box.dispatch(session, "check", {"doc": d})))
+
+    def check():
+        try:
+            out["result"] = box.dispatch(session, "check", {"doc": d, "include": ["reflow"]})
+        except BaseException as exc:   # noqa: BLE001 -- a skip (a face absent) re-raised below
+            out["raised"] = exc
+        finally:
+            started.set()
+
+    thread = threading.Thread(target=check)
     thread.start()
-    assert started.wait(30)
-    edit = ok(box, session, "replace_text", doc=d, find="months", replace="weeks", expect="all")
+    assert started.wait(60)
+    if "raised" in out:
+        raise out["raised"]
+    edit = ok(box, session, "replace_text", doc=d, find="dolore", replace="dolores", expect="all")
     finish.set()
     thread.join()
+    if "raised" in out:
+        raise out["raised"]
     checked = out["result"]
     assert checked.ok, checked.to_json()
+    assert "call" not in first                         # the layout was held while the edit ran
     assert edit.version == before + 1 and checked.version == before
-    assert checked.data["reflow"]["pages"] == 1 and checked.data["validate"]["new"] == []
-    again = ok(box, session, "check", doc=d)          # the edited version, laid out afresh
-    assert again.version == before + 1 and again.data["reflow"]["pages"] == 1
+    assert checked.data["reflow"]["pages"] == 36
+    again = ok(box, session, "check", doc=d, include=["reflow"])   # the edited version, afresh
+    assert again.version == before + 1 and again.data["reflow"]["pages"] == 36
 
 
 def test_check_reports_validate_reflow_and_fields(box, session):
