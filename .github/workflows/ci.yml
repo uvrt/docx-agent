@@ -32,9 +32,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install "ooxml-common @ git+https://github.com/uvrt/ooxml-common@main"
-          # TEMPORARY (r3): ooxml-edit's r3-render-ids-lock branch (Call.unlocked, slide ids);
-          # back to @main once uvrt/ooxml-edit merges it.
-          python -m pip install "ooxml-edit @ git+https://github.com/uvrt/ooxml-edit@r3-render-ids-lock"
+          python -m pip install "ooxml-edit @ git+https://github.com/uvrt/ooxml-edit@main"
           python -m pip install "docx2svg[png] @ git+https://github.com/uvrt/docx2svg@main"
           python -m pip install -e .[dev,png]
 
