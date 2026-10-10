@@ -258,7 +258,7 @@
    "expect": {
     "ok": true,
     "summary": "Checked validate, reflow, fields",
-    "data_sha": "8bb1a9dca13dc3df"
+    "data_sha": "581ff9c43a8df7c4"
    }
   },
   {
@@ -271,7 +271,7 @@
    "expect": {
     "ok": true,
     "summary": "Saved hosting-agreement-summary-reviewed.docx for the application",
-    "data_sha": "27fb1d1b276d32b2"
+    "data_sha": "29bdfcb39ac9affd"
    }
   }
  ],

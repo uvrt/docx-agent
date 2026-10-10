@@ -239,7 +239,7 @@
    "expect": {
     "ok": true,
     "summary": "Checked validate, reflow, fields",
-    "data_sha": "8bb1a9dca13dc3df"
+    "data_sha": "45ab8d1bc3d5994b"
    }
   },
   {
@@ -252,7 +252,7 @@
    "expect": {
     "ok": true,
     "summary": "Saved regional-sales-update.docx for the application",
-    "data_sha": "d1f56732dfaed22e"
+    "data_sha": "e0c780d53c428c80"
    }
   }
  ],

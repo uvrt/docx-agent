@@ -12,6 +12,13 @@ snapshot commit; the development history before it is summarised here.
   "Check passed" can now be told apart from "couldn't check". In the library:
   `DocumentLayout.coverage` and `coverage_facts()`. Needs docx2svg with
   `docx2svg.coverage`.
+- `coverage` gains `status`: `complete`, `approximate` or `partial`. When docx2svg laid a
+  place out by a rule it has not measured instead of stopping (for example a floating
+  drawing in a table cell at an unmeasured position), `approximations` lists the first
+  five with page, reason, element path and message, and `approximations_total` gives the
+  count when there are more. Needs docx2svg with `Coverage.status` (uvrt/docx2svg#5); an
+  older docx2svg still gets `status` derived from `complete`. The golden transcripts'
+  data digests are re-recorded for the new key.
 - Markdown: a line break that ends its paragraph (a cover page's Shift+Enter) is written
   as `<br>`. It was written as `\`, which CommonMark reads back as a literal backslash at
   the end of a block. When reading Markdown, `<br>`, `<br/>` and `<br />` are line breaks,

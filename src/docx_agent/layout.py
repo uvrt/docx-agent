@@ -83,14 +83,23 @@ def coverage_facts(coverage, *, at: str | None = None, stopped: "Stop | None" = 
     compact.  ``complete`` is true only when every block was laid out, every header,
     footer and text box drawn and every face found; ``substituted_fonts`` names the faces
     laid out with an open substitute (``(approximate)`` where it is not metric compatible);
-    ``stop`` is where the layout stopped, ``at`` the block's id when known."""
+    ``stop`` is where the layout stopped, ``at`` the block's id when known.
+
+    ``status`` tells the three apart: ``complete`` (laid out, nothing approximated),
+    ``approximate`` (complete, but ``approximations`` lists places docx2svg laid out by a
+    rule it has not measured -- a floating drawing in a table cell placed as no probe
+    measured, say -- instead of stopping: what they touch may be off) and ``partial``
+    (not complete)."""
     if coverage is None:  # a docx2svg without coverage: what the stop alone says
-        facts = {"complete": stopped is None}
+        facts = {"complete": stopped is None, "status": "complete" if stopped is None else "partial"}
         if stopped is not None:
             facts["stop"] = {"page": stopped.page, "reason": stopped.reason, "at": stopped.at}
         return facts
     data = coverage if isinstance(coverage, dict) else coverage.as_dict()
-    facts = {"complete": data["complete"], "pages": data["pages"],
+    approximations = data.get("approximations") or []
+    status = data.get("status") or ("partial" if not data["complete"]
+                                    else "approximate" if approximations else "complete")
+    facts = {"complete": data["complete"], "status": status, "pages": data["pages"],
              "blocks_laid_out": [data["blocks_laid_out"], data["blocks"]]}
     if data["estimate_source"] == "app.xml":
         facts["pages_estimated"] = data["estimated_pages"]
@@ -107,6 +116,11 @@ def coverage_facts(coverage, *, at: str | None = None, stopped: "Stop | None" = 
                                       for s in data["substituted_fonts"]]
     if data["missing_fonts"]:
         facts["missing_fonts"] = list(data["missing_fonts"])
+    if approximations:
+        facts["approximations"] = [{"page": a["page"], "reason": a["reason"], "path": a.get("path"),
+                                    "message": _short(a["message"])} for a in approximations[:5]]
+        if len(approximations) > 5:
+            facts["approximations_total"] = len(approximations)
     return facts
 
 
