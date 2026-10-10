@@ -164,7 +164,7 @@
    "expect": {
     "ok": true,
     "summary": "Rendered page(s) 1 (final view: changes accepted, comments hidden)",
-    "data_sha": "86be4e44be9d8d9e"
+    "data_sha": "b7692e905585ed24"
    }
   },
   {
@@ -175,7 +175,7 @@
    "expect": {
     "ok": true,
     "summary": "Checked validate, reflow, fields",
-    "data_sha": "3538afee42c678f0"
+    "data_sha": "46b509a3805102d5"
    }
   },
   {
@@ -188,7 +188,7 @@
    "expect": {
     "ok": true,
     "summary": "Saved operations-report.docx for the application",
-    "data_sha": "6cad47b011caea77"
+    "data_sha": "e9fdd2402dfc7ff8"
    }
   }
  ],
