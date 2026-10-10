@@ -58,6 +58,17 @@ def review(toolbox, session, doc, pages, house_rules, model_call):
     return model_call(images=images, text=markup.data, facts=facts.data, rules=house_rules)
 ```
 
+- **Run it as a step of the application, not a choice of the model.** In a production
+  user's live runs on Azure OpenAI (Oct 2026, both libraries, 8 runs), gpt6-luna looked at
+  the render in every run; gpt6.1-sol skipped "look at the render" in all four of its runs.
+  A prompt that asks for a review is not a review pass: the application calls `render` and
+  `check` itself after the edit loop (or requires a review turn before `save_document`), and
+  treats what is still unresolved as blocking or reports it.
+- **Coverage is one of those facts.** `save_document`, `render` and `check` with `reflow`
+  return `coverage.status`: `complete`; `approximate` (laid out, with the approximations
+  reported in `approximations`); or `partial` (part of the document could not be laid out,
+  so could not be checked). Anything other than `complete` blocks the output or goes into
+  the report: say what was not checked.
 - **What to send:** the brief, the markup view (pages through `next_cursor` for long
   documents), the facts, renders of the pages the edit touched (1000 px wide: about 1,700
   tokens a page on Claude) and your house rules. Ask for findings with paragraph ids.
