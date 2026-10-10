@@ -6,6 +6,14 @@ snapshot commit; the development history before it is summarised here.
 
 ## Unreleased
 
+- The golden transcripts hold on every CI runner, not only on a Mac with Office: each
+  recorded result also carries `data_keys` (its data's schema) and `data_sha_core` (its data
+  less what the layout measures), and `tests/test_tools_goldens.py` replays every
+  transcript everywhere, comparing all but the layout (defined once in
+  `tests/goldens_replay.py`). A result that gains a key -- as `coverage` did, unnoticed by
+  CI -- now fails on Linux, macOS and Windows. `tools/refresh_goldens.py` re-records them,
+  refusing unless only the named new keys changed and every saved document is unchanged
+  (CONTRIBUTING.md, "Golden transcripts").
 - The application's own font folders, for the tools and the library: `Toolbox(font_dirs=...)`
   (or a session's own, ooxml-edit 0.13) sets `Document.font_dirs` on every document the
   session opens or makes, and every layout and render uses them -- reflow, `coverage` in

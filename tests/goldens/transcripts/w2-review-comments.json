@@ -13,7 +13,35 @@
    "expect": {
     "ok": true,
     "summary": "Described hosting-agreement-summary.docx",
-    "data_sha": "1686f1837f4d5502"
+    "data_sha": "1686f1837f4d5502",
+    "data_keys": [
+     "comments",
+     "comments.by_author",
+     "comments.open",
+     "comments.threads",
+     "compatibility_mode",
+     "controls",
+     "drawings",
+     "fields",
+     "headings",
+     "name",
+     "notes",
+     "pages",
+     "problems",
+     "properties",
+     "properties.author",
+     "properties.subject",
+     "properties.title",
+     "revisions",
+     "revisions.by_author",
+     "revisions.changes",
+     "revisions.records",
+     "sections",
+     "styles_in_use",
+     "tables",
+     "tracking"
+    ],
+    "data_sha_core": "168006f04096ad1c"
    }
   },
   {
@@ -26,7 +54,8 @@
    "expect": {
     "ok": true,
     "summary": "Read the document (markup)",
-    "data_sha": "e7f64d02e25b4094"
+    "data_sha": "e7f64d02e25b4094",
+    "data_sha_core": "e7f64d02e25b4094"
    }
   },
   {
@@ -38,7 +67,15 @@
    "expect": {
     "ok": true,
     "summary": "7 thread(s)",
-    "data_sha": "51408557477e1aec"
+    "data_sha": "51408557477e1aec",
+    "data_keys": [
+     "[].author",
+     "[].done",
+     "[].id",
+     "[].on",
+     "[].text"
+    ],
+    "data_sha_core": "51408557477e1aec"
    }
   },
   {
@@ -51,7 +88,13 @@
    "expect": {
     "ok": true,
     "summary": "Tracking on, as Claude",
-    "data_sha": "ec60fd32c07c245f"
+    "data_sha": "ec60fd32c07c245f",
+    "data_keys": [
+     "author",
+     "tracking",
+     "word_switch"
+    ],
+    "data_sha_core": "ec60fd32c07c245f"
    }
   },
   {
@@ -68,7 +111,12 @@
     "changed": [
      "p:16425160"
     ],
-    "data_sha": "ae1470288cfe8ddf"
+    "data_sha": "ae1470288cfe8ddf",
+    "data_keys": [
+     "count",
+     "paragraphs"
+    ],
+    "data_sha_core": "ae1470288cfe8ddf"
    }
   },
   {
@@ -85,7 +133,12 @@
     "changed": [
      "p:7C9523C2"
     ],
-    "data_sha": "cab62544e8125e41"
+    "data_sha": "cab62544e8125e41",
+    "data_keys": [
+     "count",
+     "paragraphs"
+    ],
+    "data_sha_core": "cab62544e8125e41"
    }
   },
   {
@@ -102,7 +155,12 @@
     "changed": [
      "p:767E7C15"
     ],
-    "data_sha": "74460884e69acf36"
+    "data_sha": "74460884e69acf36",
+    "data_keys": [
+     "count",
+     "paragraphs"
+    ],
+    "data_sha_core": "74460884e69acf36"
    }
   },
   {
@@ -120,7 +178,12 @@
     "changed": [
      "header1/p:066B261D"
     ],
-    "data_sha": "4024b401213418b4"
+    "data_sha": "4024b401213418b4",
+    "data_keys": [
+     "count",
+     "paragraphs"
+    ],
+    "data_sha_core": "4024b401213418b4"
    }
   },
   {
@@ -152,7 +215,12 @@
     "changed": [
      "p:12972045"
     ],
-    "data_sha": "2f258db5e4877214"
+    "data_sha": "2f258db5e4877214",
+    "data_keys": [
+     "count",
+     "paragraphs"
+    ],
+    "data_sha_core": "2f258db5e4877214"
    }
   },
   {
@@ -168,7 +236,11 @@
     "changed": [
      "p:12972045"
     ],
-    "data_sha": "7c0ff13b3858d22a"
+    "data_sha": "7c0ff13b3858d22a",
+    "data_keys": [
+     "ranges"
+    ],
+    "data_sha_core": "7c0ff13b3858d22a"
    }
   },
   {
@@ -235,7 +307,11 @@
      "c:42A28F17",
      "c:53C20536"
     ],
-    "data_sha": "f504031b299c7c21"
+    "data_sha": "f504031b299c7c21",
+    "data_keys": [
+     "comments"
+    ],
+    "data_sha_core": "f504031b299c7c21"
    }
   },
   {
@@ -247,7 +323,18 @@
    "expect": {
     "ok": true,
     "summary": "7 change(s)",
-    "data_sha": "308562bad7ba3f99"
+    "data_sha": "308562bad7ba3f99",
+    "data_keys": [
+     "[].author",
+     "[].date",
+     "[].id",
+     "[].kind",
+     "[].old_text",
+     "[].paragraphs",
+     "[].records",
+     "[].text"
+    ],
+    "data_sha_core": "308562bad7ba3f99"
    }
   },
   {
@@ -258,7 +345,22 @@
    "expect": {
     "ok": true,
     "summary": "Checked validate, reflow, fields",
-    "data_sha": "581ff9c43a8df7c4"
+    "data_sha": "581ff9c43a8df7c4",
+    "data_keys": [
+     "fields",
+     "fields.counts",
+     "fields.note",
+     "reflow",
+     "reflow.complete",
+     "reflow.coverage",
+     "reflow.pages",
+     "validate",
+     "validate.baseline",
+     "validate.fixed",
+     "validate.new",
+     "validate.problems"
+    ],
+    "data_sha_core": "c0defdd5a99dcb3e"
    }
   },
   {
@@ -271,7 +373,23 @@
    "expect": {
     "ok": true,
     "summary": "Saved hosting-agreement-summary-reviewed.docx for the application",
-    "data_sha": "29bdfcb39ac9affd"
+    "data_sha": "29bdfcb39ac9affd",
+    "data_keys": [
+     "coverage",
+     "coverage.blocks_laid_out",
+     "coverage.complete",
+     "coverage.pages",
+     "coverage.status",
+     "doc",
+     "format",
+     "name",
+     "size",
+     "validate",
+     "validate.baseline",
+     "validate.fixed",
+     "validate.new"
+    ],
+    "data_sha_core": "54adc49fd19bd3e8"
    }
   }
  ],

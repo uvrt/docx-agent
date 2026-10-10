@@ -13,7 +13,35 @@
    "expect": {
     "ok": true,
     "summary": "Described remote-working-guideline.docx",
-    "data_sha": "d3aac538e0d9179d"
+    "data_sha": "d3aac538e0d9179d",
+    "data_keys": [
+     "comments",
+     "comments.by_author",
+     "comments.open",
+     "comments.threads",
+     "compatibility_mode",
+     "controls",
+     "drawings",
+     "fields",
+     "headings",
+     "name",
+     "notes",
+     "pages",
+     "problems",
+     "properties",
+     "properties.author",
+     "properties.subject",
+     "properties.title",
+     "revisions",
+     "revisions.by_author",
+     "revisions.changes",
+     "revisions.records",
+     "sections",
+     "styles_in_use",
+     "tables",
+     "tracking"
+    ],
+    "data_sha_core": "988c5f7187f8fa20"
    }
   },
   {
@@ -25,7 +53,18 @@
    "expect": {
     "ok": true,
     "summary": "8 change(s)",
-    "data_sha": "bb41bfe958cf1974"
+    "data_sha": "bb41bfe958cf1974",
+    "data_keys": [
+     "[].author",
+     "[].date",
+     "[].id",
+     "[].kind",
+     "[].old_text",
+     "[].paragraphs",
+     "[].records",
+     "[].text"
+    ],
+    "data_sha_core": "bb41bfe958cf1974"
    }
   },
   {
@@ -38,7 +77,15 @@
    "expect": {
     "ok": true,
     "summary": "Accepted 4 revision record(s)",
-    "data_sha": "92b6dcc2c102c617"
+    "data_sha": "92b6dcc2c102c617",
+    "data_keys": [
+     "changes_left",
+     "left_by_author",
+     "left_by_author.Bob Lindqvist",
+     "left_by_author.Chen Wei",
+     "records"
+    ],
+    "data_sha_core": "92b6dcc2c102c617"
    }
   },
   {
@@ -51,7 +98,14 @@
    "expect": {
     "ok": true,
     "summary": "Rejected 5 revision record(s)",
-    "data_sha": "add0c94837912e2a"
+    "data_sha": "add0c94837912e2a",
+    "data_keys": [
+     "changes_left",
+     "left_by_author",
+     "left_by_author.Chen Wei",
+     "records"
+    ],
+    "data_sha_core": "add0c94837912e2a"
    }
   },
   {
@@ -63,7 +117,18 @@
    "expect": {
     "ok": true,
     "summary": "2 change(s)",
-    "data_sha": "c7de1c98ff17b9d8"
+    "data_sha": "c7de1c98ff17b9d8",
+    "data_keys": [
+     "[].author",
+     "[].date",
+     "[].id",
+     "[].kind",
+     "[].old_text",
+     "[].paragraphs",
+     "[].records",
+     "[].text"
+    ],
+    "data_sha_core": "c7de1c98ff17b9d8"
    }
   },
   {
@@ -76,7 +141,13 @@
    "expect": {
     "ok": true,
     "summary": "Tracking on, as Claude",
-    "data_sha": "ec60fd32c07c245f"
+    "data_sha": "ec60fd32c07c245f",
+    "data_keys": [
+     "author",
+     "tracking",
+     "word_switch"
+    ],
+    "data_sha_core": "ec60fd32c07c245f"
    }
   },
   {
@@ -101,7 +172,11 @@
     "warnings": [
      "style added: List Bullet (ListBullet), as Word writes it"
     ],
-    "data_sha": "c23e1559a19392e7"
+    "data_sha": "c23e1559a19392e7",
+    "data_keys": [
+     "blocks"
+    ],
+    "data_sha_core": "c23e1559a19392e7"
    }
   },
   {
@@ -113,7 +188,8 @@
    "expect": {
     "ok": true,
     "summary": "Read the document (markup)",
-    "data_sha": "23c41ca6938e023e"
+    "data_sha": "23c41ca6938e023e",
+    "data_sha_core": "23c41ca6938e023e"
    }
   },
   {
@@ -124,7 +200,22 @@
    "expect": {
     "ok": true,
     "summary": "Checked validate, reflow, fields",
-    "data_sha": "ed7138c588f4f993"
+    "data_sha": "ed7138c588f4f993",
+    "data_keys": [
+     "fields",
+     "fields.counts",
+     "fields.note",
+     "reflow",
+     "reflow.complete",
+     "reflow.coverage",
+     "reflow.pages",
+     "validate",
+     "validate.baseline",
+     "validate.fixed",
+     "validate.new",
+     "validate.problems"
+    ],
+    "data_sha_core": "c0defdd5a99dcb3e"
    }
   },
   {
@@ -137,7 +228,23 @@
    "expect": {
     "ok": true,
     "summary": "Saved remote-working-guideline.docx for the application",
-    "data_sha": "1021ad498d2ebbca"
+    "data_sha": "1021ad498d2ebbca",
+    "data_keys": [
+     "coverage",
+     "coverage.blocks_laid_out",
+     "coverage.complete",
+     "coverage.pages",
+     "coverage.status",
+     "doc",
+     "format",
+     "name",
+     "size",
+     "validate",
+     "validate.baseline",
+     "validate.fixed",
+     "validate.new"
+    ],
+    "data_sha_core": "e3941c1ab580753c"
    }
   }
  ],

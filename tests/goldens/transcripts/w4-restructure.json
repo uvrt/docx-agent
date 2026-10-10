@@ -13,7 +13,38 @@
    "expect": {
     "ok": true,
     "summary": "Described security-policy.docx",
-    "data_sha": "62a65f50d9388540"
+    "data_sha": "62a65f50d9388540",
+    "data_keys": [
+     "comments",
+     "comments.by_author",
+     "comments.open",
+     "comments.threads",
+     "compatibility_mode",
+     "controls",
+     "drawings",
+     "fields",
+     "fields.PAGEREF",
+     "fields.REF",
+     "fields.TOC",
+     "headings",
+     "name",
+     "notes",
+     "pages",
+     "problems",
+     "properties",
+     "properties.author",
+     "properties.subject",
+     "properties.title",
+     "revisions",
+     "revisions.by_author",
+     "revisions.changes",
+     "revisions.records",
+     "sections",
+     "styles_in_use",
+     "tables",
+     "tracking"
+    ],
+    "data_sha_core": "42e83b2d2f8d24a7"
    }
   },
   {
@@ -25,7 +56,8 @@
    "expect": {
     "ok": true,
     "summary": "Read the document (markup)",
-    "data_sha": "bd359d08ce32a2e0"
+    "data_sha": "bd359d08ce32a2e0",
+    "data_sha_core": "bd359d08ce32a2e0"
    }
   },
   {
@@ -46,7 +78,11 @@
      "p:05F235FF",
      "p:3B981BD3"
     ],
-    "data_sha": "63d122b187c7b024"
+    "data_sha": "63d122b187c7b024",
+    "data_keys": [
+     "moved"
+    ],
+    "data_sha_core": "63d122b187c7b024"
    }
   },
   {
@@ -104,7 +140,12 @@
     "changed": [
      "p:31B189E1"
     ],
-    "data_sha": "6de1cc3c09a9fbdf"
+    "data_sha": "6de1cc3c09a9fbdf",
+    "data_keys": [
+     "[].id",
+     "[].list"
+    ],
+    "data_sha_core": "6de1cc3c09a9fbdf"
    }
   },
   {
@@ -116,7 +157,11 @@
    "expect": {
     "ok": true,
     "summary": "Updated fields: 4 result(s) changed",
-    "data_sha": "7f4a06874549825a"
+    "data_sha": "7f4a06874549825a",
+    "data_keys": [
+     "changed_results"
+    ],
+    "data_sha_core": "7f4a06874549825a"
    }
   },
   {
@@ -128,7 +173,8 @@
    "expect": {
     "ok": true,
     "summary": "Read the document (markup)",
-    "data_sha": "8028f6cd3baa503e"
+    "data_sha": "8028f6cd3baa503e",
+    "data_sha_core": "8028f6cd3baa503e"
    }
   },
   {
@@ -139,7 +185,22 @@
    "expect": {
     "ok": true,
     "summary": "Checked validate, reflow, fields",
-    "data_sha": "80c009a94af0ca97"
+    "data_sha": "80c009a94af0ca97",
+    "data_keys": [
+     "fields",
+     "fields.counts",
+     "fields.note",
+     "reflow",
+     "reflow.complete",
+     "reflow.coverage",
+     "reflow.pages",
+     "validate",
+     "validate.baseline",
+     "validate.fixed",
+     "validate.new",
+     "validate.problems"
+    ],
+    "data_sha_core": "40d6cd2b8cd10c3e"
    }
   },
   {
@@ -152,7 +213,23 @@
    "expect": {
     "ok": true,
     "summary": "Saved security-policy.docx for the application",
-    "data_sha": "828574df70d6685e"
+    "data_sha": "828574df70d6685e",
+    "data_keys": [
+     "coverage",
+     "coverage.blocks_laid_out",
+     "coverage.complete",
+     "coverage.pages",
+     "coverage.status",
+     "doc",
+     "format",
+     "name",
+     "size",
+     "validate",
+     "validate.baseline",
+     "validate.fixed",
+     "validate.new"
+    ],
+    "data_sha_core": "381d2a34d435deb9"
    }
   }
  ],

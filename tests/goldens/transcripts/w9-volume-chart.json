@@ -16,7 +16,35 @@
    "expect": {
     "ok": true,
     "summary": "Described operations-report.docx",
-    "data_sha": "abeb5e9c85550b9e"
+    "data_sha": "abeb5e9c85550b9e",
+    "data_keys": [
+     "comments",
+     "comments.by_author",
+     "comments.open",
+     "comments.threads",
+     "compatibility_mode",
+     "controls",
+     "drawings",
+     "fields",
+     "headings",
+     "name",
+     "notes",
+     "pages",
+     "problems",
+     "properties",
+     "properties.author",
+     "properties.subject",
+     "properties.title",
+     "revisions",
+     "revisions.by_author",
+     "revisions.changes",
+     "revisions.records",
+     "sections",
+     "styles_in_use",
+     "tables",
+     "tracking"
+    ],
+    "data_sha_core": "460cd7d7c61b3eb8"
    }
   },
   {
@@ -27,7 +55,17 @@
    "expect": {
     "ok": true,
     "summary": "Read 149 of 149 characters of monthly-volumes.csv",
-    "data_sha": "e96205394e3f2b7d"
+    "data_sha": "e96205394e3f2b7d",
+    "data_keys": [
+     "blob",
+     "chars",
+     "from",
+     "lines",
+     "mime",
+     "name",
+     "text"
+    ],
+    "data_sha_core": "e96205394e3f2b7d"
    }
   },
   {
@@ -39,7 +77,14 @@
    "expect": {
     "ok": true,
     "summary": "1 match(es)",
-    "data_sha": "0d9e34865c4b99ef"
+    "data_sha": "0d9e34865c4b99ef",
+    "data_keys": [
+     "[].address",
+     "[].context",
+     "[].kind",
+     "[].text"
+    ],
+    "data_sha_core": "0d9e34865c4b99ef"
    }
   },
   {
@@ -132,7 +177,11 @@
     "refs": {
      "chart": "d:1"
     },
-    "data_sha": "79acc3f51482698e"
+    "data_sha": "79acc3f51482698e",
+    "data_keys": [
+     "ops"
+    ],
+    "data_sha_core": "79acc3f51482698e"
    }
   },
   {
@@ -164,7 +213,16 @@
    "expect": {
     "ok": true,
     "summary": "Rendered page(s) 1 (final view: changes accepted, comments hidden)",
-    "data_sha": "15afac0e2f368ba9"
+    "data_sha": "15afac0e2f368ba9",
+    "data_keys": [
+     "coverage",
+     "coverage.blocks_laid_out",
+     "coverage.complete",
+     "coverage.pages",
+     "coverage.status",
+     "pages"
+    ],
+    "data_sha_core": "44136fa355b3678a"
    }
   },
   {
@@ -175,7 +233,22 @@
    "expect": {
     "ok": true,
     "summary": "Checked validate, reflow, fields",
-    "data_sha": "7a1c7f571573ed07"
+    "data_sha": "7a1c7f571573ed07",
+    "data_keys": [
+     "fields",
+     "fields.counts",
+     "fields.note",
+     "reflow",
+     "reflow.complete",
+     "reflow.coverage",
+     "reflow.pages",
+     "validate",
+     "validate.baseline",
+     "validate.fixed",
+     "validate.new",
+     "validate.problems"
+    ],
+    "data_sha_core": "7a742e58561f2c65"
    }
   },
   {
@@ -188,7 +261,23 @@
    "expect": {
     "ok": true,
     "summary": "Saved operations-report.docx for the application",
-    "data_sha": "b4d5d687fb6337da"
+    "data_sha": "b4d5d687fb6337da",
+    "data_keys": [
+     "coverage",
+     "coverage.blocks_laid_out",
+     "coverage.complete",
+     "coverage.pages",
+     "coverage.status",
+     "doc",
+     "format",
+     "name",
+     "size",
+     "validate",
+     "validate.baseline",
+     "validate.fixed",
+     "validate.new"
+    ],
+    "data_sha_core": "5d62e2a37c389aa1"
    }
   }
  ],

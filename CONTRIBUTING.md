@@ -43,6 +43,48 @@ and then `pytest -m oracle -q` (the oracle never runs under `-n`).
 `tools/e6_probe.py` the measurements of what Word writes for each phase's edits,
 `tools/charts_probe.py` those of what Word does with charts and SmartArt.
 
+## Golden transcripts
+
+`tests/goldens/transcripts` are tasks done with the tools alone, each call recorded with its
+normalised result (`tests/goldens_replay.py`). Every call's `expect` holds `ok`, `summary`,
+the ids and warnings, and three things about its data: `data_sha` (all of it), `data_keys`
+(its schema: its keys and, for a dict-valued one such as `coverage` or `validate`, that
+dict's keys) and `data_sha_core` (all of it less what the layout measures).
+
+`tests/test_tools_goldens.py` replays them two ways:
+
+- **Where Office's faces are installed** (Calibri, Cambria, Georgia, Aptos: the Mac they were
+  recorded on), every result must be as recorded and every saved document byte for byte.
+- **Everywhere, CI's runners included**, the *core* replay: the same calls with whatever
+  faces are there (the open substitutes, or none), comparing everything except what the
+  layout measures. A result that gains, loses or renames a key, or whose other content
+  changes, fails on every runner.
+
+What the layout measures is defined once, at the top of the split in
+`tests/goldens_replay.py`: the data fields `reflow`, `coverage`, `pages`, `pages_estimated`
+and a saved document's `size` (its `app.xml` carries the page count); the keys those fields
+have only when the layout stopped or substituted a face (`coverage.stop`,
+`coverage.missing_fonts`, `reflow.stopped`, ...), left out of `data_keys`; and the calls that
+write measured page numbers into the document (`word_fields` `update`, `insert_toc`, ...),
+after which a session's results are compared by `ok` and `data_keys` only, and the trial's
+check (which reads those page numbers) runs only where the faces are. If a new transcript
+fails the core replay on CI but passes on the Mac, a result depends on the layout in a way
+the split does not name: add it there, with why.
+
+**Refreshing them.** When a change adds a key to results (as `coverage` and `coverage.status`
+did), re-record on a Mac with Office:
+
+```bash
+python tools/refresh_goldens.py --dry-run --new-keys coverage.status   # what would change
+python tools/refresh_goldens.py --new-keys coverage.status             # write it
+```
+
+It writes nothing unless, for every call, `ok`, `summary` and the other recorded fields are
+unchanged, the data less the keys named by `--new-keys` hashes to the recorded `data_sha`,
+and every saved document is byte for byte the one recorded. A change that alters a result
+or a saved document is not a refresh: record that transcript again
+(`goldens_replay.run(..., record=True)`) and review the diff as part of the change.
+
 The recipes in [docs/common-tasks.md](docs/common-tasks.md) are run as written by
 `tests/test_readme.py`; keep them working.
 

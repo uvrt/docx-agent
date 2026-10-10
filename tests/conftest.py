@@ -186,8 +186,9 @@ def _skip_if_a_face_is_absent(warnings, coverage=None) -> None:
 
 
 @pytest.fixture(autouse=True)
-def _skip_where_faces_are_absent(monkeypatch):
-    if not OFFICE_FACES_ABSENT:
+def _skip_where_faces_are_absent(request, monkeypatch):
+    # ``any_faces``: a test that holds without Office's faces (it leaves what they measure out).
+    if not OFFICE_FACES_ABSENT or request.node.get_closest_marker("any_faces") is not None:
         return
     import docx2svg
 

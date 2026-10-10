@@ -16,7 +16,35 @@
    "expect": {
     "ok": true,
     "summary": "Described annual-report-draft.docx",
-    "data_sha": "4f242342a2c1fb78"
+    "data_sha": "4f242342a2c1fb78",
+    "data_keys": [
+     "comments",
+     "comments.by_author",
+     "comments.open",
+     "comments.threads",
+     "compatibility_mode",
+     "controls",
+     "drawings",
+     "fields",
+     "headings",
+     "name",
+     "notes",
+     "pages",
+     "problems",
+     "properties",
+     "properties.author",
+     "properties.subject",
+     "properties.title",
+     "revisions",
+     "revisions.by_author",
+     "revisions.changes",
+     "revisions.records",
+     "sections",
+     "styles_in_use",
+     "tables",
+     "tracking"
+    ],
+    "data_sha_core": "a82d77ed615138a1"
    }
   },
   {
@@ -37,7 +65,13 @@
      "p:77B9C794",
      "d:1"
     ],
-    "data_sha": "87274a4b10deb7f6"
+    "data_sha": "87274a4b10deb7f6",
+    "data_keys": [
+     "id",
+     "paragraph",
+     "size"
+    ],
+    "data_sha_core": "87274a4b10deb7f6"
    }
   },
   {
@@ -51,7 +85,16 @@
    "expect": {
     "ok": true,
     "summary": "Rendered page(s) 1 (final view: changes accepted, comments hidden)",
-    "data_sha": "0fc351e1503e06d5"
+    "data_sha": "0fc351e1503e06d5",
+    "data_keys": [
+     "coverage",
+     "coverage.blocks_laid_out",
+     "coverage.complete",
+     "coverage.pages",
+     "coverage.status",
+     "pages"
+    ],
+    "data_sha_core": "44136fa355b3678a"
    }
   },
   {
@@ -64,7 +107,23 @@
    "expect": {
     "ok": true,
     "summary": "Saved annual-report-draft.docx for the application",
-    "data_sha": "b7575758933e3455"
+    "data_sha": "b7575758933e3455",
+    "data_keys": [
+     "coverage",
+     "coverage.blocks_laid_out",
+     "coverage.complete",
+     "coverage.pages",
+     "coverage.status",
+     "doc",
+     "format",
+     "name",
+     "size",
+     "validate",
+     "validate.baseline",
+     "validate.fixed",
+     "validate.new"
+    ],
+    "data_sha_core": "fd047364a2c948c3"
    }
   }
  ],

@@ -21,7 +21,23 @@
     "created": [
      "d1"
     ],
-    "data_sha": "c9df37bec6dcfc17"
+    "data_sha": "c9df37bec6dcfc17",
+    "data_keys": [
+     "doc",
+     "kind",
+     "name",
+     "source",
+     "summary",
+     "summary.comments",
+     "summary.headings",
+     "summary.paragraphs",
+     "summary.revisions",
+     "summary.tables",
+     "summary.template",
+     "summary.title",
+     "version"
+    ],
+    "data_sha_core": "c9df37bec6dcfc17"
    }
   },
   {
@@ -32,7 +48,36 @@
    "expect": {
     "ok": true,
     "summary": "Described annual-water-quality-report.docx",
-    "data_sha": "43e487a7c6921c18"
+    "data_sha": "43e487a7c6921c18",
+    "data_keys": [
+     "comments",
+     "comments.by_author",
+     "comments.open",
+     "comments.threads",
+     "compatibility_mode",
+     "controls",
+     "drawings",
+     "fields",
+     "fields.PAGE",
+     "headings",
+     "name",
+     "notes",
+     "pages",
+     "problems",
+     "properties",
+     "properties.author",
+     "properties.subject",
+     "properties.title",
+     "revisions",
+     "revisions.by_author",
+     "revisions.changes",
+     "revisions.records",
+     "sections",
+     "styles_in_use",
+     "tables",
+     "tracking"
+    ],
+    "data_sha_core": "d1e698c2115b94a2"
    }
   },
   {
@@ -44,7 +89,8 @@
    "expect": {
     "ok": true,
     "summary": "Read the document (final)",
-    "data_sha": "c09d9625eb021f12"
+    "data_sha": "c09d9625eb021f12",
+    "data_sha_core": "c09d9625eb021f12"
    }
   },
   {
@@ -57,7 +103,13 @@
    "expect": {
     "ok": true,
     "summary": "19 style(s)",
-    "data_sha": "fa6dcb45006ed6cf"
+    "data_sha": "fa6dcb45006ed6cf",
+    "data_keys": [
+     "[].based_on",
+     "[].kind",
+     "[].name"
+    ],
+    "data_sha_core": "fa6dcb45006ed6cf"
    }
   },
   {
@@ -153,7 +205,11 @@
      "style added: Table Grid (TableGrid), as Word writes it",
      "style added: List Number (ListNumber), as Word writes it"
     ],
-    "data_sha": "631ebe33d0c9bd0a"
+    "data_sha": "631ebe33d0c9bd0a",
+    "data_keys": [
+     "blocks"
+    ],
+    "data_sha_core": "631ebe33d0c9bd0a"
    }
   },
   {
@@ -164,7 +220,8 @@
    "expect": {
     "ok": true,
     "summary": "Read the document (final)",
-    "data_sha": "bdec0665640fb9e8"
+    "data_sha": "bdec0665640fb9e8",
+    "data_sha_core": "bdec0665640fb9e8"
    }
   },
   {
@@ -203,7 +260,8 @@
    "expect": {
     "ok": true,
     "summary": "Read the document (markup)",
-    "data_sha": "9a24fc09eec5cac4"
+    "data_sha": "9a24fc09eec5cac4",
+    "data_sha_core": "9a24fc09eec5cac4"
    }
   },
   {
@@ -214,7 +272,22 @@
    "expect": {
     "ok": true,
     "summary": "Checked validate, reflow, fields",
-    "data_sha": "3b38e52cee0669b5"
+    "data_sha": "3b38e52cee0669b5",
+    "data_keys": [
+     "fields",
+     "fields.counts",
+     "fields.note",
+     "reflow",
+     "reflow.complete",
+     "reflow.coverage",
+     "reflow.pages",
+     "validate",
+     "validate.baseline",
+     "validate.fixed",
+     "validate.new",
+     "validate.problems"
+    ],
+    "data_sha_core": "48a43a95eed13dc1"
    }
   },
   {
@@ -227,7 +300,23 @@
    "expect": {
     "ok": true,
     "summary": "Saved annual-water-quality-report.docx for the application",
-    "data_sha": "6c4c4f74d6df728b"
+    "data_sha": "6c4c4f74d6df728b",
+    "data_keys": [
+     "coverage",
+     "coverage.blocks_laid_out",
+     "coverage.complete",
+     "coverage.pages",
+     "coverage.status",
+     "doc",
+     "format",
+     "name",
+     "size",
+     "validate",
+     "validate.baseline",
+     "validate.fixed",
+     "validate.new"
+    ],
+    "data_sha_core": "2b92843cc95efcee"
    }
   }
  ],
