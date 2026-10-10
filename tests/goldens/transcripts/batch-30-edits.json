@@ -16,7 +16,13 @@
    "expect": {
     "ok": true,
     "summary": "Tracking on, as Claude",
-    "data_sha": "ec60fd32c07c245f"
+    "data_sha": "ec60fd32c07c245f",
+    "data_keys": [
+     "author",
+     "tracking",
+     "word_switch"
+    ],
+    "data_sha_core": "ec60fd32c07c245f"
    }
   },
   {
@@ -416,7 +422,11 @@
      "e29": "p:77B9C794@0:8",
      "e30": "p:6A70E1A8@0:8"
     },
-    "data_sha": "a0fe0aa2ac71f283"
+    "data_sha": "a0fe0aa2ac71f283",
+    "data_keys": [
+     "ops"
+    ],
+    "data_sha_core": "a0fe0aa2ac71f283"
    }
   },
   {
@@ -428,7 +438,16 @@
    "expect": {
     "ok": true,
     "summary": "30 change(s)",
-    "data_sha": "11b08cfb9114ad3c"
+    "data_sha": "11b08cfb9114ad3c",
+    "data_keys": [
+     "[].author",
+     "[].date",
+     "[].id",
+     "[].kind",
+     "[].paragraphs",
+     "[].text"
+    ],
+    "data_sha_core": "11b08cfb9114ad3c"
    }
   },
   {
@@ -440,7 +459,15 @@
    "expect": {
     "ok": true,
     "summary": "10 thread(s)",
-    "data_sha": "bc18119e4eb4daf5"
+    "data_sha": "bc18119e4eb4daf5",
+    "data_keys": [
+     "[].author",
+     "[].done",
+     "[].id",
+     "[].on",
+     "[].text"
+    ],
+    "data_sha_core": "bc18119e4eb4daf5"
    }
   },
   {
@@ -453,7 +480,23 @@
    "expect": {
     "ok": true,
     "summary": "Saved sample-10pages-reviewed.docx for the application",
-    "data_sha": "3060fef3b44cef11"
+    "data_sha": "3060fef3b44cef11",
+    "data_keys": [
+     "coverage",
+     "coverage.blocks_laid_out",
+     "coverage.complete",
+     "coverage.pages",
+     "coverage.status",
+     "doc",
+     "format",
+     "name",
+     "size",
+     "validate",
+     "validate.baseline",
+     "validate.fixed",
+     "validate.new"
+    ],
+    "data_sha_core": "2d68a5b0551c1640"
    }
   }
  ],

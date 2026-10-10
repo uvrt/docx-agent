@@ -17,7 +17,35 @@
    "expect": {
     "ok": true,
     "summary": "Described regional-sales-update.docx",
-    "data_sha": "5a54f2140f6c77d5"
+    "data_sha": "5a54f2140f6c77d5",
+    "data_keys": [
+     "comments",
+     "comments.by_author",
+     "comments.open",
+     "comments.threads",
+     "compatibility_mode",
+     "controls",
+     "drawings",
+     "fields",
+     "headings",
+     "name",
+     "notes",
+     "pages",
+     "problems",
+     "properties",
+     "properties.author",
+     "properties.subject",
+     "properties.title",
+     "revisions",
+     "revisions.by_author",
+     "revisions.changes",
+     "revisions.records",
+     "sections",
+     "styles_in_use",
+     "tables",
+     "tracking"
+    ],
+    "data_sha_core": "c9b8da46ebbf4133"
    }
   },
   {
@@ -28,7 +56,8 @@
    "expect": {
     "ok": true,
     "summary": "Read the document (final)",
-    "data_sha": "dd1cdacb2f87e078"
+    "data_sha": "dd1cdacb2f87e078",
+    "data_sha_core": "dd1cdacb2f87e078"
    }
   },
   {
@@ -41,7 +70,22 @@
    "expect": {
     "ok": true,
     "summary": "Read d:1",
-    "data_sha": "26ceb63c275ee898"
+    "data_sha": "26ceb63c275ee898",
+    "data_keys": [
+     "categories",
+     "id",
+     "legend",
+     "number_format",
+     "series",
+     "title",
+     "type",
+     "workbook",
+     "workbook.categories",
+     "workbook.series",
+     "workbook.sheet",
+     "workbook.workbook"
+    ],
+    "data_sha_core": "26ceb63c275ee898"
    }
   },
   {
@@ -203,7 +247,11 @@
      "p:6B2F1D53",
      "p:0890725E"
     ],
-    "data_sha": "230b15a0d3ea1c17"
+    "data_sha": "230b15a0d3ea1c17",
+    "data_keys": [
+     "ops"
+    ],
+    "data_sha_core": "230b15a0d3ea1c17"
    }
   },
   {
@@ -216,7 +264,22 @@
    "expect": {
     "ok": true,
     "summary": "Read d:1",
-    "data_sha": "cfafac545ffdfb7d"
+    "data_sha": "cfafac545ffdfb7d",
+    "data_keys": [
+     "categories",
+     "id",
+     "legend",
+     "number_format",
+     "series",
+     "title",
+     "type",
+     "workbook",
+     "workbook.categories",
+     "workbook.series",
+     "workbook.sheet",
+     "workbook.workbook"
+    ],
+    "data_sha_core": "cfafac545ffdfb7d"
    }
   },
   {
@@ -228,7 +291,8 @@
    "expect": {
     "ok": true,
     "summary": "Read t:60D6847F (final)",
-    "data_sha": "8c880172dc03c0c8"
+    "data_sha": "8c880172dc03c0c8",
+    "data_sha_core": "8c880172dc03c0c8"
    }
   },
   {
@@ -239,7 +303,22 @@
    "expect": {
     "ok": true,
     "summary": "Checked validate, reflow, fields",
-    "data_sha": "45ab8d1bc3d5994b"
+    "data_sha": "45ab8d1bc3d5994b",
+    "data_keys": [
+     "fields",
+     "fields.counts",
+     "fields.note",
+     "reflow",
+     "reflow.complete",
+     "reflow.coverage",
+     "reflow.pages",
+     "validate",
+     "validate.baseline",
+     "validate.fixed",
+     "validate.new",
+     "validate.problems"
+    ],
+    "data_sha_core": "c0defdd5a99dcb3e"
    }
   },
   {
@@ -252,7 +331,23 @@
    "expect": {
     "ok": true,
     "summary": "Saved regional-sales-update.docx for the application",
-    "data_sha": "e0c780d53c428c80"
+    "data_sha": "e0c780d53c428c80",
+    "data_keys": [
+     "coverage",
+     "coverage.blocks_laid_out",
+     "coverage.complete",
+     "coverage.pages",
+     "coverage.status",
+     "doc",
+     "format",
+     "name",
+     "size",
+     "validate",
+     "validate.baseline",
+     "validate.fixed",
+     "validate.new"
+    ],
+    "data_sha_core": "d18dd06c1290a84b"
    }
   }
  ],

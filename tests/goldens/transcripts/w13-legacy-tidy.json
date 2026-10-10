@@ -13,7 +13,35 @@
    "expect": {
     "ok": true,
     "summary": "Described travel-policy.docx",
-    "data_sha": "18c3de660968537a"
+    "data_sha": "18c3de660968537a",
+    "data_keys": [
+     "comments",
+     "comments.by_author",
+     "comments.open",
+     "comments.threads",
+     "compatibility_mode",
+     "controls",
+     "drawings",
+     "fields",
+     "headings",
+     "name",
+     "notes",
+     "pages",
+     "problems",
+     "properties",
+     "properties.author",
+     "properties.subject",
+     "properties.title",
+     "revisions",
+     "revisions.by_author",
+     "revisions.changes",
+     "revisions.records",
+     "sections",
+     "styles_in_use",
+     "tables",
+     "tracking"
+    ],
+    "data_sha_core": "c8a37ea326bb550c"
    }
   },
   {
@@ -25,7 +53,14 @@
    "expect": {
     "ok": true,
     "summary": "1 match(es)",
-    "data_sha": "83d801725c0da8ac"
+    "data_sha": "83d801725c0da8ac",
+    "data_keys": [
+     "[].address",
+     "[].context",
+     "[].kind",
+     "[].text"
+    ],
+    "data_sha_core": "83d801725c0da8ac"
    }
   },
   {
@@ -37,7 +72,13 @@
    "expect": {
     "ok": true,
     "summary": "Inspected p:77B9C794",
-    "data_sha": "26b7b3e889a2300d"
+    "data_sha": "26b7b3e889a2300d",
+    "data_keys": [
+     "blocks",
+     "styles",
+     "styles.Normal"
+    ],
+    "data_sha_core": "26b7b3e889a2300d"
    }
   },
   {
@@ -49,7 +90,13 @@
    "expect": {
     "ok": true,
     "summary": "Inspected p:4B50F4CD",
-    "data_sha": "4a4f37c68f4cb36e"
+    "data_sha": "4a4f37c68f4cb36e",
+    "data_keys": [
+     "blocks",
+     "styles",
+     "styles.Normal"
+    ],
+    "data_sha_core": "4a4f37c68f4cb36e"
    }
   },
   {
@@ -78,7 +125,14 @@
    "expect": {
     "ok": true,
     "summary": "Compatibility mode 15",
-    "data_sha": "b6925717ab52df95"
+    "data_sha": "b6925717ab52df95",
+    "data_keys": [
+     "mode",
+     "reflow",
+     "reflow.changed",
+     "reflow.pages"
+    ],
+    "data_sha_core": "5ce6c6db8278d824"
    }
   },
   {
@@ -91,7 +145,23 @@
    "expect": {
     "ok": true,
     "summary": "Saved travel-policy.docx for the application",
-    "data_sha": "e8ff4b0b256df363"
+    "data_sha": "e8ff4b0b256df363",
+    "data_keys": [
+     "coverage",
+     "coverage.blocks_laid_out",
+     "coverage.complete",
+     "coverage.pages",
+     "coverage.status",
+     "doc",
+     "format",
+     "name",
+     "size",
+     "validate",
+     "validate.baseline",
+     "validate.fixed",
+     "validate.new"
+    ],
+    "data_sha_core": "2481ae68362bf843"
    }
   }
  ],

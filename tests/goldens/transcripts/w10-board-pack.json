@@ -20,7 +20,35 @@
    "expect": {
     "ok": true,
     "summary": "Described board-pack-q3.docx",
-    "data_sha": "b076aab1e969fea5"
+    "data_sha": "b076aab1e969fea5",
+    "data_keys": [
+     "comments",
+     "comments.by_author",
+     "comments.open",
+     "comments.threads",
+     "compatibility_mode",
+     "controls",
+     "drawings",
+     "fields",
+     "headings",
+     "name",
+     "notes",
+     "pages",
+     "problems",
+     "properties",
+     "properties.author",
+     "properties.subject",
+     "properties.title",
+     "revisions",
+     "revisions.by_author",
+     "revisions.changes",
+     "revisions.records",
+     "sections",
+     "styles_in_use",
+     "tables",
+     "tracking"
+    ],
+    "data_sha_core": "1d37192875d7a1fe"
    }
   },
   {
@@ -34,7 +62,24 @@
     "created": [
      "d2"
     ],
-    "data_sha": "1180d52cd0c21f1f"
+    "data_sha": "1180d52cd0c21f1f",
+    "data_keys": [
+     "baseline_problems",
+     "doc",
+     "kind",
+     "name",
+     "source",
+     "summary",
+     "summary.comments",
+     "summary.headings",
+     "summary.paragraphs",
+     "summary.revisions",
+     "summary.tables",
+     "summary.template",
+     "summary.title",
+     "version"
+    ],
+    "data_sha_core": "1180d52cd0c21f1f"
    }
   },
   {
@@ -54,7 +99,16 @@
      "p:6A70E1A8",
      "p:73D22116"
     ],
-    "data_sha": "f13494a8e7123686"
+    "data_sha": "f13494a8e7123686",
+    "data_keys": [
+     "blocks",
+     "copied",
+     "copied.p:12972045",
+     "copied.p:16425160",
+     "copied.p:3B212964",
+     "copied.p:4C32E1FB"
+    ],
+    "data_sha_core": "f13494a8e7123686"
    }
   },
   {
@@ -81,7 +135,24 @@
     "created": [
      "d3"
     ],
-    "data_sha": "3094b2da6be78863"
+    "data_sha": "3094b2da6be78863",
+    "data_keys": [
+     "baseline_problems",
+     "doc",
+     "kind",
+     "name",
+     "source",
+     "summary",
+     "summary.comments",
+     "summary.headings",
+     "summary.paragraphs",
+     "summary.revisions",
+     "summary.tables",
+     "summary.template",
+     "summary.title",
+     "version"
+    ],
+    "data_sha_core": "3094b2da6be78863"
    }
   },
   {
@@ -101,7 +172,16 @@
      "p:20FFCF19",
      "p:3EB3FF6C"
     ],
-    "data_sha": "ecf36c52b7a8138c"
+    "data_sha": "ecf36c52b7a8138c",
+    "data_keys": [
+     "blocks",
+     "copied",
+     "copied.p:12972045",
+     "copied.p:16425160",
+     "copied.p:3B212964",
+     "copied.p:4C32E1FB"
+    ],
+    "data_sha_core": "ecf36c52b7a8138c"
    }
   },
   {
@@ -128,7 +208,24 @@
     "created": [
      "d4"
     ],
-    "data_sha": "6d47c30705f9e31a"
+    "data_sha": "6d47c30705f9e31a",
+    "data_keys": [
+     "baseline_problems",
+     "doc",
+     "kind",
+     "name",
+     "source",
+     "summary",
+     "summary.comments",
+     "summary.headings",
+     "summary.paragraphs",
+     "summary.revisions",
+     "summary.tables",
+     "summary.template",
+     "summary.title",
+     "version"
+    ],
+    "data_sha_core": "6d47c30705f9e31a"
    }
   },
   {
@@ -148,7 +245,16 @@
      "p:654112D5",
      "p:31B189E1"
     ],
-    "data_sha": "b6e2632449a91793"
+    "data_sha": "b6e2632449a91793",
+    "data_keys": [
+     "blocks",
+     "copied",
+     "copied.p:12972045",
+     "copied.p:16425160",
+     "copied.p:3B212964",
+     "copied.p:4C32E1FB"
+    ],
+    "data_sha_core": "b6e2632449a91793"
    }
   },
   {
@@ -175,7 +281,24 @@
     "created": [
      "d5"
     ],
-    "data_sha": "a9a408b528840e36"
+    "data_sha": "a9a408b528840e36",
+    "data_keys": [
+     "baseline_problems",
+     "doc",
+     "kind",
+     "name",
+     "source",
+     "summary",
+     "summary.comments",
+     "summary.headings",
+     "summary.paragraphs",
+     "summary.revisions",
+     "summary.tables",
+     "summary.template",
+     "summary.title",
+     "version"
+    ],
+    "data_sha_core": "a9a408b528840e36"
    }
   },
   {
@@ -195,7 +318,16 @@
      "p:70439822",
      "p:11698B22"
     ],
-    "data_sha": "85be9fce30b7f141"
+    "data_sha": "85be9fce30b7f141",
+    "data_keys": [
+     "blocks",
+     "copied",
+     "copied.p:12972045",
+     "copied.p:16425160",
+     "copied.p:3B212964",
+     "copied.p:4C32E1FB"
+    ],
+    "data_sha_core": "85be9fce30b7f141"
    }
   },
   {
@@ -222,7 +354,24 @@
     "created": [
      "d6"
     ],
-    "data_sha": "986a1440c2e8fa43"
+    "data_sha": "986a1440c2e8fa43",
+    "data_keys": [
+     "baseline_problems",
+     "doc",
+     "kind",
+     "name",
+     "source",
+     "summary",
+     "summary.comments",
+     "summary.headings",
+     "summary.paragraphs",
+     "summary.revisions",
+     "summary.tables",
+     "summary.template",
+     "summary.title",
+     "version"
+    ],
+    "data_sha_core": "986a1440c2e8fa43"
    }
   },
   {
@@ -242,7 +391,16 @@
      "p:43450195",
      "p:78481EA1"
     ],
-    "data_sha": "785cc08db1b9120a"
+    "data_sha": "785cc08db1b9120a",
+    "data_keys": [
+     "blocks",
+     "copied",
+     "copied.p:12972045",
+     "copied.p:16425160",
+     "copied.p:3B212964",
+     "copied.p:4C32E1FB"
+    ],
+    "data_sha_core": "785cc08db1b9120a"
    }
   },
   {
@@ -271,7 +429,14 @@
     "changed": [
      "properties"
     ],
-    "data_sha": "5234bea682e6da03"
+    "data_sha": "5234bea682e6da03",
+    "data_keys": [
+     "author",
+     "language",
+     "subject",
+     "title"
+    ],
+    "data_sha_core": "5234bea682e6da03"
    }
   },
   {
@@ -282,7 +447,8 @@
    "expect": {
     "ok": true,
     "summary": "Read the document (final)",
-    "data_sha": "05af183ae1b2d495"
+    "data_sha": "05af183ae1b2d495",
+    "data_sha_core": "05af183ae1b2d495"
    }
   },
   {
@@ -295,7 +461,23 @@
    "expect": {
     "ok": true,
     "summary": "Saved board-pack-q3.docx for the application",
-    "data_sha": "87bdf99d7149fe1f"
+    "data_sha": "87bdf99d7149fe1f",
+    "data_keys": [
+     "coverage",
+     "coverage.blocks_laid_out",
+     "coverage.complete",
+     "coverage.pages",
+     "coverage.status",
+     "doc",
+     "format",
+     "name",
+     "size",
+     "validate",
+     "validate.baseline",
+     "validate.fixed",
+     "validate.new"
+    ],
+    "data_sha_core": "98fbc7a04c231ea1"
    }
   }
  ],

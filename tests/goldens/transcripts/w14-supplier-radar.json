@@ -16,7 +16,35 @@
    "expect": {
     "ok": true,
     "summary": "Described supplier-assessment.docx",
-    "data_sha": "d5536b89d7209d48"
+    "data_sha": "d5536b89d7209d48",
+    "data_keys": [
+     "comments",
+     "comments.by_author",
+     "comments.open",
+     "comments.threads",
+     "compatibility_mode",
+     "controls",
+     "drawings",
+     "fields",
+     "headings",
+     "name",
+     "notes",
+     "pages",
+     "problems",
+     "properties",
+     "properties.author",
+     "properties.subject",
+     "properties.title",
+     "revisions",
+     "revisions.by_author",
+     "revisions.changes",
+     "revisions.records",
+     "sections",
+     "styles_in_use",
+     "tables",
+     "tracking"
+    ],
+    "data_sha_core": "7da6f11ba8cd59cd"
    }
   },
   {
@@ -27,7 +55,17 @@
    "expect": {
     "ok": true,
     "summary": "Read 142 of 142 characters of supplier-scores.csv",
-    "data_sha": "fda3690771b0f5cb"
+    "data_sha": "fda3690771b0f5cb",
+    "data_keys": [
+     "blob",
+     "chars",
+     "from",
+     "lines",
+     "mime",
+     "name",
+     "text"
+    ],
+    "data_sha_core": "fda3690771b0f5cb"
    }
   },
   {
@@ -39,7 +77,14 @@
    "expect": {
     "ok": true,
     "summary": "1 match(es)",
-    "data_sha": "fbb086a9280300c1"
+    "data_sha": "fbb086a9280300c1",
+    "data_keys": [
+     "[].address",
+     "[].context",
+     "[].kind",
+     "[].text"
+    ],
+    "data_sha_core": "fbb086a9280300c1"
    }
   },
   {
@@ -100,7 +145,17 @@
     "refs": {
      "chart": "d:1"
     },
-    "data_sha": "9b83b2d4c50de531"
+    "data_sha": "9b83b2d4c50de531",
+    "data_keys": [
+     "categories",
+     "id",
+     "legend",
+     "paragraph",
+     "series",
+     "title",
+     "type"
+    ],
+    "data_sha_core": "9b83b2d4c50de531"
    }
   },
   {
@@ -132,7 +187,16 @@
    "expect": {
     "ok": true,
     "summary": "Rendered page(s) 1 (final view: changes accepted, comments hidden)",
-    "data_sha": "15afac0e2f368ba9"
+    "data_sha": "15afac0e2f368ba9",
+    "data_keys": [
+     "coverage",
+     "coverage.blocks_laid_out",
+     "coverage.complete",
+     "coverage.pages",
+     "coverage.status",
+     "pages"
+    ],
+    "data_sha_core": "44136fa355b3678a"
    }
   },
   {
@@ -143,7 +207,22 @@
    "expect": {
     "ok": true,
     "summary": "Checked validate, reflow, fields",
-    "data_sha": "7a1c7f571573ed07"
+    "data_sha": "7a1c7f571573ed07",
+    "data_keys": [
+     "fields",
+     "fields.counts",
+     "fields.note",
+     "reflow",
+     "reflow.complete",
+     "reflow.coverage",
+     "reflow.pages",
+     "validate",
+     "validate.baseline",
+     "validate.fixed",
+     "validate.new",
+     "validate.problems"
+    ],
+    "data_sha_core": "7a742e58561f2c65"
    }
   },
   {
@@ -156,7 +235,23 @@
    "expect": {
     "ok": true,
     "summary": "Saved supplier-assessment.docx for the application",
-    "data_sha": "ee744e3f31d85413"
+    "data_sha": "ee744e3f31d85413",
+    "data_keys": [
+     "coverage",
+     "coverage.blocks_laid_out",
+     "coverage.complete",
+     "coverage.pages",
+     "coverage.status",
+     "doc",
+     "format",
+     "name",
+     "size",
+     "validate",
+     "validate.baseline",
+     "validate.fixed",
+     "validate.new"
+    ],
+    "data_sha_core": "a1b5d6c9df2567eb"
    }
   }
  ],

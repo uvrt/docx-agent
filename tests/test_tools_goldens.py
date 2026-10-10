@@ -7,12 +7,22 @@ byte for byte the one recorded (the session clock is fixed), and an output that 
 trial's own check (``goldens/trial/_grading/<task>/check.py``, recovered unchanged).  So
 "the tools can do every trial task without code" is a regression test.
 
+Byte for byte holds where Office's faces are installed (the Mac the transcripts were recorded
+on): the layout -- page counts, reflow, coverage, field page numbers -- is in the results and
+in the saved file.  Every other runner, CI's included, replays them too and compares what does
+not depend on the layout: each result's ok, summary, ids, warnings, the schema of its data
+(``data_keys``) and the digest of its data less what the layout measures (``data_sha_core``),
+as ``goldens_replay`` splits them.  So a result that gains or loses a key fails on every
+runner, not only on a Mac with Office.  ``tools/refresh_goldens.py`` re-records them (CONTRIBUTING.md,
+"Golden transcripts").
+
 ``batch-30-edits`` is one ``batch`` call writing 30 tracked insertions and 10 comments
 anchored on them by refs.
 """
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
 import os
@@ -38,21 +48,16 @@ def inputs_of(transcript: dict) -> Path:
     return GOLDENS / "trial" / "_inputs" / transcript["task"] / "input"
 
 
-@pytest.mark.parametrize("path", TRANSCRIPTS, ids=[p.stem for p in TRANSCRIPTS])
-def test_a_golden_transcript_replays_to_the_same_results_and_bytes(path, tmp_path):
-    if sys.platform == "win32" and OFFICE_FACES_ABSENT:
-        # The transcripts' layout facts (pages, reflow, the page count saved in app.xml) were
-        # recorded on macOS with Office's faces; Windows lays out in its own copies of some
-        # of them and not others, so a replay there is not expected to be byte-identical.
-        pytest.skip("recorded with Office's faces on macOS; Windows lays out in its own")
+@functools.lru_cache(maxsize=None)
+def replayed(path: Path) -> tuple[dict, list, list]:
+    """The transcript, its replayed results (normalised) and outputs: one replay for both
+    tests below."""
     transcript = json.loads(path.read_text(encoding="utf-8"))
-    replayed, outputs = goldens_replay.run(json.loads(path.read_text(encoding="utf-8")), inputs_of(transcript))
-    assert replayed["_mismatches"] == [], replayed["_mismatches"][:2]
-    assert outputs, "the transcript saved nothing"
-    output = outputs[-1]
-    assert output.name == transcript["output"]["name"]
-    assert hashlib.sha256(output.data).hexdigest() == transcript["output"]["sha256"]
-    assert output.validate["new"] == []
+    results, outputs = goldens_replay.replay(transcript, inputs_of(transcript))
+    return transcript, results, outputs
+
+
+def passes_its_check(transcript: dict, output, tmp_path: Path) -> None:
     check = GOLDENS / "trial" / "_grading" / transcript["task"] / "check.py"
     if not check.exists():
         return
@@ -64,6 +69,44 @@ def test_a_golden_transcript_replays_to_the_same_results_and_bytes(path, tmp_pat
     report = json.loads(proc.stdout)
     failed = [r for r in report["results"] if not r["ok"]]
     assert not failed and report["passed"] == report["total"], failed
+
+
+@pytest.mark.parametrize("path", TRANSCRIPTS, ids=[p.stem for p in TRANSCRIPTS])
+def test_a_golden_transcript_replays_to_the_same_results_and_bytes(path, tmp_path):
+    if OFFICE_FACES_ABSENT:
+        # The transcripts' layout facts (pages, reflow, coverage, field page numbers, the page
+        # count saved in app.xml) were recorded on macOS with Office's faces; a runner
+        # without them lays out with substitutes, or stops.  The core replay below holds the
+        # rest there.
+        pytest.skip("Office's faces are not all installed here: the core replay compares what "
+                    "does not depend on them")
+    transcript, results, outputs = replayed(path)
+    mismatches = [(index, call["tool"], call["expect"], got)
+                  for index, (call, got) in enumerate(zip(transcript["calls"], results))
+                  if got != call["expect"]]
+    assert mismatches == [], mismatches[:2]
+    assert outputs, "the transcript saved nothing"
+    output = outputs[-1]
+    assert output.name == transcript["output"]["name"]
+    assert hashlib.sha256(output.data).hexdigest() == transcript["output"]["sha256"]
+    assert output.validate["new"] == []
+    passes_its_check(transcript, output, tmp_path)
+
+
+@pytest.mark.any_faces
+@pytest.mark.parametrize("path", TRANSCRIPTS, ids=[p.stem for p in TRANSCRIPTS])
+def test_a_golden_transcript_replays_to_the_same_schema_and_core_anywhere(path, tmp_path):
+    """Needs no Office face: what the layout measures (``goldens_replay``'s split) is left
+    out, everything else -- each result's data keys included -- must be as recorded."""
+    transcript, results, outputs = replayed(path)
+    mismatches = goldens_replay.core_mismatches(transcript, results)
+    assert mismatches == [], mismatches[:2]
+    assert outputs, "the transcript saved nothing"
+    output = outputs[-1]
+    assert output.name == transcript["output"]["name"]
+    assert output.validate["new"] == []
+    if not goldens_replay.writes_layout(transcript):  # else its page numbers are this runner's
+        passes_its_check(transcript, output, tmp_path)
 
 
 def test_the_trial_tasks_are_done_by_tools_alone():

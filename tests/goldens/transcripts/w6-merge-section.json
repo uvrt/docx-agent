@@ -16,7 +16,36 @@
    "expect": {
     "ok": true,
     "summary": "Described field-handbook.docx",
-    "data_sha": "7933e47144fa1e44"
+    "data_sha": "7933e47144fa1e44",
+    "data_keys": [
+     "comments",
+     "comments.by_author",
+     "comments.open",
+     "comments.threads",
+     "compatibility_mode",
+     "controls",
+     "drawings",
+     "fields",
+     "headings",
+     "name",
+     "notes",
+     "notes.footnote",
+     "pages",
+     "problems",
+     "properties",
+     "properties.author",
+     "properties.subject",
+     "properties.title",
+     "revisions",
+     "revisions.by_author",
+     "revisions.changes",
+     "revisions.records",
+     "sections",
+     "styles_in_use",
+     "tables",
+     "tracking"
+    ],
+    "data_sha_core": "dc1e5b4f801e6411"
    }
   },
   {
@@ -27,7 +56,8 @@
    "expect": {
     "ok": true,
     "summary": "Read the document (final)",
-    "data_sha": "55c259f70729e326"
+    "data_sha": "55c259f70729e326",
+    "data_sha_core": "55c259f70729e326"
    }
   },
   {
@@ -41,7 +71,24 @@
     "created": [
      "d2"
     ],
-    "data_sha": "6e685a6e0dde4f22"
+    "data_sha": "6e685a6e0dde4f22",
+    "data_keys": [
+     "baseline_problems",
+     "doc",
+     "kind",
+     "name",
+     "source",
+     "summary",
+     "summary.comments",
+     "summary.headings",
+     "summary.paragraphs",
+     "summary.revisions",
+     "summary.tables",
+     "summary.template",
+     "summary.title",
+     "version"
+    ],
+    "data_sha_core": "6e685a6e0dde4f22"
    }
   },
   {
@@ -52,7 +99,8 @@
    "expect": {
     "ok": true,
     "summary": "Read the document (final)",
-    "data_sha": "4f999f34e084c488"
+    "data_sha": "4f999f34e084c488",
+    "data_sha_core": "4f999f34e084c488"
    }
   },
   {
@@ -65,7 +113,13 @@
    "expect": {
     "ok": true,
     "summary": "5 style(s)",
-    "data_sha": "95ac762bead39b14"
+    "data_sha": "95ac762bead39b14",
+    "data_keys": [
+     "[].based_on",
+     "[].kind",
+     "[].name"
+    ],
+    "data_sha_core": "95ac762bead39b14"
    }
   },
   {
@@ -78,7 +132,13 @@
    "expect": {
     "ok": true,
     "summary": "7 style(s)",
-    "data_sha": "2b3d114c5b6494b4"
+    "data_sha": "2b3d114c5b6494b4",
+    "data_keys": [
+     "[].based_on",
+     "[].kind",
+     "[].name"
+    ],
+    "data_sha_core": "2b3d114c5b6494b4"
    }
   },
   {
@@ -121,7 +181,24 @@
     "warnings": [
      "style 'List Number' added as Word writes it"
     ],
-    "data_sha": "49da904d50eecdff"
+    "data_sha": "49da904d50eecdff",
+    "data_keys": [
+     "blocks",
+     "copied",
+     "copied.fn:1",
+     "copied.p:05252BEE",
+     "copied.p:11698B22",
+     "copied.p:20C1ECE5",
+     "copied.p:3052721F",
+     "copied.p:31B189E1",
+     "copied.p:4329EC82",
+     "copied.p:43450195",
+     "copied.p:439BA4A8",
+     "copied.p:654112D5",
+     "copied.p:70439822",
+     "copied.p:78481EA1"
+    ],
+    "data_sha_core": "49da904d50eecdff"
    }
   },
   {
@@ -132,7 +209,8 @@
    "expect": {
     "ok": true,
     "summary": "Read the document (final)",
-    "data_sha": "e00ee79d68f03aa4"
+    "data_sha": "e00ee79d68f03aa4",
+    "data_sha_core": "e00ee79d68f03aa4"
    }
   },
   {
@@ -145,7 +223,13 @@
    "expect": {
     "ok": true,
     "summary": "6 style(s)",
-    "data_sha": "f7c10c53fdd798d4"
+    "data_sha": "f7c10c53fdd798d4",
+    "data_keys": [
+     "[].based_on",
+     "[].kind",
+     "[].name"
+    ],
+    "data_sha_core": "f7c10c53fdd798d4"
    }
   },
   {
@@ -156,7 +240,22 @@
    "expect": {
     "ok": true,
     "summary": "Checked validate, reflow, fields",
-    "data_sha": "f7b04a897c626487"
+    "data_sha": "f7b04a897c626487",
+    "data_keys": [
+     "fields",
+     "fields.counts",
+     "fields.note",
+     "reflow",
+     "reflow.complete",
+     "reflow.coverage",
+     "reflow.pages",
+     "validate",
+     "validate.baseline",
+     "validate.fixed",
+     "validate.new",
+     "validate.problems"
+    ],
+    "data_sha_core": "c0defdd5a99dcb3e"
    }
   },
   {
@@ -169,7 +268,23 @@
    "expect": {
     "ok": true,
     "summary": "Saved field-handbook.docx for the application",
-    "data_sha": "390431d08b1247a9"
+    "data_sha": "390431d08b1247a9",
+    "data_keys": [
+     "coverage",
+     "coverage.blocks_laid_out",
+     "coverage.complete",
+     "coverage.pages",
+     "coverage.status",
+     "doc",
+     "format",
+     "name",
+     "size",
+     "validate",
+     "validate.baseline",
+     "validate.fixed",
+     "validate.new"
+    ],
+    "data_sha_core": "dbb69697b5c45129"
    }
   }
  ],
