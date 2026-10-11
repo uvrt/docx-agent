@@ -22,7 +22,11 @@ to every definition (11,116), though a Word document refuses it (it undoes docum
 budget and guard stay.  ooxml-edit 0.14's slide ids in render's and check's ``slides`` (the
 items a string: ``s:256``, ``$ref`` or a number) added 12 to the core (2,417 -> 2,429, about
 3,595 counted by the proxy) and to every definition (11,128); a document's ``pages`` stay
-numbers (``"1"`` is refused, ``pages[0] must be a number``).  Budget and guard stay.
+numbers (``"1"`` is refused, ``pages[0] must be a number``).  Budget and guard stay.  Round
+3's chart formatting in the deferred edit_chart (axis scales, gridlines, series and point
+colours and markers, series type, chart text, point labels; the radar_filled and bubble types)
+added 646 to every definition (11,774), none to the core; the guard rises to 11,850 rather
+than squeeze the descriptions.
 """
 
 from __future__ import annotations
@@ -43,7 +47,7 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 5500
-ALL_GUARD = 11400
+ALL_GUARD = 11850
 
 
 @pytest.fixture(scope="module")

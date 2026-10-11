@@ -6,6 +6,13 @@ snapshot commit; the development history before it is summarised here.
 
 ## Unreleased
 
+- Chart formatting (production feedback round 3, G1-G4; ooxml-edit 0.15.0): axis scales,
+  gridlines, series and point colours and markers, combination charts, chart text and point
+  labels through `document.chart(...)` and `edit_chart`'s new actions, in Word's sizes;
+  `insert_chart` takes `radar_filled` and `bubble`, `category_order`, `gridlines` and
+  `bubble_scale`. Word 16 opens and draws every new construct unprompted and keeps it on a
+  save. The every-definition guard rises to 11,850 (11,774 estimated, +646), the core
+  unchanged; w3's golden records `read`'s new keys (`scales`, `types`).
 - `render` rasterises, and `check` lays out, a snapshot with the document's lock let go:
   the bytes and version are taken under the lock (with `validate` and `fields`, which a
   check reads from the same version), the worker draws or lays them out while other calls
