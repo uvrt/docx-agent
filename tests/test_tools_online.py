@@ -7,7 +7,8 @@ Skipped unless ``ANTHROPIC_API_KEY`` is set; run with ``python -m pytest -m prov
 HTTPS, no SDK, as in ooxml-edit's online checks; neither the key nor any header is printed.
 
 **The budget (tool roadmap, "Budgets"):** what a request loads -- the core definitions, the
-hidden tool-use prompt included -- is at most 5,500 tokens as count-tokens counts them.  The
+hidden tool-use prompt included -- is at most 6,000 tokens as count-tokens counts them (raised from 5,500 by the user on
+2026-10-11).  The
 offline proxy and the all-definitions guard are in the definition tests.
 """
 
@@ -34,7 +35,7 @@ pytestmark = [
 MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5-5")
 API = "https://api.anthropic.com/v1"
 #: Tokens the loaded core may add to a request, counted online.
-CORE_COUNTED_BUDGET = 5500
+CORE_COUNTED_BUDGET = 6000
 
 
 def _post(path: str, body: dict) -> dict:
