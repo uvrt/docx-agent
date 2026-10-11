@@ -12,7 +12,7 @@ from __future__ import annotations
 import struct
 from typing import Any
 
-from ooxml_edit.tools import Result, ToolError, shared
+from ooxml_edit.tools import Result, ToolError, shared, worker_task
 
 from ..edit.document import Document
 from ..edit.properties import refreshed_app
@@ -197,6 +197,7 @@ def replace_text(call: Any, doc: str, find: str, replace: str, expect: str, rege
 # -- S8 render ---------------------------------------------------------------------------------
 
 
+@worker_task  # a subprocess worker (a daemonic parent's) runs registered tasks only
 def render_pages(data: bytes, pages: list[int], width: int, font_dirs: list[str] | None = None
                  ) -> tuple[list[bytes], int, dict | None]:
     """In a worker: the pages as PNGs at ``width`` pixels, the page count, and the layout's
