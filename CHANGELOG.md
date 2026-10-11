@@ -6,6 +6,10 @@ snapshot commit; the development history before it is summarised here.
 
 ## Unreleased
 
+- Rendering and layout in a daemonic process (a Celery prefork worker's child; ooxml-edit
+  0.17.0): `render_pages` and `layout.convert_bytes` are registered worker tasks, so
+  ooxml-edit's subprocess workers run them there -- in parallel, with deadlines that kill --
+  instead of in-process.
 - Chart formatting (production feedback round 3, G1-G4; ooxml-edit 0.15.0): axis scales,
   gridlines, series and point colours and markers, combination charts, chart text and point
   labels through `document.chart(...)` and `edit_chart`'s new actions, in Word's sizes;

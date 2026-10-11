@@ -492,6 +492,12 @@ def convert_bytes(data: bytes, options: dict) -> tuple:
     return result.layout, list(result.svgs), list(convert_options.warnings)
 
 
+# A registered task of ooxml-edit's subprocess workers (``ooxml_edit.tools.worker_task``),
+# which run nothing else: what a daemonic process (a Celery prefork child) lays out with.
+# The mark is set as the attribute itself so that the layout does not import the tool layer.
+convert_bytes.__ooxml_edit_task__ = True
+
+
 def convert(document: "Document", *, unlocked=None, current=None, **options) -> _Conversion:
     """The document now, laid out once by :func:`docx2svg.convert_docx` -- every page, so
     the layout answers for all of them -- and cached by its bytes and the options.  Both

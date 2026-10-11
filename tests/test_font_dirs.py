@@ -174,3 +174,23 @@ def test_the_worker_sees_the_folder_under(method, folder):
         with _box(workers=1, start_method=method, font_dirs=[folder]) as box:
             assert all(_complete(facts) for facts in _facts(box))
             assert not box.pool.in_process
+
+
+def test_a_subprocess_worker_gets_the_folder_from_its_arguments(folder, monkeypatch, caplog):
+    """What a daemonic process renders with (a Celery prefork child): the folders reach the
+    worker as arguments, read where the toolbox runs -- not from the worker's own
+    environment, fixed when it started; and the renderer is a registered task, so it runs
+    in the worker, not in-process."""
+    import logging
+    import os
+
+    from ooxml_edit.tools import SubprocessPool
+
+    with caplog.at_level(logging.WARNING, "ooxml_edit.tools.worker"):
+        with _box(runner=SubprocessPool(1)) as box:
+            assert not any(_complete(facts) for facts in _facts(box))     # starts the worker
+            worker = box.pool.pids()
+            monkeypatch.setenv(FONT_DIRS_ENV, str(folder))                 # set after it started
+            assert all(_complete(facts) for facts in _facts(box))
+            assert box.pool.pids() == worker and os.getpid() not in worker
+    assert not [r for r in caplog.records if "not a registered" in r.getMessage()]
