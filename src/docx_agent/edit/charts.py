@@ -390,7 +390,8 @@ class ChartOps:
                      width: float | None = None, height: float | None = None,
                      title: str | None = None, axis_titles: dict | None = None,
                      legend: str | None = "default", number_format: str | None = None,
-                     name: str | None = None):
+                     name: str | None = None, category_order: str = "normal",
+                     gridlines: bool = True, bubble_scale: int | None = None):
         """A new chart from data, as an inline drawing, as Word inserts one: the chart part
         and an embedded workbook holding the same numbers, so Edit Data opens them
         (ooxml-edit's :func:`~ooxml_edit.charts.add_chart`).
@@ -399,9 +400,12 @@ class ChartOps:
         after it, which continues that paragraph's formatting (a heading's becomes
         ``Normal``) -- or a position inside a paragraph (``p:...@12``), where it goes inline
         as a picture would.  ``chart_type`` is ``column``, ``stacked_column``, ``bar``,
-        ``stacked_bar``, ``line``, ``pie``, ``scatter`` or ``radar``; ``categories`` the
-        labels (a scatter chart's x values); ``series`` ``[{"name", "values"}]``, one value
-        per category.  ``width`` and ``height`` are points: Word's 432 x 252 by default, one
+        ``stacked_bar``, ``line``, ``pie``, ``scatter``, ``radar``, ``radar_filled`` or
+        ``bubble``; ``categories`` the labels (a scatter or bubble chart's x values);
+        ``series`` ``[{"name", "values"}]``, one value per category -- a column chart's may
+        add ``"type": "line"``, a bubble chart's give ``"size"``.  ``category_order=
+        "reversed"`` lists a bar chart's categories top-down, ``gridlines=False`` draws none,
+        ``bubble_scale`` sizes bubbles in percent of Word's (100).  ``width`` and ``height`` are points: Word's 432 x 252 by default, one
         given keeps that ratio.  It looks as Word's new chart of that type looks in the
         document's theme (measured: 14 pt title, 9 pt labels, legend at the bottom -- a
         radar's at the top, ``legend="default"`` --, a background fill with a light border).
@@ -415,6 +419,9 @@ class ChartOps:
         from .document import EditResult
 
         chart_data(chart_type, categories, series)  # refused before anything changes
+        from ooxml_edit.charts.create import _options
+
+        _options(chart_type, category_order, gridlines, bubble_scale)
         size = _chart_size(width, height)
         with self._edit():
             renames: dict = {}
@@ -434,11 +441,13 @@ class ChartOps:
             part, entries = where._entries()
             entry = entries[0]
             renames.update(self._prepare(part, [entry]))
-            made = add_chart(self.package, part, chart_type, list(categories),
+            made = add_chart(self.package, part, chart_type,
+                             None if categories is None else list(categories),
                              [dict(s) if isinstance(s, dict) else s for s in series],
                              title=title, axis_titles=axis_titles, legend=legend,
                              number_format=number_format, look=WORD_LOOK,
-                             lang=default_language(self))
+                             lang=default_language(self), category_order=category_order,
+                             gridlines=gridlines, bubble_scale=bubble_scale)
             number = self._next_doc_pr()
             label = name or f"Chart {number}"
             anchor_id, edit_id = _ids.generate(part + "\0chart", self._used(), 2)

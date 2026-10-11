@@ -1,0 +1,100 @@
+"""A chart's look in a document: axis scales, gridlines, colours and markers, combination
+charts, chart text, point labels, filled radar and bubble charts (ooxml-edit's ``Chart``
+formatting, tested there) -- through the library and through ``edit_chart``.
+
+Here: the document stays valid, the workbook agrees with the cache, every call is one undo
+step, and the tool's arguments reach the library with Word's sizes.
+"""
+
+from __future__ import annotations
+
+import pytest
+
+from docx_agent import Document
+from ooxml_edit.tools import Toolbox
+
+C = "{http://schemas.openxmlformats.org/drawingml/2006/chart}"
+CATEGORIES = ["Governance", "People", "Data", "Technology", "Procure"]
+CURRENT = [2.13, 2.10, 2.17, 2.33, 2.08]
+TARGET = [4, 3, 4, 3, 4]
+
+
+def report() -> Document:
+    document = Document.new()
+    document.insert_markdown("# Maturity\n\nScores per area.\n\nThe end.", at="end")
+    return document
+
+
+def test_the_maturity_gap_chart_in_a_document():
+    document = report()
+    edit = document.insert_chart(document.paragraphs()[1].id, "column", CATEGORIES,
+                                 [{"name": "Current", "values": CURRENT},
+                                  {"name": "Target", "values": TARGET, "type": "line"}],
+                                 gridlines=False)
+    chart = document.chart(edit.id)
+    before = document.to_bytes()
+    chart.set_axis_scale("value", minimum=0, maximum=5, major_unit=1)
+    chart.format_series("Current", fill="tx2")
+    chart.format_point("Current", "Procure", fill="accent2")
+    chart.format_series("Target", line=None, marker="diamond", marker_size=10,
+                        marker_fill="accent6")
+    chart.set_text_style(size=10)
+    assert chart.chart_types == ["bar", "line"]
+    assert chart.scales["value"]["maximum"] == 5
+    assert chart.workbook_values()["series"][1]["values"]["values"] == TARGET
+    assert document.validate() == []
+    for _ in range(5):
+        document.undo()
+    assert document.to_bytes() == before
+
+
+@pytest.mark.parametrize("kind", ["radar_filled", "bubble"])
+def test_the_new_kinds_in_a_document(kind):
+    document = report()
+    anchor = document.paragraphs()[1].id
+    if kind == "bubble":
+        edit = document.insert_chart(anchor, "bubble", [1, 2, 4],
+                                     [{"name": "Recs", "values": [4.5, 3, 4], "size": [3, 2, 1]}])
+    else:
+        edit = document.insert_chart(anchor, "radar_filled", ["Speed", "Cost", "Risk"],
+                                     [{"name": "Now", "values": [3, 2, 4]}])
+    chart = document.chart(edit.id)
+    assert chart.chart_type == ("bubble" if kind == "bubble" else "radar")
+    # Word's sizes (measured): 9 pt labels.
+    sizes = {n.get("sz") for n in chart._root().iter(
+        "{http://schemas.openxmlformats.org/drawingml/2006/main}defRPr") if n.get("sz")}
+    assert "900" in sizes
+    assert document.validate() == []
+
+
+def test_the_tool_formats_a_chart_and_labels_a_matrix():
+    from docx_agent.tools import FORMAT, GROUPS, TOOLS
+
+    document = report()
+    anchor = document.paragraphs()[1].id
+    with Toolbox(TOOLS, formats=[FORMAT], groups=GROUPS) as box:
+        session = box.session()
+        session.open(document.to_bytes(), "report.docx")
+
+        def run(**arguments):
+            result = box.dispatch(session, "edit_chart", {"doc": "d1", **arguments})
+            assert result.ok, result.to_json()
+            return result
+
+        run(target=anchor, action="add", chart_type="bar", categories=["Worst", "Mid", "Best"],
+            data=[{"name": "Score", "values": [1.8, 2.4, 3.1]}], axis="category",
+            scale={"reverse": True}, gridlines="none", ref="r")
+        read = run(target="$r", action="read")
+        assert read.data["scales"]["category"]["reverse"] is True
+        assert read.data["scales"]["value"]["major_gridlines"] is False
+        run(target=anchor, action="add", chart_type="bubble", values=[1, 2, 4],
+            data=[{"name": "Recs", "values": [4.5, 3, 4], "size": [3, 2, 1]}], ref="b")
+        labelled = run(target="$b", action="set_point_labels", series="Recs",
+                       labels=["R1", "R2", "R3"], position="right", cells=True)
+        assert labelled.data["point_labels"] == {"Recs": ["R1", "R2", "R3"]}
+        run(target="$b", action="set_text_style", part="data_labels", style={"size": 8})
+        refused = box.dispatch(session, "edit_chart", {"doc": "d1", "target": "$r",
+                                                        "action": "set_series_type",
+                                                        "series": "Score", "chart_type": "line"})
+        assert not refused.ok and "horizontal bars" in refused.error.message
+        assert session.entry("d1").document.validate() == []

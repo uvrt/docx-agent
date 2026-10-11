@@ -70,22 +70,26 @@
    "expect": {
     "ok": true,
     "summary": "Read d:1",
-    "data_sha": "26ceb63c275ee898",
+    "data_sha": "eb167d073a230334",
     "data_keys": [
      "categories",
      "id",
      "legend",
      "number_format",
+     "scales",
+     "scales.category",
+     "scales.value",
      "series",
      "title",
      "type",
+     "types",
      "workbook",
      "workbook.categories",
      "workbook.series",
      "workbook.sheet",
      "workbook.workbook"
     ],
-    "data_sha_core": "26ceb63c275ee898"
+    "data_sha_core": "eb167d073a230334"
    }
   },
   {
@@ -264,22 +268,26 @@
    "expect": {
     "ok": true,
     "summary": "Read d:1",
-    "data_sha": "cfafac545ffdfb7d",
+    "data_sha": "a3a878c92ebd8539",
     "data_keys": [
      "categories",
      "id",
      "legend",
      "number_format",
+     "scales",
+     "scales.category",
+     "scales.value",
      "series",
      "title",
      "type",
+     "types",
      "workbook",
      "workbook.categories",
      "workbook.series",
      "workbook.sheet",
      "workbook.workbook"
     ],
-    "data_sha_core": "cfafac545ffdfb7d"
+    "data_sha_core": "a3a878c92ebd8539"
    }
   },
   {

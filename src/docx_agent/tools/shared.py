@@ -379,42 +379,83 @@ def edit_chart(call: Any, doc: str, target: str, action: str, chart_type: str | 
                width: float | None = None, number_format: str | None = None, series: str | None = None,
                category: str | None = None, values: list[float] | None = None, value: float | None = None,
                text: str | None = None, axis: str | None = None, position: str | None = None,
-               ref: str | None = None) -> Result:
+               ref: str | None = None, scale: dict | None = None, gridlines: str | None = None,
+               style: dict | None = None, part: str | None = None, labels: list | None = None,
+               cells: bool | None = None, secondary: bool | None = None) -> Result:
     from ooxml_edit.charts import ChartDataError
+    from ooxml_edit.charts.actions import STYLE_ACTIONS
 
     try:
         if action == "add":
             return _add_chart(call, resolve(call, target), chart_type, categories, data, box, width, values,
-                              number_format, text, position, ref)
+                              number_format, text, position, ref, axis, scale, gridlines)
+        if action in STYLE_ACTIONS:
+            return _style_chart(call, target, action, series=series, category=category, axis=axis,
+                                scale=scale, gridlines=gridlines, style=style, part=part, labels=labels,
+                                cells=cells, position=position, chart_type=chart_type, secondary=secondary)
         return _edit_chart(call, target, action, number_format, series, category, values, value, text, axis,
                            position)
     except (ChartDataError, IndexError) as error:
         raise ToolError("invalid_arguments", str(error).strip("'\"")) from None
 
 
+def _style_chart(call: Any, target: str, action: str, *, series: str | None, category: str | None,
+                 **arguments: Any) -> Result:
+    """The formatting actions (ooxml-edit's ``apply_style_action``)."""
+    from ooxml_edit.charts.actions import apply_style_action, chart_style_json
+
+    chart = call.document.chart(target)
+    chosen = None if series is None else _series(chart, series).index
+    point = None if category is None else _category(chart, category)
+    apply_style_action(chart, action, series=chosen, category=point, **arguments)
+    chart = call.document.chart(target)
+    data = chart_json(chart)
+    data.update(chart_style_json(chart))
+    return Result(summary=f"{action} on {target}", changed=[target], data=data)
+
+
 def _add_chart(call: Any, target: str, chart_type: str | None, categories: list[str] | None,
                data: list[dict] | None, box: dict | None, width: float | None, values: list[float] | None,
-               number_format: str | None, text: str | None, position: str | None, ref: str | None) -> Result:
+               number_format: str | None, text: str | None, position: str | None, ref: str | None,
+               axis: str | None = None, scale: dict | None = None, gridlines: str | None = None) -> Result:
     """``action: "add"``: a new inline chart in a paragraph of its own after ``target``."""
     if box is not None:
         raise ToolError("invalid_arguments", "box is for decks; in a document give width", field="box")
     chart_type = need(chart_type, "chart_type")
     data = need(data, "data")
-    if chart_type == "scatter":
+    if chart_type in ("scatter", "bubble"):
         if values is None or categories is not None:
-            raise ToolError("invalid_arguments", "a scatter chart takes its x values in values, not categories",
-                            field="values")
+            raise ToolError("invalid_arguments", f"a {chart_type} chart takes its x values in values, not "
+                            "categories", field="values")
         labels = list(values)
     else:
         if values is not None:
-            raise ToolError("invalid_arguments", "values are a scatter chart's x values; give each series' "
-                            "values in data", field="values")
+            raise ToolError("invalid_arguments", "values are a scatter or bubble chart's x values; give each "
+                            "series' values in data", field="values")
         labels = list(need(categories, "categories"))
     if len(labels) * max(len(data), 1) > 10_000:
         raise ToolError("limit", "at most 10,000 chart values", field="data")
+    if position not in (None, "none", "right", "left", "top", "bottom"):
+        raise ToolError("invalid_arguments", f"{position} is a label position; a legend is right, left, top, "
+                        "bottom or none", field="position")
+    if scale is not None and axis is None:
+        raise ToolError("invalid_arguments", "add with scale needs axis", field="axis")
     legend = None if position == "none" else (position or "default")
-    edit = call.document.insert_chart(target, chart_type, labels, [dict(entry) for entry in data], width=width,
-                                      title=text, legend=legend, number_format=number_format)
+    reverse = bool((scale or {}).get("reverse")) and axis == "category"
+    rest = {k: v for k, v in (scale or {}).items() if not (reverse and k == "reverse")}
+    from ooxml_edit.charts.actions import apply_style_action
+
+    with call.document._edit():  # the chart and its scale: one undo step
+        edit = call.document.insert_chart(target, chart_type, labels, [dict(entry) for entry in data],
+                                          width=width, title=text, legend=legend, number_format=number_format,
+                                          category_order="reversed" if reverse else "normal",
+                                          gridlines=gridlines != "none")
+        chart = call.document.chart(edit.id)
+        if rest:
+            apply_style_action(chart, "set_axis_scale", axis=axis, scale=rest)
+        if gridlines not in (None, "major", "none"):
+            apply_style_action(chart, "set_gridlines", axis="y" if chart_type in ("scatter", "bubble")
+                               else "value", gridlines=gridlines)
     remember(call, ref, edit.id)
     chart = call.document.chart(edit.id)
     data = chart_json(chart)
@@ -470,6 +511,9 @@ def _read_chart(chart: Any, target: str) -> Result:
     """``edit_chart`` with ``action: "read"``: the chart as drawn and its workbook."""
     data = chart_json(chart)
     data["number_format"] = chart.number_format
+    from ooxml_edit.charts.actions import chart_style_json
+
+    data.update(chart_style_json(chart))
     try:
         data["workbook"] = chart.workbook_values()
     except Exception as error:  # noqa: BLE001 -- a chart without a readable workbook
