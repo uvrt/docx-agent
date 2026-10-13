@@ -497,6 +497,10 @@ def test_new_document_from_a_template_blob_and_save_formats(box, session):
     assert Document.open(outputs[0].data).package.kind == "docx"
     assert outputs[1].data.decode().startswith("# Report")
     fails(box, session, "save_document", "invalid_arguments", doc=d, name="x.pptx", format="pptx")
+    for fmt in ("xlsx", "xlsm", "xltx"):      # in the shared enum from ooxml-edit 0.18
+        error = fails(box, session, "save_document", "invalid_arguments", doc=d, name=f"x.{fmt}", format=fmt)
+        assert error.field == "format"
+    assert session.take_outputs() == []
     fails(box, session, "save_document", "invalid_arguments", doc=d, name="x.dotx", format="docx")
     fails(box, session, "new_document", "invalid_arguments", kind="docx", size="16:9")
 

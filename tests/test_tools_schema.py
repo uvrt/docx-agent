@@ -27,7 +27,11 @@ numbers (``"1"`` is refused, ``pages[0] must be a number``).  Budget and guard s
 3's chart formatting in the deferred edit_chart (axis scales, gridlines, series and point
 colours and markers, series type, chart text, point labels; the radar_filled and bubble types)
 added 646 to every definition (11,774), none to the core; the guard rises to 11,850 rather
-than squeeze the descriptions.
+than squeeze the descriptions.  ooxml-edit 0.18's workbook kind in the shared tools
+(``describe``'s and ``find_text``'s descriptions, find_text's ``range``, ``xlsx`` in
+new_document's ``kind``, ``xlsx``, ``xlsm`` and ``xltx`` in save_document's ``format``) added
+64 to the core (2,471 -> 2,535, about 3,752 counted by the proxy, within 6,000) and to every
+definition (11,880); the guard rises to 11,950.
 """
 
 from __future__ import annotations
@@ -48,7 +52,7 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 6000
-ALL_GUARD = 11850
+ALL_GUARD = 11950
 
 
 @pytest.fixture(scope="module")
