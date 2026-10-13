@@ -182,6 +182,7 @@ def test_a_table_from_a_dataset_header_rows_and_provenance(toolbox, session):
     table = data["id"]
     assert table in data["blocks"] and table in result.created
     assert (data["rows"], data["columns"]) == (4, 4)
+    assert "markdown" not in data                       # the caller has the data
     assert texts(session, table) == [["check", "rating", "due", "done"],
                                      ["Alpha", "3.5", "2026-01-05", "TRUE"],
                                      ["Beta", "4", "2026-02-10", "FALSE"],
@@ -352,7 +353,7 @@ def test_set_cells_from_a_source_rewrites_the_block(toolbox, session):
                                      ["Gamma", "late\vvery"]]
     assert result.data["from"]["first_row"] == 1 and not result.warnings
     assert f"{table}/c2,1" in result.changed
-    assert result.data["id"] == table and "markdown" in result.data
+    assert result.data["id"] == table and "markdown" not in result.data
 
 
 def test_set_cells_from_row_index_under_a_kept_header(toolbox, session):

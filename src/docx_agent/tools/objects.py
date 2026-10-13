@@ -18,10 +18,14 @@ DOC = string("Document id.")
 TABLE = string("Table (t:...).")
 
 
-def table_json(document: Any, table_id: str) -> dict[str, Any]:
+def table_json(document: Any, table_id: str, *, markdown: bool = True) -> dict[str, Any]:
+    """A table's id, size and (``markdown``) its text as Markdown -- left out for a table
+    written from a source, whose caller has the data."""
     table = document.table(table_id)
-    return {"id": table.id, "rows": len(table.rows), "columns": table.column_count,
-            "markdown": document.to_markdown(table.id, ids=False)}
+    data = {"id": table.id, "rows": len(table.rows), "columns": table.column_count}
+    if markdown:
+        data["markdown"] = document.to_markdown(table.id, ids=False)
+    return data
 
 
 def _limit_cells(call: Any, count: int) -> None:
@@ -160,7 +164,7 @@ def _set_from(call: Any, view: Any, source: str, from_columns: list[str] | None,
             edits.extend(_set_cell(document, current, row, col, cell_text(lines)))
             changed.append(current.cell(row, col).id)
     result = outcome(edits, f"set_cells on {view.id} from {block.rows.address}",
-                     data={**table_json(document, view.id), "from": block.provenance(top)},
+                     data={**table_json(document, view.id, markdown=False), "from": block.provenance(top)},
                      changed=changed)
     if top + need_rows < height or need_columns < width:
         result.warnings.append(f"from filled rows {top}-{top + need_rows - 1}, columns "

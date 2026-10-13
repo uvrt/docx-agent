@@ -110,7 +110,8 @@ merged cell. Nothing is cut: past 63 columns, 4,096 rows or 5,000 cells the call
  "from_columns": ["check", "rating", "due"]}
 ```
 
-The result's `data` has the table (`id`, `rows`, `columns`, `markdown`) and `from`, where
+The result's `data` has the table (`id`, `rows`, `columns`; not its Markdown, which the
+caller has) and `from`, where
 every placed value came from -- the source, its document and version, `header_row` and
 `first_row` (table rows from 0; source row `n`, from 1, is table row `first_row + n - 1`),
 and per column its table column, source column, source rows as runs and their sources:

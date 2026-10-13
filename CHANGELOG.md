@@ -20,6 +20,7 @@ snapshot commit; the development history before it is summarised here.
   63 columns, 4,096 rows or 5,000 cells, or too big for the table written into, is refused,
   never cut; a block over a merged cell is refused. `data.from` gives the source and, per
   placed column, its table column, source rows and their sources; none of it is saved.
+  The result gives the table's id and size, not its Markdown (the caller has the data).
   One call is one undo step, tracked while tracking is on.
 - `d:` is a drawing (`d:3`) and a dataset (`d:<id>`): the docx format's `source_hint`
   (ooxml-edit 0.23.0) says `d:3 is a drawing in this document, not a dataset` when a source

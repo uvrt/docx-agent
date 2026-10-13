@@ -282,7 +282,7 @@ def _table_from(call: Any, source: str, from_columns: list[str] | None,
                         valid_options=[s.name for s in document.styles][:50]) from None
     table = next(b for b in edit.blocks if b.startswith("t:"))
     rows, columns = block.size
-    data = {"blocks": edit.blocks, **table_json(document, table), "from": block.provenance(0)}
+    data = {"blocks": edit.blocks, **table_json(document, table, markdown=False), "from": block.provenance(0)}
     return outcome([edit], f"Inserted a {rows}x{columns} table {table} from {block.rows.address}",
                    data=data)
 
