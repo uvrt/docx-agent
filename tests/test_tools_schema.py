@@ -31,7 +31,14 @@ than squeeze the descriptions.  ooxml-edit 0.18's workbook kind in the shared to
 (``describe``'s and ``find_text``'s descriptions, find_text's ``range``, ``xlsx`` in
 new_document's ``kind``, ``xlsx``, ``xlsm`` and ``xltx`` in save_document's ``format``) added
 64 to the core (2,471 -> 2,535, about 3,752 counted by the proxy, within 6,000) and to every
-definition (11,880); the guard rises to 11,950.
+definition (11,880); the guard rises to 11,950.  ooxml-edit 0.22 (O3) put ``from`` and
+``columns`` on the deferred edit_chart (about 11,933).  X1, tables from data (``from``,
+``from_columns`` and ``header`` on word_insert_markdown and word_edit_table) added 194 to
+every definition (12,127), none to the core; the guard rises to 12,150, the next 50, rather
+than squeeze descriptions the pptx-agent twins share.  With seven optional parameters
+word_insert_markdown keeps its strict place, and edit_smartart (two) no longer fits Claude's
+24 beside the others: it is sent non-strict (the dispatcher still validates it), 23 optional
+parameters over the strict tools.
 """
 
 from __future__ import annotations
@@ -52,7 +59,7 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 6000
-ALL_GUARD = 11950
+ALL_GUARD = 12150
 
 
 @pytest.fixture(scope="module")

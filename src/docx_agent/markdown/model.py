@@ -118,6 +118,9 @@ class Table:
     rows: list
     #: Per column: ``None``, ``left``, ``center`` or ``right``.
     aligns: list
+    #: False: no header row -- ``header`` is not written and every row is a body row (a
+    #: table from data with ``header: []``; GFM cannot say this, so only the tool builds it).
+    headed: bool = True
 
 
 @dataclass

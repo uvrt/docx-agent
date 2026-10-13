@@ -88,6 +88,45 @@ separators (`w:decimalSymbol`, `w:listSeparator`). Without one it is en-US, neve
 server's own. No tool definition or prompt changes. A document outside the tools takes it
 as `Document.locale` (or `Document.new(locale=...)`).
 
+### Tables from data
+
+`word_insert_markdown` (in place of `markdown` or `blob`) and `word_edit_table`'s `set_cells`
+take a table's text from a source, as `edit_chart` takes a chart's (ooxml-edit 0.22.0):
+`from` is a dataset (`d:<id>`) or a table of another open document (`t:<name>`),
+`from_columns` picks its columns by name, in the order placed (default: all), and every row
+is placed. A header row of the column names goes above them -- repeated on each page, as a
+Markdown table's is -- unless `header` gives its texts, or `[]` for none. Numbers are written
+as a chart's category labels write them (General, the session locale's decimal separator),
+dates as the source gives them, a blank as an empty cell, a value's line breaks as line
+breaks in the cell's one paragraph; the text goes in literally, never read as Markdown.
+`word_insert_markdown` makes the table the source's size at `at`, in the document's table
+style (`style_map`'s `table` and `table_cell` apply); `set_cells` writes from row `index`
+(default 0), column 0, and refuses a source the table has no room for, or a block over a
+merged cell. Nothing is cut: past 63 columns, 4,096 rows or 5,000 cells the call is refused
+(`limit`). A whole call is one undo step, and tracked while tracking is on.
+
+```json
+{"doc": "d1", "at": "after:p:3B212964", "from": "d:checks",
+ "from_columns": ["check", "rating", "due"]}
+```
+
+The result's `data` has the table (`id`, `rows`, `columns`; not its Markdown, which the
+caller has) and `from`, where
+every placed value came from -- the source, its document and version, `header_row` and
+`first_row` (table rows from 0; source row `n`, from 1, is table row `first_row + n - 1`),
+and per column its table column, source column, source rows as runs and their sources:
+
+```json
+{"source": "d:checks", "doc": "d2", "version": 3, "header_row": 0, "first_row": 1,
+ "columns": [{"col": 1, "column": "rating", "rows": "1-12",
+              "sources": ["Checks!C2:C13"]}, ...]}
+```
+
+It is not written into the document. A Word document names its drawings with the same
+`d:` prefix as datasets (`d:3`; a dataset's id starts with a letter), so a `from` only
+ever names a dataset, and given a drawing's id it says so: `no dataset d:3; d:3 is a
+drawing in this document, not a dataset: ...`.
+
 The provider SDKs read their keys from the environment (`ANTHROPIC_API_KEY`,
 `OPENAI_API_KEY`). When the loop ends, `session.take_outputs()` holds what `save_document`
 wrote, as bytes.

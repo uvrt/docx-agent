@@ -125,8 +125,6 @@ def insert_markdown(document: "Document", md: str, *, at: str = "end", style_map
                     images=None, fetch: Callable[[str], bytes] | None = None, html: str = "refuse",
                     emphasis: str = "styles") -> "EditResult":
     """See :meth:`docx_agent.Document.insert_markdown`."""
-    from ..edit.document import EditResult
-
     if not isinstance(md, str):
         raise EditError("insert_markdown takes Markdown text")
     if html not in HTML_MODES:
@@ -134,10 +132,26 @@ def insert_markdown(document: "Document", md: str, *, at: str = "end", style_map
     if emphasis not in EMPHASIS_MODES:
         raise EditError(f"emphasis is one of {', '.join(EMPHASIS_MODES)}")
     options = Options(html, emphasis, images, fetch)
-    style_map = coerce(style_map)
     blocks = parse_model(md)
     notes = {b.label: b for b in blocks if isinstance(b, m.FootnoteDef)}
     blocks = [b for b in blocks if not isinstance(b, (m.FootnoteDef, m.Comment))]
+    return _write(document, blocks, notes, options, at, coerce(style_map))
+
+
+def insert_blocks(document: "Document", blocks: list, *, at: str = "end",
+                  style_map: StyleMap | None = None) -> "EditResult":
+    """Blocks of the model (:mod:`docx_agent.markdown.model`) written as
+    :func:`insert_markdown` writes the blocks it parses -- at ``at``, in ``style_map``'s
+    styles, one edit, tracked when tracking is on -- with no Markdown in between: a
+    :class:`~docx_agent.markdown.model.Text`'s text goes in literally (a table built from
+    data, ``word_insert_markdown``'s ``from``).  No footnotes, pictures or HTML."""
+    return _write(document, list(blocks), {}, Options(), at, coerce(style_map))
+
+
+def _write(document: "Document", blocks: list, notes: dict, options: Options, at: str,
+           style_map: StyleMap | None) -> "EditResult":
+    from ..edit.document import EditResult
+
     lone = None
     if at in ("end", "end:body"):
         lone = _lone_empty_paragraph(document)
@@ -660,7 +674,7 @@ class Writer:
         return paragraph
 
     def table(self, block: m.Table) -> Element:
-        rows = [block.header] + block.rows
+        rows = ([block.header] if block.headed else []) + block.rows
         columns = max((len(r) for r in rows), default=0) or 1
         style = self.style("table")
         width = self.text_width()
@@ -670,7 +684,10 @@ class Writer:
         if style is not None:
             append_in_order(properties, make("w:tblStyle", **{"w:val": style}))
         append_in_order(properties, make("w:tblW", **{"w:w": "0", "w:type": "auto"}))
-        append_in_order(properties, make("w:tblLook", **{"w:val": "04A0", "w:firstRow": "1", "w:lastRow": "0",
+        # Without a header row the style's first-row look is off (ECMA-376 17.4.56, tblLook).
+        append_in_order(properties, make("w:tblLook", **{"w:val": "04A0" if block.headed else "0480",
+                                                          "w:firstRow": "1" if block.headed else "0",
+                                                          "w:lastRow": "0",
                                                           "w:firstColumn": "1", "w:lastColumn": "0",
                                                           "w:noHBand": "0", "w:noVBand": "1"}))
         grid = append_in_order(table, make("w:tblGrid"))
@@ -680,7 +697,7 @@ class Writer:
         for k, row in enumerate(rows):
             tr = make("w:tr")
             table.append(tr)
-            if k == 0:
+            if k == 0 and block.headed:
                 append_in_order(tr, make("w:trPr")).append(make("w:tblHeader"))
             for c in range(columns):
                 cell = make("w:tc")
@@ -886,9 +903,20 @@ class Writer:
         story = document._story_of(self.part)
         prefix = "" if story == "body" else f"{story}/"
         out: list[str] = []
+        # Each seed's ids drawn at once, then handed out in document order: the same ids as
+        # drawing two per node, which restarts the seed's sequence every time (quadratic in a
+        # table of thousands of cells).
+        rows = [n for e in elements if e.tag != W_P for n in e.iter(_W + "tr")]
+        paragraphs = [n for e in elements for n in ([e] if e.tag == W_P else e.iter(W_P))]
+        drawn = {self.part + "\0row": iter(_ids.generate(self.part + "\0row", used, 2 * len(rows))),
+                 self.part: iter(_ids.generate(self.part, used, 2 * len(paragraphs)))}
+
+        def next_ids(seed: str) -> tuple[str, str]:
+            return next(drawn[seed]), next(drawn[seed])
+
         for element in elements:
             if element.tag == W_P:
-                para_id, text_id = _ids.generate(self.part, used, 2)
+                para_id, text_id = next_ids(self.part)
                 _ids.stamp(element, para_id, text_id)
                 out.append(f"{prefix}p:{para_id}")
                 self.top_ids.append(out[-1])
@@ -896,7 +924,7 @@ class Writer:
                 first_row = None
                 nested: list[str] = []
                 for node in element.iter(W_P, _W + "tr"):
-                    para_id, text_id = _ids.generate(self.part + ("\0row" if node.tag == _W + "tr" else ""), used, 2)
+                    para_id, text_id = next_ids(self.part + ("\0row" if node.tag == _W + "tr" else ""))
                     _ids.stamp(node, para_id, text_id)
                     if node.tag == _W + "tr":
                         first_row = first_row or para_id

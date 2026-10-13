@@ -10,8 +10,12 @@ from ooxml_edit.tools import (Result, ToolError, array, boolean, number, obj, st
 from ..edit.document import Paragraph, Table, W_P
 from ..edit.ranges import TextRange
 from ..edit.styles import StyleError
+from ..markdown import model as m
 from ..markdown.stylemap import StyleMap
+from ..markdown.write import insert_blocks
 from ._base import need, one_of, outcome, remember, resolve, short, word_tool
+from .table_data import (FROM_COLUMNS, HEADER, MAX_COLUMNS, MAX_ROWS, fits, no_source,
+                         placed)
 
 DOC = string("Document id.")
 REF = string("Ref name for $name.", optional=True)
@@ -227,13 +231,22 @@ def images_from(call: Any):
            {"doc": DOC,
             "markdown": string("Markdown.", optional=True),
             "blob": string("Or a Markdown blob handle.", optional=True),
+            "from": string("Or a table of the rows of d:<id> or t:<table>.", optional=True),
+            "from_columns": FROM_COLUMNS,
+            "header": HEADER,
             "at": string("end, after:<id>, before:<id> or replace:<id>[..<id>]."),
             "style_map": STYLE_MAP,
             "key": string("Retry key: a repeat with the same key makes nothing new.", optional=True)},
-           group="word_text", mutates=True, exactly_one=[("markdown", "blob")])
+           group="word_text", mutates=True, exactly_one=[("markdown", "blob", "from")],
+           sources=("from",))
 def word_insert_markdown(call: Any, doc: str, at: str, markdown: str | None = None,
                          blob: str | None = None, style_map: list[dict] | None = None,
-                         key: str | None = None) -> Result:
+                         key: str | None = None, from_columns: list[str] | None = None,
+                         header: list[str] | None = None, **given: Any) -> Result:
+    source = given.get("from")
+    if source is not None:
+        return _table_from(call, source, from_columns, header, _at(call, at), style_map)
+    no_source(from_columns, header)
     if blob is not None:
         source = call.blob(blob)
         try:
@@ -249,6 +262,40 @@ def word_insert_markdown(call: Any, doc: str, at: str, markdown: str | None = No
                         valid_options=[s.name for s in call.document.styles][:50]) from None
     result = outcome([edit], f"Inserted {len(edit.blocks)} block(s)", data={"blocks": edit.blocks})
     return result
+
+
+def _table_from(call: Any, source: str, from_columns: list[str] | None,
+                header: list[str] | None, at: str, style_map: list[dict] | None) -> Result:
+    """A new table of a source's rows (:mod:`.table_data`), written as a Markdown table is."""
+    from .objects import table_json
+
+    block = placed(call, source, from_columns, header)
+    fits(block, MAX_ROWS, MAX_COLUMNS)
+    cells = [[_inline(lines) for lines in row] for row in block.lines()]
+    model = m.Table(cells[0] if block.header else [], cells[1:] if block.header else cells,
+                    [None] * block.size[1], headed=bool(block.header))
+    document = call.document
+    try:
+        edit = insert_blocks(document, [model], at=at, style_map=_style_map(style_map))
+    except StyleError as error:
+        raise ToolError("not_found", str(error), field="style_map",
+                        valid_options=[s.name for s in document.styles][:50]) from None
+    table = next(b for b in edit.blocks if b.startswith("t:"))
+    rows, columns = block.size
+    data = {"blocks": edit.blocks, **table_json(document, table, markdown=False), "from": block.provenance(0)}
+    return outcome([edit], f"Inserted a {rows}x{columns} table {table} from {block.rows.address}",
+                   data=data)
+
+
+def _inline(lines: list[str]) -> list:
+    """A cell's lines as literal text, hard breaks between them."""
+    out: list = []
+    for k, line in enumerate(lines):
+        if k:
+            out.append(m.Break())
+        if line:
+            out.append(m.Text(line))
+    return out
 
 
 def _style_map(entries: list[dict] | None) -> Any:

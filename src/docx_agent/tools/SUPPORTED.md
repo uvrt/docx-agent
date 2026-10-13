@@ -8,12 +8,12 @@ for laid-out documents, the pages it reflowed (see [GUIDANCE.md](GUIDANCE.md)).
 |---|---|---|
 | Documents | `open_document`, `new_document`, `save_document`, `close_document`, `read_blob` | new from a template; save as docx, dotx or Markdown; refuses new validation problems |
 | Reading | `describe`, `word_read`, `word_inspect`, `find_text`, `render` | Markdown with ids (final, markup or original view, every story); a block's exact formatting; page renders |
-| Text | `word_set_text`, `word_insert_text`, `word_delete`, `replace_text`, `word_insert_markdown` | tracked edits change only the words that changed; Markdown in the document's styles, tables included |
+| Text | `word_set_text`, `word_insert_text`, `word_delete`, `replace_text`, `word_insert_markdown` | tracked edits change only the words that changed; Markdown in the document's styles, tables included; a table from a dataset or another document's table (`from`) |
 | Review | `word_set_tracking`, `word_changes`, `word_comments` | tracked changes listed, accepted, rejected by author, kind or range; comment threads |
 | Structure | `word_move`, `word_copy_from`, `word_sections`, `word_headers_footers` | sections and blocks moved or copied from another document with their styles; page setup, breaks, columns; headers, footers, page X of Y |
 | Fields and references | `word_fields`, `word_notes`, `word_links` | TOC, captions, cross-references, dates, update; footnotes and endnotes; hyperlinks and bookmarks |
 | Formatting and styles | `word_format`, `word_lists`, `word_styles`, `word_template` | run and paragraph formatting, clearing direct formatting; lists; the style sheet; out of compatibility mode |
-| Objects | `word_edit_table`, `word_format_table`, `word_drawings`, `word_controls`, `edit_chart`, `edit_smartart` | tables edited and formatted (new ones are Markdown); pictures, text boxes, shapes, inline or floating; content controls; charts from data (column, stacked column, bar, stacked bar, line, pie, scatter, radar); SmartArt text |
+| Objects | `word_edit_table`, `word_format_table`, `word_drawings`, `word_controls`, `edit_chart`, `edit_smartart` | tables edited and formatted (new ones are Markdown), cells set from a dataset or another document's table (`set_cells` `from`); pictures, text boxes, shapes, inline or floating; content controls; charts from data (column, stacked column, bar, stacked bar, line, pie, scatter, radar); SmartArt text |
 | Properties | `set_properties` | title, author, language, subject |
 | Session | `undo`, `check`, `batch` | |
 

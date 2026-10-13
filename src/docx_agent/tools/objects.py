@@ -1,5 +1,6 @@
 """Objects: tables (``word_edit_table``, ``word_format_table``; a new table is Markdown,
-through ``word_insert_markdown``),
+through ``word_insert_markdown``, which with ``word_edit_table``'s ``set_cells`` also takes
+a table's rows from a dataset or another document's table: :mod:`.table_data`),
 pictures and other drawings (``word_drawings``, which inserts a picture too) and content
 controls (``word_controls``)."""
 
@@ -11,15 +12,20 @@ from ooxml_edit.tools import Result, ToolError, array, integer, number, obj, str
 
 from ._base import need, outcome, remember, resolve, short, word_tool
 from .structure import _position
+from .table_data import FROM_COLUMNS, HEADER, cell_text, fits, no_source, placed
 
 DOC = string("Document id.")
 TABLE = string("Table (t:...).")
 
 
-def table_json(document: Any, table_id: str) -> dict[str, Any]:
+def table_json(document: Any, table_id: str, *, markdown: bool = True) -> dict[str, Any]:
+    """A table's id, size and (``markdown``) its text as Markdown -- left out for a table
+    written from a source, whose caller has the data."""
     table = document.table(table_id)
-    return {"id": table.id, "rows": len(table.rows), "columns": table.column_count,
-            "markdown": document.to_markdown(table.id, ids=False)}
+    data = {"id": table.id, "rows": len(table.rows), "columns": table.column_count}
+    if markdown:
+        data["markdown"] = document.to_markdown(table.id, ids=False)
+    return data
 
 
 def _limit_cells(call: Any, count: int) -> None:
@@ -73,19 +79,33 @@ def _text(table: Any, row: int, col: int) -> str:
             "action": string("What to do.", enum=["set_cells", "insert_row", "delete_row", "insert_column",
                                                    "delete_column", "merge", "split"]),
             "cells": array(CELL, "set_cells: the cells.", optional=True),
-            "index": integer("insert_*, delete_*: row or column from 0. Default the last.",
-                             minimum=0, optional=True),
+            "from": string("set_cells: rows of d:<id> or t:<table>, from row index.", optional=True),
+            "from_columns": FROM_COLUMNS,
+            "header": HEADER,
+            "index": integer("insert_*, delete_*: row or column from 0. Default the last. "
+                             "set_cells from: first row.", minimum=0, optional=True),
             "side": string("insert_*: relative to index. Default after.", enum=["after", "before"], optional=True),
             "first": POSITION, "last": POSITION,
             "rows": integer("split: into rows. Default 1.", minimum=1, maximum=63, optional=True),
             "columns": integer("split: into columns. Default 2.", minimum=1, maximum=63, optional=True)},
-           refs=('table',), group="word_objects", mutates=True)
+           refs=('table',), group="word_objects", mutates=True, sources=("from",))
 def word_edit_table(call: Any, doc: str, table: str, action: str, cells: list[dict] | None = None,
                     index: int | None = None, side: str = "after", first: dict | None = None,
-                    last: dict | None = None, rows: int = 1, columns: int = 2) -> Result:
+                    last: dict | None = None, rows: int = 1, columns: int = 2,
+                    from_columns: list[str] | None = None, header: list[str] | None = None,
+                    **given: Any) -> Result:
     document = call.document
     table = resolve(call, table)
     view = document.table(table)
+    source = given.get("from")
+    if source is not None:
+        if action != "set_cells":
+            raise ToolError("invalid_arguments", f"{action} takes no from; from is for set_cells",
+                            field="from", valid_options=["set_cells"])
+        if cells is not None:
+            raise ToolError("invalid_arguments", "from replaces cells: give one", field="cells")
+        return _set_from(call, view, source, from_columns, header, index or 0)
+    no_source(from_columns, header)
     edits = []
     if action == "set_cells":
         cells = need(cells, "cells")
@@ -110,6 +130,47 @@ def word_edit_table(call: Any, doc: str, table: str, action: str, cells: list[di
         a = need(first, "first", " (the cell to split)")
         edits.append(document.split_cell(table, a["row"], a["col"], rows=rows, columns=columns))
     return outcome(edits, f"{action} on {table}", data=table_json(document, table), changed=[table])
+
+
+def _set_from(call: Any, view: Any, source: str, from_columns: list[str] | None,
+              header: list[str] | None, top: int) -> Result:
+    """``set_cells`` from a source (:mod:`.table_data`): the block written from row ``top``,
+    column 0, each cell's text rewritten as ``set_cells`` rewrites it."""
+    document = call.document
+    block = placed(call, source, from_columns, header)
+    height, width = len(view.rows), view.column_count
+    if top >= height:
+        raise ToolError("not_found", f"no row {top}; {view.id} has {height}", field="index")
+    fits(block, height - top, width, room=f"{view.id} has {height - top} rows from row {top}")
+    need_rows, need_columns = block.size
+    grid = view.grid()
+    seen: dict[tuple[int, int], tuple[int, int]] = {}
+    for row in range(top, top + need_rows):
+        for col in range(need_columns):
+            cell = grid[row][col] if col < len(grid[row]) else None
+            origin = (cell.row, cell.column) if cell is not None else None
+            if origin is None or origin in seen:
+                what = (f"merged with ({seen[origin][0]}, {seen[origin][1]})" if origin in seen
+                        else "not a cell")
+                raise ToolError("refused", f"({row}, {col}) of {view.id} is {what}: the block "
+                                f"from {block.rows.address} needs one cell per value; split it "
+                                "first", field="from")
+            seen[origin] = (row, col)
+    edits = []
+    changed = [view.id]
+    for row, values in enumerate(block.lines(), start=top):
+        for col, lines in enumerate(values):
+            current = document.table(view.id)
+            edits.extend(_set_cell(document, current, row, col, cell_text(lines)))
+            changed.append(current.cell(row, col).id)
+    result = outcome(edits, f"set_cells on {view.id} from {block.rows.address}",
+                     data={**table_json(document, view.id, markdown=False), "from": block.provenance(top)},
+                     changed=changed)
+    if top + need_rows < height or need_columns < width:
+        result.warnings.append(f"from filled rows {top}-{top + need_rows - 1}, columns "
+                               f"0-{need_columns - 1} of a {height}x{width} table; the other "
+                               "cells keep their text")
+    return result
 
 
 def _set_cell(document: Any, table: Any, row: int, col: int, text: str) -> list[Any]:

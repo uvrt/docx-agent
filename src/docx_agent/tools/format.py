@@ -20,6 +20,7 @@ from ..edit.inline import SpanError
 from ..edit.pictures import PictureError
 from ..edit.ranges import AmbiguousAnchor, AnchorNotFound
 from ._base import checks, problem_key
+from .table_data import source_hint
 
 KIND = "docx"
 EXTENSIONS = (".docx", ".docm", ".dotx", ".dotm")
@@ -53,7 +54,9 @@ word_read view markup.
 #: about 32 free-text strings per request): the writing tools the reference transcripts
 #: (w1-w6, batch-30) call most -- 23 of their calls, 24 optional parameters, 23 strings.
 #: word_changes counts its list calls too.  edit_chart left the list in T4: with its add
-#: action it has 14 optional parameters, more than half the request's.
+#: action it has 14 optional parameters, more than half the request's.  X1's from,
+#: from_columns and header took word_insert_markdown to seven, and edit_smartart, which
+#: filled the last two places, out of the strict set (23 optional parameters now).
 STRICT_FIRST = ("replace_text", "word_changes", "word_set_tracking", "word_insert_markdown",
                 "word_template")
 
@@ -119,4 +122,4 @@ FORMAT = DocumentFormat(
     kind=KIND, open=open_docx, detect=detect, problems=problems, problem_key=problem_key,
     warnings=(AuthoringWarning, UntrackedChartEdit, DiagramDrawingDropped, ChartDataWarning),
     prompt=PROMPT, errors=ERRORS, summary=summary, checks=checks, strict_first=STRICT_FIRST,
-    configure=configure)
+    configure=configure, source_hint=source_hint)

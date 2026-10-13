@@ -6,6 +6,33 @@ snapshot commit; the development history before it is summarised here.
 
 ## Unreleased
 
+- Tables from data (X1): `word_insert_markdown` (as a third choice beside `markdown` and
+  `blob`) and `word_edit_table`'s `set_cells` take `from` -- a dataset `d:<id>` or another
+  open document's table `t:<name>`, as ooxml-edit 0.22.0's `edit_chart` does -- with
+  `from_columns` (the source's columns by name, in order; default all) and `header` (the
+  header row's texts; `[]` for none; default the column names), the behaviour and result
+  of pptx-agent's tables from data. Every source row is placed; numbers are written as
+  chart category labels are (General, the session locale's decimal separator), dates as the
+  source gives them, line breaks as line breaks in the cell's one paragraph, the text
+  literally. A new table is the source's size (no `rows`/`columns`), written as a Markdown
+  table is (`insert_blocks`, a no-header option in the Markdown table model: no
+  `w:tblHeader`, `tblLook` `firstRow` 0); `set_cells` writes from row `index`. A source over
+  63 columns, 4,096 rows or 5,000 cells, or too big for the table written into, is refused,
+  never cut; a block over a merged cell is refused. `data.from` gives the source and, per
+  placed column, its table column, source rows and their sources; none of it is saved.
+  The result gives the table's id and size, not its Markdown (the caller has the data).
+  One call is one undo step, tracked while tracking is on.
+- `d:` is a drawing (`d:3`) and a dataset (`d:<id>`): the docx format's `source_hint`
+  (ooxml-edit 0.23.0) says `d:3 is a drawing in this document, not a dataset` when a source
+  argument (`from`, `edit_chart`'s too) is given a drawing's id. No argument that takes a
+  drawing is a source.
+- Every definition grows by 194 estimated tokens (about 11,933 -> 12,127; the guard 11,950 ->
+  12,150), the core not at all. word_insert_markdown (seven optional parameters) stays
+  strict; edit_smartart no longer fits Claude's 24 optional parameters and is sent
+  non-strict. ooxml-edit 0.23.0 is the floor.
+- A new table's paragraph and row ids are drawn once per seed instead of two at a time
+  (the same ids): writing a 5,000-cell table took 80 s, now under one.
+
 - The user's locale (ooxml-common 0.15.0's `Locale`, ooxml-edit 0.19.0's
   `Toolbox(locale=...)`): `Document.locale` and `Document.new(locale=...)`, set from the
   session for every document that joins it. Every layout and render passes it to docx2svg

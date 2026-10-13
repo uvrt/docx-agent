@@ -28,7 +28,8 @@ with Toolbox(TOOLS, formats=[FORMAT], groups=GROUPS) as toolbox:
   `word_format` (every run and paragraph property, in points), tracking mode, tracked
   changes (list, accept, reject), comments, moving and copying sections, sections, headers
   and footers, fields and the TOC, notes, links, lists, styles, tables (a new one is Markdown,
-  through `word_insert_markdown`), pictures and other drawings, content controls and the
+  through `word_insert_markdown`, or a dataset's or another document's table's rows with its
+  `from`, as `word_edit_table`'s `set_cells` takes them), pictures and other drawings, content controls and the
   compatibility mode. Core: `describe`, `word_read`, `word_set_text` and the shared core;
   the rest load on demand in five groups. What is supported and what is not:
   [SUPPORTED.md](../src/docx_agent/tools/SUPPORTED.md); for the application's thinking layer:
