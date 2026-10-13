@@ -6,6 +6,13 @@ snapshot commit; the development history before it is summarised here.
 
 ## Unreleased
 
+- ooxml-edit 0.18.0 makes workbooks a shared-tool kind, and the shared definitions every
+  Word request carries grow with it (`describe`, `find_text`, `new_document`'s `kind`,
+  `save_document`'s `format`): the core 2,471 -> 2,535 estimated (about 3,752 counted by
+  the proxy, within 6,000), every definition 11,880; the guard rises to 11,950.
+  `save_document` refuses a format that is not a document's (`xlsx`, `xlsm`, `xltx`) with
+  `invalid_arguments` naming docx, dotx and markdown, where it would have failed as
+  `not_found`.
 - Rendering and layout in a daemonic process (a Celery prefork worker's child; ooxml-edit
   0.17.0): `render_pages` and `layout.convert_bytes` are registered worker tasks, so
   ooxml-edit's subprocess workers run them there -- in parallel, with deadlines that kill --

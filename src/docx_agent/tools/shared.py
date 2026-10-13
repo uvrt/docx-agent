@@ -112,6 +112,9 @@ def save_document(call: Any, doc: str, name: str, format: str) -> Result:
     if format in ("pptx", "potx", "outline"):
         raise ToolError("invalid_arguments", f"{format} is a deck format; a document saves as docx, dotx or "
                         "markdown", field="format", valid_options=["docx", "dotx", "markdown"])
+    if format not in ("docx", "dotx", "markdown"):
+        raise ToolError("invalid_arguments", f"a document saves as docx, dotx or markdown, not {format}",
+                        field="format", valid_options=["docx", "dotx", "markdown"])
     if format == "markdown":
         data = document.to_markdown(ids=False, stories="all").encode("utf-8")
         return Result(summary=f"Saved {name} (Markdown) for the application",
