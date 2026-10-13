@@ -64,8 +64,10 @@ def open_docx(data: bytes) -> Document:
 
 def configure(document: Document, session: Any) -> None:
     """A document joining a session lays out and renders with the session's font folders
-    (``Toolbox(font_dirs=...)``; ``None``: ``OOXML_FONT_DIRS``)."""
+    (``Toolbox(font_dirs=...)``; ``None``: ``OOXML_FONT_DIRS``) and is drawn and edited in
+    its locale (``Toolbox(locale=...)``; en-US unless given)."""
     document.font_dirs = session.font_dirs
+    document.locale = session.locale
 
 
 def detect(data: bytes, name: str) -> bool:

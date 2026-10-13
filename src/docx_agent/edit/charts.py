@@ -76,7 +76,9 @@ DIAGRAM_POLICY = "drop"
 #: The application and the document, in ooxml-edit's messages.
 APPLICATION = "Word"
 DOCUMENT = "document"
-#: The language of new chart text when the document's defaults name none.
+#: The language of new chart text when the document's defaults name none and the caller
+#: gives no locale (:func:`default_language`): en-US, as
+#: :data:`ooxml_common.locales.EN_US`.
 FALLBACK_LANG = "en-US"
 
 ChartDataError = _chart.ChartDataError
@@ -209,12 +211,18 @@ def locate(document: "Document", identifier: str) -> tuple[str, Element]:
 
 
 def default_language(document: "Document") -> str:
-    """The document's default language (``w:docDefaults``' ``w:lang``), for new chart text."""
+    """The document's default language (``w:docDefaults``' ``w:lang``), for new chart text;
+    a document that states none takes its locale's (:attr:`Document.locale
+    <docx_agent.Document.locale>`, where Word takes its editing language), else
+    :data:`FALLBACK_LANG`."""
     styles = document.package.styles_part()
     root = document.package.tree(styles) if styles else None
     node = root.find(f"{_W}docDefaults/{_W}rPrDefault/{_W}rPr/{_W}lang") if root is not None else None
     value = node.get(_W + "val") if node is not None else None
-    return value or FALLBACK_LANG
+    if value:
+        return value
+    locale = getattr(document, "locale", None)
+    return getattr(locale, "language", None) or FALLBACK_LANG
 
 
 def title_text(vertical: bool, *, lang: str | None = None) -> Element:
@@ -414,6 +422,8 @@ class ChartOps:
         from ooxml_edit.charts import WORD_LOOK, add_chart
         from ooxml_edit.charts.create import chart_data
 
+        from ..layout import locale_of
+
         from . import ids as _ids
         from . import inline as _inline
         from .document import EditResult
@@ -446,7 +456,8 @@ class ChartOps:
                              [dict(s) if isinstance(s, dict) else s for s in series],
                              title=title, axis_titles=axis_titles, legend=legend,
                              number_format=number_format, look=WORD_LOOK,
-                             lang=default_language(self), category_order=category_order,
+                             lang=default_language(self), locale=locale_of(self),
+                             category_order=category_order,
                              gridlines=gridlines, bubble_scale=bubble_scale)
             number = self._next_doc_pr()
             label = name or f"Chart {number}"

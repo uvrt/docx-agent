@@ -6,6 +6,26 @@ snapshot commit; the development history before it is summarised here.
 
 ## Unreleased
 
+- The user's locale (ooxml-common 0.15.0's `Locale`, ooxml-edit 0.19.0's
+  `Toolbox(locale=...)`): `Document.locale` and `Document.new(locale=...)`, set from the
+  session for every document that joins it. Every layout and render passes it to docx2svg
+  (`ConvertOptions(locale=...)`) -- `render_svg`, `render_png`, `layout()`, the reflow in
+  each edit's checks, field and TOC page numbers, the `render` tool's worker (a subprocess
+  worker too) and the layout worker; the locale keys the render and layout caches. A new
+  chart (`insert_chart`) gets `add_chart(..., locale=)`, and its text takes the locale's
+  language where the document states none, where it took en-US. en-US without one, never
+  the server's. No tool definition changes.
+- **Changed output:** a new blank document's `w:decimalSymbol` and `w:listSeparator` are
+  the locale's, so `Document.new()` without one writes en-US's `.` and `,` where it wrote
+  `,` and `;` (the measuring Word's, Dutch, metric) -- accepted. A locale with a decimal
+  comma writes those again, part for part. A new document's language, not given, is the
+  locale's (en-US without one). A Letter page wrote `.` and `,` already: unchanged.
+- `blank.Locale` is split: the page's margins, distances, tab stop and hyphenation zone are
+  `blank.PageDefaults` (`Document.new(page_defaults=...)`; `blank.METRIC`, `blank.US`), the
+  separators come from the shared `Locale`. `blank.Locale`, and `METRIC` or `US` given as
+  `locale=`, are deprecated (`DeprecationWarning`) and write what they wrote. With docx2svg
+  #8 a decimal tab stop aligns on the locale's separator: `.` by default where docx2svg
+  aligned on `,`.
 - ooxml-edit 0.18.0 makes workbooks a shared-tool kind, and the shared definitions every
   Word request carries grow with it (`describe`, `find_text`, `new_document`'s `kind`,
   `save_document`'s `format`): the core 2,471 -> 2,535 estimated (about 3,752 counted by

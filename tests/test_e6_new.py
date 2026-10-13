@@ -18,6 +18,7 @@ from pathlib import Path
 
 import pytest
 from lxml import etree
+from ooxml_common.locales import Locale
 
 from docx_agent import Document
 from docx_agent.edit import blank
@@ -25,6 +26,11 @@ from docx_agent.edit.properties import read_app
 from docx_agent.validate import check
 
 from test_roundtrip import entries
+
+#: The separators the Word the new document was measured on writes (``,`` and ``;``), and
+#: its language; tools/e6_probe.py's ``word_locale``.
+WORD_LOCALE = Locale(decimal_separator=",", thousands_separator=".", date_order="dmy", language="nl-BE",
+                     list_separator=";")
 
 OBSERVATIONS = json.loads((Path(__file__).parent / "observations" / "e6-word.json").read_text(encoding="utf-8"))
 W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
@@ -73,7 +79,8 @@ def test_the_settings_are_words_with_its_locale_and_language():
     """With this Word's language and locale, the settings are Word's but for the window's
     view, which Word writes and docx-agent leaves out (a file without one opens in Print
     Layout)."""
-    ours = _settings_facts(parts(blank.build(language="nl-BE", locale=blank.METRIC))["word/settings.xml"])
+    ours = _settings_facts(parts(blank.build(language="nl-BE", page_defaults=blank.METRIC,
+                                             locale=WORD_LOCALE))["word/settings.xml"])
     word = OBSERVATIONS["new"]["settings"].replace('<w:view w:val="normal"/>', "")
     assert ours == word
 
@@ -143,12 +150,14 @@ def test_landscape_puts_the_longer_side_across():
     assert (section.get(W + "w"), section.get(W + "h"), section.get(W + "orient")) == ("16838", "11906", "landscape")
 
 
-def test_the_locale_by_default_and_given():
+def test_the_page_defaults_and_the_locale_by_default_and_given():
     metric = tree(Document.new(), "word/document.xml").find(f"{W}body/{W}sectPr/{W}pgMar")
     assert metric.get(W + "top") == "1417" and metric.get(W + "header") == "708"
     settings = tree(Document.new(), "word/settings.xml")
     assert settings.find(W + "hyphenationZone").get(W + "val") == "425"
-    assert settings.find(W + "decimalSymbol").get(W + "val") == ","
+    # The separators are the locale's: en-US without one.
+    assert settings.find(W + "decimalSymbol").get(W + "val") == "."
+    assert settings.find(W + "listSeparator").get(W + "val") == ","
     letter = Document.new(page="Letter")
     margins = tree(letter, "word/document.xml").find(f"{W}body/{W}sectPr/{W}pgMar")
     assert margins.get(W + "top") == "1440" and margins.get(W + "header") == "720"
@@ -156,8 +165,11 @@ def test_the_locale_by_default_and_given():
     assert settings.find(W + "hyphenationZone") is None
     assert settings.find(W + "defaultTabStop").get(W + "val") == "720"
     assert settings.find(W + "listSeparator").get(W + "val") == ","
-    custom = Document.new(locale=blank.Locale(margin=1000, hyphenation_zone=None))
+    custom = Document.new(page_defaults=blank.PageDefaults(margin=1000, hyphenation_zone=None))
     assert tree(custom, "word/document.xml").find(f"{W}body/{W}sectPr/{W}pgMar").get(W + "left") == "1000"
+    comma = tree(Document.new(locale=WORD_LOCALE, language="en-US"), "word/settings.xml")
+    assert comma.find(W + "decimalSymbol").get(W + "val") == ","
+    assert comma.find(W + "listSeparator").get(W + "val") == ";"
 
 
 def test_language():

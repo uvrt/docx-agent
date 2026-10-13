@@ -2111,8 +2111,11 @@ Word's re-save changes no style definition docx-agent wrote, copied blocks keep 
     author=None, created=None, template=None, keep_content=True, attach=None)`: blank --
     `page` "A4" (default), "Letter", "Legal", "A5", "A3" or `(width, height)` in points,
     `orientation` "portrait"/"landscape" (the longer side across, `w:orient`), `language`
-    (`w:lang`, `w:themeFontLang`; default en-US), `locale` (`blank.Locale`; `METRIC` for
-    every page but Letter, which takes `US`), title and author in `core.xml`, `created`
+    (`w:lang`, `w:themeFontLang`; default the locale's, en-US), `locale` (an
+    `ooxml_common.locales.Locale`: `w:decimalSymbol` and `w:listSeparator`, en-US's `.` and
+    `,` without one; becomes `Document.locale`), `page_defaults` (`blank.PageDefaults`;
+    `METRIC` for every page but Letter, which takes `US`; `blank.Locale`, both in one, is
+    deprecated), title and author in `core.xml`, `created`
     the creation and modification date; deterministic given `created`; the empty paragraph
     has its paraId from the start. From a template (`.dotx`, `.dotm`, `.docx`, `.docm`; a
     path or bytes): as Word's File > New; `keep_content=False` drops the body (one empty

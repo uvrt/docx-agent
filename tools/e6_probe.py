@@ -59,6 +59,20 @@ import oracle  # noqa: E402
 from make_fixtures import DECL, NS, REL, WML, content_types, png, relationships  # noqa: E402
 
 OBSERVATIONS = ROOT / "tests" / "observations" / "e6-word.json"
+
+
+def word_locale():
+    """The regional settings of the Word the new document was measured on, as far as a new
+    document shows them: its ``w:decimalSymbol`` ``,`` and ``w:listSeparator`` ``;`` and
+    the language nl-BE.  The thousands separator and the date order are not read from it
+    (a new document writes neither); they are only what :class:`ooxml_common.locales.Locale`
+    needs to be built."""
+    from ooxml_common.locales import Locale
+
+    return Locale(decimal_separator=",", thousands_separator=".", date_order="dmy", language="nl-BE",
+                  list_separator=";")
+
+
 W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 _W = "{%s}" % W
 FIXTURES = ROOT / "tests" / "fixtures"
@@ -824,7 +838,8 @@ def compare_new(word: bytes) -> dict:
 
     from docx_agent.edit import blank
 
-    ours = parts(blank.build(language="nl-BE", locale=blank.METRIC, author="Word's user",
+    ours = parts(blank.build(language="nl-BE", page_defaults=blank.METRIC, locale=word_locale(),
+                             author="Word's user",
                              created=datetime(2026, 10, 4, tzinfo=timezone.utc)))
     theirs = parts(word)
     out: dict = {}

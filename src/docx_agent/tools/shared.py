@@ -16,7 +16,7 @@ from ooxml_edit.tools import Result, ToolError, shared, worker_task
 
 from ..edit.document import Document
 from ..edit.properties import refreshed_app
-from ..layout import font_dirs_of, lay_out_unlocked
+from ..layout import font_dirs_of, lay_out_unlocked, locale_of
 from ._base import need, outcome, page, reflow_json, remember, resolve, short, validate_delta, wrap
 
 KIND = "docx"
@@ -69,7 +69,7 @@ def new_document(call: Any, kind: str, template_blob: str | None = None, size: s
                         valid_options=list(PAGE_SIZES))
     template = call.blob(template_blob).data if template_blob else None
     document = Document.new(page=size, title=title, author=author, created=call.now(), template=template,
-                            keep_content=False)
+                            keep_content=False, locale=call.locale)
     doc_id = call.session.adopt(document, KIND, name or "new.docx", source=template_blob or "new",
                                 size=len(template or b""))
     entry = call.session.entry(doc_id)
@@ -201,19 +201,23 @@ def replace_text(call: Any, doc: str, find: str, replace: str, expect: str, rege
 
 
 @worker_task  # a subprocess worker (a daemonic parent's) runs registered tasks only
-def render_pages(data: bytes, pages: list[int], width: int, font_dirs: list[str] | None = None
-                 ) -> tuple[list[bytes], int, dict | None]:
+def render_pages(data: bytes, pages: list[int], width: int, font_dirs: list[str] | None = None,
+                 locale: Any = None) -> tuple[list[bytes], int, dict | None]:
     """In a worker: the pages as PNGs at ``width`` pixels, the page count, and the layout's
     coverage (``coverage_facts``; ``None`` from a docx2svg without it).  ``font_dirs`` is
     the application's font folders, resolved by the caller (the worker sees neither the
-    session nor a variable set since it started); ``None`` leaves the worker's default."""
+    session nor a variable set since it started); ``None`` leaves the worker's default.
+    ``locale`` is the session's (``call.locale``, an :class:`ooxml_common.locales.Locale`:
+    picklable), handed over the same way; ``None`` is en-US."""
     import docx2svg
 
-    from ..layout import coverage_facts
+    from ..layout import coverage_facts, locale_of
 
-    options = docx2svg.ConvertOptions(pages=pages, width=width, font_dirs=font_dirs)
+    locale = locale_of(None) if locale is None else locale
+    options = docx2svg.ConvertOptions(pages=pages, width=width, font_dirs=font_dirs, locale=locale)
     pngs = docx2svg.convert_docx_to_png(data, options)
-    count = (len(docx2svg.convert_docx_to_svg(data, docx2svg.ConvertOptions(font_dirs=font_dirs)))
+    count = (len(docx2svg.convert_docx_to_svg(data, docx2svg.ConvertOptions(font_dirs=font_dirs,
+                                                                             locale=locale)))
              if len(pngs) < len(pages) else -1)
     coverage = getattr(options, "coverage", None)
     return list(pngs), count, coverage_facts(coverage) if coverage is not None else None
@@ -232,33 +236,35 @@ def render(call: Any, doc: str, slides: list | None = None, pages: list[int] | N
         raise ToolError("limit", f"at most {call.limits.max_images_per_call} pages per call", field="pages")
     entry = call.entry
     # The font folders, resolved here and handed to the worker; they key the cache, so
-    # renders with different folders do not mix.
+    # renders with different folders do not mix.  The locale likewise: the document's (the
+    # session's), handed over and keying.
     fonts = tuple(font_dirs_of(call.document))
+    locale = locale_of(call.document)
     version = entry.version
-    wanted = [p for p in pages if entry.render_cache.get((version, p, width, fonts)) is None]
+    wanted = [p for p in pages if entry.render_cache.get((version, p, width, fonts, locale)) is None]
     if wanted:
         # The bytes are the snapshot, taken under the lock; the rasteriser works on them with
         # the lock let go (another call may edit meanwhile), and what it draws is cached
         # under this version, the result's.
         data = call.document.to_bytes()
-        pngs, count, coverage = call.run_unlocked(render_pages, data, wanted, width, list(fonts),
+        pngs, count, coverage = call.run_unlocked(render_pages, data, wanted, width, list(fonts), locale,
                                                   timeout=call.limits.render_timeout)
         if len(pngs) < len(wanted):
             raise ToolError("not_found", f"the document has {count} page(s)", field="pages",
                             valid_options=list(range(1, count + 1))[:50])
         for number, png in zip(wanted, pngs):
-            entry.render_cache.put((version, number, width, fonts), png)
+            entry.render_cache.put((version, number, width, fonts, locale), png)
         if coverage is not None:
-            call.document._tool_render_coverage = ((version, fonts), coverage)
+            call.document._tool_render_coverage = ((version, fonts, locale), coverage)
     images = []
     for number in pages:
-        png = entry.render_cache.get((version, number, width, fonts))
+        png = entry.render_cache.get((version, number, width, fonts, locale))
         w, h = png_size(png)
         images.append(call.image(png, w, h, label=f"page {number}").describe())
     result = Result(summary=f"Rendered page(s) {', '.join(map(str, pages))} (final view: changes accepted, "
                     "comments hidden)", data={"pages": pages})
     render_version, coverage = getattr(call.document, "_tool_render_coverage", (None, None))
-    if coverage is not None and render_version == (version, fonts):
+    if coverage is not None and render_version == (version, fonts, locale):
         result.data["coverage"] = coverage
     return result
 

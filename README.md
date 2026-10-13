@@ -58,6 +58,12 @@ so a check that passed is told apart from one that could not see everything. It 
 
 In the library, `doc.layout().coverage_facts()` returns the same.
 
+The user's regional settings -- the separator a decimal tab stop aligns on, a chart's
+decimal and thousands separators, the language of new chart text in a document that states
+none, a new document's language and number separators -- are `Document.locale` (or
+`Toolbox(locale=...)`), an `ooxml_common.locales.Locale`; en-US unless given, never the
+server's own.
+
 ## Example
 
 ```python
