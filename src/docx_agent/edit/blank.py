@@ -25,11 +25,21 @@ written here:
 **What depends on the locale.**  Word's new document follows its Normal template, which
 follows the interface's locale: this Word (Dutch interface, metric) makes an A4 page with
 2.5 cm margins (1417 twips), header and footer at 708, a default tab stop of 708 and a
-hyphenation zone of 425, the decimal comma and the list separator ``;``.  :class:`Locale`
-holds those values; :data:`METRIC` is the measured one and the default, :data:`US` is
-English (United States) Word's (Letter, 1-inch margins, half-inch tabs and distances, no
-hyphenation zone written, ``.`` and ``,``: Word's well-known defaults, not measured on this
-machine).  The text language (``w:lang``, ``w:themeFontLang``) is a parameter of its own.
+hyphenation zone of 425, the decimal comma and the list separator ``;``.  Two things hold
+those values:
+
+* :class:`PageDefaults` -- the page's: margins, distances, tab stop, hyphenation zone.
+  :data:`METRIC` is the measured one and the default, :data:`US` is English (United
+  States) Word's (Letter, 1-inch margins, half-inch tabs and distances, no hyphenation zone
+  written: Word's well-known defaults, not measured on this machine), for a Letter page.
+* the user's regional settings, an :class:`ooxml_common.locales.Locale` -- the separators:
+  ``w:decimalSymbol`` is its ``decimal_separator``, ``w:listSeparator`` its
+  ``list_separator``.  Without one it is en-US (:data:`ooxml_common.locales.EN_US`:
+  ``.`` and ``,``), never the server's; this Word's ``,`` and ``;`` are a locale with a
+  decimal comma.
+
+:class:`Locale` -- both in one, as this module had them -- is deprecated.  The text
+language (``w:lang``, ``w:themeFontLang``) is a parameter of its own.
 
 Left out on purpose: rsids (ROADMAP.md, "Decisions", 6) and ``w15:docId``, which Word adds
 when it saves; ``w:view`` (Word writes the window's view, here Draft -- a file without one
@@ -40,19 +50,21 @@ styles' "Kop 1 Char"), where English Word's are written.
 from __future__ import annotations
 
 import io
+import warnings
 import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from typing import Any
 
 from . import word_new
 from .ids import generate
 
-# -- the locale --------------------------------------------------------------------------------
+# -- the page's defaults, the locale's separators ----------------------------------------------
 
 
 @dataclass(frozen=True)
-class Locale:
-    """What a new document takes from Word's locale (lengths in twips)."""
+class PageDefaults:
+    """What a new document's page takes from Word's Normal template (lengths in twips)."""
 
     margin: int = 1417
     header: int = 708
@@ -61,15 +73,64 @@ class Locale:
     column_space: int = 708
     #: ``w:hyphenationZone``; ``None`` writes none (Word's default, 0.25 inch).
     hyphenation_zone: int | None = 425
+
+
+#: The text language of a new document given neither a language nor a locale.
+FALLBACK_LANGUAGE = "en-US"
+
+#: Measured: Word 16.106 for Mac, Dutch interface, metric units.
+METRIC = PageDefaults()
+#: English (United States) Word's defaults: Letter, 1 inch, half an inch.  Not measured here.
+US = PageDefaults(margin=1440, header=720, footer=720, tab_stop=720, column_space=720,
+                  hyphenation_zone=None)
+
+
+@dataclass(frozen=True)
+class Locale(PageDefaults):
+    """Deprecated: :class:`PageDefaults` and the two separators in one.  Pass the page's
+    values as ``page_defaults`` and the separators as an
+    :class:`ooxml_common.locales.Locale` (``locale``); a ``Locale`` given as ``locale``
+    still writes what it wrote, with a :class:`DeprecationWarning`."""
+
     decimal_symbol: str = ","
     list_separator: str = ";"
 
+    def __post_init__(self) -> None:
+        warnings.warn("docx_agent.edit.blank.Locale is deprecated: use blank.PageDefaults for the page "
+                      "and an ooxml_common.locales.Locale for the separators", DeprecationWarning,
+                      stacklevel=3)
 
-#: Measured: Word 16.106 for Mac, Dutch interface, metric units.
-METRIC = Locale()
-#: English (United States) Word's defaults: Letter, 1 inch, half an inch.  Not measured here.
-US = Locale(margin=1440, header=720, footer=720, tab_stop=720, column_space=720,
-            hyphenation_zone=None, decimal_symbol=".", list_separator=",")
+
+def split_locale(locale: Any, page_defaults: PageDefaults | None, stacklevel: int = 3
+                 ) -> tuple[Any, PageDefaults | None, tuple[str, str] | None]:
+    """``(locale, page_defaults, separators)`` of what :func:`build` was given as ``locale``:
+    a regional settings object (an :class:`ooxml_common.locales.Locale`) is kept as it is;
+    a :class:`PageDefaults` (:data:`METRIC`, :data:`US`, a deprecated :class:`Locale`) --
+    what ``locale`` took before -- warns and is read as before: its page values, and the
+    separators it carried (``,`` and ``;``; :data:`US`'s ``.`` and ``,``)."""
+    if not isinstance(locale, PageDefaults):
+        return locale, page_defaults, None
+    warnings.warn("locale= takes an ooxml_common.locales.Locale (the separators); pass the page's "
+                  "values as page_defaults=", DeprecationWarning, stacklevel=stacklevel)
+    if isinstance(locale, Locale):
+        separators = (locale.decimal_symbol, locale.list_separator)
+    else:
+        separators = (".", ",") if locale == US else (",", ";")
+    return None, page_defaults or PageDefaults(*(getattr(locale, name) for name in _PAGE_FIELDS)), separators
+
+
+_PAGE_FIELDS = ("margin", "header", "footer", "tab_stop", "column_space", "hyphenation_zone")
+
+
+def separators_of(locale: Any) -> tuple[str, str]:
+    """``(w:decimalSymbol, w:listSeparator)`` of ``locale`` (an
+    :class:`ooxml_common.locales.Locale`, or anything with its ``decimal_separator`` and
+    ``list_separator``); ``None`` is en-US's, ``.`` and ``,``."""
+    if locale is None:
+        from ooxml_common.locales import EN_US
+
+        locale = EN_US
+    return locale.decimal_separator, locale.list_separator
 
 #: Named page sizes, twips (width, height), portrait.
 PAGE_SIZES: dict[str, tuple[int, int]] = {
@@ -225,19 +286,20 @@ def styles_xml(language: str) -> str:
 _COMPAT_URI = "http://schemas.microsoft.com/office/word"
 
 
-def settings_xml(language: str, locale: Locale) -> str:
+def settings_xml(language: str, page: PageDefaults, separators: tuple[str, str] = (".", ",")) -> str:
     compat = "".join(f'<w:compatSetting w:name="{name}" w:uri="{_COMPAT_URI}" w:val="{value}"/>'
                      for name, value in word_new.COMPAT)
     mapping = "".join(f' {name}="{value}"' for name, value in word_new.COLOR_MAPPING)
-    zone = f'<w:hyphenationZone w:val="{locale.hyphenation_zone}"/>' if locale.hyphenation_zone is not None else ""
+    zone = f'<w:hyphenationZone w:val="{page.hyphenation_zone}"/>' if page.hyphenation_zone is not None else ""
+    decimal_symbol, list_separator = separators
     return (_DECL + _root("w:settings", ("mc", "o", "r", "m", "v", "w10", "w") + _EXTENSIONS + ("sl",))
             + '<w:zoom w:percent="100"/>'
-            + f'<w:defaultTabStop w:val="{locale.tab_stop}"/>{zone}'
+            + f'<w:defaultTabStop w:val="{page.tab_stop}"/>{zone}'
             + '<w:characterSpacingControl w:val="doNotCompress"/>'
             + f"<w:compat>{compat}</w:compat>" + _xml(word_new.MATH)
             + f'<w:themeFontLang w:val="{_escape(language)}"/><w:clrSchemeMapping{mapping}/>'
-            + f'<w:decimalSymbol w:val="{_escape(locale.decimal_symbol)}"/>'
-            + f'<w:listSeparator w:val="{_escape(locale.list_separator)}"/>'
+            + f'<w:decimalSymbol w:val="{_escape(decimal_symbol)}"/>'
+            + f'<w:listSeparator w:val="{_escape(list_separator)}"/>'
             + "<w15:chartTrackingRefBased/></w:settings>")
 
 
@@ -385,15 +447,15 @@ def page_size(page, orientation: str = "portrait") -> tuple[int, int]:
     return width, height
 
 
-def document_xml(width: int, height: int, orientation: str, locale: Locale) -> str:
+def document_xml(width: int, height: int, orientation: str, page: PageDefaults) -> str:
     para_id, text_id = generate("word/document.xml", set(), 2)
     orient = ' w:orient="landscape"' if orientation == "landscape" else ""
-    m = locale.margin
+    m = page.margin
     return (_DECL + _root("w:document", _DOCUMENT_PREFIXES, _IGNORABLE + " wp14")
             + f'<w:body><w:p w14:paraId="{para_id}" w14:textId="{text_id}"/>'
             + f'<w:sectPr><w:pgSz w:w="{width}" w:h="{height}"{orient}/>'
-            + f'<w:pgMar w:top="{m}" w:right="{m}" w:bottom="{m}" w:left="{m}" w:header="{locale.header}" '
-            + f'w:footer="{locale.footer}" w:gutter="0"/><w:cols w:space="{locale.column_space}"/>'
+            + f'<w:pgMar w:top="{m}" w:right="{m}" w:bottom="{m}" w:left="{m}" w:header="{page.header}" '
+            + f'w:footer="{page.footer}" w:gutter="0"/><w:cols w:space="{page.column_space}"/>'
             + '<w:docGrid w:linePitch="360"/></w:sectPr></w:body></w:document>')
 
 
@@ -411,26 +473,33 @@ def _content_types(overrides: list[tuple[str, str]]) -> str:
             + "</Types>")
 
 
-def build(*, page="A4", orientation: str = "portrait", language: str = "en-US", locale: Locale | None = None,
+def build(*, page="A4", orientation: str = "portrait", language: str = "en-US", locale: Any = None,
+          page_defaults: PageDefaults | None = None, separators: tuple[str, str] | None = None,
           title: str | None = None, author: str | None = None, created: datetime | None = None) -> bytes:
-    """The whole package of a new blank document, as bytes."""
+    """The whole package of a new blank document, as bytes.  ``page_defaults`` are the
+    page's (:data:`US` for a Letter page, else :data:`METRIC`); ``locale`` -- an
+    :class:`ooxml_common.locales.Locale`, en-US without one -- gives the separators
+    (``separators``, ``(decimal, list)``, overrides it)."""
     from .properties import app_xml, core_xml
 
-    if locale is None:
-        locale = US if page == "Letter" else METRIC
+    locale, page_defaults, legacy = split_locale(locale, page_defaults)
+    if separators is None:
+        separators = legacy or separators_of(locale)
+    if page_defaults is None:
+        page_defaults = US if page == "Letter" else METRIC
     width, height = page_size(page, orientation)
     created = (created or datetime.now(timezone.utc)).replace(microsecond=0)
     parts = [
         ("_rels/.rels", _rels([("rId3", REL_APP, "docProps/app.xml"), ("rId2", REL_CORE, "docProps/core.xml"),
                                ("rId1", _R + "officeDocument", "word/document.xml")])),
-        ("word/document.xml", document_xml(width, height, orientation, locale)),
+        ("word/document.xml", document_xml(width, height, orientation, page_defaults)),
         ("word/_rels/document.xml.rels", _rels([("rId3", _R + "webSettings", "webSettings.xml"),
                                                 ("rId2", _R + "settings", "settings.xml"),
                                                 ("rId1", _R + "styles", "styles.xml"),
                                                 ("rId5", _R + "theme", "theme/theme1.xml"),
                                                 ("rId4", _R + "fontTable", "fontTable.xml")])),
         ("word/theme/theme1.xml", theme_xml()),
-        ("word/settings.xml", settings_xml(language, locale)),
+        ("word/settings.xml", settings_xml(language, page_defaults, separators)),
         ("word/styles.xml", styles_xml(language)),
         ("word/webSettings.xml", web_settings_xml()),
         ("word/fontTable.xml", font_table_xml()),
@@ -451,4 +520,5 @@ def build(*, page="A4", orientation: str = "portrait", language: str = "en-US", 
     return buffer.getvalue()
 
 
-__all__ = ["Locale", "METRIC", "PAGE_SIZES", "US", "build", "page_size", "style_id"]
+__all__ = ["Locale", "METRIC", "PAGE_SIZES", "PageDefaults", "US", "build", "page_size", "separators_of",
+           "style_id"]

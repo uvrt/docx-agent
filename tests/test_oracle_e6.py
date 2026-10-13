@@ -91,7 +91,7 @@ def _text(pdf: Path) -> str:
 
 
 def _ours_typed() -> bytes:
-    document = Document.new(language="nl-BE", locale=blank.METRIC)
+    document = Document.new(language="nl-BE", page_defaults=blank.METRIC, locale=e6_probe.word_locale())
     first = document.paragraphs()[0]
     first.set_text(TYPED[0])
     previous = first.id

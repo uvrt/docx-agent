@@ -68,6 +68,26 @@ searched after them. Without `font_dirs` the environment variable `OOXML_FONT_DI
 definition or prompt changes. A document opened outside the tools takes the same setting
 as `Document.font_dirs`.
 
+**The user's locale.** The regional settings a document is drawn and edited in -- an
+`ooxml_common.locales.Locale` -- are configuration too, per toolbox or per session:
+
+```python
+from ooxml_common.locales import Locale
+
+dutch = Locale(decimal_separator=",", thousands_separator=".", date_order="dmy",
+               language="nl-NL", list_separator=";")
+toolbox = Toolbox(TOOLS, formats=[FORMAT], groups=GROUPS, locale=dutch)
+other = toolbox.session(locale=None)                 # en-US
+```
+
+Every layout and render (in the worker process too, where the locale is handed over and
+keys the render cache) passes it to docx2svg -- the separator a decimal tab stop aligns
+on, a chart's decimal and thousands separators -- and the document edits in it: a new
+chart's language where the document states none, and `new_document`'s language and number
+separators (`w:decimalSymbol`, `w:listSeparator`). Without one it is en-US, never the
+server's own. No tool definition or prompt changes. A document outside the tools takes it
+as `Document.locale` (or `Document.new(locale=...)`).
+
 The provider SDKs read their keys from the environment (`ANTHROPIC_API_KEY`,
 `OPENAI_API_KEY`). When the loop ends, `session.take_outputs()` holds what `save_document`
 wrote, as bytes.

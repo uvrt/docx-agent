@@ -31,7 +31,7 @@ import hashlib
 import re
 from dataclasses import dataclass, field
 from fractions import Fraction
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import docx2svg
 from docx2svg.paths import path_part, resolve_path
@@ -472,14 +472,30 @@ def font_dirs_of(document: "Document | None") -> list[str]:
     return [str(path) for path in user_font_dirs(getattr(document, "font_dirs", None))]
 
 
+def locale_of(document: "Document | None") -> Any:
+    """The regional settings ``document`` is drawn and edited in: its
+    :attr:`~docx_agent.Document.locale`, else en-US (:data:`ooxml_common.locales.EN_US`)
+    -- never the operating system's."""
+    locale = getattr(document, "locale", None)
+    if locale is None:
+        from ooxml_common.locales import EN_US
+
+        return EN_US
+    return locale
+
+
 def layout_options(document: "Document", options: dict) -> dict:
     """``options`` with the document's font folders (:func:`font_dirs_of`) as
-    ``font_dirs`` unless they name their own: resolved here, so a layout run in a worker
-    process -- which sees neither the document nor an environment variable set since it
-    started -- uses the same folders, and a layout with other folders is cached apart."""
-    if "font_dirs" in options:
-        return dict(options)
-    return {**options, "font_dirs": font_dirs_of(document)}
+    ``font_dirs`` and its locale (:func:`locale_of`) as ``locale`` unless they name their
+    own: resolved here, so a layout run in a worker process -- which sees neither the
+    document nor an environment variable set since it started -- uses the same folders and
+    locale, and a layout with other folders or another locale is cached apart."""
+    options = dict(options)
+    if "font_dirs" not in options:
+        options["font_dirs"] = font_dirs_of(document)
+    if "locale" not in options:
+        options["locale"] = locale_of(document)
+    return options
 
 
 def convert_bytes(data: bytes, options: dict) -> tuple:

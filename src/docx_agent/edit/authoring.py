@@ -424,22 +424,31 @@ def _app_template(document: "Document", name: str) -> None:
 
 
 def new(cls, *, page=None, orientation: str | None = None, language: str | None = None,
-        locale: blank.Locale | None = None, title: str | None = None, author: str | None = None,
-        created: datetime | None = None, template=None, keep_content: bool = True, attach: bool | None = None,
-        stamping: str = "document") -> "Document":
+        locale=None, page_defaults: "blank.PageDefaults | None" = None, title: str | None = None,
+        author: str | None = None, created: datetime | None = None, template=None, keep_content: bool = True,
+        attach: bool | None = None, stamping: str = "document") -> "Document":
     from .properties import as_datetime
 
     created = as_datetime(created)
     if template is None:
+        locale, page_defaults, separators = blank.split_locale(locale, page_defaults, stacklevel=4)
+        # No language given: the locale's (en-US without one), standing in for the
+        # language Word writes into a new document (its own: nl-BE on the measuring Word).
+        fallback = locale.language if locale is not None else blank.FALLBACK_LANGUAGE
         data = blank.build(page="A4" if page is None else page, orientation=orientation or "portrait",
-                           language=language or "en-US", locale=locale, title=title, author=author,
-                           created=created)
-        return cls.open(data, stamping=stamping)
+                           language=language or fallback, locale=locale, page_defaults=page_defaults,
+                           separators=separators, title=title, author=author, created=created)
+        document = cls.open(data, stamping=stamping)
+        document.locale = locale
+        return document
+    if isinstance(locale, blank.PageDefaults):
+        locale = blank.split_locale(locale, None, stacklevel=4)[0]
     document = from_template(cls, template, keep_content=keep_content, title=title, author=author,
                              created=created, attach=attach, stamping=stamping)
     if page is not None or orientation is not None or language is not None:
         _restyle(document, page, orientation, language)
         document = cls.open(document.to_bytes(), stamping=stamping)
+    document.locale = locale
     return document
 
 

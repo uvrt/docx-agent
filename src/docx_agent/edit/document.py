@@ -56,6 +56,8 @@ from ..revisions.review import RevisionOps
 from ..revisions.stamp import Stamp
 
 if TYPE_CHECKING:  # pragma: no cover
+    from ooxml_common.locales import Locale
+
     from ..layout import DocumentLayout, Reflow, _Conversion
 
 _W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
@@ -695,6 +697,17 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
     #: (``Toolbox(font_dirs=...)``); a ``font_dirs`` option given to a call wins.
     font_dirs: "tuple[str, ...] | None" = None
 
+    #: The regional settings this document is drawn and edited in -- an
+    #: :class:`ooxml_common.locales.Locale`: what every layout and render passes docx2svg
+    #: (``ConvertOptions(locale=...)``: the separator a decimal tab stop aligns on, a
+    #: chart's decimal and thousands separators), the language of a new chart's text where
+    #: the document states none, and, for :meth:`new`, a new document's language and its
+    #: ``w:decimalSymbol`` and ``w:listSeparator``.  ``None`` (the default) is en-US
+    #: (:data:`ooxml_common.locales.EN_US`), never the operating system's.  The agent tool
+    #: layer sets it from its session (``Toolbox(locale=...)``); a ``locale`` option given
+    #: to a render wins.
+    locale: "Locale | None" = None
+
     def __init__(self, package: WordPackage, *, stamping: str = "document") -> None:
         if stamping not in STAMPING:
             raise ValueError(f"stamping must be one of {', '.join(STAMPING)}")
@@ -751,17 +764,26 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
 
     @classmethod
     def new(cls, *, page=None, orientation: str | None = None, language: str | None = None, locale=None,
-            title: str | None = None, author: str | None = None, created=None, template=None,
-            keep_content: bool = True, attach: bool | None = None, stamping: str = "document") -> "Document":
+            page_defaults=None, title: str | None = None, author: str | None = None, created=None,
+            template=None, keep_content: bool = True, attach: bool | None = None,
+            stamping: str = "document") -> "Document":
         """A new document, in compatibility mode 15 (ROADMAP.md, "Decisions").
+
+        ``locale`` -- an :class:`ooxml_common.locales.Locale`, the user's regional settings
+        -- becomes the new document's :attr:`locale` (``None``: en-US).
 
         **Blank** (no ``template``): what Word makes for a new blank document
         (:mod:`docx_agent.edit.blank`): ``page`` "A4" (the default), "Letter", "Legal",
         "A5", "A3" or ``(width, height)`` in points; ``orientation`` "portrait" (the
-        default) or "landscape"; ``language`` the text's (``w:lang``, the default
-        "en-US"); ``locale`` the margins, distances, tab stop, hyphenation zone and number
-        separators Word takes from its locale (:class:`blank.Locale`; :data:`blank.METRIC`,
-        measured here, for every page but Letter, which takes :data:`blank.US`).
+        default) or "landscape"; ``language`` the text's (``w:lang``): not given,
+        ``locale``'s (``"en-US"`` without one); ``locale``'s separators are the document's
+        number separators (``w:decimalSymbol``, ``w:listSeparator``: ``.`` and ``,``
+        without one); ``page_defaults`` the margins, distances, tab stop and hyphenation
+        zone Word's Normal template gives the page (:class:`blank.PageDefaults`;
+        :data:`blank.METRIC`, measured here, for every page but Letter, which takes
+        :data:`blank.US`).  A :class:`blank.Locale` (or :data:`blank.METRIC`,
+        :data:`blank.US`) given as ``locale`` -- the page's values and the separators in one,
+        as before -- is deprecated and writes what it wrote.
 
         **From a template** (``template``: a ``.dotx``, ``.dotm``, ``.docx`` or ``.docm``,
         a path or bytes): as Word's File > New from a template (:mod:`.authoring`): the
@@ -778,7 +800,8 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
         returns to."""
         from .authoring import new
 
-        return new(cls, page=page, orientation=orientation, language=language, locale=locale, title=title,
+        return new(cls, page=page, orientation=orientation, language=language, locale=locale,
+                   page_defaults=page_defaults, title=title,
                    author=author, created=created, template=template, keep_content=keep_content, attach=attach,
                    stamping=stamping)
 
@@ -1897,7 +1920,8 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
         ``doc.to_markdown(view="markup")``.
 
         ``options`` are docx2svg's :class:`~docx2svg.ConvertOptions` (``width``,
-        ``height``, ``glyph_size``, ``font_dirs``...); an unknown one raises a
+        ``height``, ``glyph_size``, ``font_dirs``, ``locale``...; the last two default to
+        :attr:`font_dirs` and :attr:`locale`); an unknown one raises a
         ``TypeError`` that lists them."""
         from ..layout import check_options, render_svg
 
