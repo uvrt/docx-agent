@@ -647,14 +647,52 @@ def test_undo_gives_back_the_original_bytes_and_redo_the_edit(box, session):
 # -- batch and checks ----------------------------------------------------------------------------
 
 
-def test_a_failing_op_rolls_the_whole_batch_back(box, session):
+def test_a_failing_op_rolls_an_atomic_batch_back_whole(box, session):
     d = open_doc(session)
     original = document(session).to_bytes()
-    result = box.dispatch(session, "batch", {"ops": [
+    result = box.dispatch(session, "batch", {"atomic": True, "ops": [
         {"tool": "word_insert_text", "arguments": {"doc": d, "find": "EUR 12,500", "text": "!", "ref": "x"}},
         {"tool": "word_delete", "arguments": {"doc": d, "find": "no such text"}}]})
     assert not result.ok and result.error.details["op"] == 1
     assert document(session).to_bytes() == original and session.entry(d).refs == {}
+
+
+def test_a_batch_skips_a_failing_op_and_applies_the_rest_as_one_step(box, session):
+    # Round 5, T1: one wrong anchor, enum or ref no longer loses the whole batch.
+    d = open_doc(session)
+    original = document(session).to_bytes()
+    version = session.entry(d).version
+    result = ok(box, session, "batch", ops=[
+        {"tool": "word_insert_text", "arguments": {"doc": d, "find": "EUR 12,500", "text": "!", "ref": "x"}},
+        {"tool": "word_delete", "arguments": {"doc": d, "find": "no such text"}},
+        {"tool": "word_insert_markdown", "arguments": {"doc": d, "at": "nowhere", "markdown": "New.",
+                                                      "ref": "added"}},
+        {"tool": "word_set_text", "arguments": {"doc": d, "target": "$added", "text": "Never."}},
+        {"tool": "word_insert_markdown", "arguments": {"doc": d, "at": "end", "markdown": "Kept."}}])
+    assert result.data["applied"] == 2 and result.data["failed"] == [1, 2, 3]
+    errors = {op["op"]: op["error"] for op in result.data["ops"] if "error" in op}
+    assert errors[1]["code"] == "not_found"
+    assert errors[3]["message"].startswith("$added was to be made by ops[2], which failed")
+    assert "ops[1] (word_delete)" in result.summary
+    assert session.entry(d).version == version + 1 and set(session.entry(d).refs) == {"x"}
+    texts = [p.text for p in document(session).paragraphs()]
+    assert texts[-1] == "Kept." and "Never." not in texts and "New." not in texts
+    assert result.checks["validate"]["new"] == []
+    ok(box, session, "undo", doc=d)                     # one step takes back what applied
+    assert document(session).to_bytes() == original and session.entry(d).refs == {}
+
+
+def test_a_batch_none_of_whose_ops_applies_is_an_error_and_no_step(box, session):
+    d = open_doc(session)
+    original = document(session).to_bytes()
+    version = session.entry(d).version
+    result = box.dispatch(session, "batch", {"ops": [
+        {"tool": "word_delete", "arguments": {"doc": d, "find": "no such text"}},
+        {"tool": "word_set_text", "arguments": {"doc": d, "target": "p:00000000", "text": "x"}}]})
+    assert not result.ok and result.error.code == "not_found"
+    assert result.error.message.startswith("none of the 2 ops applied: ops[0] (word_delete)")
+    assert result.error.details["failed"] == [0, 1]
+    assert session.entry(d).version == version and document(session).to_bytes() == original
 
 
 def test_batch_refuses_tracking_changes_and_templates(box, session):

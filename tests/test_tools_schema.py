@@ -38,7 +38,11 @@ every definition (12,127), none to the core; the guard rises to 12,150, the next
 than squeeze descriptions the pptx-agent twins share.  With seven optional parameters
 word_insert_markdown keeps its strict place, and edit_smartart (two) no longer fits Claude's
 24 beside the others: it is sent non-strict (the dispatcher still validates it), 23 optional
-parameters over the strict tools.
+parameters over the strict tools.  ooxml-edit 0.26.0 (round 5, T1): ``batch`` applies its
+ops one by one by default and takes ``atomic`` for all or none; its description and the new
+parameter add 22 to the core (2,535 -> 2,558, about 3,786 counted) and to every definition
+(12,131 -> 12,153); the guard rises to 12,155.  The strict set is unchanged: ``batch`` is
+never strict.
 """
 
 from __future__ import annotations
@@ -59,7 +63,7 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 6000
-ALL_GUARD = 12150
+ALL_GUARD = 12155
 
 
 @pytest.fixture(scope="module")
