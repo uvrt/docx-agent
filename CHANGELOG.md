@@ -6,6 +6,24 @@ snapshot commit; the development history before it is summarised here.
 
 ## Unreleased
 
+- Fewer wasted turns on names a model naturally writes (round 5, T6 and T8; ooxml-edit
+  0.27.0), none of it in the definitions: the estimated tokens and the strict set are
+  unchanged.
+  - Run colours: the DrawingML names of the theme colours a deck or chart uses are read as
+    Word's -- `tx1`, `tx2`, `bg1`, `bg2`, `dk1`...`lt2`, `hlink`, `folHlink` as `text1`,
+    `text2`, `background1`, `background2`, `dark1`...`light2`, `hyperlink`,
+    `followedHyperlink` -- and Word's own in any case and with a space before the number
+    (`"Text 1"`, `"Accent 3"`; `formatting.theme_color_name`). The refusal still lists
+    Word's names, and says the DrawingML ones are read as them. Chart colours take
+    PowerPoint's and Word's names too (ooxml-edit's `charts.format`).
+  - `word_insert_markdown` reads `columns` as `from_columns`, the name `edit_chart` uses
+    for the same thing, and `word_edit_table` does when `columns` is a list of names (its
+    own `columns` is split's count); each with a warning, `columns read as from_columns`.
+  - Refusals say what would do (the dispatcher's): an enum value or unknown argument close
+    to an allowed one says "did you mean"; `key` on a tool that takes none says keys are for
+    the tools that create something; a ref name with capitals says the rule in words and a
+    name that would do.
+
 - `batch` applies its ops one by one by default (ooxml-edit 0.26.0, round 5 T1): a failing
   op -- an anchor that names nothing, an enum the schema refuses, a `$ref` a failed op would
   have made -- is skipped with its own error and the others still apply as one undo step;
