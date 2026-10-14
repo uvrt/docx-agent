@@ -283,6 +283,7 @@ def _table_from(call: Any, source: str, from_columns: list[str] | None,
     table = next(b for b in edit.blocks if b.startswith("t:"))
     rows, columns = block.size
     data = {"blocks": edit.blocks, **table_json(document, table, markdown=False), "from": block.provenance(0)}
+    call.keep_provenance(table, block.rows, data["from"])   # kept in the file, this undo step
     return outcome([edit], f"Inserted a {rows}x{columns} table {table} from {block.rows.address}",
                    data=data)
 

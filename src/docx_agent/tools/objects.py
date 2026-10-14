@@ -10,6 +10,7 @@ from typing import Any
 
 from ooxml_edit.tools import Result, ToolError, array, integer, number, obj, string
 
+from ..edit import provenance as _provenance
 from ._base import need, outcome, remember, resolve, short, word_tool
 from .structure import _position
 from .table_data import FROM_COLUMNS, HEADER, cell_text, fits, no_source, placed
@@ -106,6 +107,7 @@ def word_edit_table(call: Any, doc: str, table: str, action: str, cells: list[di
             raise ToolError("invalid_arguments", "from replaces cells: give one", field="cells")
         return _set_from(call, view, source, from_columns, header, index or 0)
     no_source(from_columns, header)
+    kept = _Kept(document, table)
     edits = []
     if action == "set_cells":
         cells = need(cells, "cells")
@@ -113,6 +115,7 @@ def word_edit_table(call: Any, doc: str, table: str, action: str, cells: list[di
         for cell in cells:  # in order: a label set by an earlier cell is found by a later one
             current = document.table(table)
             row, col = _locate(current, cell)
+            kept.cell(row, col)
             edits.extend(_set_cell(document, current, row, col, cell["text"]))
     elif action == "insert_row":
         edits.append(document.insert_row(table, index, below=side == "after"))
@@ -121,6 +124,7 @@ def word_edit_table(call: Any, doc: str, table: str, action: str, cells: list[di
     elif action == "insert_column":
         col = view.column_count - 1 if index is None else index
         edits.append(document.insert_column(table, col, right=side == "after"))
+        index = col
     elif action == "delete_column":
         edits.append(document.delete_column(table, need(index, "index")))
     elif action == "merge":
@@ -129,7 +133,13 @@ def word_edit_table(call: Any, doc: str, table: str, action: str, cells: list[di
     else:
         a = need(first, "first", " (the cell to split)")
         edits.append(document.split_cell(table, a["row"], a["col"], rows=rows, columns=columns))
-    return outcome(edits, f"{action} on {table}", data=table_json(document, table), changed=[table])
+    kept.follow(call, action, index, side)
+    # A row inserted or deleted at the top renames the table (its id is its first row's).
+    now = kept.current_id() or table
+    result = outcome(edits, f"{action} on {table}", data=table_json(document, now), changed=[now])
+    if now != table:
+        result.renamed[table] = now
+    return result
 
 
 def _set_from(call: Any, view: Any, source: str, from_columns: list[str] | None,
@@ -163,14 +173,180 @@ def _set_from(call: Any, view: Any, source: str, from_columns: list[str] | None,
             current = document.table(view.id)
             edits.extend(_set_cell(document, current, row, col, cell_text(lines)))
             changed.append(current.cell(row, col).id)
+    placed_from = block.provenance(top)
+    _keep_placed(call, view.id, block, placed_from, top)
     result = outcome(edits, f"set_cells on {view.id} from {block.rows.address}",
-                     data={**table_json(document, view.id, markdown=False), "from": block.provenance(top)},
+                     data={**table_json(document, view.id, markdown=False), "from": placed_from},
                      changed=changed)
     if top + need_rows < height or need_columns < width:
         result.warnings.append(f"from filled rows {top}-{top + need_rows - 1}, columns "
                                f"0-{need_columns - 1} of a {height}x{width} table; the other "
                                "cells keep their text")
     return result
+
+
+# -- the table's record, kept true ---------------------------------------------------------------
+#
+# The record kept in the document (:mod:`docx_agent.edit.provenance`) counts the table's rows
+# with its tracked changes accepted: a row deleted as a tracked change is not counted.  An
+# edit without ``from`` keeps it true or drops what it no longer says -- a stale address is
+# worse than none (docs/TOOLS.md, "Source addresses in the saved file"):
+#
+# * set_cells over the block's cells (its header row included) drops those columns' entries;
+# * a row inserted or deleted above the block shifts it, below it leaves it, inside it drops
+#   the record (the rows placed are no longer one block);
+# * a column inserted shifts the entries right of it; a column deleted drops its entry and
+#   shifts those right of it;
+# * merge and split drop the record;
+# * a record left with no column entry is dropped.
+#
+# A table's id is its first row's: a row inserted or deleted at the top renames the table,
+# and its record moves to the new id.
+
+
+def _keep_placed(call: Any, table: str, block: Any, placed_from: dict[str, Any], top: int) -> None:
+    """Keep ``set_cells`` ``from``'s record, its rows counted with tracked changes accepted;
+    over a row deleted as a tracked change, drop the table's record instead."""
+    entry = _table_entry(call.document, table)
+    if entry is None:
+        return
+    accepted = _provenance.accepted_rows(entry)
+    span = range(top, top + block.size[0])
+    if any(row not in accepted for row in span):
+        call.store_provenance(table, None)
+        return
+    shift = top - accepted.index(top)
+    saved = dict(placed_from)
+    for key in ("header_row", "first_row"):
+        if saved.get(key) is not None:
+            saved[key] -= shift
+    call.keep_provenance(table, block.rows, saved)
+
+
+def _table_entry(document: Any, table: str) -> Any:
+    """The table's index entry (its element and rows), or ``None``."""
+    try:
+        _part, entry = document._resolve(table)
+    except KeyError:
+        return None
+    return entry if hasattr(entry, "rows") else None
+
+
+class _Kept:
+    """The table's record before an edit without ``from``, and what the edit makes of it."""
+
+    def __init__(self, document: Any, table: str) -> None:
+        self.document = document
+        self.key = document._provenance_key(table)
+        self.record = document.provenance().get(self.key) if self.key else None
+        entry = _table_entry(document, table)
+        self.element = entry.element if entry is not None else None
+        self.accepted = _provenance.accepted_rows(entry) if entry is not None else []
+        self.total = len(entry.rows) if entry is not None else 0
+        self.dropped: set[int] = set()
+
+    def _block(self) -> tuple[int, int]:
+        """The block's first and last row (header row included), counted accepted."""
+        record = self.record
+        first = record.get("first_row", 0)
+        top = record["header_row"] if record.get("header_row") is not None else first
+        rows = max((_provenance.count(c.get("rows", "")) for c in record.get("columns") or []), default=0)
+        return top, max(top, first + rows - 1)
+
+    def cell(self, row: int, col: int) -> None:
+        """``set_cells`` without ``from`` writes cell (``row``, ``col``)."""
+        if self.record is None:
+            return
+        if row not in self.accepted:
+            return
+        top, last = self._block()
+        if top <= self.accepted.index(row) <= last:
+            self.dropped.add(col)
+
+    def follow(self, call: Any, action: str, index: int | None, side: str) -> None:
+        """Store what the edit leaves of the record, under the table's id after it."""
+        if self.record is None:
+            return
+        after = self._after(action, index, side)
+        key = self._key_now()
+        if key != self.key:
+            call.store_provenance(self.key, None)
+        if key is not None and (after != self.record or key != self.key):
+            call.store_provenance(key, after)
+
+    def current_id(self) -> str | None:
+        """The table's id after the edit, found by its element."""
+        entry = self._entry_now()
+        return entry.id if entry is not None else None
+
+    def _key_now(self) -> str | None:
+        """The table's durable id after the edit (found by its element), or ``None``."""
+        entry = self._entry_now()
+        return self.document._provenance_key(entry.id) if entry is not None else None
+
+    def _after(self, action: str, index: int | None, side: str) -> dict[str, Any] | None:
+        record = dict(self.record)
+        columns = [dict(c) for c in record.get("columns") or []]
+        if action == "set_cells":
+            columns = [c for c in columns if c.get("col") not in self.dropped]
+        elif action in ("insert_row", "delete_row"):
+            top, last = self._block()
+            if action == "insert_row":
+                # the new row's place among the rows now, then among the accepted ones
+                xml = self.total - 1 if index is None else index
+                at = xml + 1 if side == "after" else xml
+                now = self._entry_now()
+                rows_now = _provenance.accepted_rows(now) if now is not None else []
+                if at not in rows_now:
+                    return None
+                where = rows_now.index(at)
+                if where > last:
+                    return record
+                if where > top:
+                    return None
+                step = 1
+            else:
+                if index not in self.accepted:
+                    return record          # a row already deleted as a tracked change
+                where = self.accepted.index(index)
+                if where > last:
+                    return record
+                if where >= top:
+                    return None
+                step = -1
+            for key in ("header_row", "first_row"):
+                if record.get(key) is not None:
+                    record[key] += step
+            return record
+        elif action == "insert_column":
+            # the new column's grid index: beside index (the tool's default given), to its
+            # right unless before
+            at = index + 1 if side == "after" else index
+            for c in columns:
+                if c.get("col", 0) >= at:
+                    c["col"] += 1
+        elif action == "delete_column":
+            columns = [c for c in columns if c.get("col") != index]
+            for c in columns:
+                if c.get("col", 0) > index:
+                    c["col"] -= 1
+        else:                      # merge, split
+            return None
+        if not columns:
+            return None
+        record["columns"] = columns
+        return record
+
+    def _entry_now(self) -> Any:
+        """The table's index entry after the edit, found by its element."""
+        if self.element is None:
+            return None
+        for story in self.document.stories:
+            for table in story.tables:
+                entry = _table_entry(self.document, table.id)
+                if entry is not None and entry.element is self.element:
+                    return entry
+        return None
 
 
 def _set_cell(document: Any, table: Any, row: int, col: int, text: str) -> list[Any]:
