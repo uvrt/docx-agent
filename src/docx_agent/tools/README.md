@@ -122,10 +122,59 @@ and per column its table column, source column, source rows as runs and their so
               "sources": ["Checks!C2:C13"]}, ...]}
 ```
 
-It is not written into the document. A Word document names its drawings with the same
+Its record -- `from` without the session's document handle, with the source document's
+name (ooxml-edit 0.25.0's `ooxml_edit.provenance`) -- is also kept in the document: see
+"Source addresses in the saved file" below. A Word document names its drawings with the same
 `d:` prefix as datasets (`d:3`; a dataset's id starts with a letter), so a `from` only
 ever names a dataset, and given a drawing's id it says so: `no dataset d:3; d:3 is a
 drawing in this document, not a dataset: ...`.
+
+### Source addresses in the saved file
+
+Where a table's or a chart's values came from is kept in the document itself, so it can be
+read back after a save, in another session, or after Word has opened and saved the file
+(measured, Word for Mac, 2026-10-14). It is one custom XML item related from the document
+part -- `customXml/itemN.xml`, its `itemPropsN.xml` naming the schema
+`urn:uvrt:docx-agent:provenance:v1`, and a `customXml` relationship from
+`word/document.xml` -- with one entry per table or chart, keyed by the address the tools
+take: a table's `t:<paraId>` (its first row's `w14:paraId`, which Word keeps because
+docx-agent stamps every paragraph and row) and a chart's `d:<docPr id>`. Each holds the
+compact JSON record:
+
+```xml
+<prov:sources xmlns:prov="urn:uvrt:docx-agent:provenance:v1"><prov:source kind="table"
+ key="t:60D6847F">{"v":1,"source":"d:checks","header_row":0,"first_row":1,"columns":[...]}</prov:source>
+<prov:source kind="chart" key="d:2">{"v":1,"source":"d:checks","categories":{...},"series":[...]}</prov:source></prov:sources>
+```
+
+Other custom XML items (a bibliography, cover-page properties, a content control's data)
+are left as they are. `word_insert_markdown`'s and `set_cells`' `from`, and `edit_chart`'s,
+write the record in the call's undo step; the last one dropped takes the item, its
+properties and the relationship away. `session.provenance(doc)` (or `Document.provenance()`)
+reads `{address: record}`, for the tables and charts the document has with its tracked
+changes accepted. No tool or parameter is added.
+
+The record never says what is no longer true. A record's rows count the table's rows with
+its tracked changes accepted; an edit without `from` keeps it true or drops it:
+
+| Edit | The table's record |
+| --- | --- |
+| `set_cells` (no `from`) over the block, header row included | that column's entry dropped |
+| `insert_row`/`delete_row` above the block / below it / inside it | shifted / kept / dropped |
+| `insert_column`; `delete_column` | entries right of it shifted; its entry dropped, the rest shifted |
+| `merge`, `split` | dropped |
+| a row inserted or deleted at the top (the table's id changes) | moved to the new id |
+| `word_changes` accept | kept (under the new id if accepting renamed the table) |
+| `word_changes` reject of anything in the table | dropped: the old values may be back |
+| the table or chart deleted (`word_delete`, a replace) | dropped in that call's undo step |
+| copied (`word_copy_from`) | the copy has none: it gets new ids, never a recorded one |
+
+A record left with no column entry is dropped. A chart's record follows `edit_chart`'s own
+rules (ooxml-edit's docs/TOOLS.md). Text changed in a recorded table by the text tools
+(`word_set_text`, `replace_text`...) is not followed: the record says where the values were
+placed from. A table deleted as a tracked change keeps its entry, left out on reading; a
+save prunes nothing; an entry whose object is gone (another program deleted it) is left
+out on reading (`Document.provenance().ignored` counts them) and pruned by the next edit.
 
 The provider SDKs read their keys from the environment (`ANTHROPIC_API_KEY`,
 `OPENAI_API_KEY`). When the loop ends, `session.take_outputs()` holds what `save_document`

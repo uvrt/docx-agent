@@ -6,6 +6,44 @@ snapshot commit; the development history before it is summarised here.
 
 ## Unreleased
 
+- Source addresses in the saved file (ooxml-edit 0.25.0): where a table's or a chart's values
+  came from -- the record of the result's `from` (`ooxml_edit.provenance`: the source
+  without the session's handle, the source document's name, its version, per column the
+  rows and their sources) -- is now kept in the document, where X1 kept it in the result
+  only. One custom XML item related from the document part, the shape Word for Mac keeps
+  through open, edit and save (measured 2026-10-14): `customXml/itemN.xml`
+  (`<prov:sources xmlns:prov="urn:uvrt:docx-agent:provenance:v1">`, one
+  `<prov:source kind="table|chart" key="...">` per object holding the compact JSON record),
+  `itemPropsN.xml` with `ds:schemaRef` that namespace, a `customXml` relationship from
+  `word/document.xml`. A table is keyed by its `t:` id (its first row's `w14:paraId`, kept
+  by Word because every paragraph and row is stamped), a chart by its `d:` id (`docPr`).
+  Other custom XML items are left as they are; the last record dropped takes the item, its
+  properties and the relationship away, all in the call's undo step.
+  - The docx format's `store_provenance` and `read_provenance` hooks:
+    `word_insert_markdown`'s and `set_cells`' `from` call `call.keep_provenance`, and the
+    shared `edit_chart` keeps a chart's. `session.provenance(doc)` and the new
+    `Document.provenance()` read `{address: record}` for the tables and charts there are
+    with tracked changes accepted; its `ignored` counts the entries left out (object gone,
+    or not a record). `Document.store_provenance(address, record)` keeps one, `None` drops
+    it.
+  - Kept true, or dropped: `set_cells` without `from` over the block drops those columns'
+    entries; a row inserted or deleted above the block shifts it, below it leaves it, inside
+    it drops the record; a column inserted shifts the entries right of it, one deleted drops
+    its entry and shifts the rest; merge and split drop it; a record with no column left is
+    dropped. Rows are counted with tracked changes accepted. Accepting changes keeps the
+    record; rejecting any change in a recorded table drops it (its old values may be
+    back). A table renamed by a row at its top takes its record to the new id.
+  - Deletes and copies: every outermost edit and batch prunes the entries whose table or
+    chart is no longer in the file, so a deletion drops its record in its own undo step and
+    undo brings both back; a save prunes nothing, and an entry whose object another program
+    deleted is left out on reading and pruned by the next edit. A copied table (or chart)
+    gets new ids, so no record -- never a shared one.
+  - `word_edit_table`'s `insert_row` before row 0, and `delete_row` of row 0, failed with
+    `not_found` (the table's id is its first row's, and the result looked the old one up);
+    they now return the table under its new id, with `renamed` saying so.
+  - No tool definition changes (about 12,131 estimated tokens, the guard 12,150); every
+    `strict_problems` stays empty. ooxml-edit 0.25.0 is the floor.
+
 - Tables from data (X1): `word_insert_markdown` (as a third choice beside `markdown` and
   `blob`) and `word_edit_table`'s `set_cells` take `from` -- a dataset `d:<id>` or another
   open document's table `t:<name>`, as ooxml-edit 0.22.0's `edit_chart` does -- with
