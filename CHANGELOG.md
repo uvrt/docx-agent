@@ -6,6 +6,16 @@ snapshot commit; the development history before it is summarised here.
 
 ## Unreleased
 
+- Dates from a source written one way (round 5, T18b; ooxml-edit 0.29.0), none of it in the
+  definitions. `word_insert_markdown` and `word_edit_table` `set_cells` from a source write a `date`, `datetime` or `time` column's ISO
+  8601 text -- a workbook's date column through `t:`, a derive's dates, a dataset labelled
+  `date` -- in the session locale's day order, as a Python date already was (`1/5/2026`
+  en-US, `5/1/2026` nl-BE), so one document no longer mixes `1/3/2026` and `2026-01-20`;
+  unlabelled ISO text is written as it is. `edit_chart` categories from such a column are
+  written the same way, and `set_values` matches its rows to categories written ISO (an
+  older document) or in the locale. The kept provenance names cells, never values:
+  unchanged. Needs ooxml-edit 0.29.0.
+
 - Fewer wasted turns on names a model naturally writes (round 5, T6 and T8; ooxml-edit
   0.27.0), none of it in the definitions: the estimated tokens and the strict set are
   unchanged.
