@@ -7,8 +7,11 @@ rows.  ``from_columns`` picks the source's columns by name, in the order placed 
 every column, in the source's order); every row is placed, in the source's order.  Above
 the rows goes a header row: the column names as the source has them, unless ``header``
 gives its texts, or ``[]`` for none.  A value is written as a chart's category label is
-(:func:`ooxml_edit.tools.sources.label`): text as it is, a number as the General format
-writes it with the session locale's decimal separator, a logical value ``TRUE`` or
+(:meth:`ooxml_edit.tools.sources.Rows.label`): text as it is; a date in the session
+locale's day order (``3/1/2026`` en-US, ``1/3/2026`` nl-BE) -- a Python date, and the ISO
+8601 text of a ``date``, ``datetime`` or ``time`` column (a workbook's date cells, a
+derive's dates), so one document never mixes ``1/3/2026`` and ``2026-01-20``; a number as
+the General format writes it with the session locale's decimal separator, a logical value ``TRUE`` or
 ``FALSE``, a blank as an empty cell; a value's line breaks are line breaks in the cell's
 one paragraph.  Nothing is cut: a block over Word's 63 columns, 4,096 rows or 5,000 cells
 per call, or bigger than the table it is written into, is refused.
@@ -95,7 +98,7 @@ def _text(rows: Any, row: int, column: int, locale: Any) -> str:
     value = rows.dataset.rows[row][column]
     if value is None or value == "":
         return ""
-    text = sources.label(value, locale)
+    text = rows.label(row, column, locale)
     if text is None:
         raise ToolError("invalid_arguments", f"{rows.where(row, column)} is "
                         f"{sources.what(value)}: a cell takes text, a number, a logical value or "
