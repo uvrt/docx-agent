@@ -50,6 +50,7 @@ from .fields import Field, FieldOps  # noqa: F401  (re-exported)
 from .authoring import AuthoringOps
 from .importing import ImportOps
 from .properties import PropertyOps
+from .provenance import ProvenanceOps
 from ..revisions import track as _track
 from ..revisions.mode import TrackingOps, trackable
 from ..revisions.review import RevisionOps
@@ -677,7 +678,7 @@ STAMPING = ("document", "paragraph")
 
 class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, PictureOps, CommentOps, TableOps,
                TableFormatOps, DrawingOps, ControlOps, SectionOps, NoteOps, FieldOps, AnnotationOps, AuthoringOps,
-               PropertyOps, ImportOps, ChartOps):
+               PropertyOps, ImportOps, ChartOps, ProvenanceOps):
     """An open Word document, editable, undoable and re-renderable.
 
     ``stamping`` says what the first edit stamps.  ``"document"`` (the default): every
@@ -1181,12 +1182,15 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
         outermost = not self.history.in_batch
         try:
             with self.history.batch():
+                if outermost:
+                    self._prune_provenance()  # entries a save left behind: none comes back
                 before = self._revision_id_counts() if outermost else None
                 boxes = self._text_box_snapshot() if outermost else None
                 yield
                 if outermost:
                     self._sync_text_boxes(boxes)
                     self._unique_revision_ids(before)
+                    self._prune_provenance()  # a deleted table's record goes with it
         finally:
             self._invalidate()
 
@@ -1811,9 +1815,14 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
     @contextmanager
     def batch(self) -> Iterator[None]:
         """Collapse every edit inside into one undo step; roll all of them back on error."""
+        outermost = not self.history.in_batch
         try:
             with self.history.batch():
+                if outermost:
+                    self._prune_provenance()  # entries a save left behind: none comes back
                 yield
+                if outermost:
+                    self._prune_provenance()  # a deleted table's record goes with it
         finally:
             self._invalidate()
 

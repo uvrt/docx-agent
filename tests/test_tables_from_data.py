@@ -193,7 +193,7 @@ def test_a_table_from_a_dataset_header_rows_and_provenance(toolbox, session):
     assert placed["columns"][1] == {"col": 1, "column": "rating", "rows": "1-3",
                                     "sources": ["G!B2", "G!B3", "G!B4"]}
     document = session.entry("d1").document
-    assert b"G!B2" not in document.to_bytes()          # provenance stays out of the document
+    assert list(document.provenance()) == [table]       # kept in the file (test_provenance)
     xml = document.package.tree(document.package.document_part())
     tbl = xml.find(".//{*}tbl")
     assert tbl.find("{*}tr/{*}trPr/{*}tblHeader") is not None      # the header row repeats

@@ -41,7 +41,10 @@ classifiers = [
 # ConvertOptions(locale=...) (docx2svg on main since #8; its version is still 0.1).
 # ooxml-edit 0.22.0: sources (O3) -- Tool.sources, call.source and Rows.provenance, which
 # word_insert_markdown's and word_edit_table's ``from`` read a dataset or another
-# document's table by; 0.23.0 DocumentFormat.source_hint (d:3 is a drawing, not a dataset).
+# document's table by; 0.23.0 DocumentFormat.source_hint (d:3 is a drawing, not a dataset);
+# 0.25.0 source addresses in the saved file -- ooxml_edit.provenance, Call.keep_provenance
+# and DocumentFormat.store_provenance/read_provenance, which docx_agent.edit.provenance
+# keeps in a custom XML item.
 # docx2svg renders and lays out, and is a hard dependency by
 # decision (ROADMAP.md, "Decisions", 9): it is standard-library only, so it costs little,
 # and reflow feedback is part of every edit's answer.  Neither is on PyPI yet: install them
@@ -49,7 +52,7 @@ classifiers = [
 # -e ../docx2svg`) or from GitHub.  markdown-it-py (with mdit-py-plugins for footnotes) is the
 # Markdown parser, by decision (ROADMAP.md, "Decisions", 2): it reads to_markdown's output back
 # for the reverse-parse check and checks a block's inline Markdown before it is written.
-dependencies = ["lxml>=4.9", "ooxml-edit>=0.23.0", "ooxml-common>=0.15.0", "docx2svg>=0.1", "markdown-it-py>=3.0", "mdit-py-plugins>=0.4"]
+dependencies = ["lxml>=4.9", "ooxml-edit>=0.25.0", "ooxml-common>=0.15.0", "docx2svg>=0.1", "markdown-it-py>=3.0", "mdit-py-plugins>=0.4"]
 
 [project.optional-dependencies]
 # PNG output goes through docx2svg's rasteriser extra.

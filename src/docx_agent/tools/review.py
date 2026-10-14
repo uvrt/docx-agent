@@ -119,6 +119,40 @@ def _list_changes(call: Any, author: str | None, kind: str | None, within: str |
     return result
 
 
+def _recorded_tables(document: Any) -> dict[str, tuple[Any, bytes, Any]]:
+    """The tables the document keeps a source record of: each one's element, its XML now
+    and its record."""
+    from lxml import etree
+
+    kept = document.provenance()
+    out = {}
+    for key in document._provenance_keys():
+        found = document._direct(key) if key.rpartition("/")[2].startswith("t:") else None
+        if found is not None and hasattr(found[1], "rows"):
+            out[key] = (found[1].element, etree.tostring(found[1].element), kept.get(key))
+    return out
+
+
+def _follow_review(call: Any, action: str, recorded: dict[str, tuple[Any, bytes, Any]]) -> None:
+    """A record describes its table with the tracked changes accepted.  Accepting keeps it
+    -- under the table's new id when accepting renamed the table (a tracked row at the top
+    inserted or deleted).  Rejecting a change in a recorded table may put back values that
+    are not the source's, so its record is dropped (a stale address is worse than none)."""
+    from lxml import etree
+
+    document = call.document
+    for key, (element, before, record) in recorded.items():
+        now = next((table.id for story in document.stories for table in story.tables
+                    if document._direct(table.id) is not None
+                    and document._direct(table.id)[1].element is element), None)
+        if action == "reject":
+            if now is None or etree.tostring(element) != before:
+                call.store_provenance(key, None)
+        elif now is not None and now != key and record is not None:
+            call.store_provenance(key, None)
+            call.store_provenance(now, record)
+
+
 def _review_changes(call: Any, action: str, ids: list[str] | None, author: str | None, kind: str | None,
                     within: str | None, all: bool) -> Result:
     document = call.document
@@ -127,6 +161,7 @@ def _review_changes(call: Any, action: str, ids: list[str] | None, author: str |
                         valid_options=["ids", "author", "kind", "within", "all"])
     if ids and (author or kind or within or all):
         raise ToolError("invalid_arguments", "give ids, or filters, not both", field="ids")
+    recorded = _recorded_tables(document)
     edits = []
     count = 0
     if ids:
@@ -160,6 +195,7 @@ def _review_changes(call: Any, action: str, ids: list[str] | None, author: str |
             seen.add((change.kind, change.author, tuple(change.revisions), change.text, change.old_text))
             edits.append(change.accept() if action == "accept" else change.reject())
         count = before - len(document.revisions())
+    _follow_review(call, action, recorded)
     left = document.changes()
     result = outcome(edits, f"{action.capitalize()}ed {count} revision record(s)",
                      data={"records": count, "changes_left": len(left),

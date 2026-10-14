@@ -81,6 +81,18 @@ doc.undo()                                     # every edit is one undo step
 doc.save("agreement-edited.docx")
 ```
 
+A table or chart placed from a source by the agent tools (`from`) keeps where its values
+came from in the saved file, in a custom XML item Word keeps; read it back with
+`Document.provenance()`, `{address: record}` (`t:<paraId>` for a table, `d:<id>` for a
+chart, each an `ooxml_edit.provenance` record). `ignored` counts the entries whose table or
+chart is gone; `Document.store_provenance(address, record)` keeps one (`None` drops it):
+
+```python
+doc = Document.open("report.docx")
+for address, record in doc.provenance().items():
+    print(address, record["source"], record.get("document"))   # t:60D6847F d:checks budget.xlsx
+```
+
 More recipes -- find and replace, tracked changes, comments, revisions, Markdown in the
 template's own styles, tables, pictures, charts, sections, rendering, templates,
 validation -- each run as written by the tests: [docs/common-tasks.md](docs/common-tasks.md).

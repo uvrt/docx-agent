@@ -73,6 +73,19 @@ def configure(document: Document, session: Any) -> None:
     document.locale = session.locale
 
 
+def store_provenance(document: Document, address: str, record: Any) -> None:
+    """Keep a placement's record in the document's own custom XML item
+    (:mod:`docx_agent.edit.provenance`), keyed by the table's ``t:`` or the chart's ``d:``
+    id; ``None`` drops it.  Inside the call's undo step."""
+    document.store_provenance(address, record)
+
+
+def read_provenance(document: Document) -> dict[str, Any]:
+    """``{address: record}`` for the tables and charts the document has (tracked changes
+    accepted); an entry whose object is gone is left out."""
+    return dict(document.provenance())
+
+
 def detect(data: bytes, name: str) -> bool:
     if not data.startswith(b"PK"):
         return False
@@ -122,4 +135,5 @@ FORMAT = DocumentFormat(
     kind=KIND, open=open_docx, detect=detect, problems=problems, problem_key=problem_key,
     warnings=(AuthoringWarning, UntrackedChartEdit, DiagramDrawingDropped, ChartDataWarning),
     prompt=PROMPT, errors=ERRORS, summary=summary, checks=checks, strict_first=STRICT_FIRST,
-    configure=configure, source_hint=source_hint)
+    configure=configure, source_hint=source_hint, store_provenance=store_provenance,
+    read_provenance=read_provenance)
