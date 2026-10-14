@@ -47,6 +47,7 @@ classifiers = [
 # keeps in a custom XML item.  0.26.0: batch applies its ops one by one (atomic: true for
 # all or none), rolling a failed op back before the format's restored hook.  0.27.0:
 # argument-name aliases (Tool.aliases, names_as) and refusals that say "did you mean".
+# 0.30.0: describe lists the session's datasets, the document's describe too (tested here).
 # docx2svg renders and lays out, and is a hard dependency by
 # decision (ROADMAP.md, "Decisions", 9): it is standard-library only, so it costs little,
 # and reflow feedback is part of every edit's answer.  Neither is on PyPI yet: install them
@@ -54,7 +55,7 @@ classifiers = [
 # -e ../docx2svg`) or from GitHub.  markdown-it-py (with mdit-py-plugins for footnotes) is the
 # Markdown parser, by decision (ROADMAP.md, "Decisions", 2): it reads to_markdown's output back
 # for the reverse-parse check and checks a block's inline Markdown before it is written.
-dependencies = ["lxml>=4.9", "ooxml-edit>=0.29.0", "ooxml-common>=0.15.0", "docx2svg>=0.1", "markdown-it-py>=3.0", "mdit-py-plugins>=0.4"]
+dependencies = ["lxml>=4.9", "ooxml-edit>=0.30.0", "ooxml-common>=0.15.0", "docx2svg>=0.1", "markdown-it-py>=3.0", "mdit-py-plugins>=0.4"]
 
 [project.optional-dependencies]
 # PNG output goes through docx2svg's rasteriser extra.
