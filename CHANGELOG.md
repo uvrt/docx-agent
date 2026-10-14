@@ -6,6 +6,15 @@ snapshot commit; the development history before it is summarised here.
 
 ## Unreleased
 
+- `batch` applies its ops one by one by default (ooxml-edit 0.26.0, round 5 T1): a failing
+  op -- an anchor that names nothing, an enum the schema refuses, a `$ref` a failed op would
+  have made -- is skipped with its own error and the others still apply as one undo step;
+  `data` then lists each op's outcome with `applied` and `failed`, and the summary names the
+  ops to resend. `atomic: true` keeps the all-or-none batch. The format's new `restored`
+  hook drops the document's indexes after a failed op is rolled back inside the batch.
+  The definitions grow by 22 estimated tokens (core 2,535 -> 2,558, about 3,786 counted;
+  every definition 12,131 -> 12,153, guard 12,150 -> 12,155); the strict set is unchanged.
+  The golden transcripts replay unchanged: a batch whose ops all apply returns what it did.
 - Source addresses in the saved file (ooxml-edit 0.25.0): where a table's or a chart's values
   came from -- the record of the result's `from` (`ooxml_edit.provenance`: the source
   without the session's handle, the source document's name, its version, per column the
