@@ -68,7 +68,31 @@ THEME_COLORS = frozenset({
     "accent5", "accent6", "hyperlink", "followedHyperlink", "background1", "text1",
     "background2", "text2",
 })
+#: DrawingML's scheme names for the same theme colours (``tx1``, ``bg2``, ``dk1``...), as a
+#: deck or chart writes them, read as Word's: folded, lowercase without spaces.  ``text1``
+#: and ``tx1`` both go through the document's colour mapping, ``dark1`` and ``dk1`` name the
+#: slot directly.
+THEME_COLOR_ALIASES = {
+    "tx1": "text1", "tx2": "text2", "bg1": "background1", "bg2": "background2",
+    "dk1": "dark1", "lt1": "light1", "dk2": "dark2", "lt2": "light2",
+    "hlink": "hyperlink", "folhlink": "followedHyperlink",
+}
 VERTICAL_ALIGNS = frozenset({"superscript", "subscript", "baseline"})
+
+
+def theme_color_name(value: object) -> str | None:
+    """The theme colour ``value`` names, as Word writes it in ``w:themeColor``: one of
+    :data:`THEME_COLORS` ignoring case and spaces (``"Text 1"``, ``"Accent1"``), or a
+    DrawingML name for one (``tx1``); ``None`` for anything else."""
+    if not isinstance(value, str):
+        return None
+    if value in THEME_COLORS:
+        return value
+    folded = "".join(value.split()).lower()
+    for name in THEME_COLORS:
+        if name.lower() == folded:
+            return name
+    return THEME_COLOR_ALIASES.get(folded)
 _HEX = re.compile(r"[0-9A-Fa-f]{6}")
 
 ALIGNMENTS = {"left": "left", "center": "center", "right": "right", "justify": "both",
@@ -115,8 +139,9 @@ def check_run(values: dict) -> None:
         if name == "font" and not (isinstance(value, str) and value.strip() and len(value) <= 31):
             raise FormattingError("font is a face name of at most 31 characters")
         if name == "color" and not (isinstance(value, str) and (_HEX.fullmatch(value) or value == "auto"
-                                                                or value in THEME_COLORS)):
-            raise FormattingError(f"color is RRGGBB, 'auto' or a theme colour ({', '.join(sorted(THEME_COLORS))})")
+                                                                or theme_color_name(value))):
+            raise FormattingError(f"color is RRGGBB, 'auto' or a theme colour ({', '.join(sorted(THEME_COLORS))}; "
+                                  "tx1, bg1... are read as text1, background1...)")
         if name == "highlight" and value not in HIGHLIGHTS:
             raise FormattingError(f"highlight is one of {', '.join(sorted(HIGHLIGHTS))}")
         if name == "vertical_align" and value not in VERTICAL_ALIGNS:
@@ -310,7 +335,8 @@ def write_run(owner: Element, values: dict, theme_color: Callable[[str], str | N
         elif name == "color":
             if value is None:
                 _set_child(properties, "w:color", None)
-            elif value in THEME_COLORS:
+            elif theme_color_name(value) is not None:
+                value = theme_color_name(value)
                 rgb = (theme_color(value) if theme_color else None) or "000000"
                 _set_child(properties, "w:color", {"w:val": rgb, "w:themeColor": value,
                                                    "w:themeTint": None, "w:themeShade": None})

@@ -238,7 +238,7 @@ def images_from(call: Any):
             "style_map": STYLE_MAP,
             "key": string("Retry key: a repeat with the same key makes nothing new.", optional=True)},
            group="word_text", mutates=True, exactly_one=[("markdown", "blob", "from")],
-           sources=("from",))
+           sources=("from",), aliases={"columns": "from_columns"})
 def word_insert_markdown(call: Any, doc: str, at: str, markdown: str | None = None,
                          blob: str | None = None, style_map: list[dict] | None = None,
                          key: str | None = None, from_columns: list[str] | None = None,

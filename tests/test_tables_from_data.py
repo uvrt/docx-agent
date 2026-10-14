@@ -446,3 +446,17 @@ def test_a_drawings_id_in_a_batch_is_named_a_drawing(toolbox, session):
          "arguments": {"doc": "d1", "at": "end", "from": drawing}}])
     assert not result.ok
     assert "is a drawing in this document" in json.dumps(result.to_json())
+
+
+def test_column_names_given_as_columns_are_read_as_from_columns(toolbox, session):
+    made = ok(insert(toolbox, session, **{"from": "d:scores", "columns": ["rating", "check"]}))
+    assert texts(session, made.data["id"])[0] == ["rating", "check"]
+    assert made.warnings[0] == "columns read as from_columns"
+    table = _table(toolbox, session, 4, 2)
+    result = ok(edit(toolbox, session, table, **{"from": "d:scores",
+                                                 "columns": ["check", "note"]}))
+    assert texts(session, table)[0] == ["check", "note"]
+    assert result.warnings[0] == "columns read as from_columns"
+    # split's count of columns stays a count.
+    error = failed(edit(toolbox, session, table, columns=[2]), "invalid_arguments")
+    assert error.field == "columns"

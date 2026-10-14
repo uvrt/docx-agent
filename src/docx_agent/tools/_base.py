@@ -230,7 +230,8 @@ def word_tool(name: str, description: str, params: Mapping[str, Any], *, group: 
               documents: Any = ("doc",), priority: int | None = None, track: bool = True,
               refs: Sequence[str] = (), batchable: bool = True,
               reads: Callable[[Mapping[str, Any]], bool] | None = None,
-              sources: Sequence[str] = ()) -> Callable[[Callable[..., Any]], Any]:
+              sources: Sequence[str] = (),
+              aliases: Mapping[str, Any] | None = None) -> Callable[[Callable[..., Any]], Any]:
     """A Word tool (kind ``docx``): ``handler(call, **arguments) -> Result | data``.
 
     Around the handler: the layout engine; for a changing call, the layout before it (for
@@ -238,13 +239,14 @@ def word_tool(name: str, description: str, params: Mapping[str, Any], *, group: 
     like a comment).  ``refs`` names the arguments that may be ``$name`` refs; ``reads``
     the calls of a changing tool that only read (``word_changes`` list), which run as
     reading calls (``ooxml_edit.tools.Tool.reads``); ``sources`` the arguments that name
-    rows to take, a dataset or another document's table (``Tool.sources``)."""
+    rows to take, a dataset or another document's table (``Tool.sources``); ``aliases``
+    the argument names read as its own (``Tool.aliases``)."""
 
     def make(handler: Callable[..., Any]) -> Any:
         return _tool(name, description, params, group=group, mutates=mutates, kind="docx",
                      exactly_one=exactly_one, documents=documents, priority=priority, refs=refs,
-                     batchable=batchable, reads=reads,
-                     sources=sources)(wrap(handler, mutates=mutates, track=track))
+                     batchable=batchable, reads=reads, sources=sources,
+                     aliases=aliases)(wrap(handler, mutates=mutates, track=track))
 
     return make
 

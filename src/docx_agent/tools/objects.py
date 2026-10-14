@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ooxml_edit.tools import Result, ToolError, array, integer, number, obj, string
+from ooxml_edit.tools import Result, ToolError, array, integer, names_as, number, obj, string
 
 from ..edit import provenance as _provenance
 from ._base import need, outcome, remember, resolve, short, word_tool
@@ -89,7 +89,8 @@ def _text(table: Any, row: int, col: int) -> str:
             "first": POSITION, "last": POSITION,
             "rows": integer("split: into rows. Default 1.", minimum=1, maximum=63, optional=True),
             "columns": integer("split: into columns. Default 2.", minimum=1, maximum=63, optional=True)},
-           refs=('table',), group="word_objects", mutates=True, sources=("from",))
+           refs=('table',), group="word_objects", mutates=True, sources=("from",),
+           aliases={"columns": names_as("columns", "from_columns")})
 def word_edit_table(call: Any, doc: str, table: str, action: str, cells: list[dict] | None = None,
                     index: int | None = None, side: str = "after", first: dict | None = None,
                     last: dict | None = None, rows: int = 1, columns: int = 2,

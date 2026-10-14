@@ -270,3 +270,19 @@ def test_mixed_formatting_survives_on_every_fixture(docx_path):
         after = formats(document.paragraph(paragraph.id))
         assert after[:start] == before[:start]
         assert after[start + len(word):] == before[start + len(word):]
+
+
+@pytest.mark.parametrize("given, written", [
+    ("tx2", "text2"), ("Text 1", "text1"), ("BG1", "background1"), ("Accent 3", "accent3"),
+    ("folHlink", "followedHyperlink"), ("dk2", "dark2")])
+def test_a_theme_colour_by_another_name_is_written_as_words(lists_doc, given, written):
+    document = Document.open(lists_doc)
+    document.anchor("Between").format(color=given)
+    node = document.paragraph("p:5A000006").runs[0]._element.find(f"{W}rPr/{W}color")
+    assert node.get(W + "themeColor") == written and node.get(W + "val")
+
+
+def test_a_colour_that_is_none_lists_words_names():
+    from docx_agent.edit.formatting import FormattingError, check_run
+    with pytest.raises(FormattingError, match=r"text1.*; tx1, bg1\.\.\. are read as"):
+        check_run({"color": "text3"})
