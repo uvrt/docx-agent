@@ -34,7 +34,8 @@ with Toolbox(TOOLS, formats=[FORMAT], groups=GROUPS) as toolbox:
   the rest load on demand in five groups. What is supported and what is not:
   [SUPPORTED.md](../src/docx_agent/tools/SUPPORTED.md); for the application's thinking layer:
   [GUIDANCE.md](../src/docx_agent/tools/GUIDANCE.md).
-- **Every changing call** is one undo step (all of a `batch` is one), written as tracked
+- **Every changing call** is one undo step (all of a `batch` is one: a failing op is skipped
+  with its error and the rest apply; `atomic: true` for all or none), written as tracked
   changes while `word_set_tracking` is on, and returns `checks`: the `validate()` delta
   against the document as opened and, once the document was laid out, the pages the change
   reflowed (for 20 pages or fewer; beyond, `check` reports them).

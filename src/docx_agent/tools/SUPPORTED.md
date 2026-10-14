@@ -15,7 +15,7 @@ for laid-out documents, the pages it reflowed (see [GUIDANCE.md](GUIDANCE.md)).
 | Formatting and styles | `word_format`, `word_lists`, `word_styles`, `word_template` | run and paragraph formatting, clearing direct formatting; lists; the style sheet; out of compatibility mode |
 | Objects | `word_edit_table`, `word_format_table`, `word_drawings`, `word_controls`, `edit_chart`, `edit_smartart` | tables edited and formatted (new ones are Markdown), cells set from a dataset or another document's table (`set_cells` `from`); pictures, text boxes, shapes, inline or floating; content controls; charts from data (column, stacked column, bar, stacked bar, line, pie, scatter, radar); SmartArt text |
 | Properties | `set_properties` | title, author, language, subject |
-| Session | `undo`, `check`, `batch` | |
+| Session | `undo`, `check`, `batch` | `batch`: a failing op is skipped with its error, the rest apply as one step; `atomic: true` for all or none |
 
 Not supported, in outline: macros (dropped on save), equations and ink beyond keeping them,
 building SmartArt, editing a template's styles from another file (`word_template` only

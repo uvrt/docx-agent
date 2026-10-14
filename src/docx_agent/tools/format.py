@@ -112,6 +112,13 @@ def summary(document: Document) -> dict[str, Any]:
             "revisions": len(document.revisions()), "template": document.package.kind in ("dotx", "dotm")}
 
 
+def restored(document: Document) -> None:
+    """Parts were put back behind the document's back -- a ``batch`` op that failed, rolled
+    back inside the batch's open undo step: the trees were reparsed, so every index is
+    stale (what the document's own ``undo`` does after the history's)."""
+    document._invalidate()
+
+
 def _candidates(error: AmbiguousAnchor) -> list[str]:
     out = []
     for candidate in error.candidates[:50]:
@@ -136,4 +143,4 @@ FORMAT = DocumentFormat(
     warnings=(AuthoringWarning, UntrackedChartEdit, DiagramDrawingDropped, ChartDataWarning),
     prompt=PROMPT, errors=ERRORS, summary=summary, checks=checks, strict_first=STRICT_FIRST,
     configure=configure, source_hint=source_hint, store_provenance=store_provenance,
-    read_provenance=read_provenance)
+    read_provenance=read_provenance, restored=restored)
