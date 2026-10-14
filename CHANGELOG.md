@@ -6,6 +6,11 @@ snapshot commit; the development history before it is summarised here.
 
 ## Unreleased
 
+- `describe` lists the session's datasets (round 5, T11; ooxml-edit 0.30.0), none of it in
+  the definitions: a document's `describe` result gets `datasets` -- each one's id, columns,
+  `types`, `rows` (a count) and `from` (`d1/t:Sales`, `d:by_rep`, or `application` for one
+  the application kept), `stale`/`closed` when true -- so a figure placed from `d:<id>` is
+  seen to have a source. Never a value; no key when the session has none.
 - Dates from a source written one way (round 5, T18b; ooxml-edit 0.29.0), none of it in the
   definitions. `word_insert_markdown` and `word_edit_table` `set_cells` from a source write a `date`, `datetime` or `time` column's ISO
   8601 text -- a workbook's date column through `t:`, a derive's dates, a dataset labelled

@@ -124,6 +124,21 @@ def test_describe_lists_headings_sections_comments_and_pages(box, session):
     assert data["sections"][0]["id"] == "s:body" and data["comments"]["threads"] >= 1
 
 
+def test_describe_lists_the_sessions_datasets_without_their_values(box, session):
+    """Round 5, T11: a dataset a document may place from is in describe (ooxml-edit
+    0.30.0)."""
+    from ooxml_edit.tools import Dataset, DatasetEntry
+
+    d = open_doc(session)
+    assert "datasets" not in ok(box, session, "describe", doc=d).data
+    session.keep_datasets([DatasetEntry("owners", Dataset.from_records(
+        [{"Owner": "Kim", "n": 2}, {"Owner": "Lee", "n": 1}], types={"n": "number"}))])
+    data = ok(box, session, "describe", doc=d).data
+    assert data["datasets"] == [{"id": "d:owners", "columns": ["Owner", "n"],
+                                 "types": {"n": "number"}, "rows": 2, "from": "application"}]
+    assert "Kim" not in json.dumps(data["datasets"])
+
+
 def test_read_pages_with_a_cursor_and_reads_a_range(box, session):
     d = session.open(Path(FIXTURES / "samplelib" / "sample-long.docx").read_bytes(), "long.docx")
     first = ok(box, session, "word_read", doc=d)
