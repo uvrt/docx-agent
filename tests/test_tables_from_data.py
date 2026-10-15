@@ -52,11 +52,19 @@ class Grid:
 
 
 def _grid_table(grid: Grid, address: str) -> Dataset:
-    name = address[len("t:"):]
+    """``t:<name>``, or one row of it by key, ``t:<name>/<key>`` (as a workbook's ``t:``
+    takes one, for a text fact)."""
+    name, _, key = address[len("t:"):].partition("/")
     if name not in grid.tables:
         raise ToolError("not_found", f"no table {name!r}", valid_options=sorted(grid.tables))
     header, rows = grid.tables[name]
-    return Dataset(header, rows, sources=_sources(rows), keys=1)
+    sources = _sources(rows)
+    if key:
+        found = [i for i, row in enumerate(rows) if row[0] == key]
+        if not found:
+            raise ToolError("not_found", f"no row {key!r} in {name}")
+        rows, sources = [rows[found[0]]], [sources[found[0]]]
+    return Dataset(header, rows, sources=sources, keys=1)
 
 
 def _merge(addresses):
