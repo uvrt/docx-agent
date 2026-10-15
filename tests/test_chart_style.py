@@ -98,3 +98,50 @@ def test_the_tool_formats_a_chart_and_labels_a_matrix():
                                                         "series": "Score", "chart_type": "line"})
         assert not refused.ok and "horizontal bars" in refused.error.message
         assert session.entry("d1").document.validate() == []
+
+
+# -- add with its look (round 5, T2) -------------------------------------------------------------
+
+
+@pytest.mark.parametrize("kind, data, extra", [
+    ("column", [{"name": "Now", "values": [3, 2, 4]},
+                {"name": "Goal", "values": [4, 4, 4], "type": "line"}], {}),
+    ("line", [{"name": "Now", "values": [3, 2, 4]}, {"name": "Goal", "values": [4, 4, 4]}], {}),
+    ("pie", [{"name": "Now", "values": [3, 2, 4]}], {}),
+    ("scatter", [{"name": "Now", "values": [3, 2, 4]}], {"values": [1, 2, 3]}),
+])
+def test_add_with_its_look_writes_the_chart_the_separate_calls_write(kind, data, extra):
+    from lxml import etree
+
+    from docx_agent.tools import FORMAT, GROUPS, TOOLS
+    from ooxml_edit.charts.actions import add_style_actions
+
+    document = report()
+    anchor = document.paragraphs()[1].id
+    # A colour per series, a pie's per slice; the scatter chart's one series takes one.
+    look = {"data_labels": True, "colors": ["accent2", "1F4E79"][:1 if kind == "scatter" else 2],
+            "style": {"size": 8, "bold": True}}
+    arguments = {"doc": "d1", "target": anchor, "action": "add", "chart_type": kind,
+                 "data": data, "width": 360, "gridlines": "none", **extra}
+    if not extra:
+        arguments["categories"] = ["Speed", "Cost", "Risk"]
+    written = []
+    with Toolbox(TOOLS, formats=[FORMAT], groups=GROUPS) as box:
+        for together in (True, False):
+            session = box.session()
+            session.open(document.to_bytes(), "report.docx")
+            added = box.dispatch(session, "edit_chart", {**arguments, **(look if together
+                                                                          else {})})
+            assert added.ok, added.to_json()
+            chart_id = next(c for c in added.created if c.startswith("d:"))
+            if not together:
+                for action, given in add_style_actions(kind, data, **look):
+                    done = box.dispatch(session, "edit_chart", {"doc": "d1", "target": chart_id,
+                                                                "action": action, **given})
+                    assert done.ok, done.to_json()
+            edited = session.entry("d1").document
+            written.append(etree.tostring(edited.chart(chart_id)._root()))
+            assert edited.validate() == []
+    assert written[0] == written[1]
+    assert b'val="accent2"' in written[0] and b'sz="800"' in written[0]
+    assert b"c:dLbls" in written[0]

@@ -42,7 +42,11 @@ parameters over the strict tools.  ooxml-edit 0.26.0 (round 5, T1): ``batch`` ap
 ops one by one by default and takes ``atomic`` for all or none; its description and the new
 parameter add 22 to the core (2,535 -> 2,558, about 3,786 counted) and to every definition
 (12,131 -> 12,153); the guard rises to 12,155.  The strict set is unchanged: ``batch`` is
-never strict.
+never strict.  ooxml-edit 0.32.0 (round 5, T2): a chart added with its look in one call
+(``data_labels`` and ``colors`` on the deferred edit_chart, ``add`` in ``style``'s and
+``part``'s descriptions, "Batch several changes.") adds 63 to every definition (12,153 ->
+12,216), none to the core (2,558); the guard rises to 12,220.  The strict set is unchanged:
+edit_chart left it in T4.
 """
 
 from __future__ import annotations
@@ -63,7 +67,7 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 6000
-ALL_GUARD = 12155
+ALL_GUARD = 12220
 
 
 @pytest.fixture(scope="module")
