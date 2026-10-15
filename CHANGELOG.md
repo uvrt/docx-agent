@@ -6,6 +6,14 @@ snapshot commit; the development history before it is summarised here.
 
 ## Unreleased
 
+- Fewer rows of a source (round 5, T3; ooxml-edit 0.31.0), none of it in the definitions:
+  `from` takes a row range -- `d:checks/#2:` (row 2 to the last), `d:checks/#1:#9`, and a
+  workbook's `t:Sales/#1:#9` (xlsx-agent) -- each value with its sources. A table made from
+  one keeps the header row repeating on each page (`w:tblHeader`), as every table from a
+  source does: Word flows a long table over pages itself, so nothing like the deck's
+  `continue` is needed. `set_cells` refused for want of rows now offers the row range that
+  fits as `valid_options` ("..., or place fewer with d:checks/#1:#2 (nothing is cut)").
+  The tool definitions, their estimated tokens and the strict set are unchanged.
 - `describe` lists the session's datasets (round 5, T11; ooxml-edit 0.30.0), none of it in
   the definitions: a document's `describe` result gets `datasets` -- each one's id, columns,
   `types`, `rows` (a count) and `from` (`d1/t:Sales`, `d:by_rep`, or `application` for one

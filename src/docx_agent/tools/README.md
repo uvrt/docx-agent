@@ -103,7 +103,10 @@ breaks in the cell's one paragraph; the text goes in literally, never read as Ma
 style (`style_map`'s `table` and `table_cell` apply); `set_cells` writes from row `index`
 (default 0), column 0, and refuses a source the table has no room for, or a block over a
 merged cell. Nothing is cut: past 63 columns, 4,096 rows or 5,000 cells the call is refused
-(`limit`). A whole call is one undo step, and tracked while tracking is on.
+(`limit`); a refusal for want of rows offers the row range of the source that fits. To
+place some of a source's rows, name them: `d:checks/#2:` (row 2 to the last),
+`t:Sales/#1:#9` (a workbook's rows 1 to 9). Word flows a long table over pages itself,
+the header row repeated. A whole call is one undo step, and tracked while tracking is on.
 
 ```json
 {"doc": "d1", "at": "after:p:3B212964", "from": "d:checks",

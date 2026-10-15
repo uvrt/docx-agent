@@ -124,11 +124,13 @@ def fits(block: Placed, max_rows: int, max_columns: int, room: str | None = None
     code = "refused" if room else "limit"
     if need_rows > max_rows:
         header = " with the header" if block.header else ""
+        # A row range of the source places fewer: offered when the source can take one.
+        fewer = sources.first_rows(address, max_rows - (1 if block.header else 0))
         fix = (f"{room}, or insert_row first" if room
                else f"a table takes at most {max_rows:,}: filter the source or split it across "
-                    "tables")
+                    "tables") + (f", or place fewer with {fewer}" if fewer else "")
         raise ToolError(code, f"{address} gives {need_rows:,} rows{header}; {fix} (nothing is "
-                        "cut)", field="from")
+                        "cut)", field="from", valid_options=[fewer] if fewer else None)
     if need_columns > max_columns:
         fix = f"the table has {max_columns}" if room else f"a table takes at most {max_columns}"
         raise ToolError(code, f"{address}: {need_columns} columns picked; {fix}: pick fewer in "
