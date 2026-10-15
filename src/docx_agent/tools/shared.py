@@ -391,14 +391,16 @@ def edit_chart(call: Any, doc: str, target: str, action: str, chart_type: str | 
                text: str | None = None, axis: str | None = None, position: str | None = None,
                ref: str | None = None, scale: dict | None = None, gridlines: str | None = None,
                style: dict | None = None, part: str | None = None, labels: list | None = None,
-               cells: bool | None = None, secondary: bool | None = None) -> Result:
+               cells: bool | None = None, secondary: bool | None = None, data_labels: bool | None = None,
+               colors: list | None = None) -> Result:
     from ooxml_edit.charts import ChartDataError
     from ooxml_edit.charts.actions import STYLE_ACTIONS
 
     try:
         if action == "add":
             return _add_chart(call, resolve(call, target), chart_type, categories, data, box, width, values,
-                              number_format, text, position, ref, axis, scale, gridlines)
+                              number_format, text, position, ref, axis, scale, gridlines, data_labels, colors,
+                              style, part)
         if action in STYLE_ACTIONS:
             return _style_chart(call, target, action, series=series, category=category, axis=axis,
                                 scale=scale, gridlines=gridlines, style=style, part=part, labels=labels,
@@ -427,8 +429,11 @@ def _style_chart(call: Any, target: str, action: str, *, series: str | None, cat
 def _add_chart(call: Any, target: str, chart_type: str | None, categories: list[str] | None,
                data: list[dict] | None, box: dict | None, width: float | None, values: list[float] | None,
                number_format: str | None, text: str | None, position: str | None, ref: str | None,
-               axis: str | None = None, scale: dict | None = None, gridlines: str | None = None) -> Result:
-    """``action: "add"``: a new inline chart in a paragraph of its own after ``target``."""
+               axis: str | None = None, scale: dict | None = None, gridlines: str | None = None,
+               data_labels: bool | None = None, colors: list | None = None, style: dict | None = None,
+               part: str | None = None) -> Result:
+    """``action: "add"``: a new inline chart in a paragraph of its own after ``target``, with the look its
+    arguments give (``add_style_actions``: the same chart as the separate calls)."""
     if box is not None:
         raise ToolError("invalid_arguments", "box is for decks; in a document give width", field="box")
     chart_type = need(chart_type, "chart_type")
@@ -450,12 +455,13 @@ def _add_chart(call: Any, target: str, chart_type: str | None, categories: list[
                         "bottom or none", field="position")
     if scale is not None and axis is None:
         raise ToolError("invalid_arguments", "add with scale needs axis", field="axis")
+    from ooxml_edit.charts.actions import add_style_actions, apply_add_style, apply_style_action
+
+    look = add_style_actions(chart_type, data, data_labels=data_labels, colors=colors, style=style, part=part)
     legend = None if position == "none" else (position or "default")
     reverse = bool((scale or {}).get("reverse")) and axis == "category"
     rest = {k: v for k, v in (scale or {}).items() if not (reverse and k == "reverse")}
-    from ooxml_edit.charts.actions import apply_style_action
-
-    with call.document._edit():  # the chart and its scale: one undo step
+    with call.document._edit():  # the chart and its look: one undo step
         edit = call.document.insert_chart(target, chart_type, labels, [dict(entry) for entry in data],
                                           width=width, title=text, legend=legend, number_format=number_format,
                                           category_order="reversed" if reverse else "normal",
@@ -466,6 +472,7 @@ def _add_chart(call: Any, target: str, chart_type: str | None, categories: list[
         if gridlines not in (None, "major", "none"):
             apply_style_action(chart, "set_gridlines", axis="y" if chart_type in ("scatter", "bubble")
                                else "value", gridlines=gridlines)
+        apply_add_style(chart, look)
     remember(call, ref, edit.id)
     chart = call.document.chart(edit.id)
     data = chart_json(chart)

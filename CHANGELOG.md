@@ -6,6 +6,16 @@ snapshot commit; the development history before it is summarised here.
 
 ## Unreleased
 
+- A chart added with its look in one call (round 5, T2; ooxml-edit 0.32.0): `edit_chart`'s
+  `add` also takes `data_labels: true`, `colors` (each series' colour in order, a pie's
+  slices') and `style` with `part` (the text), the chart byte for byte the one `add` and
+  the separate `show_data_labels`, `format_series`/`format_point` and `set_text_style`
+  calls write (tested for column with a line series, line, pie and scatter); one undo
+  step. A document's chart is sized by `width` (its height keeps Word's 432 x 252 ratio);
+  `box` stays the deck's. The definitions: 63 estimated tokens in every definition
+  (12,153 -> 12,216; the guard 12,155 -> 12,220), none in the core (2,558). The strict set
+  is unchanged.
+
 - Fewer rows of a source (round 5, T3; ooxml-edit 0.31.0), none of it in the definitions:
   `from` takes a row range -- `d:checks/#2:` (row 2 to the last), `d:checks/#1:#9`, and a
   workbook's `t:Sales/#1:#9` (xlsx-agent) -- each value with its sources. A table made from
