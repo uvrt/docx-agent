@@ -281,6 +281,21 @@ def test_a_table_from_another_documents_table_merges_its_sources(toolbox, sessio
                                     "sources": ["G!E2:E4"]}
 
 
+def test_a_row_range_of_a_source_is_a_table_whose_header_repeats(toolbox, session):
+    data = ok(insert(toolbox, session, **{"from": "d:scores/#2:",
+                                          "from_columns": ["check", "rating"]})).data
+    assert texts(session, data["id"]) == [["check", "rating"], ["Beta", "4"],
+                                          ["Gamma", "1.25"]]
+    placed = data["from"]
+    assert placed["source"] == "d:scores/#2:"
+    assert placed["columns"][1] == {"col": 1, "column": "rating", "rows": "1-2",
+                                    "sources": ["G!B3", "G!B4"]}
+    document = session.entry("d1").document
+    tbl = document.package.tree(document.package.document_part()).findall(".//{*}tbl")[-1]
+    assert tbl.find("{*}tr/{*}trPr/{*}tblHeader") is not None      # Word repeats it per page
+    failed(insert(toolbox, session, **{"from": "d:scores/#2:#9"}), "invalid_arguments")
+
+
 def test_from_with_markdown_or_without_a_source_is_refused(toolbox, session):
     error = failed(insert(toolbox, session, **{"from": "d:scores", "markdown": "x"}),
                    "invalid_arguments")
@@ -381,6 +396,8 @@ def test_set_cells_from_a_source_too_big_for_the_table_is_refused(toolbox, sessi
     error = failed(edit(toolbox, session, table, **{"from": "d:scores",
                                                     "from_columns": ["check"]}), "refused")
     assert "4 rows" in error.message and "insert_row" in error.message
+    # A row range of the source places fewer: the refusal offers the one that fits.
+    assert error.valid_options == ["d:scores/#1:#2"]
     error = failed(edit(toolbox, session, table, header=[], **{"from": "d:scores"}), "refused")
     assert error.field == "from_columns"
     error = failed(edit(toolbox, session, table, index=3, **{"from": "d:scores"}), "not_found")
