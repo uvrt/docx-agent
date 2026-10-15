@@ -89,7 +89,8 @@ SET_ITEM = obj({"target": string("Paragraph, or table cell t:X/c<row>,<col>."),
             "target": string("Paragraph, or table cell t:X/c<row>,<col>.", optional=True),
             "text": string("The whole new text, plain.", optional=True),
             "items": array(SET_ITEM, "Or several paragraphs.", optional=True)},
-           refs=('target', 'items[].target'), group="core", mutates=True)
+           refs=('target', 'items[].target'), group="core", mutates=True,
+           facts=("text", "items[].text"))
 def word_set_text(call: Any, doc: str, target: str | None = None, text: str | None = None,
                   items: list[dict] | None = None) -> Result:
     one_of({"target": target, "items": items}, "target", "items")
@@ -126,7 +127,8 @@ INSERT_FIELDS = {
             "within": string("Block or span to search for find.", optional=True),
             "items": array(obj(INSERT_FIELDS), "Or several insertions.",
                            optional=True)},
-           refs=('target', 'within', 'items[].target'), group="word_text", mutates=True)
+           refs=('target', 'within', 'items[].target'), group="word_text", mutates=True,
+           facts=("text", "items[].text"))
 def word_insert_text(call: Any, doc: str, items: list[dict] | None = None, **single: Any) -> Result:
     if items is not None and any(single.get(k) is not None for k in ("find", "target", "text")):
         raise ToolError("invalid_arguments", "give one insertion's fields or items, not both", field="items")
@@ -238,7 +240,7 @@ def images_from(call: Any):
             "style_map": STYLE_MAP,
             "key": string("Retry key: a repeat with the same key makes nothing new.", optional=True)},
            group="word_text", mutates=True, exactly_one=[("markdown", "blob", "from")],
-           sources=("from",), aliases={"columns": "from_columns"})
+           sources=("from",), facts=("markdown",), aliases={"columns": "from_columns"})
 def word_insert_markdown(call: Any, doc: str, at: str, markdown: str | None = None,
                          blob: str | None = None, style_map: list[dict] | None = None,
                          key: str | None = None, from_columns: list[str] | None = None,

@@ -50,7 +50,8 @@ classifiers = [
 # 0.30.0: describe lists the session's datasets, the document's describe too (tested here).
 # 0.31.0: a run of a dataset's rows as a source (d:checks/#2:), and first_rows.  0.32.0:
 # edit_chart's add with its look (data_labels, colors, style, part) and
-# charts.actions.add_style_actions/apply_add_style, which the add handler runs.
+# charts.actions.add_style_actions/apply_add_style, which the add handler runs.  0.33.0:
+# text facts (Tool.facts), which the text tools' references are written by.
 # docx2svg renders and lays out, and is a hard dependency by
 # decision (ROADMAP.md, "Decisions", 9): it is standard-library only, so it costs little,
 # and reflow feedback is part of every edit's answer.  Neither is on PyPI yet: install them
@@ -58,7 +59,7 @@ classifiers = [
 # -e ../docx2svg`) or from GitHub.  markdown-it-py (with mdit-py-plugins for footnotes) is the
 # Markdown parser, by decision (ROADMAP.md, "Decisions", 2): it reads to_markdown's output back
 # for the reverse-parse check and checks a block's inline Markdown before it is written.
-dependencies = ["lxml>=4.9", "ooxml-edit>=0.32.0", "ooxml-common>=0.15.0", "docx2svg>=0.1", "markdown-it-py>=3.0", "mdit-py-plugins>=0.4"]
+dependencies = ["lxml>=4.9", "ooxml-edit>=0.33.0", "ooxml-common>=0.15.0", "docx2svg>=0.1", "markdown-it-py>=3.0", "mdit-py-plugins>=0.4"]
 
 [project.optional-dependencies]
 # PNG output goes through docx2svg's rasteriser extra.

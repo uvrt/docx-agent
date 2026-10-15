@@ -6,6 +6,19 @@ snapshot commit; the development history before it is summarised here.
 
 ## Unreleased
 
+- Figures in text from a source (round 5, T4; ooxml-edit 0.33.0): `word_set_text`,
+  `word_insert_text`, `word_insert_markdown` (`markdown`) and `replace_text` (`replace`)
+  take references to one value, `{{d:by_topic/door/mean}}` or `{{t:checks/N-1/rating}}`
+  (`:0.0`, `:#,##0`, `:0.0%` after one to format a number), and write the value in the
+  session's locale (`2,2` in nl-BE, dates in its day order); the result's `data.facts`
+  lists each value with its sources. `\{{` writes one literally and `{{name}}` stays as it
+  is; a reference to no single value refuses the call, changing nothing. In Markdown the
+  value is Markdown text, as the rest is. Not yet kept in the file, unlike a deck's: the
+  provenance item keys a record by a table's or a drawing's durable id, and a paragraph's
+  id changes when it is edited. The prompt: one sentence on references (199 characters,
+  about 57 estimated tokens). The definitions are unchanged (every definition 12,216, guard
+  12,220); the strict set is unchanged.
+
 - A chart added with its look in one call (round 5, T2; ooxml-edit 0.32.0): `edit_chart`'s
   `add` also takes `data_labels: true`, `colors` (each series' colour in order, a pie's
   slices') and `style` with `part` (the text), the chart byte for byte the one `add` and
