@@ -141,9 +141,14 @@ ERRORS = {
     EditError: "refused",
 }
 
+#: The references a deck resolves in its own text that a Word document refuses in words of
+#: its own (``DocumentFormat.own_facts``), with no deck format loaded too: pptx-agent's
+#: ``{{slide:s:262}}``, a slide's number.
+OWN_REFUSED = {"slide:": "slide references are for decks; a Word document has no slides"}
+
 FORMAT = DocumentFormat(
     kind=KIND, open=open_docx, detect=detect, problems=problems, problem_key=problem_key,
     warnings=(AuthoringWarning, UntrackedChartEdit, DiagramDrawingDropped, ChartDataWarning),
     prompt=PROMPT, errors=ERRORS, summary=summary, checks=checks, strict_first=STRICT_FIRST,
     configure=configure, source_hint=source_hint, store_provenance=store_provenance,
-    read_provenance=read_provenance, restored=restored)
+    read_provenance=read_provenance, restored=restored, own_facts=dict(OWN_REFUSED))
