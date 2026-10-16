@@ -553,3 +553,67 @@ def test_a_chart_from_a_date_column_and_set_values_matched_either_way(toolbox, l
         read = ok(call(toolbox, session, "edit_chart", doc="d1", target=target,
                        action="read"))
         assert read.data["series"][0]["values"] == order
+
+
+# -- date_format (round 6, R9) ------------------------------------------------------------------
+
+
+def _locale(language):
+    return Locale(decimal_separator=",", thousands_separator=".", date_order="dmy",
+                  language=language, list_separator=";")
+
+
+#: The checks' due dates (5 January, 10 February, 15 March 2026) in ``dddd d mmmm``, the
+#: names measured in Excel for Mac, 2026-10-16.
+@pytest.mark.parametrize("language, due", [
+    ("en-GB", ["Monday 5 January", "Tuesday 10 February", "Sunday 15 March"]),
+    ("nl-NL", ["maandag 5 januari", "dinsdag 10 februari", "zondag 15 maart"]),
+    ("es-ES", ["lunes 5 enero", "martes 10 febrero", "domingo 15 marzo"]),
+    ("it-IT", ["lunedì 5 gennaio", "martedì 10 febbraio", "domenica 15 marzo"]),
+])
+def test_a_tables_dates_in_a_date_format(toolbox, language, due):
+    session = _dated(toolbox, _locale(language))
+    result = ok(insert(toolbox, session, date_format="dddd d mmmm",
+                       **{"from": "d:dated", "from_columns": ["check", "due", "rating"]}))
+    rows = texts(session, result.data["id"])[1:]
+    assert [row[1] for row in rows] == due
+    assert rows[0][2] == "3,5"                                   # a number as before
+    other = _table(toolbox, session, 4, 2)
+    ok(edit(toolbox, session, other, date_format="dd.mm.yy",
+            **{"from": "d:dated", "from_columns": ["check", "due"]}))
+    assert [row[1] for row in texts(session, other)[1:]] == ["05.01.26", "10.02.26",
+                                                             "15.03.26"]
+
+
+def test_a_date_format_is_checked_for_a_table(toolbox):
+    session = _dated(toolbox, _locale("sv-SE"))
+    error = failed(insert(toolbox, session, date_format="d mmm yyyy",
+                          **{"from": "d:dated", "from_columns": ["due"]}), "invalid_arguments")
+    assert "no month or day names are measured for sv-SE" in error.message
+    assert error.field == "date_format"
+    ok(insert(toolbox, session, date_format="yyyy-mm-dd",
+              **{"from": "d:dated", "from_columns": ["due"]}))
+    error = failed(insert(toolbox, session, date_format="dd/mm/yyyy",
+                          **{"from": "d:dated", "from_columns": ["check"]}), "invalid_arguments")
+    assert "date_format is for dates" in error.message
+    error = failed(insert(toolbox, session, markdown="Text", date_format="dd/mm/yyyy"),
+                   "invalid_arguments")
+    assert "date_format is for from" in error.message
+
+
+def test_a_charts_dates_are_kept_in_the_locales_code(toolbox):
+    from lxml import etree
+
+    session = _dated(toolbox, _locale("fr-FR"))
+    anchor = session.entry("d1").document.paragraphs()[0].id
+    made = ok(call(toolbox, session, "edit_chart", doc="d1", target=anchor, action="add",
+                   chart_type="column", date_format="d mmmm yyyy",
+                   **{"from": "d:dated", "columns": ["due", "rating"]})).created[-1]
+    read = ok(call(toolbox, session, "edit_chart", doc="d1", target=made, action="read"))
+    assert read.data["categories"] == ["46027", "46063", "46096"]     # serials, as read shows them
+    document = session.entry("d1").document
+    chart = document.chart(made)
+    root = etree.fromstring(document.package.read(chart.part))
+    ns = {"c": "http://schemas.openxmlformats.org/drawingml/2006/chart"}
+    assert root.xpath("string(//c:cat//c:formatCode)", namespaces=ns) == r"[$-40C]d\ mmmm\ yyyy"
+    assert root.xpath("string(//c:catAx/c:auto/@val)", namespaces=ns) == "0"

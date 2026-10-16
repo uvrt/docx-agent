@@ -37,7 +37,8 @@ header1/footer1 stories. A paragraph's id can change when it is edited: the resu
 renamed maps old to new; the old id keeps working.
 - Never paste word_read's Markdown into a text tool: it is escaped. Pass plain text.
 - A figure from a dataset or table goes into text as {{d:<id>/<key>/<column>}} or \
-{{t:<table>/<key>/<column>}}, :0.0 after it to round: the tool writes the value in the \
+{{t:<table>/<key>/<column>}}, :0.0 after it to round, a date pattern such as :d mmmm yyyy \
+for a date: the tool writes the value in the \
 locale and reports its source.
 - To change words inside a paragraph, prefer replace_text with expect one, or \
 word_insert_text and word_delete with find; word_set_text rewrites a whole paragraph. \
