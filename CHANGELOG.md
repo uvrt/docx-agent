@@ -6,6 +6,12 @@ snapshot commit; the development history before it is summarised here.
 
 ## Unreleased
 
+- From ooxml-edit 0.36.0 (round 6, R5, R6): a text fact with a suffix that is no number
+  format (`{{d:x/#1/avg:0.20}}`) says "'0.20' is not a number format" and lists the forms,
+  not "no column 'avg:0.20'"; find_text's and replace_text's `slides` (decks only) take
+  slide ids, which adds 12 estimated tokens to the core (2,558 -> 2,570) and to every
+  definition (12,216 -> 12,228; the guard 12,220 -> 12,230).
+
 - Forgiving the model's small mistakes (round 6, R2, R3, R7; ooxml-edit 0.35.0), each read
   with a line in the result's `warnings` and no change to any definition: a ref named
   `vatNote` or `vat-note` is kept as `vat_note` and `$vatNote` read as `$vat_note`, in the

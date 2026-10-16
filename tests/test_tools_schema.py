@@ -46,7 +46,11 @@ never strict.  ooxml-edit 0.32.0 (round 5, T2): a chart added with its look in o
 (``data_labels`` and ``colors`` on the deferred edit_chart, ``add`` in ``style``'s and
 ``part``'s descriptions, "Batch several changes.") adds 63 to every definition (12,153 ->
 12,216), none to the core (2,558); the guard rises to 12,220.  The strict set is unchanged:
-edit_chart left it in T4.
+edit_chart left it in T4.  ooxml-edit 0.36.0 (round 6, R6): find_text's and replace_text's
+``slides`` take slide ids as render's do (strings with ``orInteger``, "or ids (s:256,
+$ref)"; decks only) and add 12 to the core (2,558 -> 2,570, about 3,804 counted) and to
+every definition (12,216 -> 12,228); the guard rises to 12,230.  The strict set changes:
+replace_text's ``slides`` items are strings now.
 """
 
 from __future__ import annotations
@@ -67,7 +71,7 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 6000
-ALL_GUARD = 12220
+ALL_GUARD = 12230
 
 
 @pytest.fixture(scope="module")
