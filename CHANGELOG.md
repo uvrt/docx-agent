@@ -6,6 +6,12 @@ snapshot commit; the development history before it is summarised here.
 
 ## Unreleased
 
+- A deck's slide-number reference in a Word text tool's text (`{{slide:s:262}}`, round 6,
+  R8) is refused: "slide references are for decks; a Word document has no slides. Write the
+  text itself, or \{{ for the braces" -- `FORMAT.own_facts` names the prefix with that text
+  (ooxml-edit 0.37.0), so it holds with no deck format loaded. Before, the braces were
+  written as text. No change to any definition. Needs ooxml-edit 0.37.0.
+
 - From ooxml-edit 0.36.0 (round 6, R5, R6): a text fact with a suffix that is no number
   format (`{{d:x/#1/avg:0.20}}`) says "'0.20' is not a number format" and lists the forms,
   not "no column 'avg:0.20'"; find_text's and replace_text's `slides` (decks only) take

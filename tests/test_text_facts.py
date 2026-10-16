@@ -2,7 +2,8 @@
 argument is written as the value, in the session's locale, and the result lists it with its
 sources -- as in pptx-agent.  A Word document does not keep text facts in the file yet (the
 deck does): a paragraph's id changes when it is edited, so the key a table's record uses
-does not carry over.
+does not carry over.  A deck's slide-number reference (``{{slide:s:262}}``) is refused
+(round 6, R8).
 
 The data is made up: the toy dataset and grid of :mod:`test_tables_from_data`.
 """
@@ -64,6 +65,21 @@ def test_markdown_insert_and_replace_take_references_too(toolbox):
                      replace="{{d:scores/Beta/rating}}", expect="one"))
     assert result.data["facts"][0]["text"] == "4"
     assert "Alpha rated 4." in [p.text for p in session.entry("d1").document.paragraphs()]
+
+
+def test_a_slide_reference_is_refused_and_an_escaped_one_written(toolbox):
+    session = _session(toolbox)
+    target = first_paragraph(session).id
+    before = first_paragraph(session).text
+    error = failed(call(toolbox, session, "word_set_text", doc="d1", target=target,
+                        text="See slide {{slide:s:262}}"), "invalid_arguments")
+    assert error.message.startswith("{{slide:s:262}}: slide references are for decks; a "
+                                    "Word document has no slides.")
+    assert error.field == "text"
+    assert first_paragraph(session).text == before
+    ok(call(toolbox, session, "word_set_text", doc="d1", target=target,
+            text="See \\{{slide:s:262}}"))
+    assert first_paragraph(session).text == "See {{slide:s:262}}"
 
 
 def test_an_escape_writes_the_reference_and_a_bad_one_changes_nothing(toolbox):
