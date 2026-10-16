@@ -68,10 +68,16 @@ from ooxml_edit.tools.schema import is_path_name, subset_problems, walk_properti
 
 from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 
+#: Round 6, R9: date formats -- ``date_format`` on word_insert_markdown and word_edit_table (a
+#: table from rows, its dates as text in a pattern) and on the shared edit_chart (ooxml-edit
+#: 0.38.0: add from, its category dates kept as an Excel code) -- add 84 to every definition
+#: (12,228 -> 12,312), none to the core (2,570).  The guard rises to 12,315.  The strict set
+#: is unchanged in its members; word_insert_markdown's and word_edit_table's schemas gain one
+#: optional string each.
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 6000
-ALL_GUARD = 12230
+ALL_GUARD = 12315
 
 
 @pytest.fixture(scope="module")

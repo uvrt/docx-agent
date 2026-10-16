@@ -13,7 +13,7 @@ from ooxml_edit.tools import Result, ToolError, array, integer, names_as, number
 from ..edit import provenance as _provenance
 from ._base import need, outcome, remember, resolve, short, word_tool
 from .structure import _position
-from .table_data import FROM_COLUMNS, HEADER, cell_text, fits, no_source, placed
+from .table_data import DATE_FORMAT, FROM_COLUMNS, HEADER, cell_text, fits, no_source, placed
 
 DOC = string("Document id.")
 TABLE = string("Table (t:...).")
@@ -83,6 +83,7 @@ def _text(table: Any, row: int, col: int) -> str:
             "from": string("set_cells: rows of d:<id> or t:<table>, from row index.", optional=True),
             "from_columns": FROM_COLUMNS,
             "header": HEADER,
+            "date_format": DATE_FORMAT,
             "index": integer("insert_*, delete_*: row or column from 0. Default the last. "
                              "set_cells from: first row.", minimum=0, optional=True),
             "side": string("insert_*: relative to index. Default after.", enum=["after", "before"], optional=True),
@@ -95,7 +96,7 @@ def word_edit_table(call: Any, doc: str, table: str, action: str, cells: list[di
                     index: int | None = None, side: str = "after", first: dict | None = None,
                     last: dict | None = None, rows: int = 1, columns: int = 2,
                     from_columns: list[str] | None = None, header: list[str] | None = None,
-                    **given: Any) -> Result:
+                    date_format: str | None = None, **given: Any) -> Result:
     document = call.document
     table = resolve(call, table)
     view = document.table(table)
@@ -106,8 +107,8 @@ def word_edit_table(call: Any, doc: str, table: str, action: str, cells: list[di
                             field="from", valid_options=["set_cells"])
         if cells is not None:
             raise ToolError("invalid_arguments", "from replaces cells: give one", field="cells")
-        return _set_from(call, view, source, from_columns, header, index or 0)
-    no_source(from_columns, header)
+        return _set_from(call, view, source, from_columns, header, index or 0, date_format)
+    no_source(from_columns, header, date_format)
     kept = _Kept(document, table)
     edits = []
     if action == "set_cells":
@@ -144,11 +145,11 @@ def word_edit_table(call: Any, doc: str, table: str, action: str, cells: list[di
 
 
 def _set_from(call: Any, view: Any, source: str, from_columns: list[str] | None,
-              header: list[str] | None, top: int) -> Result:
+              header: list[str] | None, top: int, date_format: str | None = None) -> Result:
     """``set_cells`` from a source (:mod:`.table_data`): the block written from row ``top``,
     column 0, each cell's text rewritten as ``set_cells`` rewrites it."""
     document = call.document
-    block = placed(call, source, from_columns, header)
+    block = placed(call, source, from_columns, header, date_format)
     height, width = len(view.rows), view.column_count
     if top >= height:
         raise ToolError("not_found", f"no row {top}; {view.id} has {height}", field="index")

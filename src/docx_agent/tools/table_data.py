@@ -13,7 +13,11 @@ locale's day order (``3/1/2026`` en-US, ``1/3/2026`` nl-BE) -- a Python date, an
 derive's dates), so one document never mixes ``1/3/2026`` and ``2026-01-20``; a number as
 the General format writes it with the session locale's decimal separator, a logical value ``TRUE`` or
 ``FALSE``, a blank as an empty cell; a value's line breaks are line breaks in the cell's
-one paragraph.  Nothing is cut: a block over Word's 63 columns, 4,096 rows or 5,000 cells
+one paragraph.  ``date_format`` writes the dates of the columns placed in a pattern of
+Excel's date tokens instead (``d mmmm yyyy`` is ``2 March 2026``, ``2 maart 2026`` in
+nl-BE; ``dd/mm/yyyy`` ``02/03/2026``; month and day names measured in Excel for Mac,
+2026-10-16 -- :mod:`ooxml_edit.dates`), as fixed text: the pattern's separators in every
+locale.  Nothing is cut: a block over Word's 63 columns, 4,096 rows or 5,000 cells
 per call, or bigger than the table it is written into, is refused.
 
 ``d:`` is also how a Word document names a drawing (``d:3``); a ``from`` only ever names a
@@ -37,6 +41,7 @@ MAX_ROWS, MAX_COLUMNS, MAX_CELLS = 4096, 63, 5000
 
 FROM_COLUMNS = array(string(), "from's columns, in order. Default all.", optional=True)
 HEADER = array(string(), "from's header texts; [] none. Default column names.", optional=True)
+DATE_FORMAT = string("Dates of from as e.g. d mmmm yyyy or dd/mm/yyyy.", optional=True)
 
 _LINES = re.compile(r"\r\n|[\r\n\v]")
 _INVALID = re.compile("[\x00-\x08\x0c\x0e-\x1f￾￿]")
@@ -46,15 +51,18 @@ _DRAWING = re.compile(r"^d:[0-9]+(#[0-9]+)?$")
 class Placed:
     """A source's rows as table text: the header (if any), then a row per source row."""
 
-    def __init__(self, rows: Any, at: list[int], header: list[str], locale: Any) -> None:
+    def __init__(self, rows: Any, at: list[int], header: list[str], locale: Any,
+                 date_format: str | None = None) -> None:
         self.rows, self.at, self.header, self.locale = rows, at, header, locale
+        self.date_format = date_format
         #: The block's size: the header row and a row per source row; a column per pick.
         self.size = ((1 if header else 0) + len(rows.dataset.rows), len(at))
 
     def lines(self) -> list[list[list[str]]]:
         """The block's cells, row by row (the header first), each as its lines."""
         out = [[_lines(text) for text in self.header]] if self.header else []
-        return out + [[_lines(_text(self.rows, row, column, self.locale)) for column in self.at]
+        return out + [[_lines(_text(self.rows, row, column, self.locale, self.date_format))
+                       for column in self.at]
                       for row in range(len(self.rows.dataset.rows))]
 
     def provenance(self, top: int) -> dict[str, Any]:
@@ -66,16 +74,20 @@ class Placed:
                             for col, column in enumerate(self.at)]}
 
 
-def no_source(from_columns: Any, header: Any) -> None:
-    """Refuse ``from_columns`` or ``header`` without a ``from``."""
-    for name, value in (("from_columns", from_columns), ("header", header)):
+def no_source(from_columns: Any, header: Any, date_format: Any = None) -> None:
+    """Refuse ``from_columns``, ``header`` or ``date_format`` without a ``from``."""
+    for name, value in (("from_columns", from_columns), ("header", header),
+                        ("date_format", date_format)):
         if value is not None:
             raise ToolError("invalid_arguments", f"{name} is for from; give from too", field=name)
 
 
 def placed(call: Any, source: str, from_columns: list[str] | None,
-           header: list[str] | None) -> Placed:
-    """The source's rows and the columns picked; refusals name the argument."""
+           header: list[str] | None, date_format: str | None = None) -> Placed:
+    """The source's rows and the columns picked; refusals name the argument.  ``date_format``
+    writes the dates of the columns picked in that pattern
+    (:func:`ooxml_edit.tools.sources.date_pattern`), refused when none of them holds a
+    date."""
     rows = call.source(source, field="from")
     names = from_columns if from_columns is not None else list(rows.dataset.columns)
     if not names:
@@ -89,16 +101,22 @@ def placed(call: Any, source: str, from_columns: list[str] | None,
     elif header and len(header) != len(at):
         raise ToolError("invalid_arguments", f"{len(header)} header texts for {len(at)} columns; "
                         "[] for no header row", field="header")
-    return Placed(rows, at, list(header), call.locale)
+    if date_format is not None:
+        sources.date_pattern(date_format, call.locale)
+        count = len(rows.dataset.rows)
+        if not any(rows.date(row, column) is not None for column in at for row in range(count)):
+            raise sources.no_dates(rows, at)
+    return Placed(rows, at, list(header), call.locale, date_format)
 
 
-def _text(rows: Any, row: int, column: int, locale: Any) -> str:
-    """A source value as cell text, as a chart's category label writes it; a blank is
-    empty; anything else (not a finite number) is refused, naming the cell."""
+def _text(rows: Any, row: int, column: int, locale: Any, date_format: str | None = None) -> str:
+    """A source value as cell text, as a chart's category label writes it (a date in
+    ``date_format`` when given); a blank is empty; anything else (not a finite number) is
+    refused, naming the cell."""
     value = rows.dataset.rows[row][column]
     if value is None or value == "":
         return ""
-    text = rows.label(row, column, locale)
+    text = rows.label(row, column, locale, date_format)
     if text is None:
         raise ToolError("invalid_arguments", f"{rows.where(row, column)} is "
                         f"{sources.what(value)}: a cell takes text, a number, a logical value or "

@@ -14,7 +14,7 @@ from ..markdown import model as m
 from ..markdown.stylemap import StyleMap
 from ..markdown.write import insert_blocks
 from ._base import need, one_of, outcome, remember, resolve, short, word_tool
-from .table_data import (FROM_COLUMNS, HEADER, MAX_COLUMNS, MAX_ROWS, fits, no_source,
+from .table_data import (DATE_FORMAT, FROM_COLUMNS, HEADER, MAX_COLUMNS, MAX_ROWS, fits, no_source,
                          placed)
 
 DOC = string("Document id.")
@@ -236,6 +236,7 @@ def images_from(call: Any):
             "from": string("Or a table of the rows of d:<id> or t:<table>.", optional=True),
             "from_columns": FROM_COLUMNS,
             "header": HEADER,
+            "date_format": DATE_FORMAT,
             "at": string("end, after:<id>, before:<id> or replace:<id>[..<id>]."),
             "style_map": STYLE_MAP,
             "key": string("Retry key: a repeat with the same key makes nothing new.", optional=True)},
@@ -244,11 +245,13 @@ def images_from(call: Any):
 def word_insert_markdown(call: Any, doc: str, at: str, markdown: str | None = None,
                          blob: str | None = None, style_map: list[dict] | None = None,
                          key: str | None = None, from_columns: list[str] | None = None,
-                         header: list[str] | None = None, **given: Any) -> Result:
+                         header: list[str] | None = None, date_format: str | None = None,
+                         **given: Any) -> Result:
     source = given.get("from")
     if source is not None:
-        return _table_from(call, source, from_columns, header, _at(call, at), style_map)
-    no_source(from_columns, header)
+        return _table_from(call, source, from_columns, header, _at(call, at), style_map,
+                           date_format)
+    no_source(from_columns, header, date_format)
     if blob is not None:
         source = call.blob(blob)
         try:
@@ -267,11 +270,12 @@ def word_insert_markdown(call: Any, doc: str, at: str, markdown: str | None = No
 
 
 def _table_from(call: Any, source: str, from_columns: list[str] | None,
-                header: list[str] | None, at: str, style_map: list[dict] | None) -> Result:
+                header: list[str] | None, at: str, style_map: list[dict] | None,
+                date_format: str | None = None) -> Result:
     """A new table of a source's rows (:mod:`.table_data`), written as a Markdown table is."""
     from .objects import table_json
 
-    block = placed(call, source, from_columns, header)
+    block = placed(call, source, from_columns, header, date_format)
     fits(block, MAX_ROWS, MAX_COLUMNS)
     cells = [[_inline(lines) for lines in row] for row in block.lines()]
     model = m.Table(cells[0] if block.header else [], cells[1:] if block.header else cells,

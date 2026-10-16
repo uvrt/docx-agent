@@ -54,6 +54,8 @@ classifiers = [
 # text facts (Tool.facts), which the text tools' references are written by.  0.35.0: folded
 # ref names, namespaced tools in a batch, nesting hints (round 6; tested here).  0.37.0: a
 # format's own references (DocumentFormat.own_facts), by which a slide reference is refused.
+# 0.38.0: date patterns (ooxml_edit.dates; Rows.label's date_format, sources.date_pattern),
+# which the tables' date_format writes by.
 # docx2svg renders and lays out, and is a hard dependency by
 # decision (ROADMAP.md, "Decisions", 9): it is standard-library only, so it costs little,
 # and reflow feedback is part of every edit's answer.  Neither is on PyPI yet: install them
@@ -61,7 +63,7 @@ classifiers = [
 # -e ../docx2svg`) or from GitHub.  markdown-it-py (with mdit-py-plugins for footnotes) is the
 # Markdown parser, by decision (ROADMAP.md, "Decisions", 2): it reads to_markdown's output back
 # for the reverse-parse check and checks a block's inline Markdown before it is written.
-dependencies = ["lxml>=4.9", "ooxml-edit>=0.37.0", "ooxml-common>=0.15.0", "docx2svg>=0.1", "markdown-it-py>=3.0", "mdit-py-plugins>=0.4"]
+dependencies = ["lxml>=4.9", "ooxml-edit>=0.38.0", "ooxml-common>=0.15.0", "docx2svg>=0.1", "markdown-it-py>=3.0", "mdit-py-plugins>=0.4"]
 
 [project.optional-dependencies]
 # PNG output goes through docx2svg's rasteriser extra.
