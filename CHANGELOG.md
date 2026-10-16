@@ -6,6 +6,17 @@ snapshot commit; the development history before it is summarised here.
 
 ## Unreleased
 
+- A dot chart (round 6, R10; ooxml-edit 0.40.0): `edit_chart` `add` with `chart_type:
+  "dot"` (and `Document.insert_chart(..., "dot", ...)`) draws one marker per category on
+  the value axis, no line -- a fixed 1-5 scale with the values as labels is one call
+  (`axis: "value"`, `scale: {"min": 1, "max": 5}`, `data_labels: true`). A native line
+  chart, so Word edits it as one: each series' line off and a 5 pt circle marker in the
+  series colour (the marker Office gives a new scatter series, measured); `colors` colour
+  the markers. `edit_chart read` reports any line chart whose series all have no line and
+  a marker as `dot` (`Chart.is_dot`); `set_values` and `add_series` keep it one. The
+  Markdown outline's chart line still says `line` (it reads the chart model's plot types).
+  The `chart_type` enum gains `dot`: +2 estimated tokens to every definition (12,312 ->
+  12,314), the guard stays 12,315; edit_chart is sent non-strict.
 - Date formats (round 6, R9; ooxml-edit 0.38.0, `ooxml_edit.dates`). Excel's date tokens
   (`d dd ddd dddd m mm mmm mmmm mmmmm yy yyyy`, either case), everything else written as
   given; month and day names measured in Excel for Mac, 2026-10-16, for en-US, en-GB,

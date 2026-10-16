@@ -74,6 +74,9 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 #: (12,228 -> 12,312), none to the core (2,570).  The guard rises to 12,315.  The strict set
 #: is unchanged in its members; word_insert_markdown's and word_edit_table's schemas gain one
 #: optional string each.
+#: Round 6, R10: edit_chart's chart_type enum gains ``dot`` (ooxml-edit 0.40.0): +2 to every
+#: definition (12,312 -> 12,314), none to the core; the guard stays 12,315.  edit_chart is
+#: sent non-strict, so the strict set is unchanged.
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 6000

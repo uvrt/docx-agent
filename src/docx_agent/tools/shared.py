@@ -387,7 +387,8 @@ def _category(chart: Any, which: str | None) -> int:
 
 
 def chart_json(chart: Any) -> dict[str, Any]:
-    data = {"id": chart.address if hasattr(chart, "address") else None, "type": chart.chart_type,
+    data = {"id": chart.address if hasattr(chart, "address") else None,
+            "type": "dot" if chart.is_dot else chart.chart_type,
             "title": chart.title, "categories": _labels(chart),
             "series": [{"name": s.name, "values": list(s.values)} for s in chart.series],
             "legend": chart.has_legend}
