@@ -408,8 +408,8 @@ class ChartOps:
         after it, which continues that paragraph's formatting (a heading's becomes
         ``Normal``) -- or a position inside a paragraph (``p:...@12``), where it goes inline
         as a picture would.  ``chart_type`` is ``column``, ``stacked_column``, ``bar``,
-        ``stacked_bar``, ``line``, ``pie``, ``scatter``, ``radar``, ``radar_filled`` or
-        ``bubble``; ``categories`` the labels (a scatter or bubble chart's x values);
+        ``stacked_bar``, ``line``, ``pie``, ``scatter``, ``radar``, ``radar_filled``,
+        ``bubble`` or ``dot`` (a marker per category, no line; ``Chart.is_dot``); ``categories`` the labels (a scatter or bubble chart's x values);
         ``series`` ``[{"name", "values"}]``, one value per category -- a column chart's may
         add ``"type": "line"``, a bubble chart's give ``"size"``.  ``category_order=
         "reversed"`` lists a bar chart's categories top-down, ``gridlines=False`` draws none,

@@ -109,6 +109,7 @@ def test_the_tool_formats_a_chart_and_labels_a_matrix():
     ("line", [{"name": "Now", "values": [3, 2, 4]}, {"name": "Goal", "values": [4, 4, 4]}], {}),
     ("pie", [{"name": "Now", "values": [3, 2, 4]}], {}),
     ("scatter", [{"name": "Now", "values": [3, 2, 4]}], {"values": [1, 2, 3]}),
+    ("dot", [{"name": "Now", "values": [3, 2, 4]}, {"name": "Goal", "values": [4, 4, 4]}], {}),
 ])
 def test_add_with_its_look_writes_the_chart_the_separate_calls_write(kind, data, extra):
     from lxml import etree
@@ -145,3 +146,38 @@ def test_add_with_its_look_writes_the_chart_the_separate_calls_write(kind, data,
     assert written[0] == written[1]
     assert b'val="accent2"' in written[0] and b'sz="800"' in written[0]
     assert b"c:dLbls" in written[0]
+
+
+# -- the dot chart (round 6, R10) ---------------------------------------------------------------
+
+
+def test_a_dot_chart_on_a_fixed_scale_reads_back_as_dot():
+    from docx_agent.tools import FORMAT, GROUPS, TOOLS
+
+    document = report()
+    anchor = document.paragraphs()[1].id
+    with Toolbox(TOOLS, formats=[FORMAT], groups=GROUPS) as box:
+        session = box.session()
+        session.open(document.to_bytes(), "report.docx")
+
+        def run(**arguments):
+            result = box.dispatch(session, "edit_chart", {"doc": "d1", **arguments})
+            assert result.ok, result.to_json()
+            return result
+
+        added = run(target=anchor, action="add", chart_type="dot",
+                    categories=["North", "South", "East"],
+                    data=[{"name": "Mean", "values": [3.2, 4.1, 2.7]}], axis="value",
+                    scale={"min": 1, "max": 5}, data_labels=True, ref="dots")
+        assert added.data["type"] == "dot"
+        read = run(target="$dots", action="read")
+        assert read.data["type"] == "dot" and read.data["types"] == ["line"]
+        assert (read.data["scales"]["value"]["minimum"],
+                read.data["scales"]["value"]["maximum"]) == (1, 5)
+        run(target="$dots", action="set_values", series="Mean", values=[1, 2, 3])
+        assert run(target="$dots", action="add_series", text="Goal",
+                   values=[4, 4, 4]).data["type"] == "dot"
+        edited = session.entry("d1").document
+        chart = edited.chart(next(c for c in added.created if c.startswith("d:")))
+        assert chart.is_dot and chart.chart_type == "line"
+        assert edited.validate() == []
