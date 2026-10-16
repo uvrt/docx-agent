@@ -575,7 +575,10 @@ def chart_summary(model: dict) -> str:
     names = [_flat(s.get("name") or "") for s in model.get("series") or []]
     if names:
         words.append("series: " + ", ".join(names))
-    categories = [_flat("" if c is None else str(c)) for c in model.get("categories") or []]
+    # Dates kept as serials are listed as their ISO dates (ooxml-edit's category_dates).
+    shown = [d if d is not None else c for d, c in zip(model["category_dates"], model.get("categories") or [])] \
+        if model.get("category_dates") else model.get("categories") or []
+    categories = [_flat("" if c is None else str(c)) for c in shown]
     if categories:
         words.append("categories: " + ", ".join(categories))
     return "; ".join(words)

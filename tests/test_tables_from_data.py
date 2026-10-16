@@ -610,10 +610,22 @@ def test_a_charts_dates_are_kept_in_the_locales_code(toolbox):
                    chart_type="column", date_format="d mmmm yyyy",
                    **{"from": "d:dated", "columns": ["due", "rating"]})).created[-1]
     read = ok(call(toolbox, session, "edit_chart", doc="d1", target=made, action="read"))
-    assert read.data["categories"] == ["46027", "46063", "46096"]     # serials, as read shows them
+    # Read back as ISO dates (ooxml-edit 0.39.0), with the code that shows them.
+    assert read.data["categories"] == ["2026-01-05", "2026-02-10", "2026-03-15"]
+    assert read.data["category_format"] == r"[$-40C]d\ mmmm\ yyyy"
+    # A category is named by its date, as the read lists it.
+    ok(call(toolbox, session, "edit_chart", doc="d1", target=made, action="set_value",
+            series="rating", category="2026-02-10", value=2))
+    read = ok(call(toolbox, session, "edit_chart", doc="d1", target=made, action="read"))
+    assert read.data["series"][0]["values"] == [3.5, 2, 1.25]
+    error = failed(call(toolbox, session, "edit_chart", doc="d1", target=made, action="set_value",
+                        series="rating", category="46063", value=2), "not_found")
+    assert "named as YYYY-MM-DD" in error.message and "2026-02-10" in error.valid_options
     document = session.entry("d1").document
     chart = document.chart(made)
     root = etree.fromstring(document.package.read(chart.part))
     ns = {"c": "http://schemas.openxmlformats.org/drawingml/2006/chart"}
     assert root.xpath("string(//c:cat//c:formatCode)", namespaces=ns) == r"[$-40C]d\ mmmm\ yyyy"
     assert root.xpath("string(//c:catAx/c:auto/@val)", namespaces=ns) == "0"
+    # The Markdown outline's chart line lists them as dates too.
+    assert "categories: 2026-01-05, 2026-02-10, 2026-03-15" in document.to_markdown()

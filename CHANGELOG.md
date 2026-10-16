@@ -21,8 +21,13 @@ snapshot commit; the development history before it is summarised here.
   - `edit_chart` add from takes `date_format`: the category dates are kept as dates
     (serials) in the pattern's Excel code for the session's locale (`[$-40C]d\ mmmm\ yyyy`),
     in the chart and in its workbook, on a text axis; Word shows the code's `/` as the
-    viewer's date separator and the names by the prefix (measured in Excel). Not yet drawn
-    by docx2svg: `render` shows the serials, as `edit_chart read` lists them.
+    viewer's date separator and the names by the prefix (measured in Excel). `render`
+    draws them as Word does (docx2svg on ooxml-common 0.17.0: `5 januari 2026` under
+    `[$-413]d\ mmmm\ yyyy`, measured in Word for Mac, 2026-10-16); `edit_chart read` lists
+    them as ISO dates (`2026-01-05`) with `category_format`, the code (ooxml-edit 0.39.0), a
+    category is named by that date, and the Markdown outline's chart line lists them so.
+    ISO rather than the code's text: a model reads it whatever the locale, and it is the
+    form `from` dates take. No definition changes.
   - Without a pattern nothing changes: dates are written in the locale's day order.
   - Definitions: +84 estimated tokens to every definition (12,228 -> 12,312), none to the
     core (2,570); the guard rises to 12,315. The strict set is unchanged. Needs ooxml-edit

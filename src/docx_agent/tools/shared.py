@@ -366,21 +366,35 @@ def _series(chart: Any, which: str | None) -> Any:
                         valid_options=[s.name for s in chart.series]) from None
 
 
+def _labels(chart: Any) -> list[str]:
+    """The categories as a model reads and names them: ISO dates for dates kept as serials
+    (``chart.category_dates``), else each label as text."""
+    dates = chart.category_dates
+    if dates is None:
+        return [str(c) for c in chart.categories]
+    return [str(c) if day is None else day for day, c in zip(dates, chart.categories)]
+
+
 def _category(chart: Any, which: str | None) -> int:
     which = need(which, "category")
-    labels = [str(c) for c in chart.categories]
+    labels = _labels(chart)
     if which in labels:
         return labels.index(which)
     if which.isdigit() and int(which) < len(labels):
         return int(which)
-    raise ToolError("not_found", f"no category {which!r}", field="category", valid_options=labels)
+    hint = "; its categories are dates, named as YYYY-MM-DD" if chart.category_dates is not None else ""
+    raise ToolError("not_found", f"no category {which!r}{hint}", field="category", valid_options=labels)
 
 
 def chart_json(chart: Any) -> dict[str, Any]:
-    return {"id": chart.address if hasattr(chart, "address") else None, "type": chart.chart_type,
-            "title": chart.title, "categories": [str(c) for c in chart.categories],
+    data = {"id": chart.address if hasattr(chart, "address") else None, "type": chart.chart_type,
+            "title": chart.title, "categories": _labels(chart),
             "series": [{"name": s.name, "values": list(s.values)} for s in chart.series],
             "legend": chart.has_legend}
+    if chart.category_dates is not None:
+        # Dates kept as serials: listed as ISO dates, and how the chart shows them.
+        data["category_format"] = chart.category_format
+    return data
 
 
 @handler("edit_chart", mutates=True)
