@@ -343,6 +343,12 @@ PARAGRAPH_FIELDS = {
 }
 
 
+#: A paragraph's spacing named by its side, as a model writes it (``top: 6``; round 6, R7,
+#: as pptx-agent's ``ppt_format_text`` reads it): ``space_before`` and ``space_after``.
+#: ``word_format`` has no other top or bottom, so the meaning is the one.
+SPACING_ALIASES = {"top": "space_before", "bottom": "space_after"}
+
+
 def known_style(document: Any, name: str, kind: str, field: str) -> None:
     """``not_found`` with the document's styles of ``kind`` unless ``name`` names one, or a
     built-in style Word would add."""
@@ -376,7 +382,7 @@ def split_formatting(values: dict[str, Any]) -> tuple[dict[str, Any], dict[str, 
             **RUN_FIELDS, **PARAGRAPH_FIELDS,
             "clear_direct": boolean("First remove direct formatting, keeping styles. Default false.",
                                     optional=True)},
-           refs=('targets[]',), group="word_style", mutates=True)
+           refs=('targets[]',), group="word_style", mutates=True, aliases=SPACING_ALIASES)
 def word_format(call: Any, doc: str, targets: list[str], paragraph_style: str | None = None,
                 character_style: str | None = None, clear_direct: bool = False, **values: Any) -> Result:
     document = call.document

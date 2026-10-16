@@ -6,6 +6,15 @@ snapshot commit; the development history before it is summarised here.
 
 ## Unreleased
 
+- Forgiving the model's small mistakes (round 6, R2, R3, R7; ooxml-edit 0.35.0), each read
+  with a line in the result's `warnings` and no change to any definition: a ref named
+  `vatNote` or `vat-note` is kept as `vat_note` and `$vatNote` read as `$vat_note`, in the
+  declared targets and through the tools' own `resolve` alike (refused when the folded name
+  already names another range); `functions.word_set_text` as a batch op's `tool`; a key one
+  level off says where it belongs (`word_sections` `top`: "top belongs one level down:
+  margins.top"). `word_format` reads `top` as `space_before` and `bottom` as
+  `space_after`, as pptx-agent's `ppt_format_text` does: it has no other top or bottom.
+
 - Figures in text from a source (round 5, T4; ooxml-edit 0.33.0): `word_set_text`,
   `word_insert_text`, `word_insert_markdown` (`markdown`) and `replace_text` (`replace`)
   take references to one value, `{{d:by_topic/door/mean}}` or `{{t:checks/N-1/rating}}`

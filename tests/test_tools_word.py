@@ -937,3 +937,60 @@ def test_a_layout_that_approximates_says_where(box, session):
     assert approximation["path"].startswith("w:body/w:tbl[1]/w:tr[1]/w:tc[1]/w:p[1]/")
     assert "character left" in approximation["message"]
     assert ok(box, session, "render", doc=d, pages=[1], width=400).data["coverage"] == coverage
+
+
+# -- forgiving the model's small mistakes (round 6: R2, R3, R7) ----------------------------------
+
+
+def test_a_camel_case_or_hyphenated_ref_is_folded_where_defined_and_used(box, session):
+    d = open_doc(session)
+    result = ok(box, session, "word_insert_text", doc=d, find="EUR 12,500", text=", excluding VAT",
+                ref="vatNote")
+    rng = result.data["ranges"][0]
+    assert result.refs == {"vat_note": rng}
+    assert "ref 'vatNote' read as 'vat_note': write $vat_note" in result.warnings
+    formatted = ok(box, session, "word_format", doc=d, targets=["$vat-note"], bold=True)
+    assert formatted.warnings == ["targets[0] '$vat-note' read as '$vat_note'"]
+    note = ok(box, session, "word_notes", doc=d, action="insert", find="99.5%", text="Measured monthly.",
+              ref="noteOne")
+    assert list(note.refs) == ["note_one"]
+    edited = ok(box, session, "word_notes", doc=d, action="edit", note="$noteOne", text="Measured each month.")
+    assert edited.warnings == ["note '$noteOne' read as '$note_one'"]
+
+
+def test_a_folded_ref_that_names_another_range_is_refused(box, session):
+    d = open_doc(session)
+    first = ok(box, session, "word_insert_text", doc=d, find="EUR 12,500", text="!", ref="vat_note")
+    original = document(session).to_bytes()
+    error = fails(box, session, "word_insert_text", "invalid_arguments", doc=d, find="99.5%", text="?",
+                  ref="vatNote")
+    assert error.field == "ref" and "already names" in error.message
+    assert document(session).to_bytes() == original
+    assert session.entry(d).refs == {"vat_note": first.data["ranges"][0]}
+
+
+def test_a_namespaced_tool_in_a_batch_runs(box, session):
+    d = open_doc(session)
+    result = ok(box, session, "batch", ops=[
+        {"tool": "functions.word_set_text", "arguments": {"doc": d, "target": "p:16425160",
+                                                          "text": "Scope of work"}}])
+    assert result.warnings[0] == "ops[0]: tool 'functions.word_set_text' read as 'word_set_text'"
+    assert document(session).paragraph("p:16425160").text == "Scope of work"
+
+
+def test_a_key_one_level_off_says_where_it_belongs(box, session):
+    d = open_doc(session)
+    error = fails(box, session, "word_sections", "invalid_arguments", doc=d, action="set", top=72)
+    assert error.message == "unknown argument 'top'; top belongs one level down: margins.top"
+    error = fails(box, session, "word_sections", "invalid_arguments", doc=d, action="set",
+                  margins={"top": 72, "orientation": "landscape"})
+    assert error.message == ("unknown argument 'margins.orientation'; orientation belongs one "
+                             "level up, at the top level, not in margins")
+
+
+def test_word_format_reads_top_and_bottom_as_paragraph_spacing(box, session):
+    d = open_doc(session)
+    result = ok(box, session, "word_format", doc=d, targets=["p:16425160"], top=6, bottom=12)
+    assert result.warnings == ["top read as space_before", "bottom read as space_after"]
+    effective = document(session).paragraph("p:16425160").effective
+    assert (effective.space_before, effective.space_after) == (6, 12)
