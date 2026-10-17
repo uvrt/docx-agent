@@ -66,7 +66,8 @@ classifiers = [
 # ooxml-edit 0.39.0: Chart.category_dates, by which edit_chart read and the Markdown outline
 # list a chart's dates as ISO dates; ooxml-common 0.17.0, by which docx2svg draws them.
 # ooxml-edit 0.40.0: the dot chart (add_chart "dot", Chart.is_dot).
-dependencies = ["lxml>=4.9", "ooxml-edit>=0.40.0", "ooxml-common>=0.17.0", "docx2svg>=0.1", "markdown-it-py>=3.0", "mdit-py-plugins>=0.4"]
+# ooxml-edit 0.43.0: Result.nothing_given, an empty items list's no-op (round 7, L7).
+dependencies = ["lxml>=4.9", "ooxml-edit>=0.43.0", "ooxml-common>=0.17.0", "docx2svg>=0.1", "markdown-it-py>=3.0", "mdit-py-plugins>=0.4"]
 
 [project.optional-dependencies]
 # PNG output goes through docx2svg's rasteriser extra.

@@ -994,3 +994,57 @@ def test_word_format_reads_top_and_bottom_as_paragraph_spacing(box, session):
     assert result.warnings == ["top read as space_before", "bottom read as space_after"]
     effective = document(session).paragraph("p:16425160").effective
     assert (effective.space_before, effective.space_after) == (6, 12)
+
+
+# -- round 7: the application's own tools in a batch (L6), empty items lists (L7) ----------
+
+from ooxml_edit.tools import Result, string, tool  # noqa: E402
+
+#: What the made-up application tool kept, outside the document.
+KEPT: list[str] = []
+
+
+@tool("app_keep", "Keep a line for the user.", {"text": string("The line.")}, documents=())
+def app_keep(call, text):
+    KEPT.append(text)
+    return Result(summary=f"Kept {text!r}", data={"kept": len(KEPT)})
+
+
+def test_a_batch_runs_a_tool_the_application_registered():
+    KEPT.clear()
+    with Toolbox(TOOLS + [app_keep], formats=[FORMAT], groups=GROUPS) as own:
+        session = own.session(clock=lambda: CLOCK_AT)
+        d = open_doc(session)
+        result = ok(own, session, "batch", ops=[
+            {"tool": "word_set_text", "arguments": {"doc": d, "target": "p:16425160",
+                                                    "text": "Scope of work"}},
+            {"tool": "app_keep", "arguments": {"text": "renamed the heading"}}])
+        assert KEPT == ["renamed the heading"]
+        assert result.data["ops"][1] == {"op": 1, "tool": "app_keep",
+                                         "summary": "Kept 'renamed the heading'",
+                                         "data": {"kept": 1}}
+        assert document(session).paragraph("p:16425160").text == "Scope of work"
+
+
+@pytest.mark.parametrize("tool_name, arguments, done", [
+    ("word_set_text", {}, "written"),
+    ("word_insert_text", {}, "inserted"),
+    ("word_comments", {"action": "add"}, "changed"),
+])
+def test_an_empty_items_list_is_a_no_op_with_a_warning(box, session, tool_name, arguments, done):
+    d = open_doc(session)
+    original = document(session).to_bytes()
+    result = ok(box, session, tool_name, doc=d, items=[], **arguments)
+    assert result.warnings == [f"items is empty: nothing was {done}"]
+    assert result.summary == f"Nothing {done}: items is empty"
+    assert document(session).to_bytes() == original
+    assert not session.entry(d).history.can_undo()
+    batch = ok(box, session, "batch", ops=[{"tool": tool_name,
+                                            "arguments": {"doc": d, "items": [], **arguments}}])
+    assert batch.warnings == [f"ops[0]: items is empty: nothing was {done}"]
+
+
+def test_comments_with_no_items_at_all_still_need_them(box, session):
+    d = open_doc(session)
+    error = fails(box, session, "word_comments", "invalid_arguments", doc=d, action="delete")
+    assert error.message == "delete needs items"
