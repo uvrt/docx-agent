@@ -6,6 +6,9 @@ snapshot commit; the development history before it is summarised here.
 
 ## Unreleased
 
+- The loaded core's budget is now 6,500 tokens as count-tokens counts them (raised from 6,000
+  by the user on 2026-10-17); the offline proxy and the online check use it.
+
 - An empty `items` list is a no-op with a warning, not a silent or refused call (round 7,
   L7; ooxml-edit 0.43.0's `Result.nothing_given`): `word_set_text`, `word_insert_text`
   and `word_comments` (other than `list`) given `items: []` change nothing, record no
