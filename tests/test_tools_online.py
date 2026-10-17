@@ -86,6 +86,32 @@ def test_the_definitions_as_sent_are_accepted(toolbox):
     assert reply["type"] == "message"
 
 
+#: A reviewer's role sets (ooxml-edit 0.45.0, round 7, item 9), an editor-in-chief's
+#: (accept) among them: each its own core, cached.
+REVIEW_SETS = (["review"], ["review", "resolve"], ["review", "accept"])
+
+
+@pytest.mark.parametrize("roles", REVIEW_SETS, ids="+".join)
+def test_a_reviewer_s_core_is_within_the_budget_and_accepted(toolbox, roles):
+    messages = [{"role": "user", "content": "x"}]
+    core = [d for d in toolbox.definitions("anthropic", groups="core", roles=roles)
+            if "input_schema" in d]
+    base = _post("messages/count_tokens", {"model": MODEL, "messages": messages})
+    loaded = _post("messages/count_tokens", {"model": MODEL, "messages": messages,
+                                             "tools": core})
+    counted = loaded["input_tokens"] - base["input_tokens"]
+    print(f"\n{MODEL}: the {'+'.join(roles)} core, {len(core)} definitions, counts {counted} "
+          "tokens")
+    assert counted <= CORE_COUNTED_BUDGET, counted
+    tools = toolbox.definitions("anthropic", roles=roles)
+    assert anthropic_problems(tools) == []
+    reply = _post("messages", {"model": MODEL, "max_tokens": 32, "tools": tools,
+                               "system": toolbox.system_prompt(roles=roles),
+                               "output_config": {"effort": "low"},
+                               "messages": [{"role": "user", "content": "Reply with: ready"}]})
+    assert reply["type"] == "message"
+
+
 # -- strict decoding keeps every field given -------------------------------------------------------
 
 
@@ -126,6 +152,11 @@ def test_strict_tools_keep_every_field_given(toolbox):
 
     strict = [d for d in toolbox.definitions("anthropic", defer=False) if d.get("strict")]
     assert strict
+    # A reviewer's role sets send some tools strict that the default does not (round 7,
+    # item 9): those too, each once, as that role set sends it.
+    for roles in REVIEW_SETS:
+        strict += [d for d in toolbox.definitions("anthropic", defer=False, roles=roles)
+                   if d.get("strict") and d not in strict]
     lost = {}
     for definition in strict:
         arguments = example_arguments(definition["input_schema"])

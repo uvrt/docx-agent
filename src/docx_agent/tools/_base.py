@@ -231,7 +231,10 @@ def word_tool(name: str, description: str, params: Mapping[str, Any], *, group: 
               refs: Sequence[str] = (), batchable: bool = True,
               reads: Callable[[Mapping[str, Any]], bool] | None = None,
               sources: Sequence[str] = (), facts: Sequence[str] = (),
-              aliases: Mapping[str, Any] | None = None) -> Callable[[Callable[..., Any]], Any]:
+              aliases: Mapping[str, Any] | None = None,
+              action_roles: Mapping[str, str] | None = None,
+              call_role: Callable[[Mapping[str, Any]], str | None] | None = None,
+              review_core: bool = False) -> Callable[[Callable[..., Any]], Any]:
     """A Word tool (kind ``docx``): ``handler(call, **arguments) -> Result | data``.
 
     Around the handler: the layout engine; for a changing call, the layout before it (for
@@ -242,13 +245,17 @@ def word_tool(name: str, description: str, params: Mapping[str, Any], *, group: 
     rows to take, a dataset or another document's table (``Tool.sources``); ``facts`` the
     text that may hold references to one value, ``{{d:x/key/column}}``, written as the value
     before the handler runs (``Tool.facts``); ``aliases`` the argument names read as its own
-    (``Tool.aliases``)."""
+    (``Tool.aliases``); ``action_roles`` and ``call_role`` the roles of a changing tool's
+    actions that are not ``edit``'s (``Tool.action_roles``: a ``list`` action is
+    ``review``'s); ``review_core`` loads it in the core of a role set without ``edit``
+    (``Tool.review_core``)."""
 
     def make(handler: Callable[..., Any]) -> Any:
         return _tool(name, description, params, group=group, mutates=mutates, kind="docx",
                      exactly_one=exactly_one, documents=documents, priority=priority, refs=refs,
                      batchable=batchable, reads=reads, sources=sources, facts=facts,
-                     aliases=aliases)(wrap(handler, mutates=mutates, track=track))
+                     aliases=aliases, action_roles=action_roles,
+                     call_role=call_role, review_core=review_core)(wrap(handler, mutates=mutates, track=track))
 
     return make
 

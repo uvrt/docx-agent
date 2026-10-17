@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ooxml_edit.tools import Result, ToolError, array, boolean, obj, string
+from ooxml_edit.tools import ACCEPT, REVIEW, Result, ToolError, array, boolean, obj, shared, string
 
 from ..revisions.changes import CHANGE_KINDS
 from ._base import author_of, need, one_of, outcome, page, remember, resolve, short, word_tool
@@ -87,7 +87,8 @@ def _listing(arguments: Any) -> bool:
             "all": boolean("accept, reject: every change.", optional=True),
             "detail": string("list. Default grouped.", enum=["grouped", "records"], optional=True),
             "cursor": CURSOR},
-           refs=('ids[]', 'within'), group="word_review", mutates=True, track=False, reads=_listing)
+           refs=('ids[]', 'within'), group="word_review", mutates=True, track=False, reads=_listing,
+           action_roles={"list": REVIEW, "accept": ACCEPT, "reject": ACCEPT}, review_core=True)
 def word_changes(call: Any, doc: str, action: str, ids: list[str] | None = None, author: str | None = None,
                  kind: str | None = None, within: str | None = None, all: bool = False,
                  detail: str = "grouped", cursor: str | None = None) -> Result:
@@ -244,7 +245,9 @@ def comment_json(comment: Any) -> dict[str, Any]:
             "author": string("add, reply: author. Default the tracking author.", optional=True),
             "open_only": boolean("list: only unresolved threads.", optional=True),
             "cursor": CURSOR},
-           refs=('items[].target', 'items[].within', 'items[].comment'), group="word_review", mutates=True, track=False)
+           refs=('items[].target', 'items[].within', 'items[].comment'), group="word_review", mutates=True, track=False,
+           action_roles=shared.COMMENT_ACTION_ROLES, call_role=shared.comment_role,
+           review_core=True)
 def word_comments(call: Any, doc: str, action: str, items: list[dict] | None = None,
                   author: str | None = None, open_only: bool = False, cursor: str | None = None) -> Result:
     document = call.document

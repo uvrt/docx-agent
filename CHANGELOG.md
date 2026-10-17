@@ -6,6 +6,27 @@ snapshot commit; the development history before it is summarised here.
 
 ## Unreleased
 
+- Tool roles (round 7, item 9; ooxml-edit 0.45.0): the Word tools are tagged for the
+  additive roles `review`, `resolve`, `accept` and `edit` (`Toolbox(roles=...)`,
+  `toolbox.session(roles=...)`). `word_comments` takes its actions' roles from
+  `shared.COMMENT_ACTION_ROLES` -- list, add, reply `review`; resolve, reopen, delete (and a
+  reply with `resolve: true`) `resolve`; editing a comment's text every role's (the user's
+  decision: its author is not known) -- and joins the core of a role set without `edit`.
+  `word_changes`' accept and reject are the `accept` role's, its list `review`'s, and it
+  joins that core too (an editor-in-chief, `["review", "accept"]`, settles the tracked
+  changes and changes nothing else). The `list` actions of `word_sections`, `word_fields`,
+  `word_notes`, `word_links`, `word_drawings` and `word_controls`, and `word_styles`' list
+  and describe, are `review`'s. `word_tool` takes `action_roles`, `call_role` and
+  `review_core`. The default, every role, sends the definitions byte for byte as before
+  (core 2,570, every definition 12,314 estimated). Estimated core / every definition:
+  `["review"]` 2,350 (about 3,478 counted by the proxy) / 6,807; `["review", "resolve"]`
+  2,358 / 6,815; `["review", "accept"]` 2,356 / 6,812; all three 2,364 / 6,820 -- guards
+  `REVIEW_CORE_GUARD` 2,370 and `REVIEW_ALL_GUARD` 6,825 (tests/test_tools_roles.py);
+  `["accept"]` 814 / 1,418; `["edit"]` 1,418 / 10,653. Claude's strict set: a reviewer's
+  `word_comments`, `word_changes`, `word_notes`; `["edit"]` alone loses `word_changes` and
+  gains `edit_smartart` and `set_properties`; the default's and `["review", "edit"]`'s are
+  unchanged. The online check counts the review, review+resolve and review+accept cores
+  and sends their strict tools.
 - The loaded core's budget is now 6,500 tokens as count-tokens counts them (raised from 6,000
   by the user on 2026-10-17); the offline proxy and the online check use it.
 

@@ -8,7 +8,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from ooxml_edit.tools import Result, ToolError, array, integer, names_as, number, obj, string
+from ooxml_edit.tools import (REVIEW, Result, ToolError, array, integer, names_as, number, obj,
+                              string)
 
 from ..edit import provenance as _provenance
 from ._base import need, outcome, remember, resolve, short, word_tool
@@ -500,7 +501,8 @@ WRAPS = ["square", "tight", "top_and_bottom", "front", "behind"]
             "alt_text": string("insert_picture (needed), set: text for screen readers.", optional=True),
             "ref": string("insert_*: ref name for $name.", optional=True),
             "key": string("Retry key: a repeat with the same key makes nothing new.", optional=True)},
-           refs=('target', 'at'), group="word_objects", mutates=True)
+           refs=('target', 'at'), group="word_objects", mutates=True,
+           action_roles={"list": REVIEW})
 def word_drawings(call: Any, doc: str, action: str, target: str | None = None, image: str | None = None,
                   at: str | None = None, find: str | None = None, x: float | None = None, y: float | None = None,
                   align: str | None = None, against: str | None = None, width: float | None = None,
@@ -627,7 +629,8 @@ def _insert_picture(call: Any, image: str, alt_text: str, at: str | None, find: 
             "value": string("fill: text, choice, date or true/false.", optional=True),
             "tag": string("insert: a tag for programs.", optional=True),
             "title": string("insert: the title people see.", optional=True)},
-           refs=('control', 'at'), group="word_objects", mutates=True)
+           refs=('control', 'at'), group="word_objects", mutates=True,
+           action_roles={"list": REVIEW})
 def word_controls(call: Any, doc: str, action: str, control: str | None = None, at: str | None = None,
                   find: str | None = None, type: str = "text", items: list[str] | None = None,
                   value: str | None = None, tag: str | None = None, title: str | None = None) -> Result:

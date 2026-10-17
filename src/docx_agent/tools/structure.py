@@ -6,7 +6,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from ooxml_edit.tools import Result, ToolError, array, number, obj, string
+from ooxml_edit.tools import REVIEW, Result, ToolError, array, number, obj, string
 
 from ..edit.sections import STARTS
 from ._base import need, one_of, outcome, remember, resolve, short, word_tool
@@ -109,7 +109,8 @@ MARGINS = obj({side: number(minimum=0, maximum=1584, optional=True)
             "page_height": number("set.", minimum=72, maximum=1584, optional=True),
             "margins": MARGINS,
             "columns": number("set: text columns.", minimum=1, maximum=45, optional=True)},
-           refs=('after', 'before', 'section'), group="word_structure", mutates=True)
+           refs=('after', 'before', 'section'), group="word_structure", mutates=True,
+           action_roles={"list": REVIEW})
 def word_sections(call: Any, doc: str, action: str, after: str | None = None, before: str | None = None,
                   section: str | None = None, start: str | None = None, orientation: str | None = None,
                   page_width: float | None = None, page_height: float | None = None,
@@ -243,7 +244,8 @@ def field_json(field: Any) -> dict[str, Any]:
             "text": string("insert_caption: text after the number.", optional=True),
             "instruction": string("insert_field: the instruction, e.g. NUMPAGES.", optional=True),
             "ids": array(string(), "update: only these fields (fld:...).", optional=True)},
-           refs=('after', 'before', 'at', 'ids[]'), group="word_structure", mutates=True)
+           refs=('after', 'before', 'at', 'ids[]'), group="word_structure", mutates=True,
+           action_roles={"list": REVIEW})
 def word_fields(call: Any, doc: str, action: str, after: str | None = None, before: str | None = None,
                 at: str | None = None, find: str | None = None, levels: str | None = None,
                 bookmark: str | None = None, kind: str = "text", label: str | None = None,
@@ -301,7 +303,8 @@ def _position(call: Any, at: str | None, find: str | None) -> Any:
             "note": string("edit, delete, move: the note (fn:2, en:1).", optional=True),
             "text": string("insert, edit: the text.", optional=True),
             "ref": string("insert: ref name for the note.", optional=True)},
-           refs=('at', 'note'), group="word_structure", mutates=True)
+           refs=('at', 'note'), group="word_structure", mutates=True,
+           action_roles={"list": REVIEW})
 def word_notes(call: Any, doc: str, action: str, kind: str = "footnote", at: str | None = None,
                find: str | None = None, note: str | None = None, text: str | None = None,
                ref: str | None = None) -> Result:
@@ -335,7 +338,8 @@ def word_notes(call: Any, doc: str, action: str, kind: str = "footnote", at: str
             "bookmark": string("Bookmark name; add_hyperlink: link to it instead of url.",
                                optional=True),
             "new_name": string("rename_bookmark: new name.", optional=True)},
-           refs=('target',), group="word_structure", mutates=True)
+           refs=('target',), group="word_structure", mutates=True,
+           action_roles={"list": REVIEW})
 def word_links(call: Any, doc: str, action: str, target: str | None = None, find: str | None = None,
                url: str | None = None, bookmark: str | None = None, new_name: str | None = None) -> Result:
     document = call.document
