@@ -11,8 +11,8 @@ snapshot commit; the development history before it is summarised here.
   and `word_comments` (other than `list`) given `items: []` change nothing, record no
   undo step and warn `items is empty: nothing was written` (inserted, changed) -- what a
   model sends after trimming a batch. `word_comments` without `items` still needs them;
-  `word_format`'s and `word_lists`' `targets` keep `minItems: 1`, and `word_controls`'
-  `items` (a drop-down's choices) is unchanged. Tool definitions unchanged.
+  `word_format`'s and `word_lists`' `targets` keep `minItems: 1`; a drop-down's choices
+  are not a list of work and are unchanged. Tool definitions unchanged.
 - `batch` runs a tool the application registered in the toolbox with these (round 7, L6;
   ooxml-edit 0.43.0), tested here with a made-up one.
 
