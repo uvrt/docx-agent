@@ -94,6 +94,8 @@ SET_ITEM = obj({"target": string("Paragraph, or table cell t:X/c<row>,<col>."),
 def word_set_text(call: Any, doc: str, target: str | None = None, text: str | None = None,
                   items: list[dict] | None = None) -> Result:
     one_of({"target": target, "items": items}, "target", "items")
+    if items == []:         # a trimmed batch's leftover: nothing to do, said, not refused
+        return Result.nothing_given("written")
     work = items if items is not None else [{"target": target, "text": need(text, "text")}]
     edits = []
     for item in work:
@@ -132,6 +134,8 @@ INSERT_FIELDS = {
 def word_insert_text(call: Any, doc: str, items: list[dict] | None = None, **single: Any) -> Result:
     if items is not None and any(single.get(k) is not None for k in ("find", "target", "text")):
         raise ToolError("invalid_arguments", "give one insertion's fields or items, not both", field="items")
+    if items == []:
+        return Result.nothing_given("inserted")
     work = items if items is not None else [single]
     edits, made = [], []
     for item in work:

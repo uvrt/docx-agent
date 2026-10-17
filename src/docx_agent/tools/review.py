@@ -254,8 +254,10 @@ def word_comments(call: Any, doc: str, action: str, items: list[dict] | None = N
         result = Result(summary=f"{total} thread(s)", data=shown, next_cursor=next_cursor)
         result.total = total
         return result
-    if not items:
+    if items is None:
         raise ToolError("invalid_arguments", f"{action} needs items", field="items")
+    if not items:
+        return Result.nothing_given("changed")
     who = author_of(call, author)
     edits, made = [], []
     for item in items:
