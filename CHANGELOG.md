@@ -6,6 +6,23 @@ snapshot commit; the development history before it is summarised here.
 
 ## Unreleased
 
+- Tool roles (round 7, item 9; ooxml-edit 0.45.0): the Word tools are tagged for the
+  additive roles `review`, `resolve` and `edit` (`Toolbox(roles=...)`,
+  `toolbox.session(roles=...)`). `word_comments` takes its actions' roles from
+  `shared.COMMENT_ACTION_ROLES` -- list, add, reply `review`; resolve, reopen, delete (and a
+  reply with `resolve: true`) `resolve`; edit `edit` -- and joins the core of a role set
+  without `edit`; the `list` actions of `word_changes`, `word_sections`, `word_fields`,
+  `word_notes`, `word_links`, `word_drawings` and `word_controls`, and `word_styles`' list
+  and describe, are `review`'s; accepting and rejecting tracked changes stays `edit`'s.
+  `word_tool` takes `action_roles`, `call_role` and `review_core`. The default, every
+  role, sends the definitions byte for byte as before (core 2,570, every definition 12,314
+  estimated). A reviewer (`["review"]`) is sent 21 tools, the core 2,024 estimated (about
+  2,996 counted by the proxy), every definition 6,805; `["review", "resolve"]` 2,032 and
+  6,813 -- guards `REVIEW_CORE_GUARD` 2,035 and `REVIEW_ALL_GUARD` 6,815
+  (tests/test_tools_roles.py). Claude's strict set for a reviewer: `word_comments`,
+  `word_changes` and `word_notes`; the default's and `["review", "edit"]`'s are unchanged.
+  The online check counts both reviewer cores and sends their strict tools.
+
 - The loaded core's budget is now 6,500 tokens as count-tokens counts them (raised from 6,000
   by the user on 2026-10-17); the offline proxy and the online check use it.
 

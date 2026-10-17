@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ooxml_edit.tools import Result, ToolError, array, boolean, integer, string
+from ooxml_edit.tools import REVIEW, Result, ToolError, array, boolean, integer, string
 
 from ..edit.formatting import RUN_PROPERTIES, read_paragraph, read_run
 from ..edit.styles import StyleError
@@ -120,7 +120,8 @@ def describe_style(document: Any, style: Any) -> dict[str, Any]:
             "replacement": string("remove: style its users get instead.", optional=True),
             "in_use_only": boolean("list: only styles in use.", optional=True),
             **STYLE_FIELDS},
-           group="word_style", mutates=True, track=False)
+           group="word_style", mutates=True, track=False,
+           action_roles={"list": REVIEW, "describe": REVIEW})
 def word_styles(call: Any, doc: str, action: str, name: str | None = None, kind: str | None = None,
                 based_on: str | None = None, next_style: str | None = None, replacement: str | None = None,
                 in_use_only: bool = False, **values: Any) -> Result:
