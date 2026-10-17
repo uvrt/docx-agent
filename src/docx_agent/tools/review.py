@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ooxml_edit.tools import REVIEW, Result, ToolError, array, boolean, obj, shared, string
+from ooxml_edit.tools import ACCEPT, REVIEW, Result, ToolError, array, boolean, obj, shared, string
 
 from ..revisions.changes import CHANGE_KINDS
 from ._base import author_of, need, one_of, outcome, page, remember, resolve, short, word_tool
@@ -88,7 +88,7 @@ def _listing(arguments: Any) -> bool:
             "detail": string("list. Default grouped.", enum=["grouped", "records"], optional=True),
             "cursor": CURSOR},
            refs=('ids[]', 'within'), group="word_review", mutates=True, track=False, reads=_listing,
-           action_roles={"list": REVIEW})
+           action_roles={"list": REVIEW, "accept": ACCEPT, "reject": ACCEPT}, review_core=True)
 def word_changes(call: Any, doc: str, action: str, ids: list[str] | None = None, author: str | None = None,
                  kind: str | None = None, within: str | None = None, all: bool = False,
                  detail: str = "grouped", cursor: str | None = None) -> Result:

@@ -91,21 +91,23 @@ as `Document.locale` (or `Document.new(locale=...)`).
 **Roles: a reviewer's tools.** A toolbox or session loads roles, additive toolsets
 (ooxml-edit 0.45.0, [TOOLS.md, "Roles"](https://github.com/uvrt/ooxml-edit/blob/main/docs/TOOLS.md)):
 `review` reads, checks, compares, renders and adds and replies to comments; `resolve`
-resolves, reopens and deletes them; `edit` makes every other change. The default is all
-three, the toolbox as without roles.
+resolves, reopens and deletes them; `accept` accepts and rejects tracked changes; `edit`
+makes every other change. Editing a comment's text is every role's. The default is all
+four, the toolbox as without roles.
 
 ```python
 reviewer = Toolbox(TOOLS, formats=[FORMAT], groups=GROUPS, roles=["review"])
-tools = reviewer.definitions("anthropic")       # 21 tools; word_comments list/add/reply
+tools = reviewer.definitions("anthropic")       # 21 tools; word_comments list/add/reply/edit
 system = reviewer.system_prompt(extra=HOUSE_RULES)
 session = reviewer.session()                    # word_set_text here is refused
 second_pass = toolbox.session(roles=["review", "resolve"])   # per session, same toolbox
+chief = toolbox.session(roles=["review", "accept"])  # settles tracked changes, nothing else
 ```
 
 A reviewer's core is open, save, `describe`, `word_read`, `find_text`, `render`, `check`,
-`batch` and `word_comments` (2,024 estimated tokens against the full core's 2,570); the
-mixed tools offer only `list` (`word_styles` `describe` too), `edit_chart` only `read`;
-accepting or rejecting tracked changes is `edit`'s. A call outside the session's roles --
+`batch`, `word_comments` and `word_changes` (2,350 estimated tokens against the full core's
+2,570); the mixed tools offer only `list` (`word_styles` `describe` too), `edit_chart`
+only `read`; accepting or rejecting tracked changes is `accept`'s. A call outside the session's roles --
 in a `batch` too, op by op -- is refused naming the role it needs; a reviewer reports each
 finding with the call that would fix it, for a builder (`roles=["review", "edit"]`, or the
 default) to apply in one batch.

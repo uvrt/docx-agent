@@ -86,8 +86,9 @@ def test_the_definitions_as_sent_are_accepted(toolbox):
     assert reply["type"] == "message"
 
 
-#: A reviewer's role sets (ooxml-edit 0.45.0, round 7, item 9): each its own core, cached.
-REVIEW_SETS = (["review"], ["review", "resolve"])
+#: A reviewer's role sets (ooxml-edit 0.45.0, round 7, item 9), an editor-in-chief's
+#: (accept) among them: each its own core, cached.
+REVIEW_SETS = (["review"], ["review", "resolve"], ["review", "accept"])
 
 
 @pytest.mark.parametrize("roles", REVIEW_SETS, ids="+".join)

@@ -3,14 +3,18 @@ what it may call, and that all roles -- the default -- is the toolbox as without
 
 Offline numbers (characters / 3.5, as test_tools_schema.py's guards; the online count is in
 test_tools_online.py).  The default is unchanged: core 2,570, every definition 12,314.  A
-reviewer, ``["review"]``: the core 2,024 (about 2,996 counted by the 1.48 proxy; nine
+reviewer, ``["review"]``: the core 2,350 (about 3,478 counted by the 1.48 proxy; ten
 tools: save_document, describe, find_text, render, check, open_document, batch, word_read,
-and word_comments, loaded in the core of a set without edit), every definition 6,805 (21
-tools: the mixed tools with only their list action -- describe too for word_styles -- and
-edit_chart with only read).  ``["review", "resolve"]``: 2,032 and 6,813.  ``["edit"]``:
-core 1,418, every definition 10,980.  Claude's strict set for a reviewer is word_comments,
-word_changes and word_notes; the default's and a builder's (``["review", "edit"]``) are
-unchanged.
+and word_comments and word_changes, loaded in the core of a set without edit), every
+definition 6,807 (21 tools: the mixed tools with only their list action -- describe too
+for word_styles -- and edit_chart with only read).  ``["review", "resolve"]``: 2,358 and
+6,815; an editor-in-chief, ``["review", "accept"]``: 2,356 and 6,812; all three 2,364 and
+6,820.  ``["accept"]`` alone: core 814, every definition 1,418 (word_changes accept and
+reject, word_comments for its text edits, every role's).  ``["edit"]``: core 1,418, every
+definition 10,653 (word_changes is accept's now).  Claude's strict set for a reviewer is
+word_comments, word_changes and word_notes; for ``["edit"]`` alone word_changes leaves it
+and edit_smartart and set_properties join; the default's and a builder's
+(``["review", "edit"]``) are unchanged.
 """
 
 from __future__ import annotations
@@ -26,13 +30,14 @@ from test_tools_schema import COUNTED_PER_ESTIMATED, CORE_COUNTED_BUDGET, estima
 from test_tools_word import AGREEMENT, CLOCK_AT
 
 #: A reviewer's core (``["review", "resolve"]``, the larger), estimated: a regression guard
-#: as ALL_GUARD is.  Measured 2,032.
-REVIEW_CORE_GUARD = 2035
-#: Every definition a reviewer is sent, estimated.  Measured 6,813.
-REVIEW_ALL_GUARD = 6815
+#: as ALL_GUARD is.  Measured 2,364 for ``["review", "resolve", "accept"]`` (2,032 for
+#: review+resolve before word_changes joined a reviewer's core with the accept role).
+REVIEW_CORE_GUARD = 2370
+#: Every definition a reviewer is sent, estimated.  Measured 6,820 (6,813 before).
+REVIEW_ALL_GUARD = 6825
 
 REVIEW_CORE = {"save_document", "describe", "find_text", "render", "check", "open_document",
-               "batch", "word_read", "word_comments"}
+               "batch", "word_read", "word_comments", "word_changes"}
 LISTING = {"word_changes", "word_sections", "word_fields", "word_notes", "word_links",
            "word_drawings", "word_controls"}
 
@@ -84,14 +89,17 @@ def test_a_reviewer_is_sent_the_reading_tools_the_list_actions_and_comments(box)
         assert _enum(sent[name]) == ["list"], name
     assert _enum(sent["word_styles"]) == ["list", "describe"]
     assert _enum(sent["edit_chart"]) == ["read"]
-    assert _enum(sent["word_comments"]) == ["list", "add", "reply"]
+    assert _enum(sent["word_comments"]) == ["list", "add", "reply", "edit"]
     assert {n for n, d in sent.items() if d["strict"]} == {"word_comments", "word_changes",
                                                            "word_notes"}
     for edit_only in ("word_set_text", "word_set_tracking", "word_template", "undo",
                       "new_document", "replace_text", "word_format"):
         assert edit_only not in sent
     assert _enum(_sent(box, ["review", "resolve"])["word_comments"]) == [
-        "list", "add", "reply", "resolve", "reopen", "delete"]
+        "list", "add", "reply", "resolve", "reopen", "edit", "delete"]
+    chief = _sent(box, ["review", "accept"])
+    assert _enum(chief["word_changes"]) == ["list", "accept", "reject"]
+    assert "word_changes" not in _sent(box, ["edit"])
 
 
 def test_a_builder_without_resolve_keeps_the_default_tools_and_strict_set(box):
@@ -103,7 +111,8 @@ def test_a_builder_without_resolve_keeps_the_default_tools_and_strict_set(box):
 
 
 @pytest.mark.parametrize("roles", [["review"], ["review", "resolve"], ["resolve"], ["edit"],
-                                   ["review", "edit"]], ids="+".join)
+                                   ["review", "edit"], ["accept"], ["review", "accept"]],
+                         ids="+".join)
 def test_each_role_set_s_definitions_meet_each_provider_s_rules(box, roles):
     for groups in ("core", None):
         assert anthropic_problems(box.definitions("anthropic", groups=groups,
@@ -115,7 +124,8 @@ def test_each_role_set_s_definitions_meet_each_provider_s_rules(box, roles):
 
 
 def test_a_reviewer_s_definitions_are_within_their_guards(box):
-    for roles in (["review"], ["review", "resolve"]):
+    for roles in (["review"], ["review", "resolve"], ["review", "accept"],
+                  ["review", "resolve", "accept"]):
         core = estimate(box.definitions("anthropic", groups="core", roles=roles))
         everything = estimate(box.definitions("anthropic", defer=False, roles=roles))
         assert core * COUNTED_PER_ESTIMATED <= CORE_COUNTED_BUDGET, (roles, core)
@@ -165,11 +175,11 @@ def test_a_second_pass_reviewer_resolves_comments_but_does_not_edit(box):
     assert run("word_comments", doc="d1", action="reply", author="Rev",
                items=[{"comment": "$q1", "text": "Monthly.", "resolve": True}]).ok
     assert run("word_comments", doc="d1", action="reopen", items=[{"comment": "$q1"}]).ok
+    assert run("word_comments", doc="d1", action="edit", items=[{"comment": "$q1",
+                                                                 "text": "Per month."}]).ok
     assert run("word_comments", doc="d1", action="delete", items=[{"comment": "$q1"}]).ok
-    edit = run("word_comments", doc="d1", action="edit", items=[{"comment": "$q1",
-                                                                 "text": "x"}])
-    assert edit.error.code == "refused" and "word_comments edit needs the edit role" in \
-        edit.error.message
+    accept = run("word_changes", doc="d1", action="accept", all=True)
+    assert accept.error.code == "refused" and "needs the accept role" in accept.error.message
 
 
 def test_a_review_batch_applies_its_comments_and_refuses_the_edits(box):
@@ -183,3 +193,43 @@ def test_a_review_batch_applies_its_comments_and_refuses_the_edits(box):
     assert result.ok and result.data["failed"] == [1]
     assert "replace_text needs the edit role" in result.data["ops"][1]["error"]["message"]
     assert "99.5%" in box.dispatch(session, "word_read", {"doc": "d1"}).to_text()
+
+
+def _tracked(box, roles):
+    """A session on the agreement with one tracked change made by a builder first."""
+    session = _session(box, None)
+    run = lambda tool_, **arguments: box.dispatch(session, tool_, arguments)  # noqa: E731
+    assert run("word_set_tracking", doc="d1", on=True, author="Builder").ok
+    assert run("replace_text", doc="d1", find="99.5%", replace="99.9%", expect="one").ok
+    session.roles = tuple(roles)          # the editor-in-chief takes over the session
+    return session, run
+
+
+def test_an_editor_in_chief_accepts_and_rejects_but_does_not_edit(box):
+    session, run = _tracked(box, ["review", "accept"])
+    listed = run("word_changes", doc="d1", action="list")
+    assert listed.ok and listed.data
+    assert run("word_changes", doc="d1", action="accept", all=True).ok
+    assert not run("word_changes", doc="d1", action="list").data
+    refused = run("replace_text", doc="d1", find="99.9%", replace="99%", expect="one")
+    assert refused.error.code == "refused" and "needs the edit role" in refused.error.message
+    assert "You may also accept and reject tracked changes." in \
+        box.system_prompt(roles=["review", "accept"])
+
+
+def test_accept_without_review_settles_changes_but_reads_nothing(box):
+    session, run = _tracked(box, ["accept"])
+    assert run("word_changes", doc="d1", action="reject", all=True).ok
+    listed = run("word_changes", doc="d1", action="list")
+    assert listed.error.code == "refused" and "needs the review role" in listed.error.message
+    assert run("word_read", doc="d1").error.code == "refused"
+
+
+def test_a_batch_holds_each_op_to_the_accept_role(box):
+    session, run = _tracked(box, ["review"])
+    result = run("batch", ops=[
+        {"tool": "word_changes", "arguments": {"doc": "d1", "action": "list"}},
+        {"tool": "word_changes", "arguments": {"doc": "d1", "action": "accept", "all": True}}])
+    assert result.ok and result.data["failed"] == [1]
+    assert "word_changes accept needs the accept role" in \
+        result.data["ops"][1]["error"]["message"]
