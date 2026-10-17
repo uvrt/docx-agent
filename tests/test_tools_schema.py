@@ -6,8 +6,8 @@ adapters' output passes each provider's documented strict rules; no parameter is
 groups are as the roadmap lists them.
 
 **The budgets (tool roadmap, "Budgets", after T5's rationalisation).**  What binds is what a
-request loads: the core, at most 6,000 tokens as Anthropic's count-tokens counts them
-(raised from 5,500 by the user on 2026-10-11)
+request loads: the core, at most 6,500 tokens as Anthropic's count-tokens counts them
+(raised from 5,500 by the user on 2026-10-11, to 6,500 on 2026-10-17)
 (``test_tools_online.py``, marked provider).  Offline, characters / 3.5 of each definition's
 compact JSON stands in for it, times 1.48, the ratio of the counted to the estimated size
 T5 and T5b measured on Sonnet 5.5 (the Word core: 2,384 estimated, 3,539 counted; every
@@ -79,7 +79,7 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 #: sent non-strict, so the strict set is unchanged.
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
-CORE_COUNTED_BUDGET = 6000
+CORE_COUNTED_BUDGET = 6500
 ALL_GUARD = 12315
 
 
