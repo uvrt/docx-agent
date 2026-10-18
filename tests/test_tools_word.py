@@ -564,13 +564,12 @@ def test_render_pages_within_limits_and_cached_by_version(box, session):
 
 
 def _pages_long(pages: int = 3) -> bytes:
-    """A document of ``pages`` pages whatever the fonts: each paragraph after the first
-    starts a page."""
-    document = Document.new()
-    for number in range(pages):
+    """The one-page agreement and ``pages - 1`` pages more, each a paragraph that starts a
+    page: so many pages with any fonts, in the agreement's faces, which CI's runners have."""
+    document = Document.open(AGREEMENT.read_bytes())
+    for number in range(1, pages):
         made = document.append_paragraph(f"Page {number + 1} of a made-up note.")
-        if number:
-            document.format_paragraph(made.id, page_break_before=True)
+        document.format_paragraph(made.id, page_break_before=True)
     return document.to_bytes()
 
 
