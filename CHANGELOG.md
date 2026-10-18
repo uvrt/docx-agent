@@ -6,6 +6,17 @@ snapshot commit; the development history before it is summarised here.
 
 ## Unreleased
 
+- What a name that is no Word tool means (round 9, N5; ooxml-edit 0.47.0): "no tool
+  'word_add_comment': use word_comments with action add", in a batch's op too, with the
+  best few tools in `valid_options` instead of every one; an editor without the accept role
+  is told `word_changes accept` needs it. ooxml-edit reads the tools' names and actions;
+  `TOOL_HINTS` (`FORMAT.tool_hints`) adds the names it misses or settles wrongly: a link is
+  `word_links add_hyperlink` (not a header's `link`), an image `word_drawings
+  insert_picture`, a table, heading or paragraph `word_insert_markdown`, a page break
+  `word_format` (`page_break_before`), margins, orientation and columns `word_sections
+  set`, a checkbox or drop-down `word_controls insert`, a header, footer or page number
+  `word_headers_footers set`. A batch op may carry `comment`/`note` (N4), kept in the call
+  log. Data and tests only: definitions and the strict set unchanged.
 - Several agents on one document (round 8, M1 and M2; ooxml-edit 0.46.0): a builder's, a
   reviewer's and an editor-in-chief's views of one shared session at once
   (`session.view(roles=..., context=...)`), each held to its own roles, in a batch too; the
