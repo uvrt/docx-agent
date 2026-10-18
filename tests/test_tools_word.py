@@ -4,8 +4,10 @@ valid options, undo, idempotence, tracking mode, refs and batches, and the check
 from __future__ import annotations
 
 import datetime as dt
+import io
 import json
 import struct
+import zipfile
 import zlib
 from pathlib import Path
 
@@ -564,19 +566,29 @@ def test_render_pages_within_limits_and_cached_by_version(box, session):
 
 
 def _pages_long(pages: int = 3) -> bytes:
-    """The one-page agreement and ``pages - 1`` pages more, each a paragraph that starts a
-    page: so many pages with any fonts, in the agreement's faces, which CI's runners have."""
-    document = Document.open(AGREEMENT.read_bytes())
-    for number in range(1, pages):
+    """``pages`` pages whatever the fonts measure -- each paragraph after the first starts a
+    page -- in Arial, which every CI runner lays out (Windows has it, Linux and macOS the
+    open substitute): in the new document's Aptos, which none has, docx2svg stops at page 1."""
+    from ooxml_edit.xml import qn
+
+    document = Document.new()
+    theme = document.package.tree("word/theme/theme1.xml")
+    for latin in theme.iter(qn("a:latin")):
+        latin.set("typeface", "Arial")
+    document.package.mark_dirty("word/theme/theme1.xml")
+    for number in range(pages):
         made = document.append_paragraph(f"Page {number + 1} of a made-up note.")
-        document.format_paragraph(made.id, page_break_before=True)
+        if number:
+            document.format_paragraph(made.id, page_break_before=True)
     return document.to_bytes()
 
 
 def test_render_sheet_tiles_pages_into_one_labelled_image(box, session):
     # Production feedback round 9, N1, as for decks: pages tiled in order into one image,
     # each labelled with its number; sheet.width is each tile's.
-    d = session.open(_pages_long(), "long.docx")
+    data = _pages_long()
+    assert b"Aptos" not in zipfile.ZipFile(io.BytesIO(data)).read("word/theme/theme1.xml")
+    d = session.open(data, "long.docx")
     sheet = ok(box, session, "render", doc=d, pages=[1, 2], sheet={"columns": 2, "width": 200})
     (image,) = sheet.images
     single = ok(box, session, "render", doc=d, pages=[1], width=200).images[0]
