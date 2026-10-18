@@ -147,9 +147,49 @@ ERRORS = {
 #: ``{{slide:s:262}}``, a slide's number.
 OWN_REFUSED = {"slide:": "slide references are for decks; a Word document has no slides"}
 
+#: Tool names a model writes that ooxml-edit's reading of names (its tools' names and
+#: actions, verbs and plurals read) does not settle, or settles wrongly -- a link is a
+#: hyperlink, not a header's link to the previous one; a page break is a paragraph's
+#: ``page_break_before`` (``DocumentFormat.tool_hints``; each key covers its spellings with
+#: another verb, a plural or no prefix).  Wording only.
+TOOL_HINTS = {
+    "word_add_image": "word_drawings insert_picture",
+    "word_add_textbox": "word_drawings insert_text_box",
+    "word_add_table": "word_insert_markdown",
+    "word_add_heading": "word_insert_markdown",
+    "word_add_paragraph": "word_insert_markdown",
+    "word_add_bullet": "word_lists add",
+    "word_add_link": "word_links add_hyperlink",
+    "word_add_url": "word_links add_hyperlink",
+    "word_add_page_break": "word_format",
+    "word_set_font": "word_format",
+    "word_apply_style": "word_format",
+    "word_set_paragraph_style": "word_format",
+    "word_format_cell": "word_format_table",
+    "word_shade_cell": "word_format_table",
+    "word_track_changes": "word_set_tracking",
+    "word_enable_tracking": "word_set_tracking",
+    "word_add_header": "word_headers_footers set",
+    "word_add_footer": "word_headers_footers set",
+    "word_add_page_number": "word_headers_footers set",
+    "word_set_margins": "word_sections set",
+    "word_set_orientation": "word_sections set",
+    "word_set_page_size": "word_sections set",
+    "word_set_columns": "word_sections set",
+    "word_add_checkbox": "word_controls insert",
+    "word_add_dropdown": "word_controls insert",
+    "word_add_content_control": "word_controls insert",
+    "word_find": "find_text",
+    "word_replace": "replace_text",
+    "word_find_replace": "replace_text",
+    "word_save": "save_document",
+    "word_upgrade": "word_template upgrade_to_modern",
+}
+
 FORMAT = DocumentFormat(
     kind=KIND, open=open_docx, detect=detect, problems=problems, problem_key=problem_key,
     warnings=(AuthoringWarning, UntrackedChartEdit, DiagramDrawingDropped, ChartDataWarning),
     prompt=PROMPT, errors=ERRORS, summary=summary, checks=checks, strict_first=STRICT_FIRST,
     configure=configure, source_hint=source_hint, store_provenance=store_provenance,
-    read_provenance=read_provenance, restored=restored, own_facts=dict(OWN_REFUSED))
+    read_provenance=read_provenance, restored=restored, own_facts=dict(OWN_REFUSED),
+    tool_hints=TOOL_HINTS)
