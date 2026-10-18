@@ -71,7 +71,8 @@ classifiers = [
 # shared.COMMENT_ACTION_ROLES), by which the list actions and word_comments are tagged.
 # ooxml-edit 0.46.0: session views (Session.view), several agents on one document, which
 # the tools README shows.
-dependencies = ["lxml>=4.9", "ooxml-edit>=0.46.0", "ooxml-common>=0.17.0", "docx2svg>=0.1", "markdown-it-py>=3.0", "mdit-py-plugins>=0.4"]
+# ooxml-edit 0.47.0: DocumentFormat.tool_hints, which TOOL_HINTS fills (round 9, N5).
+dependencies = ["lxml>=4.9", "ooxml-edit>=0.47.0", "ooxml-common>=0.17.0", "docx2svg>=0.1", "markdown-it-py>=3.0", "mdit-py-plugins>=0.4"]
 
 [project.optional-dependencies]
 # PNG output goes through docx2svg's rasteriser extra.
