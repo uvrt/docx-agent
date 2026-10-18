@@ -69,7 +69,9 @@ classifiers = [
 # ooxml-edit 0.43.0: Result.nothing_given, an empty items list's no-op (round 7, L7).
 # ooxml-edit 0.45.0: tool roles (Tool.action_roles, call_role, review_core;
 # shared.COMMENT_ACTION_ROLES), by which the list actions and word_comments are tagged.
-dependencies = ["lxml>=4.9", "ooxml-edit>=0.45.0", "ooxml-common>=0.17.0", "docx2svg>=0.1", "markdown-it-py>=3.0", "mdit-py-plugins>=0.4"]
+# ooxml-edit 0.46.0: session views (Session.view), several agents on one document, which
+# the tools README shows.
+dependencies = ["lxml>=4.9", "ooxml-edit>=0.46.0", "ooxml-common>=0.17.0", "docx2svg>=0.1", "markdown-it-py>=3.0", "mdit-py-plugins>=0.4"]
 
 [project.optional-dependencies]
 # PNG output goes through docx2svg's rasteriser extra.

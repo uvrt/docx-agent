@@ -233,3 +233,52 @@ def test_a_batch_holds_each_op_to_the_accept_role(box):
     assert result.ok and result.data["failed"] == [1]
     assert "word_changes accept needs the accept role" in \
         result.data["ops"][1]["error"]["message"]
+
+
+# -- several agents on one document (ooxml-edit 0.46.0, round 8, M1 and M2) ---------------------
+
+
+def test_a_builder_a_reviewer_and_an_editor_in_chief_share_one_session(box):
+    """One session, every role; each agent a view of it with its own roles and context."""
+    session = _session(box, None)
+    builder = session.view(roles=["review", "edit"], context={"agent": "builder-1"})
+    reviewer = session.view(roles=["review"], context={"agent": "reviewer-1"})
+    chief = session.view(roles=["review", "accept"], context={"agent": "chief-1"})
+    assert builder.entry("d1") is reviewer.entry("d1") is session.entry("d1")
+    assert box.dispatch(builder, "word_set_tracking",
+                        {"doc": "d1", "on": True, "author": "Builder"}).ok
+    assert box.dispatch(builder, "replace_text", {"doc": "d1", "find": "99.5%",
+                                                  "replace": "99.9%", "expect": "one"}).ok
+    assert box.dispatch(reviewer, "word_comments", {
+        "doc": "d1", "action": "add", "author": "Rev",
+        "items": [{"find": "99.9%", "text": "Per month?"}]}).ok
+    refused = box.dispatch(reviewer, "word_changes", {"doc": "d1", "action": "accept",
+                                                      "all": True})
+    assert refused.error.code == "refused" and refused.error.details == {
+        "role": "accept", "roles": ["review"]}
+    batch = box.dispatch(reviewer, "batch", {"ops": [
+        {"tool": "word_changes", "arguments": {"doc": "d1", "action": "list"}},
+        {"tool": "replace_text", "arguments": {"doc": "d1", "find": "99.9%",
+                                               "replace": "99%", "expect": "one"}}]})
+    assert batch.ok and batch.data["failed"] == [1]
+    # The editor-in-chief settles the builder's tracked change, and edits nothing.
+    assert box.dispatch(chief, "word_changes", {"doc": "d1", "action": "list"}).data
+    assert box.dispatch(chief, "word_changes", {"doc": "d1", "action": "accept",
+                                                "all": True}).ok
+    assert not box.dispatch(reviewer, "word_changes", {"doc": "d1", "action": "list"}).data
+    assert box.dispatch(chief, "replace_text", {"doc": "d1", "find": "99.9%", "replace": "99%",
+                                                "expect": "one"}).error.code == "refused"
+    agents = [record.context["agent"] for record in session.log if record.context]
+    assert {"builder-1", "reviewer-1", "chief-1"} == set(agents)
+
+
+def test_an_editor_in_chief_s_prompt_follows_the_tools_sent(box):
+    roles = ["review", "accept"]
+    sent = box.definitions("anthropic", groups="core", roles=roles)
+    assert "You may also accept and reject tracked changes." in \
+        box.system_prompt(roles=roles, tools=sent)
+    without = [d for d in sent if d.get("name") != "word_changes"]
+    prompt = box.system_prompt(roles=roles, tools=without)
+    assert "You may add comments" in prompt and "tracked changes" not in prompt
+    assert box.system_prompt(roles=roles, groups="core") == \
+        box.system_prompt(roles=roles, tools=sent)

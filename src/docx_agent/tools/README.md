@@ -112,6 +112,20 @@ in a `batch` too, op by op -- is refused naming the role it needs; a reviewer re
 finding with the call that would fix it, for a builder (`roles=["review", "edit"]`, or the
 default) to apply in one batch.
 
+Several agents on one document at once share one session -- the document, its undo
+history, refs and outputs -- each through a view with roles of its own (ooxml-edit
+0.46.0); a view narrows the session's roles, never widens them, and its `context` reaches
+the handlers of the application's own tools as `call.caller`:
+
+```python
+session = toolbox.session()                     # every role
+builder = session.view(roles=["review", "edit"], context={"agent": "builder-1"})
+chief = session.view(roles=["review", "accept"], context={"agent": "chief-1"})
+toolbox.dispatch(chief, "word_set_text", args)  # refused: needs the edit role
+sent = toolbox.definitions("anthropic", roles=["review", "accept"])
+system = toolbox.system_prompt(roles=["review", "accept"], tools=sent)  # follows `sent`
+```
+
 ### Tables from data
 
 `word_insert_markdown` (in place of `markdown` or `blob`) and `word_edit_table`'s `set_cells`

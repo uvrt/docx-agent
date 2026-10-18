@@ -6,6 +6,11 @@ snapshot commit; the development history before it is summarised here.
 
 ## Unreleased
 
+- Several agents on one document (round 8, M1 and M2; ooxml-edit 0.46.0): a builder's, a
+  reviewer's and an editor-in-chief's views of one shared session at once
+  (`session.view(roles=..., context=...)`), each held to its own roles, in a batch too; the
+  role line's accept sentence decided over the tools sent (`system_prompt(tools=...)`).
+  Tests and the tools README only: no Word tool or definition changed.
 - Tool roles (round 7, item 9; ooxml-edit 0.45.0): the Word tools are tagged for the
   additive roles `review`, `resolve`, `accept` and `edit` (`Toolbox(roles=...)`,
   `toolbox.session(roles=...)`). `word_comments` takes its actions' roles from
