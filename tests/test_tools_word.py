@@ -563,6 +563,40 @@ def test_render_pages_within_limits_and_cached_by_version(box, session):
     assert error.message == "pages[0] must be a number" and error.field == "pages[0]"
 
 
+def _pages_long(lines: int = 120) -> bytes:
+    document = Document.new()
+    for number in range(lines):
+        document.append_paragraph(f"Line {number + 1} of a long made-up note, one per paragraph.")
+    return document.to_bytes()
+
+
+def test_render_sheet_tiles_pages_into_one_labelled_image(box, session):
+    # Production feedback round 9, N1, as for decks: pages tiled in order into one image,
+    # each labelled with its number; sheet.width is each tile's.
+    d = session.open(_pages_long(), "long.docx")
+    sheet = ok(box, session, "render", doc=d, pages=[1, 2], sheet={"columns": 2, "width": 200})
+    (image,) = sheet.images
+    single = ok(box, session, "render", doc=d, pages=[1], width=200).images[0]
+    assert image.width == 2 * 200 + 3 * 8 and image.height == single.height + 20 + 2 * 8
+    assert {k: sheet.data[k] for k in ("pages", "sheet", "cached")} == {
+        "pages": [1, 2], "sheet": {"columns": 2, "width": 200}, "cached": False}
+    assert "coverage" in sheet.data
+    assert ok(box, session, "render", doc=d, pages=[1, 2],
+              sheet={"columns": 2, "width": 200}).data["cached"] is True
+    # Pages left out: every page there is, up to 30.
+    every = ok(box, session, "render", doc=d, sheet={"width": 160})
+    assert every.data["pages"] == list(range(1, len(every.data["pages"]) + 1))
+    assert len(every.data["pages"]) >= 2 and len(every.images) == 1
+    error = fails(box, session, "render", "not_found", doc=d, pages=[1, 99], sheet={})
+    assert error.field == "pages"
+    error = fails(box, session, "render", "limit", doc=d, pages=list(range(1, 32)), sheet={})
+    assert "at most 30 pages" in error.message
+    error = fails(box, session, "render", "limit", doc=d, pages=[1, 2, 3, 4, 5])
+    assert "sheet" in error.message
+    error = fails(box, session, "render", "invalid_arguments", doc=d, pages=[1], sheet={"columns": 9})
+    assert error.field == "sheet.columns" and "at most 8" in error.message
+
+
 def test_a_check_lays_out_with_the_lock_let_go(box, session, monkeypatch):
     """The layout a check reads runs on the document's bytes with the lock let go: an edit
     made meanwhile does not wait, and the check reports the version it laid out."""

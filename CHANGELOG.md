@@ -6,6 +6,15 @@ snapshot commit; the development history before it is summarised here.
 
 ## Unreleased
 
+- `render` with `sheet` (round 9, N1; ooxml-edit 0.49.0), as for decks: up to 30 pages as
+  one image, tiled in order, each labelled `page 3`; `pages` left out is every page up to
+  30. `sheet.width` is each tile's (160-1280, default 360; the call's `width` stands in),
+  `columns` 1-8 (default 4). Refused, naming the bound and what to do: more than 30, a page
+  that is not there (as now), a sheet over 2,576 px wide or -- once the pages are drawn and
+  their heights known -- tall, naming how many pages fit. `coverage` as for a render; the
+  sheet is cached whole. Definitions: +64 to the core (2,570 -> 2,634) and every definition
+  (12,314 -> 12,378; guard 12,380); a reviewer's core guard 2,370 -> 2,430, all 6,825 ->
+  6,885; strict set unchanged.
 - `edit_chart` (round 9, N2; ooxml-edit 0.48.0): a `scale` without `axis` -- in
   `set_axis_scale` or `add` -- is the value axis where it is the chart's one axis that takes
   bounds and units (column, bar, line, radar, dot); a scatter's x and y, a date axis or a
