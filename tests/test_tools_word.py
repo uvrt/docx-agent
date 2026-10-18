@@ -563,10 +563,14 @@ def test_render_pages_within_limits_and_cached_by_version(box, session):
     assert error.message == "pages[0] must be a number" and error.field == "pages[0]"
 
 
-def _pages_long(lines: int = 120) -> bytes:
+def _pages_long(pages: int = 3) -> bytes:
+    """A document of ``pages`` pages whatever the fonts: each paragraph after the first
+    starts a page."""
     document = Document.new()
-    for number in range(lines):
-        document.append_paragraph(f"Line {number + 1} of a long made-up note, one per paragraph.")
+    for number in range(pages):
+        made = document.append_paragraph(f"Page {number + 1} of a made-up note.")
+        if number:
+            document.format_paragraph(made.id, page_break_before=True)
     return document.to_bytes()
 
 
@@ -585,8 +589,7 @@ def test_render_sheet_tiles_pages_into_one_labelled_image(box, session):
               sheet={"columns": 2, "width": 200}).data["cached"] is True
     # Pages left out: every page there is, up to 30.
     every = ok(box, session, "render", doc=d, sheet={"width": 160})
-    assert every.data["pages"] == list(range(1, len(every.data["pages"]) + 1))
-    assert len(every.data["pages"]) >= 2 and len(every.images) == 1
+    assert every.data["pages"] == [1, 2, 3] and len(every.images) == 1
     error = fails(box, session, "render", "not_found", doc=d, pages=[1, 99], sheet={})
     assert error.field == "pages"
     error = fails(box, session, "render", "limit", doc=d, pages=list(range(1, 32)), sheet={})
