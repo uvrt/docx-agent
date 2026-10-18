@@ -6,6 +6,14 @@ snapshot commit; the development history before it is summarised here.
 
 ## Unreleased
 
+- `edit_chart` (round 9, N2; ooxml-edit 0.48.0): a `scale` without `axis` -- in
+  `set_axis_scale` or `add` -- is the value axis where it is the chart's one axis that takes
+  bounds and units (column, bar, line, radar, dot); a scatter's x and y, a date axis or a
+  secondary value axis must still be named, and the refusal names them, as it does for a
+  scale of only `reverse` or `number_format`. Every "needs" refusal names what to give, where
+  it said "series is required": `set_value needs category: 'A', 'B' or 'C' (or a number from
+  0 to 2)` (the first 12 and how many more), the series, the chart's axes, the values' count,
+  the legend positions, what `add` needs. Definitions unchanged.
 - What a name that is no Word tool means (round 9, N5; ooxml-edit 0.47.0): "no tool
   'word_add_comment': use word_comments with action add", in a batch's op too, with the
   best few tools in `valid_options` instead of every one; an editor without the accept role
