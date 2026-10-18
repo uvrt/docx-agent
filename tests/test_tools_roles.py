@@ -31,10 +31,12 @@ from test_tools_word import AGREEMENT, CLOCK_AT
 
 #: A reviewer's core (``["review", "resolve"]``, the larger), estimated: a regression guard
 #: as ALL_GUARD is.  Measured 2,364 for ``["review", "resolve", "accept"]`` (2,032 for
-#: review+resolve before word_changes joined a reviewer's core with the accept role).
-REVIEW_CORE_GUARD = 2370
-#: Every definition a reviewer is sent, estimated.  Measured 6,820 (6,813 before).
-REVIEW_ALL_GUARD = 6825
+#: review+resolve before word_changes joined a reviewer's core with the accept role); round
+#: 9, N1 (render's ``sheet``, +64) 2,427.
+REVIEW_CORE_GUARD = 2430
+#: Every definition a reviewer is sent, estimated.  Measured 6,820 (6,813 before); round 9,
+#: N1, 6,884.
+REVIEW_ALL_GUARD = 6885
 
 REVIEW_CORE = {"save_document", "describe", "find_text", "render", "check", "open_document",
                "batch", "word_read", "word_comments", "word_changes"}

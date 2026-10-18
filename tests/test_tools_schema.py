@@ -77,10 +77,14 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 #: Round 6, R10: edit_chart's chart_type enum gains ``dot`` (ooxml-edit 0.40.0): +2 to every
 #: definition (12,312 -> 12,314), none to the core; the guard stays 12,315.  edit_chart is
 #: sent non-strict, so the strict set is unchanged.
+#: Round 9, N1: render's ``sheet`` (``{columns, width}``: pages tiled into one labelled image,
+#: ooxml-edit 0.49.0) adds 64 to the core (2,570 -> 2,634) and to every definition (12,314 ->
+#: 12,378).  The guard rises to 12,380.  The strict set is unchanged in its members: render
+#: is not sent strict to Claude; on OpenAI, where it is, ``sheet`` is one more object.
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 6500
-ALL_GUARD = 12315
+ALL_GUARD = 12380
 
 
 @pytest.fixture(scope="module")

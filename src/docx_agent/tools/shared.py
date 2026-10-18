@@ -12,7 +12,7 @@ from __future__ import annotations
 import struct
 from typing import Any
 
-from ooxml_edit.tools import Result, ToolError, shared, worker_task
+from ooxml_edit.tools import Result, ToolError, shared, tiles, worker_task
 
 from ..edit.document import Document
 from ..edit.properties import refreshed_app
@@ -223,17 +223,29 @@ def render_pages(data: bytes, pages: list[int], width: int, font_dirs: list[str]
     return list(pngs), count, coverage_facts(coverage) if coverage is not None else None
 
 
+@worker_task
+def rasterise_tiles(svg: str, font_dirs: list[str] | None = None) -> bytes:
+    """In a worker: the PNG of a contact sheet's SVG (``ooxml_edit.tools.tiles.tiled_svg``:
+    the pages' PNGs at their own size, their labels), drawn once at the SVG's own size."""
+    from docx2svg.png import svg_to_png
+
+    return svg_to_png(svg, font_dirs=font_dirs)
+
+
 def png_size(data: bytes) -> tuple[int, int]:
     return struct.unpack(">II", data[16:24])
 
 
 @handler("render")
 def render(call: Any, doc: str, slides: list | None = None, pages: list[int] | None = None,
-           width: int | None = None) -> Result:
+           width: int | None = None, sheet: dict | None = None) -> Result:
+    if sheet is not None:
+        return _render_sheet(call, _pages_of(call, slides, pages), width, sheet)
     pages = list(dict.fromkeys(_pages_of(call, slides, pages) or [1]))
     width = width or DEFAULT_WIDTH
     if len(pages) > call.limits.max_images_per_call:
-        raise ToolError("limit", f"at most {call.limits.max_images_per_call} pages per call", field="pages")
+        raise ToolError("limit", f"at most {call.limits.max_images_per_call} pages per call; sheet: {{}} tiles "
+                        f"up to {tiles.MAX_TILES} into one image", field="pages")
     entry = call.entry
     # The font folders, resolved here and handed to the worker; they key the cache, so
     # renders with different folders do not mix.  The locale likewise: the document's (the
@@ -263,6 +275,66 @@ def render(call: Any, doc: str, slides: list | None = None, pages: list[int] | N
         images.append(call.image(png, w, h, label=f"page {number}").describe())
     result = Result(summary=f"Rendered page(s) {', '.join(map(str, pages))} (final view: changes accepted, "
                     "comments hidden)", data={"pages": pages})
+    render_version, coverage = getattr(call.document, "_tool_render_coverage", (None, None))
+    if coverage is not None and render_version == (version, fonts, locale):
+        result.data["coverage"] = coverage
+    return result
+
+
+def _render_sheet(call: Any, pages: list[int] | None, width: int | None, sheet: dict) -> Result:
+    """``render`` with ``sheet``: the pages tiled into one image, in order, each labelled
+    ``page 3`` (:mod:`ooxml_edit.tools.tiles`); ``pages`` left out is the first
+    ``tiles.MAX_TILES``, or all there are.  ``sheet.width`` is each tile's, ``width``
+    standing in for it.  A page's height is known once it is drawn, so a sheet too tall is
+    refused after the render, naming how many pages fit.  The sheet is cached whole, one
+    entry, so a sheet of 30 does not push the single renders out."""
+    limits = call.limits
+    named = pages is not None
+    pages = list(dict.fromkeys(pages)) if named else list(range(1, tiles.MAX_TILES + 1))
+    tiling = tiles.tiling_of(sheet, len(pages), name="sheet", width=width, what="pages",
+                             max_edge=limits.max_image_edge)
+    entry = call.entry
+    fonts = tuple(font_dirs_of(call.document))
+    locale = locale_of(call.document)
+    version = entry.version
+    key = ("sheet", version, tuple(pages) if named else None, tiling.columns, tiling.width,
+           fonts, locale)
+    made = entry.render_cache.get(key)
+    cached = made is not None
+    if made is None:
+        drawn = {p: entry.render_cache.get((version, p, tiling.width, fonts, locale)) for p in pages}
+        missing = [p for p in pages if drawn[p] is None]
+        coverage = None
+        data = call.document.to_bytes() if missing else None
+        with call.unlocked():
+            # The snapshot is taken (the bytes); both worker calls work on it.
+            if missing:
+                pngs, count, coverage = call.run(render_pages, data, missing, tiling.width, list(fonts), locale,
+                                          timeout=limits.render_timeout * -(-len(missing) // 4))
+                if len(pngs) < len(missing) and named:
+                    raise ToolError("not_found", f"the document has {count} page(s)", field="pages",
+                                    valid_options=list(range(1, count + 1))[:50])
+                drawn.update(zip(missing, pngs))
+                pages = [p for p in pages if drawn[p] is not None]
+                tiling = tiles.tiling_of(sheet, len(pages), name="sheet", width=width, what="pages",
+                                         max_edge=limits.max_image_edge)
+            views = [(drawn[p], *png_size(drawn[p]), f"page {p}") for p in pages]
+            tiles.check_size(tiling, [h for _, _, h, _ in views], name="sheet", what="pages",
+                             max_edge=limits.max_image_edge)
+            svg, w, h = tiles.tiled_svg(views, tiling)
+            png = call.run(rasterise_tiles, svg, list(fonts))
+        if missing and coverage is not None:
+            call.document._tool_render_coverage = ((version, fonts, locale), coverage)
+        made = (png, w, h, pages, tiling)
+        entry.render_cache.put(key, made)
+    png, w, h, pages, tiling = made
+    call.image(png, w, h, label=f"sheet of pages {pages[0]}-{pages[-1]}" if len(pages) > 1
+               else f"sheet of page {pages[0]}")
+    result = Result(summary=f"Rendered {len(pages)} page(s) as one sheet, {tiling.columns} column(s) of "
+                    f"{tiling.width} px, labelled with page numbers (final view: changes accepted, "
+                    "comments hidden)", data={"pages": pages, "sheet": {"columns": tiling.columns,
+                                                                        "width": tiling.width},
+                                              "cached": cached})
     render_version, coverage = getattr(call.document, "_tool_render_coverage", (None, None))
     if coverage is not None and render_version == (version, fonts, locale):
         result.data["coverage"] = coverage

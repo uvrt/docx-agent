@@ -4,8 +4,10 @@ valid options, undo, idempotence, tracking mode, refs and batches, and the check
 from __future__ import annotations
 
 import datetime as dt
+import io
 import json
 import struct
+import zipfile
 import zlib
 from pathlib import Path
 
@@ -561,6 +563,52 @@ def test_render_pages_within_limits_and_cached_by_version(box, session):
     assert fails(box, session, "render", "invalid_arguments", doc=d, slides=["s:256"]).field == "pages"
     error = fails(box, session, "render", "invalid_arguments", doc=d, pages=["1"])
     assert error.message == "pages[0] must be a number" and error.field == "pages[0]"
+
+
+def _pages_long(pages: int = 3) -> bytes:
+    """``pages`` pages whatever the fonts measure -- each paragraph after the first starts a
+    page -- in Arial, which every CI runner lays out (Windows has it, Linux and macOS the
+    open substitute): in the new document's Aptos, which none has, docx2svg stops at page 1."""
+    from ooxml_edit.xml import qn
+
+    document = Document.new()
+    theme = document.package.tree("word/theme/theme1.xml")
+    for latin in theme.iter(qn("a:latin")):
+        latin.set("typeface", "Arial")
+    document.package.mark_dirty("word/theme/theme1.xml")
+    for number in range(pages):
+        made = document.append_paragraph(f"Page {number + 1} of a made-up note.")
+        if number:
+            document.format_paragraph(made.id, page_break_before=True)
+    return document.to_bytes()
+
+
+def test_render_sheet_tiles_pages_into_one_labelled_image(box, session):
+    # Production feedback round 9, N1, as for decks: pages tiled in order into one image,
+    # each labelled with its number; sheet.width is each tile's.
+    data = _pages_long()
+    assert b"Aptos" not in zipfile.ZipFile(io.BytesIO(data)).read("word/theme/theme1.xml")
+    d = session.open(data, "long.docx")
+    sheet = ok(box, session, "render", doc=d, pages=[1, 2], sheet={"columns": 2, "width": 200})
+    (image,) = sheet.images
+    single = ok(box, session, "render", doc=d, pages=[1], width=200).images[0]
+    assert image.width == 2 * 200 + 3 * 8 and image.height == single.height + 20 + 2 * 8
+    assert {k: sheet.data[k] for k in ("pages", "sheet", "cached")} == {
+        "pages": [1, 2], "sheet": {"columns": 2, "width": 200}, "cached": False}
+    assert "coverage" in sheet.data
+    assert ok(box, session, "render", doc=d, pages=[1, 2],
+              sheet={"columns": 2, "width": 200}).data["cached"] is True
+    # Pages left out: every page there is, up to 30.
+    every = ok(box, session, "render", doc=d, sheet={"width": 160})
+    assert every.data["pages"] == [1, 2, 3] and len(every.images) == 1
+    error = fails(box, session, "render", "not_found", doc=d, pages=[1, 99], sheet={})
+    assert error.field == "pages"
+    error = fails(box, session, "render", "limit", doc=d, pages=list(range(1, 32)), sheet={})
+    assert "at most 30 pages" in error.message
+    error = fails(box, session, "render", "limit", doc=d, pages=[1, 2, 3, 4, 5])
+    assert "sheet" in error.message
+    error = fails(box, session, "render", "invalid_arguments", doc=d, pages=[1], sheet={"columns": 9})
+    assert error.field == "sheet.columns" and "at most 8" in error.message
 
 
 def test_a_check_lays_out_with_the_lock_let_go(box, session, monkeypatch):

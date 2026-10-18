@@ -7,7 +7,7 @@ for laid-out documents, the pages it reflowed (see [GUIDANCE.md](GUIDANCE.md)).
 | Area | Tools | Notes |
 |---|---|---|
 | Documents | `open_document`, `new_document`, `save_document`, `close_document`, `read_blob` | new from a template; save as docx, dotx or Markdown; refuses new validation problems |
-| Reading | `describe`, `word_read`, `word_inspect`, `find_text`, `render` | Markdown with ids (final, markup or original view, every story); a block's exact formatting; page renders |
+| Reading | `describe`, `word_read`, `word_inspect`, `find_text`, `render` | Markdown with ids (final, markup or original view, every story); a block's exact formatting; page renders (with `sheet`, up to 30 pages tiled into one labelled image) |
 | Text | `word_set_text`, `word_insert_text`, `word_delete`, `replace_text`, `word_insert_markdown` | a figure from a dataset or another document's table by reference, `{{d:<id>/<key>/<column>}}` (`:0.0` to format, `:d mmmm yyyy` for a date), written in the session's locale and listed in the result (`data.facts`), not kept in the file; tracked edits change only the words that changed; Markdown in the document's styles, tables included; a table from a dataset or another document's table (`from`; its dates in a pattern with `date_format`) |
 | Review | `word_set_tracking`, `word_changes`, `word_comments` | tracked changes listed, accepted, rejected by author, kind or range; comment threads |
 | Structure | `word_move`, `word_copy_from`, `word_sections`, `word_headers_footers` | sections and blocks moved or copied from another document with their styles; page setup, breaks, columns; headers, footers, page X of Y |
