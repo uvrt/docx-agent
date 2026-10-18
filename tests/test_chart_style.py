@@ -181,3 +181,49 @@ def test_a_dot_chart_on_a_fixed_scale_reads_back_as_dot():
         chart = edited.chart(next(c for c in added.created if c.startswith("d:")))
         assert chart.is_dot and chart.chart_type == "line"
         assert edited.validate() == []
+
+
+# -- round 9, N2: a scale's default axis; refusals that name what to give -------------------------
+
+
+def test_a_scale_without_an_axis_and_what_a_refusal_names():
+    from docx_agent.tools import FORMAT, GROUPS, TOOLS
+
+    document = report()
+    anchor = document.paragraphs()[1].id
+    with Toolbox(TOOLS, formats=[FORMAT], groups=GROUPS) as box:
+        session = box.session()
+        session.open(document.to_bytes(), "report.docx")
+
+        def call(**arguments):
+            return box.dispatch(session, "edit_chart", {"doc": "d1", **arguments})
+
+        made = call(target=anchor, action="add", chart_type="column", categories=["A", "B", "C"],
+                    data=[{"name": "Score", "values": [1, 2, 3]}], scale={"max": 4}, ref="c")
+        assert made.ok, made.to_json()
+        assert call(target="$c", action="read").data["scales"]["value"]["maximum"] == 4
+        assert call(target="$c", action="set_axis_scale", scale={"min": 1}).ok
+        before = session.entry("d1").document.to_bytes()
+        scatter = call(target=anchor, action="add", chart_type="scatter", values=[1, 2],
+                       data=[{"name": "Y", "values": [3, 4]}], scale={"max": 5})
+        assert scatter.error.message.startswith("add with scale needs axis: x or y")
+        assert session.entry("d1").document.to_bytes() == before      # nothing stays
+        for arguments, words in [
+                ({"action": "set_value", "series": "Score", "value": 2},
+                 "set_value needs category: 'A', 'B' or 'C' (or a number from 0 to 2)"),
+                ({"action": "rename_series", "text": "Now"},
+                 "rename_series needs series: 'Score' (or 0)"),
+                ({"action": "set_values", "series": "Score"},
+                 "set_values needs values: one number per category (3)"),
+                ({"action": "add_category", "category": "D"},
+                 "add_category needs values: one number per series (1)"),
+                ({"action": "set_legend"}, "set_legend needs position: right, left, top"),
+                ({"action": "set_axis_scale", "scale": {"reverse": True}},
+                 "set_axis_scale needs axis: category or value"),
+                ({"action": "format_point", "series": "Score", "style": {"fill": "tx2"}},
+                 "format_point needs category: 'A', 'B' or 'C'")]:
+            error = call(target="$c", **arguments).error
+            assert error.code == "invalid_arguments" and words in error.message, error.message
+        missing = call(target=anchor, action="add", categories=["A"],
+                       data=[{"name": "S", "values": [1]}]).error
+        assert "add needs chart_type: one of column, stacked_column" in missing.message
