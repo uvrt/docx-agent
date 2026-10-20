@@ -106,10 +106,10 @@ def test_refusals_cost_no_render():
         d = session.open(data, "note.docx")
         over = box.dispatch(session, "render", {"doc": d, "pages": [1, 2]})
         assert not over.ok and over.error.code == "limit"
-        # Thirty named pages of 300 px in four columns: too tall at any page this
-        # document's sections declare -- said before anything is laid out.
+        # Thirty named pages in one column: too tall at any page this document's sections
+        # declare, even at the narrowest tile -- said before anything is laid out.
         tall = box.dispatch(session, "render", {"doc": d, "pages": list(range(1, 31)),
-                                                "sheet": {"columns": 4, "width": 300}})
+                                                "sheet": {"columns": 1, "width": 300}})
         assert not tall.ok and tall.error.code == "limit" and "pages" in tall.error.message
         assert runner.ran == []
 

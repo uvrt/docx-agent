@@ -611,6 +611,30 @@ def test_render_sheet_tiles_pages_into_one_labelled_image(box, session):
     assert error.field == "sheet.columns" and "at most 8" in error.message
 
 
+def test_render_sheet_narrows_tiles_that_do_not_fit_and_says_so(box, session):
+    # Production feedback round 10, O4: tiles that would make the sheet over the 2,576 px
+    # edge are drawn at the widest that fit, not refused; the result says from what and why.
+    d = session.open(_pages_long(), "long.docx")
+    tall = ok(box, session, "render", doc=d, pages=[1, 2], sheet={"columns": 1, "width": 1280})
+    (image,) = tall.images
+    width = tall.data["sheet"]["width"]
+    assert width < 1280 and image.height <= 2576 and image.width == width + 2 * 8
+    assert tall.data["sheet"]["shrunk"]["from"] == 1280
+    assert "px tall, over the 2576 px limit" in tall.data["sheet"]["shrunk"]["why"]
+    assert "narrowed from 1280 px" in tall.summary
+    single = ok(box, session, "render", doc=d, pages=[1], width=200).images[0]
+    wider = ok(box, session, "render", doc=d, pages=[1], width=width + 1).images[0]
+    assert 2 * (wider.height + 20) + 3 * 8 > 2576 >= image.height and single.width == 200
+    # Pages left out: the pages' own heights, known once drawn.
+    every = ok(box, session, "render", doc=d, sheet={"columns": 1, "width": 1280})
+    assert every.data["pages"] == [1, 2, 3] and every.images[0].height <= 2576
+    assert every.data["sheet"]["shrunk"]["from"] == 1280
+    # Two columns of the call's 1,280 px are 2,584 px wide: 1,276 px each.
+    wide = ok(box, session, "render", doc=d, pages=[1, 2], width=1280, sheet={"columns": 2})
+    assert wide.data["sheet"]["width"] == 1276 and wide.images[0].width == 2576
+    assert "2584 px wide" in wide.data["sheet"]["shrunk"]["why"]
+
+
 def test_a_check_lays_out_with_the_lock_let_go(box, session, monkeypatch):
     """The layout a check reads runs on the document's bytes with the lock let go: an edit
     made meanwhile does not wait, and the check reports the version it laid out."""

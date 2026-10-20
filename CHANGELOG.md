@@ -6,6 +6,16 @@ snapshot commit; the development history before it is summarised here.
 
 ## Unreleased
 
+- A contact sheet whose tiles do not fit the 2,576 px edge is drawn with narrower tiles,
+  not refused (round 10, O4; ooxml-edit 0.55.0): too wide, the widest that fit the columns;
+  too tall, the widest for the pages -- before drawing at the shortest page the sections
+  declare (for the pages named, or the page count a render of this version found), and
+  once drawn at the pages' own heights, drawn again narrower if need be (the layout kept:
+  rasterising alone). `sheet.shrunk` (`{"from", "why"}`) and the summary say so; only tiles
+  that would not fit even at 160 px are refused. Pages drawn with two faces the rasteriser
+  files under one name (Aptos and Aptos Display) are drawn apart by docx2svg now
+  (`face-not-addressable` no longer raised for them).
+
 - `render` lays a version out once, not once a call (round 10, item 3): the layout comes
   back from the worker with the pages (pickled: the layout and the faces it was measured
   with) and is kept on the document by the bytes' digest, the latest only; the next call
