@@ -9,6 +9,7 @@ the session's own (``shared.SESSION_TOOLS``); this module adds docx's ``new_docu
 
 from __future__ import annotations
 
+import hashlib
 import re
 import struct
 from typing import Any
@@ -271,15 +272,22 @@ def _code_stamp() -> list:
 
 @worker_task
 def lay_out_pages(data: bytes, pages: list[int], width: int, font_dirs: list[str] | None = None,
-                  locale: Any = None, known: list[str] = ()) -> dict:
+                  locale: Any = None, known: list[str] = (), laid_out: bytes | None = None) -> dict:
     """In a worker: the document laid out once, and each of ``pages`` that it has as
     ``(page, key, svg)`` -- ``key`` the image's content key (the SVG, and everything else the
     pixels depend on: the font files the rasteriser is handed, with their times and sizes,
     the embedded faces by digest, the rasteriser's options, the renderers' code), ``svg``
     ``None`` where the key is in ``known`` (the caller holds that image).  Also ``count``
     (the pages there are), ``coverage`` (as :func:`render_pages`) and ``raster``: what
-    :func:`rasterise_pages` hands the rasteriser, the embedded faces as bytes."""
+    :func:`rasterise_pages` hands the rasteriser, the embedded faces as bytes.
+
+    ``laid_out`` is a layout of these very bytes, font folders and locale that an earlier
+    call returned as ``"laid_out"`` (pickled: the layout and the faces it was measured
+    with, :func:`docx2svg.lay_out_docx`); given, the document is not laid out again --
+    the same pages, byte for byte, for the cost of unpickling it.  Without it, the layout
+    is made here and returned so, for the caller to hand the next call."""
     import os
+    import pickle
     import tempfile
 
     import docx2svg
@@ -291,10 +299,15 @@ def lay_out_pages(data: bytes, pages: list[int], width: int, font_dirs: list[str
 
     locale = locale_of(None) if locale is None else locale
     options = docx2svg.ConvertOptions(pages=pages, width=width, font_dirs=font_dirs, locale=locale)
-    layout, laid, fonts = docx2svg._lay_out(data, options)
+    fresh = None
+    if laid_out is not None:
+        layout, fonts = pickle.loads(laid_out)
+    else:
+        layout, _, fonts = docx2svg.lay_out_docx(data, options)
+        fresh = pickle.dumps((layout, fonts), protocol=pickle.HIGHEST_PROTOCOL)
     count = len(layout.pages)
-    coverage = getattr(options, "coverage", None)
-    svgs = docx2svg._svgs(layout, laid, options, device_size=True, fonts=fonts)
+    coverage = getattr(layout, "coverage", None)
+    svgs = docx2svg.page_svgs(layout, data, options, device_size=True, fonts=fonts)
     numbers = [page for page in pages if 1 <= page <= count]
     # The rasteriser's arguments, as docx2svg's convert_docx_to_png makes them.
     faces = docx2svg.drawn_faces(layout)
@@ -321,7 +334,7 @@ def lay_out_pages(data: bytes, pages: list[int], width: int, font_dirs: list[str
                         files.append(face.source)
                     break
     skip = not missing
-    dirs = [str(path) for path in docx2svg._user_dirs(options)]
+    dirs = docx2svg.user_font_dirs(options)
     system = None
     if not skip:
         found_dirs = resvg_system_dirs()
@@ -337,7 +350,8 @@ def lay_out_pages(data: bytes, pages: list[int], width: int, font_dirs: list[str
     return {"pages": out, "count": count,
             "coverage": coverage_facts(coverage) if coverage is not None else None,
             "raster": {"files": files, "embedded": embedded, "dirs": dirs, "skip": skip,
-                       "sans": sans}}
+                       "sans": sans},
+            "laid_out": fresh}
 
 
 @worker_task
@@ -371,7 +385,10 @@ def draw(call: Any, pages: list[int], width: int) -> tuple[dict, int | None, dic
     one worker lays the document out (:func:`lay_out_pages`), told which images the store
     holds -- a page an edit left as it was is keyed, found and not drawn again -- and the pages left are rasterised over the workers at once, in chunks
     (:func:`rasterise_pages`).  The bytes are the version's snapshot, taken under the lock;
-    the workers work with the lock let go."""
+    the workers work with the lock let go.  The layout comes back with the pages and is
+    kept on the document by the bytes' digest (the latest only): the next call drawing
+    other pages of the same bytes hands it to its worker instead of laying the document
+    out again (36 pages: about 1.5 s a call)."""
     entry, version, limits, store = call.entry, call.entry.version, call.limits, call.images
     fonts = tuple(font_dirs_of(call.document))
     locale = locale_of(call.document)
@@ -388,8 +405,13 @@ def draw(call: Any, pages: list[int], width: int) -> tuple[dict, int | None, dic
         return drawn, None, None
     data = entry.snapshot()
     held = store.entries()           # what the worker is told is drawn already
+    # The layout of these bytes an earlier call made, kept on the document (one: the
+    # latest), so that drawing another page of a version does not lay it out again.
+    layout_key = (hashlib.sha256(data).digest(), fonts, locale)
+    kept = getattr(call.document, "_tool_render_layout", None)
+    laid_out = kept[1] if kept is not None and kept[0] == layout_key else None
     with call.unlocked():
-        laid = call.run(lay_out_pages, data, todo, width, list(fonts), locale, list(held),
+        laid = call.run(lay_out_pages, data, todo, width, list(fonts), locale, list(held), laid_out,
                         timeout=limits.render_timeout_for(len(todo)))
         fresh = [(page, key, svg) for page, key, svg in laid["pages"] if svg is not None]
         parallel = min(call.parallelism, len(fresh)) or 1
@@ -398,6 +420,8 @@ def draw(call: Any, pages: list[int], width: int) -> tuple[dict, int | None, dic
         results = call.run_all(rasterise_pages, [([svg for _, _, svg in chunk], laid["raster"])
                                                  for chunk in chunks],
                                timeouts=[limits.render_timeout_for(len(chunk)) for chunk in chunks])
+    if laid.get("laid_out") is not None:
+        call.document._tool_render_layout = (layout_key, laid["laid_out"])
     pngs: dict = {}
     failed = None
     for chunk, result in zip(chunks, results):

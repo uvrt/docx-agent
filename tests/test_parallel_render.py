@@ -122,3 +122,45 @@ def test_lay_out_pages_leaves_out_the_svg_of_an_image_held():
     again = lay_out_pages(data, [1, 2], 300, [], known=[key])
     assert again["pages"][0] == (1, key, None)
     assert again["pages"][1][2] == first["pages"][1][2]
+
+
+def test_a_layout_handed_back_draws_the_same_pages_without_laying_out_again(monkeypatch):
+    import docx2svg
+
+    data = _pages(3)
+    first = lay_out_pages(data, [1, 2, 3], 300, [])
+    assert first["laid_out"]
+    calls = []
+    lay_out = docx2svg.lay_out_docx
+    monkeypatch.setattr(docx2svg, "lay_out_docx", lambda *a, **k: calls.append(1) or lay_out(*a, **k))
+    again = lay_out_pages(data, [3, 1], 300, [], laid_out=first["laid_out"])
+    assert calls == [] and again["laid_out"] is None
+    by_page = {page: svg for page, _, svg in first["pages"]}
+    assert [(page, svg) for page, _, svg in again["pages"]] == [(3, by_page[3]), (1, by_page[1])]
+    assert (again["count"], again["coverage"], again["raster"]) == (first["count"], first["coverage"],
+                                                                    first["raster"])
+
+
+def test_the_next_call_on_the_same_version_hands_its_worker_the_layout():
+    data = _pages(4)
+    runner = _Recording()
+    seen = []
+    run = runner.run
+
+    def recording(fn, *args, timeout, **kwargs):
+        if fn.__name__ == "lay_out_pages":
+            seen.append(args[6] is not None)
+        return run(fn, *args, timeout=timeout, **kwargs)
+
+    runner.run = recording
+    with _box(runner=runner) as box:
+        session = box.session()
+        d = session.open(data, "note.docx")
+        first = _ok(box, session, "render", doc=d, pages=[1, 2], width=300)
+        second = _ok(box, session, "render", doc=d, pages=[3, 4], width=300)
+        _ok(box, session, "replace_text", doc=d, find="Page 3 of", replace="Page three of", expect="one")
+        third = _ok(box, session, "render", doc=d, pages=[3], width=300)
+        expected = render_pages(session.entry(d).document.to_bytes(), [3], 300, [])[0]
+    assert seen == [False, True, False]
+    assert [image.data for image in third.images] == expected
+    assert first.data["coverage"] == second.data["coverage"]
