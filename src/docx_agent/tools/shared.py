@@ -480,27 +480,36 @@ def _render_sheet(call: Any, pages: list[int] | None, width: int | None, sheet: 
     """``render`` with ``sheet``: the pages tiled into one image, in order, each labelled
     ``page 3`` (:mod:`ooxml_edit.tools.tiles`); ``pages`` left out is the first
     ``tiles.MAX_TILES``, or all there are.  ``sheet.width`` is each tile's, ``width``
-    standing in for it.  Named pages are checked against the image's size before anything
-    is drawn, at the shortest page the sections declare; a page's own height is known once
-    it is laid out, so a sheet still too tall is refused then, naming how many pages fit.
-    The tiles are the images ``render`` keeps (:func:`draw`: those held are not drawn
-    again); ``cached_tiles`` lists them.  The sheet is cached whole, one entry, so a sheet
-    of 30 does not push the single renders out."""
+    standing in for it.  Tiles too wide or too tall for the image's edge are drawn narrower
+    -- the widest that fit (:func:`tiles.fit`) -- and ``sheet.shrunk`` says from what width
+    and why: before anything is drawn, at the shortest page the sections declare, for the
+    pages named or the page count a render of this version found; again once the pages are
+    drawn and their heights known (drawn again narrower then: the layout is kept, so that
+    is rasterising alone).  Only tiles too tall even at the narrowest are refused, naming
+    how many pages fit.  The tiles are the images ``render`` keeps (:func:`draw`: those held
+    are not drawn again); ``cached_tiles`` lists them.  The sheet is cached whole, one
+    entry, so a sheet of 30 does not push the single renders out."""
     limits = call.limits
     named = pages is not None
     pages = list(dict.fromkeys(pages)) if named else list(range(1, tiles.MAX_TILES + 1))
-    tiling = tiles.tiling_of(sheet, len(pages), name="sheet", width=width, what="pages",
-                             max_edge=limits.max_image_edge)
-    if named:
-        shortest = _shortest_tile(call.document, tiling.width)
-        if shortest is not None:
-            tiles.check_size(tiling, [shortest] * len(pages), name="sheet", what="pages",
-                             max_edge=limits.max_image_edge)
-    call.check_images(1)                 # before drawing: a refused call costs nothing
-    entry = call.entry
     fonts = tuple(font_dirs_of(call.document))
     locale = locale_of(call.document)
-    version = entry.version
+    version = call.entry.version
+    known = pages
+    if not named:
+        render_version, coverage = getattr(call.document, "_tool_render_coverage", (None, None))
+        count = coverage.get("pages") if coverage is not None and render_version == (
+            version, fonts, locale) else None
+        known = pages[:count] if isinstance(count, int) and count > 0 else None
+    tiling = tiles.tiling_of(sheet, len(known or pages), name="sheet", width=width, what="pages",
+                             max_edge=limits.max_image_edge)
+    if known is not None:
+        shortest = _shortest_ratio(call.document)
+        if shortest is not None:
+            tiling = tiles.fit(tiling, [shortest] * len(known), name="sheet", what="pages",
+                               max_edge=limits.max_image_edge)
+    call.check_images(1)                 # before drawing: a refused call costs nothing
+    entry = call.entry
     key = ("sheet", version, tuple(pages) if named else None, tiling.columns, tiling.width,
            fonts, locale)
     made = entry.render_cache.get(key)
@@ -512,8 +521,17 @@ def _render_sheet(call: Any, pages: list[int] | None, width: int | None, sheet: 
             raise ToolError("not_found", f"the document has {count} page(s)", field="pages",
                             valid_options=list(range(1, count + 1))[:50])
         pages = [p for p in pages if p in drawn]
+        drawn_as = tiling
         tiling = tiles.tiling_of(sheet, len(pages), name="sheet", width=width, what="pages",
                                  max_edge=limits.max_image_edge)
+        sizes = [png_size(drawn[p][0]) for p in pages]
+        tiling = tiles.fit(tiling, [h / w for w, h in sizes], name="sheet", what="pages",
+                           max_edge=limits.max_image_edge)
+        if named and tiling.width > drawn_as.width:
+            tiling = drawn_as            # drawn a pixel narrower than needed: kept
+        elif tiling.width != drawn_as.width:     # taller pages, or fewer than the first 30
+            drawn, _, again = draw(call, pages, tiling.width)
+            coverage = coverage if again is None else again
         tiles_cached = [p for p in pages if drawn[p][1]]
         with call.unlocked():
             # The snapshot is taken (the tiles); the worker draws the sheet from it.
@@ -531,28 +549,30 @@ def _render_sheet(call: Any, pages: list[int] | None, width: int | None, sheet: 
                else f"sheet of page {pages[0]}")
     data = {"pages": pages, "sheet": {"columns": tiling.columns, "width": tiling.width},
             "cached": cached}
+    if tiling.shrunk:
+        data["sheet"]["shrunk"] = tiling.shrunk
     if tiles_cached:
         data["cached_tiles"] = tiles_cached
     result = Result(summary=f"Rendered {len(pages)} page(s) as one sheet, {tiling.columns} column(s) of "
-                    f"{tiling.width} px, labelled with page numbers (final view: changes accepted, "
-                    "comments hidden)", data=data)
+                    f"{tiling.width} px{tiles.narrowed_note(tiling)}, labelled with page numbers (final "
+                    "view: changes accepted, comments hidden)", data=data)
     render_version, coverage = getattr(call.document, "_tool_render_coverage", (None, None))
     if coverage is not None and render_version == (version, fonts, locale):
         result.data["coverage"] = coverage
     return result
 
 
-def _shortest_tile(document: Document, width: int) -> int | None:
-    """The height of the shortest page tile ``width`` px wide the document's sections
-    declare (``w:pgSz``), or ``None`` when a section declares no size: a sheet too tall even
-    at it is too tall whatever the pages are."""
-    heights = []
+def _shortest_ratio(document: Document) -> float | None:
+    """The height over the width of the shortest page the document's sections declare
+    (``w:pgSz``), or ``None`` when a section declares no size: a sheet too tall even with
+    such pages needs narrower tiles whatever the pages are."""
+    ratios = []
     for section in document.sections():
         size = section.page_size
         if not size or not size[0] or not size[1]:
             return None
-        heights.append(round(width * size[1] / size[0]) - 1)    # a pixel for rounding
-    return min(heights) if heights else None
+        ratios.append(size[1] / size[0])
+    return min(ratios) if ratios else None
 
 
 # -- S9 check ----------------------------------------------------------------------------------

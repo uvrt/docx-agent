@@ -81,6 +81,9 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 #: ooxml-edit 0.49.0) adds 64 to the core (2,570 -> 2,634) and to every definition (12,314 ->
 #: 12,378).  The guard rises to 12,380.  The strict set is unchanged in its members: render
 #: is not sent strict to Claude; on OpenAI, where it is, ``sheet`` is one more object.
+#: Round 10, item 4: the shared undo's ``scope`` says what each kind takes (ooxml-edit
+#: 0.55.0): the core 2,634 -> 2,635, every definition 12,378 -> 12,379; the guard stays
+#: 12,380.  The strict set is unchanged: undo is not strict, and no parameter is added.
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 6500
