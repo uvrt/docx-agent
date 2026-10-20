@@ -6,6 +6,16 @@ snapshot commit; the development history before it is summarised here.
 
 ## Unreleased
 
+- `render` lays a version out once, not once a call (round 10, item 3): the layout comes
+  back from the worker with the pages (pickled: the layout and the faces it was measured
+  with) and is kept on the document by the bytes' digest, the latest only; the next call
+  drawing other pages of the same bytes hands it to its worker, which writes the pages from
+  it (`lay_out_pages(..., laid_out=...)`). 36-page sample-long, nine calls of four pages
+  after a one-page edit: 5.0 s (17.4 s before; each call but the first 0.1 s); the first
+  render of all 36 in nine calls 41.8 -> 29.5 s. Same PNGs. docx-agent now calls docx2svg's public
+  `lay_out_docx`, `page_svgs` and `user_font_dirs` (docx2svg's round-10 API) instead of its
+  private names.
+
 - `render` lays a document out once and rasterises its pages over every worker at once,
   and keeps each image by its content (round 10, O1 and O3; ooxml-edit 0.52.0,
   ooxml-common 0.24.0): one worker lays out and writes the pages' SVGs (`lay_out_pages`),
