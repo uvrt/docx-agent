@@ -6,6 +6,24 @@ snapshot commit; the development history before it is summarised here.
 
 ## Unreleased
 
+- `render` lays a document out once and rasterises its pages over every worker at once,
+  and keeps each image by its content (round 10, O1 and O3; ooxml-edit 0.52.0,
+  ooxml-common 0.24.0): one worker lays out and writes the pages' SVGs (`lay_out_pages`),
+  each keyed by its SVG -- less the `data-docx-*` attributes the rasteriser never reads --
+  and the rasteriser's arguments (font files with their times and sizes, embedded faces by
+  digest, options, the renderers' code); the pages whose image the toolbox's memory store
+  does not hold are rasterised in chunks over the workers (`rasterise_pages`). A repeat of
+  an unchanged document asks no worker; after an edit only the pages whose key changed are
+  rasterised. The page count comes from the same layout (no second conversion). The result
+  now has `cached` (the pages not drawn by the call); a contact sheet reuses the tiles and
+  says which (`cached_tiles`). PNGs are `render_pages`' byte for byte.
+- Refusals before drawing: the image budget (`call.check_images`), and a sheet of named
+  pages too tall even at the shortest page the sections declare (`w:pgSz`); one still too
+  tall once laid out is refused as before. `FORMAT.warm_up` warms each new worker outside
+  any call's deadline. The main process makes a version's bytes once
+  (`DocumentEntry.snapshot`). Definitions are unchanged; three golden transcripts
+  re-recorded for the new `cached` key (`tools/refresh_goldens.py --new-keys cached`).
+
 - `render` with `sheet` (round 9, N1; ooxml-edit 0.49.0), as for decks: up to 30 pages as
   one image, tiled in order, each labelled `page 3`; `pages` left out is every page up to
   30. `sheet.width` is each tile's (160-1280, default 360; the call's `width` stands in),
