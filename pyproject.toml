@@ -73,7 +73,9 @@ classifiers = [
 # the tools README shows.
 # ooxml-edit 0.47.0: DocumentFormat.tool_hints, which TOOL_HINTS fills (round 9, N5).
 # ooxml-edit 0.49.0: render's sheet and ooxml_edit.tools.tiles, a contact sheet (round 9, N1).
-dependencies = ["lxml>=4.9", "ooxml-edit>=0.49.0", "ooxml-common>=0.17.0", "docx2svg>=0.1", "markdown-it-py>=3.0", "mdit-py-plugins>=0.4"]
+# ooxml-edit 0.52.0: run_all, warmed workers, ContentStore, DocumentEntry.snapshot and
+# check_images (round 10, O1/O3); ooxml-common 0.24.0: rasterdb.file_stamps.
+dependencies = ["lxml>=4.9", "ooxml-edit>=0.52.0", "ooxml-common>=0.24.0", "docx2svg>=0.1", "markdown-it-py>=3.0", "mdit-py-plugins>=0.4"]
 
 [project.optional-dependencies]
 # PNG output goes through docx2svg's rasteriser extra.

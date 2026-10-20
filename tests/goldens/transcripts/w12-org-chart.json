@@ -85,8 +85,9 @@
    "expect": {
     "ok": true,
     "summary": "Rendered page(s) 1 (final view: changes accepted, comments hidden)",
-    "data_sha": "0fc351e1503e06d5",
+    "data_sha": "9c7b87b81e81bce4",
     "data_keys": [
+     "cached",
      "coverage",
      "coverage.blocks_laid_out",
      "coverage.complete",
@@ -94,7 +95,7 @@
      "coverage.status",
      "pages"
     ],
-    "data_sha_core": "44136fa355b3678a"
+    "data_sha_core": "cca0736c36c5e91b"
    }
   },
   {
