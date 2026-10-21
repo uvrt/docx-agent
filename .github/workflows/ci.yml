@@ -32,7 +32,8 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install "ooxml-common @ git+https://github.com/uvrt/ooxml-common@main"
-          python -m pip install "ooxml-edit @ git+https://github.com/uvrt/ooxml-edit@main"
+          # TEMPORARY (r12): ooxml-edit 0.56.0 from its branch until uvrt/ooxml-edit#67 is merged; back to @main then
+          python -m pip install "ooxml-edit @ git+https://github.com/uvrt/ooxml-edit@spacing-r12"
           python -m pip install "docx2svg[png] @ git+https://github.com/uvrt/docx2svg@main"
           python -m pip install -e .[dev,png]
 
