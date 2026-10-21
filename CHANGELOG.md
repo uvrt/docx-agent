@@ -6,6 +6,13 @@ snapshot commit; the development history before it is summarised here.
 
 ## Unreleased
 
+- `check` takes `spacing` (ooxml-edit 0.56.0, round 12, Q1): a deck's tightest gaps,
+  padding and frame clearances in points; a document refuses it (`invalid_arguments`,
+  field `spacing`), as it refuses `boxes`. The shared definition costs 35 estimated tokens:
+  the core 2,635 -> 2,670, every definition 12,379 -> 12,414 (guard 12,415); a reviewer's
+  core 2,427 -> 2,462 (guard 2,465), all 6,884 -> 6,919 (guard 6,920); the strict set
+  unchanged.
+
 - A contact sheet whose tiles do not fit the 2,576 px edge is drawn with narrower tiles,
   not refused (round 10, O4; ooxml-edit 0.55.0): too wide, the widest that fit the columns;
   too tall, the widest for the pages -- before drawing at the shortest page the sections

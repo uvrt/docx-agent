@@ -687,6 +687,8 @@ def test_check_reports_validate_reflow_and_fields(box, session):
     data = ok(box, session, "check", doc=d).data
     assert data["validate"]["new"] == [] and data["reflow"]["pages"] == 1 and "counts" in data["fields"]
     fails(box, session, "check", "invalid_arguments", doc=d, include=["collisions"])
+    assert fails(box, session, "check", "invalid_arguments", doc=d,
+                 spacing=8).field == "spacing"
     assert ok(box, session, "check", doc=d, slides=[1]).warnings == [
         "slides read as pages: a document has pages"]
 

@@ -580,10 +580,13 @@ def _shortest_ratio(document: Document) -> float | None:
 
 @handler("check")
 def check(call: Any, doc: str, slides: list | None = None, pages: list[int] | None = None,
-          include: list[str] | None = None, boxes: bool | None = None) -> Result:
+          include: list[str] | None = None, boxes: bool | None = None,
+          spacing: float | None = None) -> Result:
     pages = _pages_of(call, slides, pages)
     if boxes is not None:
         raise _decks_only("boxes", "include")
+    if spacing is not None:                   # a slide's gaps and padding (round 12, Q1)
+        raise _decks_only("spacing", "include")
     wanted = include or ["validate", "reflow", "fields"]
     deck_only = [k for k in wanted if k in ("fit", "collisions", "facts", "design")]
     if deck_only:
