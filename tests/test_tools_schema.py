@@ -84,10 +84,15 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 #: Round 10, item 4: the shared undo's ``scope`` says what each kind takes (ooxml-edit
 #: 0.55.0): the core 2,634 -> 2,635, every definition 12,378 -> 12,379; the guard stays
 #: 12,380.  The strict set is unchanged: undo is not strict, and no parameter is added.
+#: Round 12, Q1: the shared check's ``spacing`` (decks: the gaps, padding and frame
+#: clearances below that many pt, ooxml-edit 0.56.0; a document refuses it) adds 35 to the
+#: core (2,635 -> 2,670) and to every definition (12,379 -> 12,414).  The guard rises to
+#: 12,415.  The strict set is unchanged in its members: check is a reading tool, not sent
+#: strict to Claude; on OpenAI, where it is, ``spacing`` is one more nullable number.
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 6500
-ALL_GUARD = 12380
+ALL_GUARD = 12415
 
 
 @pytest.fixture(scope="module")
