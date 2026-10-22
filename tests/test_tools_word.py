@@ -182,6 +182,17 @@ def test_set_text_takes_items_and_refuses_both_forms(box, session):
           items=[{"target": "p:16425160", "text": "y"}])
 
 
+def test_a_change_says_which_parts_it_changed_for_the_application(box, session):
+    # Round 13, R2: ooxml-edit's Result.touched, part by part (a Word document maps no
+    # finer yet); never in what the model reads.
+    d = open_doc(session)
+    result = ok(box, session, "word_set_text", doc=d, target="p:16425160", text="Scope of the work")
+    assert result.touched == [{"doc": d, "part": "word/document.xml"}]
+    assert "touched" not in result.to_json()
+    assert ok(box, session, "undo", doc=d).touched == result.touched
+    assert ok(box, session, "describe", doc=d).touched == []
+
+
 def test_insert_text_returns_the_inserted_range_and_names_it(box, session):
     d = open_doc(session)
     result = ok(box, session, "word_insert_text", doc=d, find="EUR 12,500", text=", excluding VAT", ref="vat")
