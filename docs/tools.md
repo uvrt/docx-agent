@@ -45,6 +45,11 @@ with Toolbox(TOOLS, formats=[FORMAT], groups=GROUPS) as toolbox:
   ones. A check on a partial layout is not a passed check.
 - **Layout runs in the toolbox's worker pool** through `Document.converter`, under a 30 s
   deadline: past it the worker is killed, the call reports `timeout` and changes nothing.
+  The workers start with `spawn`, which imports the program's main module again in each,
+  so a script keeps its work under `if __name__ == "__main__":`. Without the guard the
+  workers stop as they start and the toolbox lays out in subprocess workers instead, with
+  a warning that says why (ooxml-edit 0.58.0); `Toolbox(workers=0)` lays out in the
+  script's own process.
 - **Saving refuses new validation problems**; only the application may allow them
   (`Toolbox(allow_new_problems=True)`).
 

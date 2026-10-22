@@ -6,6 +6,11 @@ snapshot commit; the development history before it is summarised here.
 
 ## Unreleased
 
+- Tools docs: layout runs in worker processes, so a script keeps its work under
+  `if __name__ == "__main__":`; without the guard the toolbox no longer waits two minutes a
+  call but lays out in subprocess workers, saying why (round 13, R6; ooxml-edit 0.58.0, no
+  change here).
+
 - What a call changed (round 13, R2; ooxml-edit 0.57.0): every tool result's `touched`, for
   the application and never in what the model reads, lists `{"doc", "part"}` for each part
   whose bytes changed (`word/document.xml`, a header, the comments, the numbering), undo
