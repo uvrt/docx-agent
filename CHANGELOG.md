@@ -6,6 +6,13 @@ snapshot commit; the development history before it is summarised here.
 
 ## Unreleased
 
+- What a call changed (round 13, R2; ooxml-edit 0.57.0): every tool result's `touched`, for
+  the application and never in what the model reads, lists `{"doc", "part"}` for each part
+  whose bytes changed (`word/document.xml`, a header, the comments, the numbering), undo
+  and redo included -- ooxml-edit's default, no docx-agent code. Finer entries (the
+  paragraphs and tables by id) would need a format mapping that compares a changed part's
+  blocks by their `w14:paraId` and table ids; not built. No token change.
+
 - `check` takes `spacing` (ooxml-edit 0.56.0, round 12, Q1): a deck's tightest gaps,
   padding and frame clearances in points; a document refuses it (`invalid_arguments`,
   field `spacing`), as it refuses `boxes`. The shared definition costs 35 estimated tokens:
