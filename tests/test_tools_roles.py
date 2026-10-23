@@ -33,11 +33,12 @@ from test_tools_word import AGREEMENT, CLOCK_AT
 #: as ALL_GUARD is.  Measured 2,364 for ``["review", "resolve", "accept"]`` (2,032 for
 #: review+resolve before word_changes joined a reviewer's core with the accept role); round
 #: 9, N1 (render's ``sheet``, +64) 2,427; round 12, Q1 (check's ``spacing``, +35) 2,462;
-#: round 15, T2 (check's ``contrast``, +37) 2,499.
-REVIEW_CORE_GUARD = 2500
+#: round 15, T2 (check's ``contrast``, +37) 2,499; round 16, F11 (save_document's
+#: ``clean``, +42) 2,541.
+REVIEW_CORE_GUARD = 2542
 #: Every definition a reviewer is sent, estimated.  Measured 6,820 (6,813 before); round 9,
-#: N1, 6,884; round 12, Q1, 6,919; round 15, T2, 6,955.
-REVIEW_ALL_GUARD = 6956
+#: N1, 6,884; round 12, Q1, 6,919; round 15, T2, 6,955; round 16, F11, 6,997.
+REVIEW_ALL_GUARD = 6998
 
 REVIEW_CORE = {"save_document", "describe", "find_text", "render", "check", "open_document",
                "batch", "word_read", "word_comments", "word_changes"}

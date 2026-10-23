@@ -93,10 +93,15 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 #: what is behind it, ooxml-edit 0.59.0; a document refuses it) adds 37 to the core
 #: (2,670 -> 2,707) and to every definition (12,414 -> 12,451).  The guard rises to 12,452.
 #: The strict set is unchanged in its members, as with spacing.
+#: Round 16, F11: the shared save_document's ``clean`` (orphaned parts, rsids, web divs and
+#: an external template link taken out of the file saved, ooxml-edit 0.60.0) adds 42 to the
+#: core (2,707 -> 2,749) and to every definition (12,451 -> 12,493).  The guard rises to
+#: 12,494.  save_document is not sent strict to Claude; on OpenAI ``clean`` is one more
+#: nullable boolean.
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 6500
-ALL_GUARD = 12452
+ALL_GUARD = 12494
 
 
 @pytest.fixture(scope="module")

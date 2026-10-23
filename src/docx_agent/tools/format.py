@@ -22,6 +22,7 @@ from ..edit.ranges import AmbiguousAnchor, AnchorNotFound
 from ._base import checks, problem_key
 from .shared import warm_up
 from .table_data import source_hint
+from .touched import touched
 
 KIND = "docx"
 EXTENSIONS = (".docx", ".docm", ".dotx", ".dotm")
@@ -193,4 +194,4 @@ FORMAT = DocumentFormat(
     prompt=PROMPT, errors=ERRORS, summary=summary, checks=checks, strict_first=STRICT_FIRST,
     configure=configure, source_hint=source_hint, store_provenance=store_provenance,
     read_provenance=read_provenance, restored=restored, own_facts=dict(OWN_REFUSED),
-    tool_hints=TOOL_HINTS, warm_up=warm_up)
+    tool_hints=TOOL_HINTS, warm_up=warm_up, touched=touched)

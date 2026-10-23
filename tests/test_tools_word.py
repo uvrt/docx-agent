@@ -182,15 +182,67 @@ def test_set_text_takes_items_and_refuses_both_forms(box, session):
           items=[{"target": "p:16425160", "text": "y"}])
 
 
+SCOPE = {"part": "word/document.xml", "heading": "p:16425160", "level": 2, "blocks": ["p:16425160", "p:3B212964"]}
+
+
 def test_a_change_says_which_parts_it_changed_for_the_application(box, session):
-    # Round 13, R2: ooxml-edit's Result.touched, part by part (a Word document maps no
-    # finer yet); never in what the model reads.
+    # Round 13, R2: ooxml-edit's Result.touched; round 16, F12: a body change names the
+    # heading section it is in. Never in what the model reads.
     d = open_doc(session)
     result = ok(box, session, "word_set_text", doc=d, target="p:16425160", text="Scope of the work")
-    assert result.touched == [{"doc": d, "part": "word/document.xml"}]
+    assert result.touched == [{"doc": d, **SCOPE}]
     assert "touched" not in result.to_json()
     assert ok(box, session, "undo", doc=d).touched == result.touched
     assert ok(box, session, "describe", doc=d).touched == []
+
+
+def test_a_body_change_names_its_heading_sections(box, session):
+    """Round 16, F12: the innermost heading section of each changed block, by the ids it
+    has after the call; a new heading's section and the one it splits; blocks before the
+    first heading as heading None; a change in no block (the last section's page setup)
+    as the part alone; other parts as before."""
+    d = open_doc(session)
+    body = "word/document.xml"
+    changed = ok(box, session, "word_set_text", doc=d, target="p:3B212964", text="The supplier delivers.")
+    assert changed.touched == [{"doc": d, **SCOPE}]
+    inserted = ok(box, session, "word_insert_markdown", doc=d, at="after:p:3B212964",
+                  markdown="More scope.\n\n### Exclusions\n\nNone.")
+    new, none = (p.id for p in document(session).paragraphs()[5:7])
+    # "More scope." is Scope's; Exclusions is its own, and Scope's too (a deeper heading).
+    assert [(t["heading"], t["level"], t["blocks"]) for t in inserted.touched] == [
+        ("p:16425160", 2, ["p:16425160", none]), (new, 3, [new, none])]
+    first = ok(box, session, "word_set_text", doc=d, target="p:5FCB534E", text="Draft")
+    assert first.touched == [{"doc": d, "part": body, "heading": None, "level": 0,
+                              "blocks": ["p:5FCB534E", "p:5FCB534E"]}]
+    removed = ok(box, session, "word_delete", doc=d, target=new)
+    assert [t["heading"] for t in removed.touched] == ["p:16425160"]
+    setup = ok(box, session, "word_sections", doc=d, action="set", section="s:body", orientation="landscape")
+    assert {"doc": d, "part": body} in setup.touched
+    styled = ok(box, session, "word_format", doc=d, targets=["p:7C9523C2"], bold=True)
+    assert [t.get("heading") for t in styled.touched] == ["p:73D22116"]
+
+
+def test_touched_reads_the_body_as_a_parse_would():
+    """The blocks found from the bytes alone are those a parse finds, with the same ids
+    and heading levels, on every fixture after its first (stamping) edit."""
+    from docx_agent.tools import touched as _touched
+
+    checked = 0
+    for path in sorted(FIXTURES.rglob("*.docx")):
+        try:
+            doc = Document.open(path.read_bytes())
+            paragraph = doc.paragraphs()[0]
+            paragraph.text = paragraph.text + "x"
+        except Exception:  # noqa: BLE001 -- a fixture this edit does not fit
+            continue
+        data = doc.package.read(doc.package.document_part())
+        fast = _touched._scan(data)
+        if fast is None:
+            continue
+        ids, levels, digests, _rest = _touched._parsed(data, doc)
+        assert (fast.ids(), fast.levels(doc), len(fast.digests)) == (ids, levels, len(digests)), path.name
+        checked += 1
+    assert checked >= 20
 
 
 def test_insert_text_returns_the_inserted_range_and_names_it(box, session):
@@ -515,8 +567,10 @@ def test_upgrade_reports_the_reflow(box, session):
 
 def test_new_document_from_a_template_blob_and_save_formats(box, session):
     template = session.add_blob(BRAND.read_bytes(), "brand.dotx")
-    d = ok(box, session, "new_document", kind="docx", template_blob=template, title="T", author="A",
-           name="report.docx").created[0]
+    made = ok(box, session, "new_document", kind="docx", template_blob=template, title="T", author="A",
+              name="report.docx")
+    d = made.created[0]
+    assert made.doc == d and made.to_json()["doc"] == d      # round 16, F10: not None
     assert document(session, d).properties["title"] == "T"
     ok(box, session, "word_insert_markdown", doc=d, markdown="# Report\n\nText.", at="end")
     ok(box, session, "save_document", doc=d, name="report.docx", format="docx")

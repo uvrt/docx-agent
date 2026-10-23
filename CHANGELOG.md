@@ -6,6 +6,49 @@ snapshot commit; the development history before it is summarised here.
 
 ## Unreleased
 
+- `save_document` takes `clean` (round 16, F11; ooxml-edit 0.60.0, now the floor): the file
+  saved without what Word keeps but never draws -- orphaned parts (a zip entry no content
+  type is declared for, `[trash]/0000.dat`; a part nothing reaches), every `w:rsid*`
+  attribute and settings' `w:rsids` list, webSettings' pasted `w:divs` with every
+  `w:divId` (kept whole when a division sets a margin or a border: Word draws those,
+  measured), an external `attachedTemplate` and its relationship
+  (`docx_agent.edit.cleaning.clean`). The result's `cleaned` gives each kind's count and
+  bytes and the file's sizes before and after; the summary the sizes. The session's
+  document is unchanged. Measured in Word 16.106 on made-up documents: rsids, an external
+  template link, 400 pasted divisions and an unreferenced part taken out (64,769 -> 13,066
+  bytes), the cleaned file opens without a prompt and its PDF is the original's pixel for
+  pixel on all 9 pages; with a `[trash]/0000.dat` entry too Word does not open the original
+  without a dialog and opens the cleaned copy (130,433 -> 13,066 bytes); a division with a
+  margin and a border is drawn, so it is kept. A Markdown save refuses `clean`. Definitions
+  +42 estimated tokens: core 2,707 -> 2,749, every definition 12,451 -> 12,493 (guard
+  12,452 -> 12,494), reviewer core 2,499 -> 2,541 (guard 2,500 -> 2,542), every reviewer
+  definition 6,955 -> 6,997 (guard 6,956 -> 6,998); the strict set's members unchanged
+  (save_document is strict on OpenAI only, `clean` a nullable boolean there).
+
+- `Result.touched` names a body change's heading sections (round 16, F12):
+  `{"doc", "part": "word/document.xml", "heading": "p:301", "level": 2, "blocks":
+  ["p:301", "t:7"]}` -- the innermost heading before each changed block (the block itself
+  when it is one), its level and the first and last block of the section it owns, as
+  `section_blocks` and `describe` read them; `heading: null, level: 0` before the first
+  heading; a change in no block (the last section's properties) and every other part as
+  `{"doc", "part"}`, as before (`docx_agent.tools.touched`). Blocks are compared by their
+  XML less the ids stamping writes, so the first edit's stamping reports no section; the
+  blocks are found from the part's bytes, only the stretch a call changed read again: on a
+  made-up 41-page document (444 blocks, 272 KB) 4.5 ms a call (median; 10.7 ms the first),
+  and an edit's median 105 ms with it, 100-132 ms without. Pages are not named: which
+  pages a change moved is known only from a new layout (render after the change and
+  compare the pages' images by content). Application-only; no token change.
+
+- `new_document`'s result has the new document as its `doc` (round 16, F10; ooxml-edit
+  0.60.0's dispatcher), `open_document`'s too; it was `None`.
+
+- `SEQ` with its switches before the identifier (round 16, F4; docx2svg's
+  `fields.sequence_switches` and `sequence_step`, shared): `SEQ \# "00" Item` is 01, 02 as
+  Word draws it, where it counted a sequence named nothing and drew 1. Measured in Word
+  16.106 (45 fields, docx2svg ROADMAP H.8): a switch's argument is the next token whatever
+  it is, a `\#` after a `\*` is Word's error text (left as it was and listed as unknown),
+  a numeric picture's `#` with no digit a space.
+
 - `check` takes `contrast` (ooxml-edit 0.59.0, round 15, T2): a deck's text below that
   contrast ratio with what is behind it; a document refuses it (`invalid_arguments`,
   `field: "contrast"`), as it does `spacing`. ooxml-edit 0.59.0 is the floor. Definitions
