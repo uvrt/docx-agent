@@ -700,6 +700,8 @@ def test_check_reports_validate_reflow_and_fields(box, session):
     fails(box, session, "check", "invalid_arguments", doc=d, include=["collisions"])
     assert fails(box, session, "check", "invalid_arguments", doc=d,
                  spacing=8).field == "spacing"
+    assert fails(box, session, "check", "invalid_arguments", doc=d,
+                 contrast=4.5).field == "contrast"
     assert ok(box, session, "check", doc=d, slides=[1]).warnings == [
         "slides read as pages: a document has pages"]
 

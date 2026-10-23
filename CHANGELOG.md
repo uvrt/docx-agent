@@ -6,6 +6,13 @@ snapshot commit; the development history before it is summarised here.
 
 ## Unreleased
 
+- `check` takes `contrast` (ooxml-edit 0.59.0, round 15, T2): a deck's text below that
+  contrast ratio with what is behind it; a document refuses it (`invalid_arguments`,
+  `field: "contrast"`), as it does `spacing`. ooxml-edit 0.59.0 is the floor. Definitions
+  +37 estimated tokens: core 2,670 -> 2,707, every definition 12,414 -> 12,451 (guard
+  12,415 -> 12,452), reviewer core 2,462 -> 2,499 (guard 2,465 -> 2,500), every reviewer
+  definition 6,919 -> 6,955 (guard 6,920 -> 6,956).
+
 - Tools docs: layout runs in worker processes, so a script keeps its work under
   `if __name__ == "__main__":`; without the guard the toolbox no longer waits two minutes a
   call but lays out in subprocess workers, saying why (round 13, R6; ooxml-edit 0.58.0, no
