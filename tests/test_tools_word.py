@@ -567,8 +567,10 @@ def test_upgrade_reports_the_reflow(box, session):
 
 def test_new_document_from_a_template_blob_and_save_formats(box, session):
     template = session.add_blob(BRAND.read_bytes(), "brand.dotx")
-    d = ok(box, session, "new_document", kind="docx", template_blob=template, title="T", author="A",
-           name="report.docx").created[0]
+    made = ok(box, session, "new_document", kind="docx", template_blob=template, title="T", author="A",
+              name="report.docx")
+    d = made.created[0]
+    assert made.doc == d and made.to_json()["doc"] == d      # round 16, F10: not None
     assert document(session, d).properties["title"] == "T"
     ok(box, session, "word_insert_markdown", doc=d, markdown="# Report\n\nText.", at="end")
     ok(box, session, "save_document", doc=d, name="report.docx", format="docx")
