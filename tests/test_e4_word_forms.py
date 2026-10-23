@@ -344,6 +344,22 @@ def test_sequence_numbers_count_in_order_and_restart():
     assert document.field(restart.id).result == "7"
 
 
+def test_sequence_switches_may_come_before_the_identifier():
+    """Word reads ``SEQ \\# "00" Item`` as ``SEQ Item \\# "00"``: 01, 02 (round 16, F4;
+    measured in Word 16.106, docx2svg's ROADMAP H.8).  Inserting one computes it too, and
+    one Word draws an error for is left and listed as unknown."""
+    document = Document.open(e4_probe.plain_document())
+    paragraphs = document.paragraphs()
+    first = document.insert_field(f"{paragraphs[1].id}@0", 'SEQ \\#"00" Item')
+    second = document.insert_field(f"{paragraphs[2].id}@0", 'SEQ \\# "00" Item')
+    assert document.field(first.id).result == "01"
+    third = document.insert_field(f"{paragraphs[3].id}@0", "SEQ \\r 7 Item")
+    error = document.insert_field(f"{paragraphs[4].id}@0", 'SEQ Item \\* MERGEFORMAT \\# "00"', result="?")
+    unknown = document.update_fields()
+    assert [document.field(e.id).result for e in (first, second, third)] == ["01", "02", "7"]
+    assert document.field(error.id).result == "?" and error.id in unknown.unknown
+
+
 def test_a_page_reference_shows_the_number_word_shows():
     """A section restarting at 5 in lower Roman: a PAGEREF to its text is ``v``, not the
     page's place."""

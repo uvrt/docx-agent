@@ -256,13 +256,6 @@ def format_date(picture: str, moment: _dt.date) -> str:
     return "".join(out)
 
 
-def _number(value: int, fmt: str | None) -> str:
-    from docx2svg.fields import field_text
-
-    return field_text(f" PAGE \\* {fmt} " if fmt else " PAGE ", "PAGE", page=value, pages=None,
-                      section_pages=None, section_format=None)
-
-
 # -- the Document half -----------------------------------------------------------------------
 
 
@@ -657,7 +650,10 @@ class FieldOps:
             if item.keyword == "SEQ":
                 value = self._sequence_value(item, sequences)
                 if any(item.begin is f.begin for f in wanted):
-                    self._write_result(item, value, context)
+                    if value is None:
+                        context.unknown.append(self._field_id(item))
+                    else:
+                        self._write_result(item, value, context)
         tocs = [f for f in found if f.keyword == "TOC"]
         for item in found:
             keyword = item.keyword
@@ -682,17 +678,15 @@ class FieldOps:
         return context.unknown
 
     def _sequence_value(self: "Document", item: _Found, sequences: dict[str, int]) -> str | None:
-        name = (_argument(item.instruction) or "").upper()
-        options = switches(item.instruction)
-        if "r" in options and isinstance(options["r"], str) and options["r"].isdigit():
-            sequences[name] = int(options["r"])
-        elif "c" not in options:
-            sequences[name] = sequences.get(name, 0) + 1
-        value = sequences.get(name, 0)
-        if "h" in options:
-            return ""
-        fmt = options.get("*")
-        return _number(value, fmt if isinstance(fmt, str) and fmt.upper() != "MERGEFORMAT" else None)
+        """A ``SEQ`` field's text, ``sequences`` counted on; ``None`` where Word draws an
+        error in its language or the switches are not measured.  docx2svg's counting, so
+        the renderer and an update agree: the switches before the identifier or after it
+        (``SEQ \\# "00" Item`` is 01, 02: measured), ``\\#`` and ``\\*`` formatting."""
+        from docx2svg.fields import Uncomputable, sequence_step, sequence_switches
+
+        name, found = sequence_switches(item.instruction)
+        value = sequence_step(item.instruction, (name or "").upper(), found, sequences)
+        return None if isinstance(value, Uncomputable) else value
 
     def _value(self: "Document", item: _Found, context: _Context) -> str | None:
         keyword = item.keyword
