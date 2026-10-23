@@ -89,10 +89,14 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 #: core (2,635 -> 2,670) and to every definition (12,379 -> 12,414).  The guard rises to
 #: 12,415.  The strict set is unchanged in its members: check is a reading tool, not sent
 #: strict to Claude; on OpenAI, where it is, ``spacing`` is one more nullable number.
+#: Round 15, T2: the shared check's ``contrast`` (decks: text below that contrast ratio with
+#: what is behind it, ooxml-edit 0.59.0; a document refuses it) adds 37 to the core
+#: (2,670 -> 2,707) and to every definition (12,414 -> 12,451).  The guard rises to 12,452.
+#: The strict set is unchanged in its members, as with spacing.
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 6500
-ALL_GUARD = 12415
+ALL_GUARD = 12452
 
 
 @pytest.fixture(scope="module")
