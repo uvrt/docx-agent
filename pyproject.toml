@@ -78,7 +78,9 @@ classifiers = [
 # ooxml-edit 0.55.0: tiles.fit and Tiling.shrunk, a sheet's tiles narrowed to fit (round 10, O4).
 # ooxml-edit 0.56.0: check's spacing, which a document refuses (round 12, Q1).
 # ooxml-edit 0.59.0: check's contrast, which a document refuses too (round 15, T2).
-dependencies = ["lxml>=4.9", "ooxml-edit>=0.59.0", "ooxml-common>=0.24.0", "docx2svg>=0.1", "markdown-it-py>=3.0", "mdit-py-plugins>=0.4"]
+# ooxml-edit 0.60.0: save_document's clean and OpcPackage.drop_orphans (round 16, F11), and a
+# made document as its call's doc (F10).
+dependencies = ["lxml>=4.9", "ooxml-edit>=0.60.0", "ooxml-common>=0.24.0", "docx2svg>=0.1", "markdown-it-py>=3.0", "mdit-py-plugins>=0.4"]
 
 [project.optional-dependencies]
 # PNG output goes through docx2svg's rasteriser extra.

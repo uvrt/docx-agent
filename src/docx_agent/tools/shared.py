@@ -109,7 +109,7 @@ def serialise(document: Document, kind: str) -> bytes:
 
 
 @handler("save_document")
-def save_document(call: Any, doc: str, name: str, format: str) -> Result:
+def save_document(call: Any, doc: str, name: str, format: str, clean: bool = False) -> Result:
     document = call.document
     if format in ("pptx", "potx", "outline"):
         raise ToolError("invalid_arguments", f"{format} is a deck format; a document saves as docx, dotx or "
@@ -118,6 +118,9 @@ def save_document(call: Any, doc: str, name: str, format: str) -> Result:
         raise ToolError("invalid_arguments", f"a document saves as docx, dotx or markdown, not {format}",
                         field="format", valid_options=["docx", "dotx", "markdown"])
     if format == "markdown":
+        if clean:
+            raise ToolError("invalid_arguments", "clean is for a docx or dotx; a Markdown copy carries none "
+                            "of it: leave clean out", field="clean")
         data = document.to_markdown(ids=False, stories="all").encode("utf-8")
         return Result(summary=f"Saved {name} (Markdown) for the application",
                       data=call.output(name, "markdown", data))
@@ -129,7 +132,17 @@ def save_document(call: Any, doc: str, name: str, format: str) -> Result:
     if document.package.kind in ("docm", "dotm") and extension in ("docm", "dotm"):
         kind = extension
     data = serialise(document, kind)
+    cleaned = None
+    if clean:
+        from ..edit.cleaning import clean as clean_bytes
+
+        data, cleaned = clean_bytes(data)
     result = Result(summary=f"Saved {name} for the application", data=call.output(name, format, data))
+    if cleaned is not None:
+        # What clean took out (round 16, F11): counts and bytes per kind, the file's sizes.
+        result.data["cleaned"] = cleaned
+        before, after = cleaned["bytes"]["before"], cleaned["bytes"]["after"]
+        result.summary += f", cleaned: {before:,} -> {after:,} bytes"
     result.data["coverage"] = _coverage(call)
     return result
 
