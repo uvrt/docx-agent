@@ -51,7 +51,20 @@ with Toolbox(TOOLS, formats=[FORMAT], groups=GROUPS) as toolbox:
   a warning that says why (ooxml-edit 0.58.0); `Toolbox(workers=0)` lays out in the
   script's own process.
 - **Saving refuses new validation problems**; only the application may allow them
-  (`Toolbox(allow_new_problems=True)`).
+  (`Toolbox(allow_new_problems=True)`). `save_document` with `clean: true` takes out of
+  the file saved what Word keeps but never draws -- orphaned parts (`[trash]/0000.dat`, a
+  part nothing reaches), every `w:rsid*` attribute and settings' rsid list, webSettings'
+  pasted web divisions (unless one sets a margin or a border), an external
+  `attachedTemplate` -- and reports each kind's count and bytes and the file's sizes as
+  `cleaned`; the document in the session is unchanged (`docx_agent.edit.cleaning`).
+- **Every result's `touched`** (the application's, never in what the model reads) names
+  what the call changed: a body change by its **heading section** --
+  `{"doc", "part": "word/document.xml", "heading": "p:301", "level": 2, "blocks":
+  ["p:301", "t:7"]}`, the innermost heading before each changed block and the first and
+  last block of the section it owns (`heading: null, level: 0` before the first heading)
+  -- every other part as `{"doc", "part"}` (`docx_agent.tools.touched`). Pages are not
+  named: which pages moved is known only from a new layout; render after the change and
+  compare the pages' images by content instead.
 
 `tests/goldens/transcripts` hold the end-to-end trial's Word tasks done with the tools alone,
 and w10-w13 (a board pack from five reports, a contract form, a picture with alt text, a
