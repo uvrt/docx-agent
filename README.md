@@ -62,6 +62,14 @@ so a check that passed is told apart from one that could not see everything. It 
 
 In the library, `doc.layout().coverage_facts()` returns the same.
 
+`check` with `layout` (or `min_size`, `styles`) measures the pages from that same layout --
+text below a size by kind, direct formatting over the style with the call that clears it,
+styles not in an allowed list, empty paragraphs used as space, keep-with-next paragraphs at
+a page's foot, rows split across pages and header rows that do not repeat, pictures and
+tables past the margins, and the pages a reviewer cannot judge from the render -- as facts
+with block ids and pages; `docx_agent.layout_facts.layout_facts(doc.layout())` in the
+library.
+
 The user's regional settings -- the separator a decimal tab stop aligns on, a chart's
 decimal and thousands separators, the language of new chart text in a document that states
 none, a new document's language and number separators -- are `Document.locale` (or

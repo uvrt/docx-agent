@@ -14,6 +14,7 @@ of where each came from.
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -178,17 +179,20 @@ def model(document: "Document") -> _Model:
 
 
 def run(document: "Document", paragraph: Element, run_element: Element | None,
-        first: str | None = None) -> EffectiveRun:
+        first: str | None = None, *, direct: bool = True) -> EffectiveRun:
     """``run_element``'s formatting in ``paragraph``; ``first`` is its first character (read
     from the paragraph when not given), which decides the script and so the face.  With
     ``run_element`` ``None``: what a run with no properties of its own would get there --
-    the paragraph's baseline, which the Markdown reader measures emphasis against."""
+    the paragraph's baseline, which the Markdown reader measures emphasis against.  With
+    ``direct`` false: what the run would get with its character style but none of its
+    direct formatting -- what its styles give it."""
     state = model(document)
     owner = state.paragraph(paragraph)
     properties = run_element.find(_W + "rPr") if run_element is not None else None
     style = properties.find(_W + "rStyle") if properties is not None else None
     style_id = style.get(_W + "val") if style is not None else None
-    model_run = _model.Run("", _model.RunProperties(style_id=style_id, declared=read_run_properties(properties)))
+    declared = read_run_properties(properties) if direct else {}
+    model_run = _model.Run("", _model.RunProperties(style_id=style_id, declared=declared))
     resolved = resolve_run(state.model, owner, model_run)
     if first is None:
         from .text import run_text
@@ -207,9 +211,14 @@ def run(document: "Document", paragraph: Element, run_element: Element | None,
         style=style_id, _resolved=resolved)
 
 
-def paragraph(document: "Document", element: Element) -> EffectiveParagraph:
+def paragraph(document: "Document", element: Element, *, direct: bool = True) -> EffectiveParagraph:
+    """``element``'s paragraph formatting as Word applies it; with ``direct`` false, what
+    its styles (and its list, which clearing direct formatting keeps) give it."""
     state = model(document)
     owner = state.paragraph(element)
+    if not direct and owner.properties is not None:
+        kept = {k: v for k, v in owner.properties.declared.items() if k.startswith("numPr.")}
+        owner = dataclasses.replace(owner, properties=dataclasses.replace(owner.properties, declared=kept))
     resolved = resolve_paragraph(state.model, owner)
 
     def points(key: str) -> float:

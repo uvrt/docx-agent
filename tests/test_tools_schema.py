@@ -98,10 +98,17 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 #: core (2,707 -> 2,749) and to every definition (12,451 -> 12,493).  The guard rises to
 #: 12,494.  save_document is not sent strict to Claude; on OpenAI ``clean`` is one more
 #: nullable boolean.
+#: Round 16, F8: the shared check's ``layout`` facts and their two measures, ``min_size`` (a
+#: number) and ``styles`` (names; ooxml-edit 0.61.0), add 67 to the core (2,749 -> 2,816,
+#: about 4,168 counted by the proxy) and to every definition; word_format's ``clear`` (the
+#: properties a direct_formatting fix takes back to the style: an enum of word_format's own
+#: names, deferred in word_style) adds 95 more there (12,493 -> 12,655).  The guard rises to
+#: 12,656.  Neither tool is sent strict to Claude; on OpenAI ``min_size`` is one more nullable
+#: number, ``styles`` and ``clear`` nullable arrays of strings.
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 6500
-ALL_GUARD = 12494
+ALL_GUARD = 12656
 
 
 @pytest.fixture(scope="module")
