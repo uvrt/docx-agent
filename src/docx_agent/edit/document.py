@@ -847,6 +847,18 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
         refreshed statistics)."""
         return self.package.to_bytes()
 
+    def design_facts(self, include=None, *, caps: dict | None = None) -> dict:
+        """Measured design facts for analysing a template, no verdicts
+        (:mod:`docx_agent.edit.design`): each style in use per role with its usage and its
+        look after inheritance, each table style's look by place (header row, bands, label
+        column), each section's page grid and header and footer variants, the theme's
+        palette and fonts, repeated block shapes under headings.  ``include`` picks kinds of
+        :data:`~docx_agent.edit.design.KINDS`; ``caps`` overrides how many entries a list
+        keeps (``omitted`` counts the rest)."""
+        from .design import design_facts
+
+        return design_facts(self, include, caps)
+
     def validate(self, target: str | os.PathLike[str] | None = None) -> list:
         """The structural problems Word would repair or refuse (:func:`docx_agent.validate.check`):
         schema order, relationships, content types, unique ids, paired ranges, numbering,

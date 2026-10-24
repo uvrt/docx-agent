@@ -6,6 +6,30 @@ snapshot commit; the development history before it is summarised here.
 
 ## Unreleased
 
+- `word_design_facts` (round 16, F9), the counterpart of pptx-agent's `ppt_design_facts` for
+  analysing a template: measured facts with ids, no verdicts (`Document.design_facts`,
+  `docx_agent.edit.design`). `styles`: every paragraph style in use per role (`title`,
+  `heading 1`-`9`, `body`, `list`, `caption`, `table`, `toc`, `header`, `footer`,
+  `footnote`, `endnote`), its paragraphs, empty ones and an example id, and its look after
+  inheritance from docx2svg's cascade (font, size, colour, bold and italic, alignment,
+  spacing before, after and between lines, indents, keep options, outline level, numbering
+  format and label; in a cell with the table style). `table_styles`: each table style in
+  use, its tables, their style options, and its places -- header row, row bands, first
+  column, last row and column when on, the corner -- each with the conditional formats
+  applied, fill, the four borders after the conflicts between neighbours and the text, all
+  from docx2svg's table resolver (`resolve_table`, `edge_winner`, its conditions) over a
+  five-by-four sample. `sections`: page size, orientation, margins, columns, start and the
+  header and footer each variant shows. `theme`: name, the twelve colour slots, the major
+  and minor faces. `patterns`: one block shape under two or more headings of a level (a
+  paragraph by its style, a run of one style once, a table by style and columns), with
+  counts and example spans. Lists are capped (`omitted` counts the rest) and a result over
+  the call's limit keeps fewer entries. `effective.style_look` is the cascade's look of a
+  style with no direct formatting. Deferred, in `word_style`; a reading tool, so a
+  reviewer's too. Definitions +169 estimated tokens: every definition 12,493 -> 12,662
+  (guard 12,494 -> 12,663), the core unchanged (2,749), every reviewer definition
+  6,997 -> 7,166 (guard 6,998 -> 7,167), the reviewer's core unchanged; not strict, the
+  strict set unchanged.
+
 - **docx2svg carries on past what it cannot lay out** (round 16, docx2svg's `carry-on-r16`):
   the coverage of `check` (`reflow`), `render` and `save_document` lists `placeholders` --
   page, reason, block id -- of what it drew as a marked box instead of laying it out (any

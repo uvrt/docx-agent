@@ -1,12 +1,15 @@
-"""Style: ``word_lists``, ``word_styles`` and ``word_template`` (``word_format``, the general
-setter, is in :mod:`.text` and in this group)."""
+"""Style: ``word_lists``, ``word_styles``, ``word_template`` and ``word_design_facts``
+(``word_format``, the general setter, is in :mod:`.text` and in this group)."""
 
 from __future__ import annotations
 
 from typing import Any
 
+import json
+
 from ooxml_edit.tools import REVIEW, Result, ToolError, array, boolean, integer, string
 
+from ..edit.design import CAPS, KINDS
 from ..edit.formatting import RUN_PROPERTIES, read_paragraph, read_run
 from ..edit.styles import StyleError
 from ._base import need, outcome, resolve, word_tool
@@ -176,4 +179,30 @@ def word_template(call: Any, doc: str, action: str) -> Result:
     return outcome([edit], f"Compatibility mode {document.compatibility_mode}", data=data)
 
 
-TOOLS = [word_lists, word_styles, word_template]
+# -- F9 word_design_facts ---------------------------------------------------------------------
+
+
+@word_tool("word_design_facts", "Measured design facts for template analysis, no verdicts: styles in use per role with usage and effective look, table styles by place (header row, bands, label column), page grid per section, theme, repeated block shapes.",
+           {"doc": DOC,
+            "include": array(string(enum=list(KINDS)), "Facts to report. Default all.", optional=True)},
+           group="word_style")
+def word_design_facts(call: Any, doc: str, include: list[str] | None = None) -> Result:
+    """:meth:`Document.design_facts <docx_agent.Document.design_facts>`; a result too long
+    for the call's limit keeps fewer entries per list (``omitted`` counts the rest)."""
+    document = call.document
+    caps = dict(CAPS)
+    limit = call.limits.max_result_chars - 1500
+    while True:
+        data = document.design_facts(include or None, caps=caps)
+        if len(json.dumps(data, ensure_ascii=False)) <= limit or max(caps.values()) <= 1:
+            break
+        caps = {k: max(1, v // 2) for k, v in caps.items()}
+    counts = [f"{len(data[k])} {k.replace('_', ' ')}" for k in ("styles", "table_styles", "sections", "patterns")
+              if k in data]
+    left = data.get("omitted")
+    return Result(summary="Design facts: " + ", ".join(counts) + (
+        "; " + ", ".join(f"{n} more {k.replace('_', ' ')}" for k, n in left.items()) + " left out (include fewer kinds)"
+        if left else ""), data=data)
+
+
+TOOLS = [word_lists, word_styles, word_template, word_design_facts]

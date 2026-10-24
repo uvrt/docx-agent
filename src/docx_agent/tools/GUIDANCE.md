@@ -21,6 +21,7 @@ come from trial 3 (Sonnet 5.5), its fix round and the Haiku 5.5 trial; the tool 
 | tracked changes | `word_changes` `list` | each revision: author, date, kind, old and new text |
 | comments | `word_comments` `list` | each thread: anchor text, author, replies, resolved or open |
 | formatting | `word_inspect` | a block's style, its runs' direct formatting, the effective font, size, spacing and indents |
+| design facts | `word_design_facts` | for analysing a template: each style in use per role (body, headings by level, captions, lists, table text, headers and footers) with its usage and effective look; each table style's header row, bands, first column, borders and text as drawn; the page grid and header and footer variants per section; the theme's palette and fonts; block shapes repeated under headings, with example spans to copy |
 | `validate` on save | `save_document` | the save refuses new validation problems; only the application can allow them |
 
 How to use them:

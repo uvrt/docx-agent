@@ -35,7 +35,7 @@ ooxml-edit's Responses round-trip test). Chat Completions has not been run live.
 | `word_review` | `word_set_tracking`, `word_changes`, `word_comments` |
 | `word_structure` | `word_move`, `word_copy_from`, `word_sections`, `word_headers_footers`, `word_fields`, `word_notes`, `word_links` |
 | `word_objects` | `word_edit_table`, `word_format_table`, `word_drawings`, `word_controls` |
-| `word_style` | `word_format`, `word_lists`, `word_styles`, `word_template` |
+| `word_style` | `word_format`, `word_lists`, `word_styles`, `word_template`, `word_design_facts` |
 
 ## Setup (every provider)
 
@@ -97,7 +97,7 @@ four, the toolbox as without roles.
 
 ```python
 reviewer = Toolbox(TOOLS, formats=[FORMAT], groups=GROUPS, roles=["review"])
-tools = reviewer.definitions("anthropic")       # 21 tools; word_comments list/add/reply/edit
+tools = reviewer.definitions("anthropic")       # 22 tools; word_comments list/add/reply/edit
 system = reviewer.system_prompt(extra=HOUSE_RULES)
 session = reviewer.session()                    # word_set_text here is refused
 second_pass = toolbox.session(roles=["review", "resolve"])   # per session, same toolbox
