@@ -14,6 +14,7 @@ come from trial 3 (Sonnet 5.5), its fix round and the Haiku 5.5 trial; the tool 
 | `validate` | every changing call, `check` | validation problems the call added (`new`) or removed (`fixed`) against the document as opened |
 | reflow | changing calls (documents of 20 pages or fewer, once laid out), `check` with `reflow` | the pages the change moved; whether layout completed (`complete`, `stopped`) |
 | `coverage` | `check` with `reflow`, `render`, `save_document` | how much of the document the layout covers. `complete` is false when a block, a header or footer, or a face could not be laid out. `status` is `complete`, `approximate` (everything laid out, but `approximations` lists places laid out by an unmeasured rule, with their page and reason) or `partial`. It also gives the blocks laid out, `placeholders` (what docx2svg drew as a marked box of its height instead of laying it out, with page, reason and block id: the layout goes on past them), where the layout stopped if it did, and the faces substituted or missing. |
+| layout | `check` with `layout` (or `min_size`, `styles`) | what the pages show, measured from the layout reflow uses: the smallest text per kind and, with `min_size`, text below it; direct formatting over the style, with the `word_format` `clear` call that takes it off; with `styles`, paragraph and table styles not in the list; empty paragraphs used as space (with the `word_delete` and `space_before` calls that replace them); keep-with-next paragraphs left at a page's foot; rows split across pages and header rows that do not repeat; pictures and tables past the margins; and `uncertain`, the pages with placeholders or approximations. Each list at most 20, most telling first, `<fact>_left_out` the rest; `pages` keeps the facts on those pages. Facts, not verdicts: which of them matter is the application's rule. |
 | fields | `check` with `fields` | the fields (TOC, page numbers, cross-references, captions) and their cached results: a cache is only as fresh as the last `word_fields update` |
 | `warnings` | every call | what the library noticed and did (an unknown construct kept, a style imported, a legacy option removed) |
 | `renamed` | changing calls | old paragraph id -> new one; the old id keeps working |
@@ -40,7 +41,11 @@ How to use them:
   will see, read `word_read` with `view: "markup"`.
 - **Formatting differences are facts too:** `word_inspect` shows direct formatting a pasted
   paragraph carries (font, size, colour on its runs) against its style; `word_format` with
-  `clear_direct` takes it off.
+  `clear_direct` takes it off, with `clear` only the properties named. `check` with
+  `layout` lists every paragraph that differs from its style, with that call.
+- **A layout fact is only as good as the page it is on.** `layout.uncertain` names the
+  pages the layout drew a placeholder on or laid out by an unmeasured rule: judge those
+  from the facts, not the render, or say they could not be judged.
 
 ## A review pass
 
@@ -48,11 +53,15 @@ The application calls the tools itself, through `toolbox.dispatch`, after the mo
 done:
 
 ```python
+ALLOWED_STYLES = ["Normal", "Heading 1", "Heading 2", "Heading 3", "Caption", "Table Grid"]
+
+
 def review(toolbox, session, doc, pages, house_rules, model_call):
     """Facts, the reviewer's view and renders of the changed pages, judged by the application's
     own rules in its own model call."""
     facts = toolbox.dispatch(session, "check", {"doc": doc, "include": ["validate", "reflow",
-                                                                         "fields"]})
+                                                                         "fields", "layout"],
+                                                 "min_size": 9, "styles": ALLOWED_STYLES})
     markup = toolbox.dispatch(session, "word_read", {"doc": doc, "view": "markup"})
     images = toolbox.dispatch(session, "render", {"doc": doc, "pages": pages[:4]}).images
     return model_call(images=images, text=markup.data, facts=facts.data, rules=house_rules)
@@ -102,7 +111,7 @@ shipped fragments, written against what the tools can see and do:
 HOUSE_RULES = '''House rules (Acme):
 - Edit with tracking on, as "Acme Legal" (word_set_tracking), unless asked otherwise.
 - Headings use the Heading 1-3 styles; body text uses Normal; no direct formatting
-  (check with word_inspect; remove with word_format clear_direct).
+  (check with layout and styles lists what differs; word_format clear removes it).
 - Every figure and table has a caption (word_fields insert_caption) above tables, below figures.
 - Before saving, update fields and check with validate, reflow and fields.'''
 system = toolbox.system_prompt(extra=HOUSE_RULES)

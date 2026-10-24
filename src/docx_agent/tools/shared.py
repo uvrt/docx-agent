@@ -19,6 +19,7 @@ from ooxml_edit.tools import Result, ToolError, shared, tiles, worker_task
 from ..edit.document import Document
 from ..edit.properties import refreshed_app
 from ..layout import font_dirs_of, lay_out_unlocked, locale_of
+from ..layout_facts import layout_facts
 from ._base import need, outcome, page, reflow_json, remember, resolve, short, validate_delta, wrap
 
 KIND = "docx"
@@ -594,7 +595,8 @@ def _shortest_ratio(document: Document) -> float | None:
 @handler("check")
 def check(call: Any, doc: str, slides: list | None = None, pages: list[int] | None = None,
           include: list[str] | None = None, boxes: bool | None = None,
-          spacing: float | None = None, contrast: float | None = None) -> Result:
+          spacing: float | None = None, contrast: float | None = None,
+          min_size: float | None = None, styles: list[str] | None = None) -> Result:
     pages = _pages_of(call, slides, pages)
     if boxes is not None:
         raise _decks_only("boxes", "include")
@@ -602,18 +604,27 @@ def check(call: Any, doc: str, slides: list | None = None, pages: list[int] | No
         raise _decks_only("spacing", "include")
     if contrast is not None:                  # a slide's text against its fill (round 15, T2)
         raise _decks_only("contrast", "include")
-    wanted = include or ["validate", "reflow", "fields"]
+    wanted = list(include or ["validate", "reflow", "fields"])
     deck_only = [k for k in wanted if k in ("fit", "collisions", "facts", "design")]
     if deck_only:
         raise ToolError("invalid_arguments", f"{', '.join(deck_only)} are deck facts; a document reports "
-                        "validate, reflow and fields", field="include", valid_options=["validate", "reflow", "fields"])
+                        "validate, reflow, fields and layout", field="include",
+                        valid_options=["validate", "reflow", "fields", "layout"])
+    if (min_size is not None or styles is not None) and "layout" not in wanted:
+        wanted.append("layout")               # what they measure (round 16, F8)
     document, entry = call.document, call.entry
     report: dict[str, Any] = {}
     if "validate" in wanted:
         problems = [str(p) for p in document.validate()]
         report["validate"] = {**validate_delta(entry), "problems": problems[:50]}
-    if "reflow" in wanted:
-        report["reflow"] = _layout_facts(call, pages)
+    if "reflow" in wanted or "layout" in wanted:
+        reflow, layout = _layout_facts(call, pages, seen="reflow" in wanted)
+        if "reflow" in wanted:
+            report["reflow"] = reflow
+        if "layout" in wanted:
+            # Measured on the layout reflow reports and render draws: never a second one.
+            report["layout"] = (layout_facts(layout, pages=pages, min_size=min_size, styles=styles)
+                                if layout is not None else {"error": reflow["error"]})
     if "fields" in wanted:
         report["fields"] = _field_facts(document)
     if "app" in wanted:
@@ -621,7 +632,10 @@ def check(call: Any, doc: str, slides: list | None = None, pages: list[int] | No
     return Result(summary="Checked " + ", ".join(wanted), data=report)
 
 
-def _layout_facts(call: Any, pages: list[int] | None) -> dict[str, Any]:
+def _layout_facts(call: Any, pages: list[int] | None, seen: bool = True) -> tuple[dict[str, Any], Any]:
+    """``reflow``'s facts, and the layout they are of (``None`` where it failed); ``seen``:
+    the layout a later check's ``since_last_check`` is measured from (not for ``layout``
+    alone, which reports no reflow)."""
     document = call.document
     entry = call.entry
     version = entry.version
@@ -633,23 +647,24 @@ def _layout_facts(call: Any, pages: list[int] | None) -> dict[str, Any]:
         else:
             layout = document.layout()
     except ToolError as error:
-        return {"error": f"{error.code}: {error.message}"}
+        return {"error": f"{error.code}: {error.message}"}, None
     facts: dict[str, Any] = {"pages": layout.page_count, "complete": layout.pages_known is not None}
     if layout.stopped is not None:
         facts["stopped"] = {"page": layout.stopped.page, "reason": layout.stopped.reason, "at": layout.stopped.at}
     # The whole of it: blocks laid out, header and footer stops, faces substituted or
     # missing -- so "the check passed" is told from "the check could not see everything".
     facts["coverage"] = layout.coverage_facts()
-    seen = getattr(document, "_tool_seen_layout", None)
-    if seen is not None and seen is not layout:
-        reflow = reflow_json(layout.compare(seen))
+    before = getattr(document, "_tool_seen_layout", None)
+    if before is not None and before is not layout:
+        reflow = reflow_json(layout.compare(before))
         if pages:
             reflow["changed"] = [p for p in reflow["changed"] if p in pages]
         facts["since_last_check"] = reflow
-    document._tool_seen_layout = layout
+    if seen:
+        document._tool_seen_layout = layout
     if layout.warnings:
         facts["layout_warnings"] = [short(str(w), 160) for w in layout.warnings[:10]]
-    return facts
+    return facts, layout
 
 
 def _field_facts(document: Document) -> dict[str, Any]:
