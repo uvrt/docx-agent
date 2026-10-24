@@ -37,14 +37,15 @@ def p(text: str = "", rpr: str = "", ppr: str = "", runs: str | None = None) -> 
             f'{f"<w:pPr>{ppr}</w:pPr>" if ppr else ""}{runs}</w:p>')
 
 
-def table(rows: list[list[str]], *, width: int = 9000, header: bool = False) -> str:
+def table(rows: list[list[str]], *, width: int = 9000, header: bool = False, indent: int | None = None) -> str:
     """A bordered table of ``rows`` of cell texts; ``header``: its first row repeats."""
     cols = len(rows[0])
     grid = f'<w:gridCol w:w="{width // cols}"/>' * cols
     borders = "".join(f'<w:{side} w:val="single" w:sz="4" w:space="0" w:color="000000"/>'
                       for side in ("top", "left", "bottom", "right", "insideH", "insideV"))
-    out = (f'<w:tbl><w:tblPr><w:tblW w:w="{width}" w:type="dxa"/><w:tblBorders>{borders}</w:tblBorders>'
-           f'<w:tblLayout w:type="fixed"/></w:tblPr><w:tblGrid>{grid}</w:tblGrid>')
+    indented = f'<w:tblInd w:w="{indent}" w:type="dxa"/>' if indent is not None else ""
+    out = (f'<w:tbl><w:tblPr><w:tblW w:w="{width}" w:type="dxa"/>{indented}<w:tblBorders>{borders}'
+           f'</w:tblBorders><w:tblLayout w:type="fixed"/></w:tblPr><w:tblGrid>{grid}</w:tblGrid>')
     for k, row in enumerate(rows):
         properties = "<w:trPr><w:tblHeader/></w:trPr>" if header and k == 0 else ""
         cells = "".join(f'<w:tc><w:tcPr><w:tcW w:w="{width // cols}" w:type="dxa"/></w:tcPr>{p(text)}</w:tc>'
@@ -300,3 +301,17 @@ def test_a_document_refuses_deck_facts_and_names_layout():
         d = session.open(docx(p("Text")), "deck-facts.docx")
         refused = toolbox.dispatch(session, "check", {"doc": d, "include": ["fit"]})
         assert not refused.ok and "layout" in refused.error.valid_options
+
+
+def test_a_table_outdented_as_word_places_it_is_not_past_the_margin(box, session):
+    """Word draws a table's first cell's text on the margin, the table outdented by that
+    cell's left margin and half its outer border (below mode 15 by default; in mode 15 with
+    the indent Word writes for it): that is no fact.  An indent that pushes it further out
+    is.  Normal Table's cell margins are 108 twips, a w:sz 4 border's outer half 5."""
+    aligned = table([["Text on the margin", "b"]], indent=-113)
+    pushed = table([["Pushed out", "b"]], indent=-720)
+    d = session.open(docx(p("Before") + aligned + p("Between") + pushed + p("End")), "outdent.docx")
+    first, second = [t.id for t in session.entry(d).document.tables()]
+    past = {e.get("table"): e for e in facts(box, session, d)["past_margins"]}
+    assert first not in past
+    assert 29 < past[second]["past"]["left"] < 32          # 36 pt, less the 5.65 Word allows

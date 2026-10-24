@@ -53,7 +53,10 @@ takes its targets as one list with the values for all, so it is ``calls``, not `
     ``{"drawing" | "table", "page", "past": {"left"|"right"|"top"|"bottom": pt}}``: a
     picture or other drawing, or a table, drawn past the page's margins by more than half a
     point -- a table as drawn: its borders, shading and text (a borderless table whose text
-    stays inside is not past them).  ``fix`` for an inline picture that only runs past
+    stays inside is not past them), beyond Word's own placement of it: a table is outdented
+    by its first cell's left margin and half its outer border so that the cell's text
+    lines up with the margin (and the same on the right), so only what reaches further
+    counts -- an indent that pushes it out does.  ``fix`` for an inline picture that only runs past
     the right margin: resized to fit (``word_drawings`` ``resize``, keeping its aspect).
 ``uncertain``
     ``{"page", "placeholders", "approximations", "story_stops"}``: the pages the layout drew
@@ -580,12 +583,43 @@ class _Facts:
                     extent = extents.setdefault(match.group(1), [low, high])
                     extent[0], extent[1] = min(extent[0], low), max(extent[1], high)
             for table, (low, high) in extents.items():
-                past = _past(low, high, None, None, page.column, False)
+                # Word's own placement draws a table's first cell's text on the margin, the
+                # table outdented by that cell's left margin and its outer border's outer
+                # half (and the last cell's text ending on the right one): only past that.
+                left_allow, right_allow = self._table_allowance(table)
+                past = _past(low + left_allow, high - right_allow, None, None, page.column, False)
                 if past:
                     entries.append({"table": _block_id(document, self.main, table) or table, "page": number,
                                     "past": past})
         entries.sort(key=lambda e: -max(e["past"].values()))
         return entries
+
+    def _table_allowance(self, path: str) -> tuple:
+        """``(left, right)`` device px a table may reach past the margins as Word places
+        it by default: the first row's first cell's left margin plus its left outer
+        border's outer half, and the last cell's right margin plus its right one's
+        (docx2svg's resolved table, :func:`docx2svg.table.resolve_table`)."""
+        allowances = getattr(self, "_allowances", None)
+        if allowances is None:
+            allowances = self._allowances = {}
+            try:
+                from docx2svg import model as _model
+                from docx2svg.table import outer_part, resolve_table
+
+                state = _effective.model(self.document).model
+                for block in state.body or ():
+                    if isinstance(block, _model.Table) and block.path:
+                        resolved = resolve_table(state, block)
+                        cells = resolved.rows[0].cells if resolved.rows and resolved.rows[0].cells else None
+                        if not cells:
+                            continue
+                        first, last = cells[0], cells[-1]
+                        left = first.margins.get("left", 0) + outer_part(first.left_edge[0])
+                        right = last.margins.get("right", 0) + outer_part(last.right_edge[0])
+                        allowances[block.path] = (Fraction(left, 20) * PX_PER_PT, Fraction(right, 20) * PX_PER_PT)
+            except Exception:  # noqa: BLE001 -- a table the resolver cannot read: no allowance
+                pass
+        return allowances.get(path, (0, 0))
 
     def uncertain(self, out: dict) -> None:
         coverage = self.layout.coverage

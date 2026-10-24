@@ -23,7 +23,10 @@ snapshot commit; the development history before it is summarised here.
   "allow to break" yet: no fix) and tables on several pages whose first row is not drawn
   again (`word_format_table` `header_rows: 1` where none is marked); pictures, drawings and
   tables (as drawn) past the margins (`word_drawings` `resize` for an inline picture past
-  the right one); and `uncertain`, the pages with placeholders, approximations or stories
+  the right one; a table only beyond Word's own outdent -- its first cell's left margin and
+  half its outer border, the last cell's on the right, from the resolved table -- measured
+  in Word 16.106: below mode 15 a default table's text is on the margin, in mode 15 its
+  border, and a tblInd of -720 puts it 36 pt out in both); and `uncertain`, the pages with placeholders, approximations or stories
   not drawn, with `unknown_from` where a layout made to stop stopped. At most 20 of each,
   most telling first, `<fact>_left_out` the rest; `pages` keeps the facts on those pages.
   Giving `min_size` or `styles` asks for the facts; `layout` alone sets no baseline for a
