@@ -100,7 +100,7 @@ _RUN_DECLARES = {
 _PARAGRAPH_DECLARES = ("jc", "spacing", "ind", "keepNext", "pageBreakBefore")
 
 #: A table's row as a line's or rule's path names it: the outermost table in the body (in
-#: block content controls too) and its 1-based row.
+#: block-level w:sdt too) and its 1-based row.
 _ROW = re.compile(r"^(w:body(?:/w:sdt\[\d+\]/w:sdtContent)*/w:tbl\[\d+\])/w:tr\[(\d+)\]")
 
 #: What makes an empty-looking paragraph not empty: something drawn or a break.
@@ -156,7 +156,7 @@ class _Facts:
         return self.style_names.get(style_id, style_id)
 
     def _top_level(self) -> list[tuple[str, Any, str]]:
-        """The body's blocks in order, block content controls opened: (kind, element, id)."""
+        """The body's blocks in order, block-level w:sdt opened: (kind, element, id)."""
         index = self.document._index(self.main)
         body = self.document.package.tree(self.main).find(_W + "body")
         out = []
