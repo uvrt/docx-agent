@@ -105,10 +105,13 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 #: names, deferred in word_style) adds 95 more there (12,493 -> 12,655).  The guard rises to
 #: 12,656.  Neither tool is sent strict to Claude; on OpenAI ``min_size`` is one more nullable
 #: number, ``styles`` and ``clear`` nullable arrays of strings.
+#: Round 16, F9: word_design_facts (deferred, in word_style: a template's design facts) adds
+#: 169 to every definition (12,655 -> 12,824), none to the core (2,816).  The guard rises to
+#: 12,825.  It is a reading tool, not sent strict: the strict set is unchanged.
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 6500
-ALL_GUARD = 12656
+ALL_GUARD = 12825
 
 
 @pytest.fixture(scope="module")
@@ -167,7 +170,8 @@ def test_the_groups_are_the_roadmaps():
                                         "word_fields", "word_notes", "word_links"}
     assert groups["word_objects"] == {"word_edit_table", "word_format_table",
                                       "word_drawings", "word_controls"}
-    assert groups["word_style"] == {"word_format", "word_lists", "word_styles", "word_template"}
+    assert groups["word_style"] == {"word_format", "word_lists", "word_styles", "word_template",
+                                    "word_design_facts"}
     assert all(len(names) < 10 for group, names in groups.items() if group != "core")
 
 

@@ -191,13 +191,17 @@ def run(document: "Document", paragraph: Element, run_element: Element | None,
     properties = run_element.find(_W + "rPr") if run_element is not None else None
     style = properties.find(_W + "rStyle") if properties is not None else None
     style_id = style.get(_W + "val") if style is not None else None
-    declared = read_run_properties(properties) if direct else {}
-    model_run = _model.Run("", _model.RunProperties(style_id=style_id, declared=declared))
-    resolved = resolve_run(state.model, owner, model_run)
     if first is None:
         from .text import run_text
 
         first = (run_text(paragraph, run_element) if run_element is not None else "") or "a"
+    return _run(state, owner, style_id, read_run_properties(properties) if direct else {}, first)
+
+
+def _run(state: _Model, owner: _model.Paragraph, style_id: str | None, declared: dict,
+         first: str) -> EffectiveRun:
+    model_run = _model.Run("", _model.RunProperties(style_id=style_id, declared=declared))
+    resolved = resolve_run(state.model, owner, model_run)
     character = character_format(resolved, first[0], state.model)
     underline = resolved.get("u")
     return EffectiveRun(
@@ -219,6 +223,25 @@ def paragraph(document: "Document", element: Element, *, direct: bool = True) ->
     if not direct and owner.properties is not None:
         kept = {k: v for k, v in owner.properties.declared.items() if k.startswith("numPr.")}
         owner = dataclasses.replace(owner, properties=dataclasses.replace(owner.properties, declared=kept))
+    return _paragraph(state, owner)
+
+
+def style_look(document: "Document", style_id: str | None, *, table_style: str | None = None,
+               conditions: tuple[str, ...] = ()) -> tuple[EffectiveParagraph, EffectiveRun]:
+    """What a paragraph of ``style_id`` (``None``: the default paragraph style) with no
+    direct formatting, and a run in it with none, get: the style's look after inheritance.
+    With ``table_style`` (``""``: the default table style) the paragraph is in a cell of a
+    table of that style, under the cell's conditional formats ``conditions``
+    (``("wholeTable",)`` for a cell no row or column format reaches)."""
+    state = model(document)
+    owner = _model.Paragraph(
+        properties=_model.ParagraphProperties(style_id=style_id, declared={},
+                                              run_properties=_model.RunProperties(declared={})),
+        table_style_id=table_style, table_conditions=tuple(conditions))
+    return _paragraph(state, owner), _run(state, owner, None, {}, "a")
+
+
+def _paragraph(state: _Model, owner: _model.Paragraph) -> EffectiveParagraph:
     resolved = resolve_paragraph(state.model, owner)
 
     def points(key: str) -> float:

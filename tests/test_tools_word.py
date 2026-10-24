@@ -95,8 +95,8 @@ def test_every_word_tool_is_docx_or_shared_and_in_a_group():
     word = [t for t in TOOLS if t.name.startswith("word_")]
     # W1-W27 and W29 (W28 waits for LE3), less word_describe (the shared describe), and
     # word_review_changes and word_insert_picture (actions of word_changes, word_drawings),
-    # and word_insert_table (post-T4: a new table is Markdown)
-    assert len(word) == 24
+    # and word_insert_table (post-T4: a new table is Markdown); and word_design_facts (round 16, F9)
+    assert len(word) == 25
     assert "describe" in names and not names & {"word_describe", "word_review_changes",
                                                 "word_insert_picture", "read_chart",
                                                 "word_insert_table", "list_documents"}
