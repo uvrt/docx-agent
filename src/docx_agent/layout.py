@@ -16,9 +16,11 @@ What it answers (ROADMAP.md, "Reflow feedback"):
 * ``compare(before)`` -- which pages differ from an earlier layout, by a signature of what
   each page draws (glyphs, positions, rules, pictures; not the SVG text), and which blocks
   moved to another page;
-* **stops, carried through**: where docx2svg stops (a feature it cannot lay out yet), a block
-  past the stop is :class:`Unknown`, never guessed, and pages past either layout's stop are
-  reported as unknown by ``compare``.
+* **stops, carried through**: docx2svg carries on past what it cannot lay out (round 16: an
+  approximate rule, or a marked placeholder of its height, each in its coverage); where it is
+  made to stop (``docx2svg.paginate.CARRY_ON`` off), a block past the stop is
+  :class:`Unknown`, never guessed, and pages past either layout's stop are reported as
+  unknown by ``compare``.
 
 Ids are compared through the document's aliases, so a layout taken before an edit that
 stamped or re-issued paragraphs still matches the layout after it.
@@ -77,13 +79,18 @@ class Unknown:
         return False
 
 
-def coverage_facts(coverage, *, at: str | None = None, stopped: "Stop | None" = None) -> dict:
+def coverage_facts(coverage, *, at: str | None = None, stopped: "Stop | None" = None,
+                   ids: dict | None = None) -> dict:
     """What a caller needs to tell "laid out and nothing wrong" from "could not lay it all
     out": docx2svg's coverage (:class:`docx2svg.coverage.Coverage`, or its ``as_dict()``),
     compact.  ``complete`` is true only when every block was laid out, every header,
     footer and text box drawn and every face found; ``substituted_fonts`` names the faces
     laid out with an open substitute (``(approximate)`` where it is not metric compatible);
-    ``stop`` is where the layout stopped, ``at`` the block's id when known.
+    ``stop`` is where the layout stopped, ``at`` the block's id when known.  docx2svg no
+    longer stops by default (round 16): what it cannot lay out it lays out by an
+    approximate rule (``approximations``) or draws as a marked placeholder of its height,
+    and goes on; ``placeholders`` lists those (page, reason, ``at``: the block's id where
+    ``ids`` maps its element path to one, else the path), and makes the layout ``partial``.
 
     ``status`` tells the three apart: ``complete`` (laid out, nothing approximated),
     ``approximate`` (complete, but ``approximations`` lists places docx2svg laid out by a
@@ -121,6 +128,13 @@ def coverage_facts(coverage, *, at: str | None = None, stopped: "Stop | None" = 
                                     "message": _short(a["message"])} for a in approximations[:5]]
         if len(approximations) > 5:
             facts["approximations_total"] = len(approximations)
+    placeholders = data.get("placeholders") or []
+    if placeholders:
+        facts["placeholders"] = [{"page": p["page"], "reason": p["reason"],
+                                  "at": (ids or {}).get(p.get("path")) or p.get("path"),
+                                  "message": _short(p["message"])} for p in placeholders[:5]]
+        if len(placeholders) > 5:
+            facts["placeholders_total"] = len(placeholders)
     return facts
 
 
@@ -190,10 +204,19 @@ class DocumentLayout:
         #: docx2svg's :class:`docx2svg.coverage.Coverage`: how much of the document this
         #: layout covers (``None`` from a docx2svg that predates it).
         self.coverage = getattr(layout, "coverage", None)
+        #: Element path -> this API's id, for each body block docx2svg drew as a placeholder.
+        self._placeholder_ids: dict = {}
+        for entry in getattr(self.coverage, "placeholders", None) or ():
+            if entry.path and entry.path.startswith("w:body"):
+                found = _block_id(document, document.package.document_part(), entry.path)
+                if found:
+                    self._placeholder_ids[entry.path] = found
 
     def coverage_facts(self) -> dict:
-        """:func:`coverage_facts` of this layout, its stop named by this API's id."""
-        return coverage_facts(self.coverage, at=self.stopped.at if self.stopped else None, stopped=self.stopped)
+        """:func:`coverage_facts` of this layout, its stop and placeholders named by this
+        API's ids."""
+        return coverage_facts(self.coverage, at=self.stopped.at if self.stopped else None, stopped=self.stopped,
+                              ids=self._placeholder_ids)
 
     # -- what is known -----------------------------------------------------------------------
 

@@ -922,15 +922,16 @@ def test_a_picture_in_a_paragraph_of_its_own_centred(box, session):
 
 
 def _vml_first() -> bytes:
-    """A document whose first paragraph holds a VML shape, which docx2svg does not lay out:
-    its layout stops there, on any machine, whatever faces it has."""
+    """A document whose first paragraph holds a VML shape stating no size, which docx2svg
+    cannot lay out on any machine, whatever faces it has: a placeholder (or, made to stop,
+    its layout's stop)."""
     import io
     import zipfile
 
     w = ('xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
          'xmlns:v="urn:schemas-microsoft-com:vml"')
     rel = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
-    body = ('<w:p><w:r><w:pict><v:rect style="position:absolute;width:100pt;height:20pt" fillcolor="#4472c4"/>'
+    body = ('<w:p><w:r><w:pict><v:rect style="position:absolute" fillcolor="#4472c4"/>'
             '</w:pict></w:r><w:r><w:t>A shape.</w:t></w:r></w:p><w:p><w:r><w:t>After it.</w:t></w:r></w:p>')
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as archive:
@@ -960,16 +961,32 @@ def test_check_render_and_save_say_how_much_was_laid_out(box, session):
     assert saved.data["coverage"] == coverage
 
 
-def test_a_layout_that_stops_is_not_complete(box, session):
+def test_a_placeholder_makes_the_coverage_partial(box, session):
     d = session.open(_vml_first(), "shape.docx")
     reflow = ok(box, session, "check", doc=d, include=["reflow"]).data["reflow"]
     coverage = reflow["coverage"]
-    assert coverage["complete"] is False
-    assert coverage["stop"]["reason"] == "drawing" and coverage["stop"]["page"] == 1
-    assert coverage["stop"]["at"] == reflow["stopped"]["at"] and coverage["stop"]["at"].startswith("p")
-    assert coverage["blocks_laid_out"] == [0, 2]
+    assert coverage["complete"] is False and coverage["status"] == "partial"
+    assert "stop" not in coverage and "stopped" not in reflow
+    assert [(p["page"], p["reason"]) for p in coverage["placeholders"]] == [(1, "drawing")]
+    assert coverage["placeholders"][0]["at"].startswith("p")
+    assert coverage["blocks_laid_out"] == [1, 2]
     assert ok(box, session, "save_document", doc=d, name="shape.docx", format="docx").data["coverage"] == coverage
-    assert coverage["status"] == "partial"
+
+
+def test_a_layout_that_stops_is_not_complete(monkeypatch):
+    """Made to stop (``CARRY_ON`` off, as docx2svg did before round 16), the coverage says
+    where.  In process: the tools lay out in a worker, where the switch is not set."""
+    from docx2svg import paginate
+
+    from docx_agent import Document
+
+    monkeypatch.setattr(paginate, "CARRY_ON", False)
+    layout = Document.open(_vml_first()).layout()
+    coverage = layout.coverage_facts()
+    assert coverage["complete"] is False and coverage["status"] == "partial"
+    assert coverage["stop"]["reason"] == "drawing" and coverage["stop"]["page"] == 1
+    assert coverage["stop"]["at"] == layout.stopped.at and coverage["stop"]["at"].startswith("p")
+    assert coverage["blocks_laid_out"] == [0, 2]
 
 
 def test_coverage_facts_tell_complete_approximate_and_partial_apart():

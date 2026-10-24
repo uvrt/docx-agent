@@ -187,5 +187,6 @@ What docx-agent guarantees, and tests on every fixture:
   supported constructs (those outside the guarantee listed with their reasons) and
   hand-written documents; it names only the document's styles (by name: a localised
   template works), adding a built-in one it lacks as Word writes it.
-- **Rendered honestly.** Where docx2svg stops laying out, a block past the stop is
-  `Unknown`, never guessed.
+- **Rendered honestly.** What docx2svg cannot lay out it approximates or draws as a marked
+  placeholder, said so in the coverage (`approximations`, `placeholders`), and the layout
+  goes on; where it is made to stop, a block past the stop is `Unknown`, never guessed.

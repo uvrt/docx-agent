@@ -6,6 +6,13 @@ snapshot commit; the development history before it is summarised here.
 
 ## Unreleased
 
+- **docx2svg carries on past what it cannot lay out** (round 16, docx2svg's `carry-on-r16`):
+  the coverage of `check` (`reflow`), `render` and `save_document` lists `placeholders` --
+  page, reason, block id -- of what it drew as a marked box instead of laying it out (any
+  makes it `partial`), and a frame or a nested floating table that stopped the layout is now
+  an approximation; pages past them are known. `Unknown` for a block past a stop remains for
+  a docx2svg made to stop (`docx2svg.paginate.CARRY_ON = False`).
+
 - `save_document` takes `clean` (round 16, F11; ooxml-edit 0.60.0, now the floor): the file
   saved without what Word keeps but never draws -- orphaned parts (a zip entry no content
   type is declared for, `[trash]/0000.dat`; a part nothing reaches), every `w:rsid*`

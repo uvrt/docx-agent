@@ -147,8 +147,8 @@ def test_compare_after_undo_is_empty(long_doc):
     assert document.layout().compare(before).changed == []
 
 
-def test_a_stop_is_carried_through(markup_doc):
-    """A frame other than a drop cap stops docx2svg's layout: what is past it is unknown."""
+def _framed(markup_doc):
+    """The markup document, and the same with its paragraph ``p:1A2B3C09`` made a frame."""
     document = Document.open(markup_doc)
     before = document.layout()
     element = document.paragraph("p:1A2B3C09")._element
@@ -159,6 +159,30 @@ def test_a_stop_is_carried_through(markup_doc):
                                                  w + "hAnchor": "page", w + "x": "2000"})
     document.package.mark_dirty("word/document.xml")
     document._invalidate()
+    return document, before
+
+
+def test_a_frame_is_laid_out_approximately_and_the_layout_goes_on(markup_doc):
+    """docx2svg carries on past a frame other than a drop cap (round 16): it is laid out as a
+    paragraph of the flow, said to be approximate, and every block after it is known."""
+    document, before = _framed(markup_doc)
+    layout = document.layout()
+    assert layout.stopped is None and layout.pages_known == len(layout.pages)
+    assert layout.where("p:1A2B3C17")[0].page >= 1
+    assert any(w.code == "layout-approximate:frame" for w in layout.warnings)
+    facts = layout.coverage_facts()
+    assert facts["complete"] is True and facts["status"] == "approximate"
+    assert any(a["reason"] == "frame" for a in facts["approximations"])
+    assert layout.compare(before).unknown == []
+
+
+def test_a_stop_is_carried_through(markup_doc, monkeypatch):
+    """Where docx2svg is made to stop at what it cannot lay out (``CARRY_ON`` off, as it did
+    before round 16), what is past the stop is unknown."""
+    from docx2svg import paginate
+
+    monkeypatch.setattr(paginate, "CARRY_ON", False)
+    document, before = _framed(markup_doc)
     layout = document.layout()
     assert layout.stopped.reason == "frame" and layout.stopped.at == "p:1A2B3C09"
     assert layout.pages_known is None
