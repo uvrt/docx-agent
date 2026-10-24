@@ -52,8 +52,12 @@ so a check that passed is told apart from one that could not see everything. It 
 - `complete`
 - the pages laid out, with Word's saved page count when the layout stopped
 - the blocks laid out, out of the total
-- where the layout stopped, by block id
-- header and footer stops
+- where the layout stopped, by block id, and header and footer stops (docx2svg no longer
+  stops by default: what it cannot lay out it approximates or draws as a placeholder, and
+  goes on)
+- the placeholders: what was drawn as a marked box of its height instead of laid out, by
+  page, reason and block id (any makes `complete` false)
+- the approximations: what was laid out by a rule not measured against Word
 - the faces substituted or missing
 
 In the library, `doc.layout().coverage_facts()` returns the same.

@@ -151,8 +151,9 @@ def pytest_collection_modifyitems(config, items):
 # -- faces ----------------------------------------------------------------------------------
 #
 # The fixtures are laid out (by docx2svg) in the faces Word uses -- Calibri, Cambria,
-# Georgia, Aptos -- which only a machine with Office has.  Without one, docx2svg stops the
-# layout where a paragraph cannot be measured, and a test of a render, a reflow or a field's
+# Georgia, Aptos -- which only a machine with Office has.  Without one, docx2svg lays it out
+# with an approximate stand-in (round 16; before, it stopped where a paragraph could not be
+# measured), and a test of a render, a reflow or a field's
 # page number then says nothing about this code.  On such a machine, a test whose layout
 # reports a face absent skips; where the faces are installed, nothing here applies.  CI's
 # Linux and macOS runners install the open substitutes (Carlito, Liberation), which docx2svg
@@ -166,7 +167,10 @@ _FACE_ABSENT = ("layout-stopped:unmeasurable", "layout-stopped:no face metrics",
 def _office_faces_absent() -> bool:
     from docx2svg.fonts import InstalledFonts, default_font_dirs
 
-    fonts = InstalledFonts(dirs=tuple(default_font_dirs()))
+    try:  # docx2svg's approximate stand-in for an absent face (round 16) is not the face
+        fonts = InstalledFonts(dirs=tuple(default_font_dirs()), fallbacks=False)
+    except TypeError:
+        fonts = InstalledFonts(dirs=tuple(default_font_dirs()))
     return any(fonts.face(family) is None for family in _OFFICE_FACES)
 
 
@@ -179,6 +183,13 @@ def _skip_if_a_face_is_absent(warnings, coverage=None) -> None:
     missing = getattr(coverage, "missing_fonts", None)
     if missing:
         pytest.skip(f"a face this document is laid out in is not installed here: {', '.join(missing)}")
+    # Since round 16 docx2svg lays an absent face out with an approximate stand-in rather
+    # than stop: as absent, for what the layout measures.
+    approximate = [s["family"] for s in getattr(coverage, "substituted_fonts", None) or ()
+                   if not s.get("metric_compatible", True)]
+    if approximate:
+        pytest.skip(f"a face this document is laid out in is not installed here (laid out with an approximate "
+                    f"substitute): {', '.join(approximate)}")
     for warning in warnings:  # docx2svg's (code, message, page) tuples or its Warning objects
         code, message = (warning.code, warning.message) if hasattr(warning, "code") else warning[:2]
         if code in _FACE_ABSENT or (code.startswith("layout-stopped:") and "cannot be measured" in message):
