@@ -389,16 +389,31 @@ def split_formatting(values: dict[str, Any]) -> tuple[dict[str, Any], dict[str, 
             "character_style": string("Character style name.", optional=True),
             **RUN_FIELDS, **PARAGRAPH_FIELDS,
             "clear_direct": boolean("First remove direct formatting, keeping styles. Default false.",
-                                    optional=True)},
+                                    optional=True),
+            # Round 16, F8: what check's direct_formatting fix clears -- only these.
+            "clear": array(string(enum=[*RUN_FIELDS, *PARAGRAPH_FIELDS]),
+                           "Direct properties to remove, back to the style's.", optional=True)},
            refs=('targets[]',), group="word_style", mutates=True, aliases=SPACING_ALIASES)
 def word_format(call: Any, doc: str, targets: list[str], paragraph_style: str | None = None,
-                character_style: str | None = None, clear_direct: bool = False, **values: Any) -> Result:
+                character_style: str | None = None, clear_direct: bool = False,
+                clear: list[str] | None = None, **values: Any) -> Result:
     document = call.document
+    both = [name for name in clear or () if name in values]
+    if both:
+        raise ToolError("invalid_arguments", f"{', '.join(both)} both set and cleared: give a value or "
+                        "clear it, not both", field="clear")
     run, paragraph = split_formatting(values)
+    for name in clear or ():
+        if name == "indent_first":
+            paragraph.update(first_line=None, hanging=None)
+        elif name in RUN_FIELDS:
+            run[name] = None
+        else:
+            paragraph[name] = None
     if not (run or paragraph or paragraph_style or character_style or clear_direct):
         raise ToolError("invalid_arguments", "say what to set: a style, a run or a paragraph property",
                         valid_options=["paragraph_style", "character_style", *RUN_FIELDS, *PARAGRAPH_FIELDS,
-                                       "clear_direct"])
+                                       "clear_direct", "clear"])
     for name, kind in ((paragraph_style, "paragraph"), (character_style, "character")):
         if name is not None:
             known_style(document, name, kind, "paragraph_style" if kind == "paragraph" else "character_style")

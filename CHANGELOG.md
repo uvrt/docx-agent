@@ -25,10 +25,49 @@ snapshot commit; the development history before it is summarised here.
   counts and example spans. Lists are capped (`omitted` counts the rest) and a result over
   the call's limit keeps fewer entries. `effective.style_look` is the cascade's look of a
   style with no direct formatting. Deferred, in `word_style`; a reading tool, so a
-  reviewer's too. Definitions +169 estimated tokens: every definition 12,493 -> 12,662
-  (guard 12,494 -> 12,663), the core unchanged (2,749), every reviewer definition
-  6,997 -> 7,166 (guard 6,998 -> 7,167), the reviewer's core unchanged; not strict, the
-  strict set unchanged.
+  reviewer's too. Definitions +169 estimated tokens over F8's: every definition 12,655 ->
+  12,824 (guard 12,656 -> 12,825), the core unchanged (2,816), every reviewer definition
+  7,064 -> 7,234 (guard 7,065 -> 7,235), the reviewer's core unchanged (2,608); not strict,
+  the strict set unchanged.
+
+- `check` takes `layout` in `include`, and `min_size` and `styles` (round 16, F8; ooxml-edit
+  0.61.0, now the floor): layout facts, measured from the one layout reflow uses and render
+  draws, and from docx2svg's style cascade (`docx_agent.layout_facts`) -- the smallest text
+  drawn per kind (body, table, footnote, endnote, header, footer) and, with `min_size`,
+  every paragraph's text below it (`fix`: clear a direct size where the style's is at
+  least the minimum); direct formatting that makes a paragraph or all its text differ from
+  its styles (paragraph, table, character), in word_format's names with the styles' values
+  and the `word_format` call that clears it (bold on part of the text named in `in_part`,
+  not cleared); with `styles`, the paragraph and table styles in use that the list does not
+  name, and the listed names the document lacks; runs of empty top-level paragraphs used
+  as space, with how far the next block would move without them, the `word_delete` call and
+  the `space_before` that keeps the next paragraph in place (between paragraphs the larger
+  of the two spaces counts, docx2svg's measured rule); keep-with-next paragraphs drawn last
+  on a page, their next block on a later one; rows split across pages (no tool sets a row's
+  "allow to break" yet: no fix) and tables on several pages whose first row is not drawn
+  again (`word_format_table` `header_rows: 1` where none is marked); pictures, drawings and
+  tables (as drawn) past the margins (`word_drawings` `resize` for an inline picture past
+  the right one; a table only beyond Word's own outdent -- its first cell's left margin and
+  half its outer border, the last cell's on the right, from the resolved table -- measured
+  in Word 16.106: below mode 15 a default table's text is on the margin, in mode 15 its
+  border, and a tblInd of -720 puts it 36 pt out in both); and `uncertain`, the pages with placeholders, approximations or stories
+  not drawn, with `unknown_from` where a layout made to stop stopped. At most 20 of each,
+  most telling first, `<fact>_left_out` the rest; `pages` keeps the facts on those pages.
+  Giving `min_size` or `styles` asks for the facts; `layout` alone sets no baseline for a
+  later reflow's `since_last_check`. On the 40-page made-up document of round 16, check with
+  reflow and layout took 7.20 s against 6.89 s for reflow alone (best of 3; 0.38 s for the
+  facts on a layout already made). Measured in Word 16.106 for Mac on made-up probes: a
+  keep-with-next paragraph before a page-break-before paragraph stays at its page's foot, a
+  90-line chain of them breaks where docx2svg breaks it, one that fits moves; a row taller
+  than a page runs over four pages as docx2svg draws it, and a marked header row repeats.
+- `word_format` takes `clear` (round 16, F8): the direct properties named (word_format's own:
+  `size`, `font`, `bold`, `alignment`, `space_before`, `indent_first`...) removed, back to the
+  style's; giving a property a value and clearing it is refused. What check's
+  `direct_formatting` fix calls.
+- Definitions: core 2,749 -> 2,816 estimated (+67, check; about 4,168 counted), every
+  definition 12,493 -> 12,655 (+95 for word_format's `clear`; guard 12,494 -> 12,656), a
+  reviewer's core 2,541 -> 2,608 (guard 2,542 -> 2,609), every reviewer definition 6,997 ->
+  7,064 (guard 6,998 -> 7,065). The strict set's members are unchanged.
 
 - **docx2svg carries on past what it cannot lay out** (round 16, docx2svg's `carry-on-r16`):
   the coverage of `check` (`reflow`), `render` and `save_document` lists `placeholders` --

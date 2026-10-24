@@ -80,7 +80,8 @@ classifiers = [
 # ooxml-edit 0.59.0: check's contrast, which a document refuses too (round 15, T2).
 # ooxml-edit 0.60.0: save_document's clean and OpcPackage.drop_orphans (round 16, F11), and a
 # made document as its call's doc (F10).
-dependencies = ["lxml>=4.9", "ooxml-edit>=0.60.0", "ooxml-common>=0.24.0", "docx2svg>=0.1", "markdown-it-py>=3.0", "mdit-py-plugins>=0.4"]
+# ooxml-edit 0.61.0: check's layout, min_size and styles (round 16, F8).
+dependencies = ["lxml>=4.9", "ooxml-edit>=0.61.0", "ooxml-common>=0.24.0", "docx2svg>=0.1", "markdown-it-py>=3.0", "mdit-py-plugins>=0.4"]
 
 [project.optional-dependencies]
 # PNG output goes through docx2svg's rasteriser extra.

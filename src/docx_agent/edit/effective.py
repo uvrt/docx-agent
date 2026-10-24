@@ -14,6 +14,7 @@ of where each came from.
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -178,11 +179,13 @@ def model(document: "Document") -> _Model:
 
 
 def run(document: "Document", paragraph: Element, run_element: Element | None,
-        first: str | None = None) -> EffectiveRun:
+        first: str | None = None, *, direct: bool = True) -> EffectiveRun:
     """``run_element``'s formatting in ``paragraph``; ``first`` is its first character (read
     from the paragraph when not given), which decides the script and so the face.  With
     ``run_element`` ``None``: what a run with no properties of its own would get there --
-    the paragraph's baseline, which the Markdown reader measures emphasis against."""
+    the paragraph's baseline, which the Markdown reader measures emphasis against.  With
+    ``direct`` false: what the run would get with its character style but none of its
+    direct formatting -- what its styles give it."""
     state = model(document)
     owner = state.paragraph(paragraph)
     properties = run_element.find(_W + "rPr") if run_element is not None else None
@@ -192,7 +195,7 @@ def run(document: "Document", paragraph: Element, run_element: Element | None,
         from .text import run_text
 
         first = (run_text(paragraph, run_element) if run_element is not None else "") or "a"
-    return _run(state, owner, style_id, read_run_properties(properties), first)
+    return _run(state, owner, style_id, read_run_properties(properties) if direct else {}, first)
 
 
 def _run(state: _Model, owner: _model.Paragraph, style_id: str | None, declared: dict,
@@ -212,9 +215,15 @@ def _run(state: _Model, owner: _model.Paragraph, style_id: str | None, declared:
         style=style_id, _resolved=resolved)
 
 
-def paragraph(document: "Document", element: Element) -> EffectiveParagraph:
+def paragraph(document: "Document", element: Element, *, direct: bool = True) -> EffectiveParagraph:
+    """``element``'s paragraph formatting as Word applies it; with ``direct`` false, what
+    its styles (and its list, which clearing direct formatting keeps) give it."""
     state = model(document)
-    return _paragraph(state, state.paragraph(element))
+    owner = state.paragraph(element)
+    if not direct and owner.properties is not None:
+        kept = {k: v for k, v in owner.properties.declared.items() if k.startswith("numPr.")}
+        owner = dataclasses.replace(owner, properties=dataclasses.replace(owner.properties, declared=kept))
+    return _paragraph(state, owner)
 
 
 def style_look(document: "Document", style_id: str | None, *, table_style: str | None = None,
