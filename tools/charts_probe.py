@@ -475,7 +475,7 @@ def _smartart_variant(name: str) -> bytes:
             package.mark_dirty(part)
         elif name == "drawing-missing":
             document.diagram(second.id, on_inexact_drawing="drop")._drop_drawing(
-                __import__("ooxml_edit.charts.diagram", fromlist=["_Model"])._Model(
+                __import__("ooxml_edit.charts.diagram", fromlist=["DiagramModel"]).DiagramModel(
                     package.tree(second.part), second._resolve()))
             package.mark_dirty(second.part)
         elif name == "added-dropped":

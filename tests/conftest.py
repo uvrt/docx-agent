@@ -205,7 +205,7 @@ def _skip_where_faces_are_absent(request, monkeypatch):
 
     from docx_agent import layout as agent_layout
 
-    lay_out, convert = getattr(docx2svg, "lay_out_docx", docx2svg._lay_out), agent_layout.convert
+    lay_out, convert = docx2svg.lay_out_docx, agent_layout.convert
 
     def checked_lay_out(source, options=None):
         result = lay_out(source, options)
@@ -218,6 +218,5 @@ def _skip_where_faces_are_absent(request, monkeypatch):
         _skip_if_a_face_is_absent(conversion.layout.warnings, getattr(conversion.layout, "coverage", None))
         return conversion
 
-    monkeypatch.setattr(docx2svg, "_lay_out", checked_lay_out)
-    monkeypatch.setattr(docx2svg, "lay_out_docx", checked_lay_out)   # docx2svg's public name
+    monkeypatch.setattr(docx2svg, "lay_out_docx", checked_lay_out)
     monkeypatch.setattr(agent_layout, "convert", checked_convert)

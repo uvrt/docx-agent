@@ -46,7 +46,7 @@ from collections import Counter
 from typing import TYPE_CHECKING, Any
 
 from docx2svg import model as _model
-from docx2svg.parse.document import _conditions
+from docx2svg.parse.document import cell_conditions
 from docx2svg.paths import resolve_path
 from docx2svg.table import edge_winner, resolve_table, table_style_id
 
@@ -367,7 +367,7 @@ def _places(document: "Document", style_id: str, look: dict, cell_style: str | N
     and text, from docx2svg's table resolver and cascade."""
     sheet = _effective.model(document).model
     rows, columns = SAMPLE_ROWS, SAMPLE_COLUMNS
-    conditions = tuple(tuple(_conditions(look, r, c, rows, columns) for c in range(columns)) for r in range(rows))
+    conditions = tuple(tuple(cell_conditions(look, r, c, rows, columns) for c in range(columns)) for r in range(rows))
     paragraph = _model.Paragraph(properties=_model.ParagraphProperties(style_id=cell_style))
     sample = _model.Table(style_id=style_id, rows=tuple(tuple((paragraph,) for _ in range(columns))
                                                         for _ in range(rows)),

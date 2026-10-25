@@ -429,9 +429,9 @@ class ChartOps:
         from .document import EditResult
 
         chart_data(chart_type, categories, series)  # refused before anything changes
-        from ooxml_edit.charts.create import _options
+        from ooxml_edit.charts.create import check_options
 
-        _options(chart_type, category_order, gridlines, bubble_scale)
+        check_options(chart_type, category_order, gridlines, bubble_scale)
         size = _chart_size(width, height)
         with self._edit():
             renames: dict = {}

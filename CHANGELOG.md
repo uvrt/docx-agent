@@ -6,6 +6,13 @@ snapshot commit; the development history before it is summarised here.
 
 ## Unreleased
 
+- No private name of a sibling is imported any more (review, N2): docx2svg's
+  `parse.document.cell_conditions` (was `_conditions`), ooxml-common 0.28.0's
+  `imagemeta.pixels_and_density`, ooxml-edit 0.62.0's `charts.create.check_options` and,
+  in `tools/charts_probe.py`, `charts.diagram.DiagramModel`; the tests patch docx2svg's
+  `lay_out_docx` only. Each owner's `tests/test_public_api.py` now holds every name
+  docx-agent imports from it. No behaviour change.
+
 - CI runs nightly (03:17 UTC) and on demand, so a sibling's change that breaks this
   suite shows the next morning; ooxml-edit's own CI now runs this suite on its pull
   requests too. No code change.
