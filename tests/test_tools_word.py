@@ -769,7 +769,7 @@ def test_charts_and_smartart(box, session):
     assert reading.checks == {} and not reading.changed              # read changes nothing
     read = reading.data
     assert read["workbook"]["series"][1]["values"]["values"][1] == 9.5
-    error = fails(box, session, "edit_chart", "not_found", doc=d, target="d:1", action="set_values", series="East",
+    error = fails(box, session, "edit_chart", "label_not_found", doc=d, target="d:1", action="set_values", series="East",
                   values=[1, 2, 3, 4])
     assert "North" in error.valid_options
     s = session.open(SMARTART.read_bytes(), "smartart.docx")
