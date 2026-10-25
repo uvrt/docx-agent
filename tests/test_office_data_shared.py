@@ -15,3 +15,9 @@ def test_the_theme_is_the_shared_one():
                                                     theme.OFFICE_MINOR_FONT)
     assert blank._APTOS_PANOSE == theme.APTOS_PANOSE
     assert blank.SCRIPT_FONTS == theme.WORD_SCRIPT_FONTS
+
+
+def test_the_format_scheme_is_the_shared_one():
+    assert blank._FILL_GRADIENTS == theme.OFFICE_FILL_GRADIENTS
+    assert blank._BACKGROUND_GRADIENT == theme.OFFICE_BACKGROUND_GRADIENT
+    assert blank.LINE_WIDTHS == theme.WORD_LINE_WIDTHS
