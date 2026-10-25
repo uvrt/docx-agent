@@ -123,9 +123,10 @@ this package uses; what each earlier version added is in that package's CHANGELO
   gives public names to what was imported private (`charts.create.check_options`;
   review, N2); 0.63.0 the one lookup for `edit_chart`'s series and category and
   `edit_smartart`'s node (`charts.actions.resolve_*`; review, N4).
-- `ooxml-common>=0.28.0`: standard library only and docx2svg's own dependency, named for
+- `ooxml-common>=0.31.0`: standard library only and docx2svg's own dependency, named for
   what docx-agent imports from it directly (the package kinds, the font folders, the
-  locale). 0.28.0 has the public `imagemeta.pixels_and_density` (review, N2).
+  locale). 0.28.0 has the public `imagemeta.pixels_and_density` (review, N2); 0.31.0
+  `drawingml.theme`, the Office theme a new document is written with (review, S3).
 - `docx2svg>=0.2.0`: renders and lays out, a hard dependency by decision (ROADMAP.md,
   "Decisions", 9): it is standard-library only, so it costs little, and reflow feedback is
   part of every edit's answer. 0.2.0 is docx2svg's first tagged version and always gives
