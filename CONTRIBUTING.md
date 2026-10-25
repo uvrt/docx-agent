@@ -100,3 +100,36 @@ The recipes in [docs/common-tasks.md](docs/common-tasks.md) are run as written b
 
 Open pull requests against `main`. CI runs the default suite on Linux, macOS and Windows,
 Python 3.10 to 3.15, with the siblings installed from their `main` branches.
+
+## Versions
+
+`pyproject.toml`'s version is the one [CHANGELOG.md](CHANGELOG.md)'s top version section
+names, and `docx_agent.__version__` the same; CI's `build` job checks it
+(`tools/check_version.py`). Each version that reaches `main` is tagged `v<version>` on that
+commit by the tag workflow (`.github/workflows/tag.yml`). Raise the version with its
+CHANGELOG section; changes since the last one go under an `Unreleased` heading above it.
+
+## Dependencies
+
+The siblings are not on PyPI yet: install them first, from sibling checkouts
+(`pip install -e ../ooxml-edit -e ../ooxml-common -e ../docx2svg`) or from their
+repositories, as CI does. `pyproject.toml` names versions, never URLs, since PyPI refuses
+a distribution whose dependencies name one. Each floor is the first version with what
+this package uses; what each earlier version added is in that package's CHANGELOG.
+
+- `ooxml-edit>=0.62.0`: the format-neutral editing core (the OPC package, ordered
+  insertion, undo, the tool layer, and in `ooxml_edit.charts` charts, their workbooks and
+  SmartArt, which docx-agent hosts in Word's drawings), extracted from pptx-agent. 0.62.0
+  gives public names to what was imported private (`charts.create.check_options`;
+  review, N2).
+- `ooxml-common>=0.28.0`: standard library only and docx2svg's own dependency, named for
+  what docx-agent imports from it directly (the package kinds, the font folders, the
+  locale). 0.28.0 has the public `imagemeta.pixels_and_density` (review, N2).
+- `docx2svg>=0.2.0`: renders and lays out, a hard dependency by decision (ROADMAP.md,
+  "Decisions", 9): it is standard-library only, so it costs little, and reflow feedback is
+  part of every edit's answer. 0.2.0 is docx2svg's first tagged version and always gives
+  a layout its coverage, which every layout fact is read from.
+- `lxml>=4.9`: the XML tree every edit is made in.
+- `markdown-it-py>=3.0`, `mdit-py-plugins>=0.4` (footnotes): the Markdown parser, by
+  decision (ROADMAP.md, "Decisions", 2): it reads `to_markdown`'s output back for the
+  reverse-parse check and checks a block's inline Markdown before it is written.

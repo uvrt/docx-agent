@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "docx-agent"
-version = "0.0.1"
+version = "0.1.0"
 description = "An AI-editable Word layer: inspect, edit and re-render .docx documents losslessly"
 readme = "README.md"
 license = { text = "MIT" }
@@ -25,69 +25,12 @@ classifiers = [
   "Topic :: Office/Business :: Office Suites",
   "Topic :: Text Processing :: Markup :: XML",
 ]
-# ooxml-edit is the format-neutral editing core (the OPC package, ordered insertion, undo),
-# extracted from pptx-agent; 0.2 brings its charts subpackage (charts, their workbooks and
-# SmartArt), which docx-agent hosts in Word's drawings, and 0.2.2 Chart.workbook_values() and
-# content_types_with(); 0.7.0 the shared describe, edit_chart's read action and Tool.reads,
-# which docx_agent.tools builds on.  ooxml-common (standard library only, and docx2svg's
-# own dependency) is named for what docx-agent imports from it directly: from 0.4.6 the
-# package kinds (ooxml_common.kinds), from 0.8.0 the font folders (office.user_font_dirs,
-# OOXML_FONT_DIRS); ooxml-edit 0.13.0 Toolbox(font_dirs=...) and DocumentFormat.configure,
-# 0.14.0 Call.unlocked (render and check on a snapshot, the lock let go), 0.15.0 chart
-# formatting and edit_chart's actions for it, 0.17.0 worker_task (a daemonic process's
-# subprocess workers run the renderer and the layout).  ooxml-common 0.15.0:
-# ooxml_common.locales (Locale, EN_US).  ooxml-edit 0.19.0: Toolbox(locale=...),
-# Session.locale and call.locale, add_chart(..., locale=).  docx2svg:
-# ConvertOptions(locale=...) (docx2svg on main since #8; its version is still 0.1).
-# ooxml-edit 0.22.0: sources (O3) -- Tool.sources, call.source and Rows.provenance, which
-# word_insert_markdown's and word_edit_table's ``from`` read a dataset or another
-# document's table by; 0.23.0 DocumentFormat.source_hint (d:3 is a drawing, not a dataset);
-# 0.25.0 source addresses in the saved file -- ooxml_edit.provenance, Call.keep_provenance
-# and DocumentFormat.store_provenance/read_provenance, which docx_agent.edit.provenance
-# keeps in a custom XML item.  0.26.0: batch applies its ops one by one (atomic: true for
-# all or none), rolling a failed op back before the format's restored hook.  0.27.0:
-# argument-name aliases (Tool.aliases, names_as) and refusals that say "did you mean".
-# 0.30.0: describe lists the session's datasets, the document's describe too (tested here).
-# 0.31.0: a run of a dataset's rows as a source (d:checks/#2:), and first_rows.  0.32.0:
-# edit_chart's add with its look (data_labels, colors, style, part) and
-# charts.actions.add_style_actions/apply_add_style, which the add handler runs.  0.33.0:
-# text facts (Tool.facts), which the text tools' references are written by.  0.35.0: folded
-# ref names, namespaced tools in a batch, nesting hints (round 6; tested here).  0.37.0: a
-# format's own references (DocumentFormat.own_facts), by which a slide reference is refused.
-# 0.38.0: date patterns (ooxml_edit.dates; Rows.label's date_format, sources.date_pattern),
-# which the tables' date_format writes by.
-# docx2svg renders and lays out, and is a hard dependency by
-# decision (ROADMAP.md, "Decisions", 9): it is standard-library only, so it costs little,
-# and reflow feedback is part of every edit's answer.  Neither is on PyPI yet: install them
-# first from sibling checkouts (`pip install -e ../ooxml-edit -e ../ooxml-common
-# -e ../docx2svg`) or from GitHub.  markdown-it-py (with mdit-py-plugins for footnotes) is the
-# Markdown parser, by decision (ROADMAP.md, "Decisions", 2): it reads to_markdown's output back
-# for the reverse-parse check and checks a block's inline Markdown before it is written.
-# ooxml-edit 0.39.0: Chart.category_dates, by which edit_chart read and the Markdown outline
-# list a chart's dates as ISO dates; ooxml-common 0.17.0, by which docx2svg draws them.
-# ooxml-edit 0.40.0: the dot chart (add_chart "dot", Chart.is_dot).
-# ooxml-edit 0.43.0: Result.nothing_given, an empty items list's no-op (round 7, L7).
-# ooxml-edit 0.45.0: tool roles (Tool.action_roles, call_role, review_core;
-# shared.COMMENT_ACTION_ROLES), by which the list actions and word_comments are tagged.
-# ooxml-edit 0.46.0: session views (Session.view), several agents on one document, which
-# the tools README shows.
-# ooxml-edit 0.47.0: DocumentFormat.tool_hints, which TOOL_HINTS fills (round 9, N5).
-# ooxml-edit 0.49.0: render's sheet and ooxml_edit.tools.tiles, a contact sheet (round 9, N1).
-# ooxml-edit 0.52.0: run_all, warmed workers, ContentStore, DocumentEntry.snapshot and
-# check_images (round 10, O1/O3); ooxml-common 0.24.0: rasterdb.file_stamps.
-# ooxml-edit 0.55.0: tiles.fit and Tiling.shrunk, a sheet's tiles narrowed to fit (round 10, O4).
-# ooxml-edit 0.56.0: check's spacing, which a document refuses (round 12, Q1).
-# ooxml-edit 0.59.0: check's contrast, which a document refuses too (round 15, T2).
-# ooxml-edit 0.60.0: save_document's clean and OpcPackage.drop_orphans (round 16, F11), and a
-# made document as its call's doc (F10).
-# ooxml-edit 0.61.0: check's layout, min_size and styles (round 16, F8).
-# ooxml-edit 0.62.0 and ooxml-common 0.28.0: public names for what was imported private
-# (charts.create.check_options, imagemeta.pixels_and_density; review, N2).
-dependencies = ["lxml>=4.9", "ooxml-edit>=0.62.0", "ooxml-common>=0.28.0", "docx2svg>=0.1", "markdown-it-py>=3.0", "mdit-py-plugins>=0.4"]
+# Why each dependency, and why at its version: CONTRIBUTING.md, "Dependencies".
+dependencies = ["lxml>=4.9", "ooxml-edit>=0.62.0", "ooxml-common>=0.28.0", "docx2svg>=0.2.0", "markdown-it-py>=3.0", "mdit-py-plugins>=0.4"]
 
 [project.optional-dependencies]
 # PNG output goes through docx2svg's rasteriser extra.
-png = ["docx2svg[png]>=0.1"]
+png = ["docx2svg[png]>=0.2.0"]
 dev = ["pytest>=7", "pytest-xdist>=3"]
 
 [project.urls]

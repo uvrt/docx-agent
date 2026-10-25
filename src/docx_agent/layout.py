@@ -79,8 +79,7 @@ class Unknown:
         return False
 
 
-def coverage_facts(coverage, *, at: str | None = None, stopped: "Stop | None" = None,
-                   ids: dict | None = None) -> dict:
+def coverage_facts(coverage, *, at: str | None = None, ids: dict | None = None) -> dict:
     """What a caller needs to tell "laid out and nothing wrong" from "could not lay it all
     out": docx2svg's coverage (:class:`docx2svg.coverage.Coverage`, or its ``as_dict()``),
     compact.  ``complete`` is true only when every block was laid out, every header,
@@ -97,16 +96,9 @@ def coverage_facts(coverage, *, at: str | None = None, stopped: "Stop | None" = 
     rule it has not measured -- a floating drawing in a table cell placed as no probe
     measured, say -- instead of stopping: what they touch may be off) and ``partial``
     (not complete)."""
-    if coverage is None:  # a docx2svg without coverage: what the stop alone says
-        facts = {"complete": stopped is None, "status": "complete" if stopped is None else "partial"}
-        if stopped is not None:
-            facts["stop"] = {"page": stopped.page, "reason": stopped.reason, "at": stopped.at}
-        return facts
     data = coverage if isinstance(coverage, dict) else coverage.as_dict()
-    approximations = data.get("approximations") or []
-    status = data.get("status") or ("partial" if not data["complete"]
-                                    else "approximate" if approximations else "complete")
-    facts = {"complete": data["complete"], "status": status, "pages": data["pages"],
+    approximations = data["approximations"]
+    facts = {"complete": data["complete"], "status": data["status"], "pages": data["pages"],
              "blocks_laid_out": [data["blocks_laid_out"], data["blocks"]]}
     if data["estimate_source"] == "app.xml":
         facts["pages_estimated"] = data["estimated_pages"]
@@ -128,7 +120,7 @@ def coverage_facts(coverage, *, at: str | None = None, stopped: "Stop | None" = 
                                     "message": _short(a["message"])} for a in approximations[:5]]
         if len(approximations) > 5:
             facts["approximations_total"] = len(approximations)
-    placeholders = data.get("placeholders") or []
+    placeholders = data["placeholders"]
     if placeholders:
         facts["placeholders"] = [{"page": p["page"], "reason": p["reason"],
                                   "at": (ids or {}).get(p.get("path")) or p.get("path"),
@@ -202,11 +194,11 @@ class DocumentLayout:
                 self.stopped = Stop(page.number + 1, page.stop.reason, at or page.stop.path)
                 break
         #: docx2svg's :class:`docx2svg.coverage.Coverage`: how much of the document this
-        #: layout covers (``None`` from a docx2svg that predates it).
-        self.coverage = getattr(layout, "coverage", None)
+        #: layout covers.
+        self.coverage = layout.coverage
         #: Element path -> this API's id, for each body block docx2svg drew as a placeholder.
         self._placeholder_ids: dict = {}
-        for entry in getattr(self.coverage, "placeholders", None) or ():
+        for entry in self.coverage.placeholders:
             if entry.path and entry.path.startswith("w:body"):
                 found = _block_id(document, document.package.document_part(), entry.path)
                 if found:
@@ -215,7 +207,7 @@ class DocumentLayout:
     def coverage_facts(self) -> dict:
         """:func:`coverage_facts` of this layout, its stop and placeholders named by this
         API's ids."""
-        return coverage_facts(self.coverage, at=self.stopped.at if self.stopped else None, stopped=self.stopped,
+        return coverage_facts(self.coverage, at=self.stopped.at if self.stopped else None,
                               ids=self._placeholder_ids)
 
     # -- what is known -----------------------------------------------------------------------
