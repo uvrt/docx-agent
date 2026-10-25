@@ -43,7 +43,8 @@ jobs:
           python -m pip install "ooxml-common @ git+https://github.com/uvrt/ooxml-common@public-api-n2"
           # TEMPORARY (n2): ooxml-edit 0.62.0 from its branch until uvrt/ooxml-edit#74 is merged; back to @main then
           python -m pip install "ooxml-edit @ git+https://github.com/uvrt/ooxml-edit@public-api-n2"
-          python -m pip install "docx2svg[png] @ git+https://github.com/uvrt/docx2svg@main"
+          # TEMPORARY (n2): docx2svg (parse.document.cell_conditions) from its branch until uvrt/docx2svg#20 is merged; back to @main then
+          python -m pip install "docx2svg[png] @ git+https://github.com/uvrt/docx2svg@public-api-n2"
           python -m pip install -e .[dev,png]
 
       # The open metric compatible substitutes, as docx2svg's CI installs them (its README,
