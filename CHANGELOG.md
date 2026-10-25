@@ -5,6 +5,27 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.2 -- unreleased
+
+- **The render plumbing is ooxml-edit's** (review, S5): a new `tools/render.py` is a thin
+  adapter, `PageRenderer` (`RENDERER`), over docx2svg for ooxml-edit 0.65.0's shared
+  pipeline (`ooxml_edit.tools.render`), which pptx-agent's slides use too. The adapter says
+  what is a document's: laid out whole, once, in one worker, and its pages rasterised over
+  the workers at once; the raster fingerprint (the rasteriser's font files, embedded faces,
+  the sans-serif face); the `data-docx-*` attributes left out of the key; the layout kept
+  on the document and handed back to the next call's worker. The rest -- `draw`'s cache
+  lookups and keeping, the chunks, the worker tasks, the keys, the warm-up, the contact
+  image's task, `png_size` -- is the shared copy; `tools/shared.py`'s `lay_out_pages`,
+  `rasterise_pages`, `rasterise_tiles`, `warm_up`, `_code_stamp` and `png_size` are gone
+  (`render_pages`, the serial renderer, stays). The same images byte for byte, the same
+  keys, the same tool definitions and token counts; what changes, as pptx-agent did
+  already: `png_size` and every PNG the renderer returns are checked to be a PNG
+  (signature and header), and the warm-up's and the contact image's warnings are left out
+  in the worker. Render timings unchanged within noise (4 pages at 1,000 px: median
+  2,713 ms before, 2,709 ms after; a 3-page contact image 2,406 ms before, 2,354 ms
+  after). `tests/test_parallel_render.py` calls the shared `lay_out_views` with `RENDERER`
+  (the same assertions, the shared shapes). ooxml-edit floor 0.65.0.
+
 ## 0.1.1 -- unreleased
 
 - **The Office theme read from ooxml-common, not copied** (review, S3): `edit/blank.py`
