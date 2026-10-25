@@ -6,6 +6,10 @@ snapshot commit; the development history before it is summarised here.
 
 ## Unreleased
 
+- CI runs nightly (03:17 UTC) and on demand, so a sibling's change that breaks this
+  suite shows the next morning; ooxml-edit's own CI now runs this suite on its pull
+  requests too. No code change.
+
 - `word_design_facts` (round 16, F9), the counterpart of pptx-agent's `ppt_design_facts` for
   analysing a template: measured facts with ids, no verdicts (`Document.design_facts`,
   `docx_agent.edit.design`). `styles`: every paragraph style in use per role (`title`,
