@@ -41,9 +41,8 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install "ooxml-common @ git+https://github.com/uvrt/ooxml-common@main"
           python -m pip install "ooxml-edit @ git+https://github.com/uvrt/ooxml-edit@main"
-          # TEMPORARY (n3): docx2svg 0.2.0 is on its versions-n3 branch until it is merged;
           # point this line back at @main then.
-          python -m pip install "docx2svg[png] @ git+https://github.com/uvrt/docx2svg@versions-n3"
+          python -m pip install "docx2svg[png] @ git+https://github.com/uvrt/docx2svg@main"
           python -m pip install -e .[dev,png]
 
       # The open metric compatible substitutes, as docx2svg's CI installs them (its README,
