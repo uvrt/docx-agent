@@ -5,6 +5,24 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## Unreleased
+
+- **One lookup for `edit_chart`'s series and category, name first** (review, N4): the
+  handler finds them, and `edit_smartart` its node, with ooxml-edit 0.63.0's
+  `charts.actions.resolve_series`, `resolve_category` and `resolve_node`, the lookup
+  pptx-agent's handler uses too; this repository's own `_series` and `_category` are gone.
+  What changes: a series NAME now wins over a position -- a number from 0 is a position
+  only when no series has that name, so a chart whose series are called "1" and "2"
+  means the same in a document and a deck (`series: "1"` took series 1 here before). A
+  name is matched with whitespace collapsed, then full-width forms and case ignored; a
+  name two series or categories share is refused (`label_not_found`, give the position)
+  instead of taking the first; an unknown name is `label_not_found` (was `not_found`),
+  with the names in `valid_options`; a missing series or category lists them too; a
+  position past the end stays `not_found`. A formatting action's `category` is read only
+  with a `series`, as in a deck. `edit_smartart`'s `node` past the end is `not_found`
+  with the node numbers. The tool definitions are unchanged. ooxml-edit floor 0.62.0 ->
+  0.63.0.
+
 ## 0.1.0 -- 2026-10-25
 
 - **Versions that mean something** (review, N3): this is 0.1.0, the first version tagged

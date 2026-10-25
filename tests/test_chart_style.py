@@ -227,3 +227,37 @@ def test_a_scale_without_an_axis_and_what_a_refusal_names():
         missing = call(target=anchor, action="add", categories=["A"],
                        data=[{"name": "S", "values": [1]}]).error
         assert "add needs chart_type: one of column, stacked_column" in missing.message
+
+
+# N4 (review): one lookup in both formats, ooxml-edit's; a name wins over a position.
+# pptx-agent's tests/test_chart_style.py makes the same calls on a slide.
+
+
+@pytest.mark.parametrize("names, which, changed", [
+    (["1", "2"], "1", 0),          # the series called "1"
+    (["2", "1"], "1", 1),
+    (["North", "South"], "1", 1),  # no series called "1": position 1
+])
+def test_a_series_name_wins_over_a_position(names, which, changed):
+    from docx_agent.tools import FORMAT, GROUPS, TOOLS
+
+    document = report()
+    anchor = document.paragraphs()[1].id
+    with Toolbox(TOOLS, formats=[FORMAT], groups=GROUPS) as box:
+        session = box.session()
+        session.open(document.to_bytes(), "report.docx")
+
+        def call(**arguments):
+            return box.dispatch(session, "edit_chart", {"doc": "d1", **arguments})
+
+        assert call(target=anchor, action="add", chart_type="column", categories=["1", "Q2"],
+                    data=[{"name": name, "values": [1, 2]} for name in names], ref="c").ok
+        done = call(target="$c", action="set_value", series=which, category="1", value=9)
+        assert done.ok, done.to_json()
+        assert [series["values"] for series in done.data["series"]] == [
+            [1 if k != changed else 9, 2] for k in range(2)]   # category "1" by name, too
+        error = call(target="$c", action="set_value", series="9", value=1, category="Q2").error
+        assert error.code == "not_found" and error.field == "series"
+        assert error.valid_options == names
+        error = call(target="$c", action="rename_series", series="East", text="x").error
+        assert error.code == "label_not_found" and error.valid_options == names

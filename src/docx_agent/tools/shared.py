@@ -700,17 +700,12 @@ _ADD_NEEDS = {"chart_type": "one of " + ", ".join(shared.CHART_TYPES),
 
 def _chart_need(chart: Any, action: str, name: str, given: Any) -> Any:
     """``given``, or ``invalid_arguments`` saying what ``action`` needs ``name`` to be on this
-    chart: the series or categories (with their positions), the axes, the numbers."""
+    chart: the axes, the numbers, the new label.  A series or category is ooxml-edit's
+    ``resolve_series`` / ``resolve_category``'s (review, N4)."""
     if given is not None:
         return given
-    from ooxml_edit.charts.actions import choices
-
     if action == "add":
         expected = _ADD_NEEDS[name]
-    elif name == "series":
-        expected = choices([s.name for s in chart.series])
-    elif name == "category" and action != "add_category":
-        expected = choices(_labels(chart))
     elif name == "axis":
         expected = " or ".join(chart.axes) or "the chart has no axes"
     elif name == "values":
@@ -727,34 +722,12 @@ def _chart_need(chart: Any, action: str, name: str, given: Any) -> Any:
     raise ToolError("invalid_arguments", f"{action} needs {name}: {expected}", field=name)
 
 
-def _series(chart: Any, which: str | None, action: str = "this action") -> Any:
-    which = _chart_need(chart, action, "series", which)
-    if which.isdigit() and int(which) < len(chart.series):
-        return chart.series[int(which)]
-    try:
-        return chart.series_named(which)
-    except (KeyError, ValueError):
-        raise ToolError("not_found", f"no series {which!r}", field="series",
-                        valid_options=[s.name for s in chart.series]) from None
-
-
 def _labels(chart: Any) -> list[str]:
     """The categories as a model reads and names them: ISO dates for dates kept as serials
     (``chart.category_dates``), else each label as text."""
     from ooxml_edit.charts.actions import category_labels
 
     return category_labels(chart)
-
-
-def _category(chart: Any, which: str | None, action: str = "this action") -> int:
-    which = _chart_need(chart, action, "category", which)
-    labels = _labels(chart)
-    if which in labels:
-        return labels.index(which)
-    if which.isdigit() and int(which) < len(labels):
-        return int(which)
-    hint = "; its categories are dates, named as YYYY-MM-DD" if chart.category_dates is not None else ""
-    raise ToolError("not_found", f"no category {which!r}{hint}", field="category", valid_options=labels)
 
 
 def chart_json(chart: Any) -> dict[str, Any]:
@@ -800,11 +773,12 @@ def edit_chart(call: Any, doc: str, target: str, action: str, chart_type: str | 
 def _style_chart(call: Any, target: str, action: str, *, series: str | None, category: str | None,
                  **arguments: Any) -> Result:
     """The formatting actions (ooxml-edit's ``apply_style_action``)."""
-    from ooxml_edit.charts.actions import apply_style_action, chart_style_json
+    from ooxml_edit.charts.actions import (apply_style_action, chart_style_json, resolve_category,
+                                           resolve_series)
 
     chart = call.document.chart(target)
-    chosen = None if series is None else _series(chart, series, action).index
-    point = None if category is None else _category(chart, category, action)
+    chosen = None if series is None else resolve_series(chart, series, action).index
+    point = None if category is None or chosen is None else resolve_category(chart, category, action)
     apply_style_action(chart, action, series=chosen, category=point, **arguments)
     chart = call.document.chart(target)
     data = chart_json(chart)
@@ -872,6 +846,8 @@ def _add_chart(call: Any, target: str, chart_type: str | None, categories: list[
 def _edit_chart(call: Any, target: str, action: str, number_format: str | None, series: str | None,
                 category: str | None, values: list[float] | None, value: float | None, text: str | None,
                 axis: str | None, position: str | None) -> Result:
+    from ooxml_edit.charts.actions import resolve_category, resolve_series
+
     chart = call.document.chart(target)
     if action == "read":
         return _read_chart(chart, target)
@@ -880,27 +856,28 @@ def _edit_chart(call: Any, target: str, action: str, number_format: str | None, 
         return _chart_need(chart, action, name, given)
 
     if action == "set_values":
-        _series(chart, series, action).set_values(want("values", values))
+        resolve_series(chart, series, action).set_values(want("values", values))
     elif action == "set_value":
-        _series(chart, series, action).set_value(_category(chart, category, action), want("value", value))
+        resolve_series(chart, series, action).set_value(resolve_category(chart, category, action),
+                                                        want("value", value))
     elif action == "add_category":
         chart.add_category(want("category", category), want("values", values))
     elif action == "remove_category":
-        chart.remove_category(_category(chart, category, action))
+        chart.remove_category(resolve_category(chart, category, action))
     elif action == "rename_category":
-        chart.set_category(_category(chart, category, action), want("text", text))
+        chart.set_category(resolve_category(chart, category, action), want("text", text))
     elif action == "add_series":
         chart.add_series(want("text", text), want("values", values))
     elif action == "remove_series":
-        chart.remove_series(_series(chart, series, action).index)
+        chart.remove_series(resolve_series(chart, series, action).index)
     elif action == "rename_series":
-        _series(chart, series, action).set_name(want("text", text))
+        resolve_series(chart, series, action).set_name(want("text", text))
     elif action == "set_title":
         chart.set_title(text)
     elif action == "set_axis_title":
         chart.set_axis_title(want("axis", axis), text)
     elif action in ("show_data_labels", "hide_data_labels"):
-        chosen = None if series is None else [_series(chart, series, action).index]
+        chosen = None if series is None else [resolve_series(chart, series, action).index]
         chart.set_data_labels(action == "show_data_labels", number_format=number_format, series=chosen)
     elif action == "set_gap_width":
         given = want("value", value)
@@ -931,15 +908,18 @@ def _read_chart(chart: Any, target: str) -> Result:
 @handler("edit_smartart", mutates=True)
 def edit_smartart(call: Any, doc: str, target: str, action: str, node: int | None = None,
                   text: str | None = None) -> Result:
+    from ooxml_edit.charts.actions import resolve_node
+
     diagram = call.document.diagram(target)
+    chosen = None if action == "add_node" else resolve_node(diagram, node, action)
     if action == "set_text":
-        diagram.set_text(need(node, "node"), need(text, "text"))
+        diagram.set_text(chosen, need(text, "text"))
     elif action == "add_node":
         diagram.add_node(text or "")
     elif action == "remove_node":
-        diagram.remove_node(need(node, "node"))
+        diagram.remove_node(chosen)
     else:
-        diagram.add_node(text or "", parent=diagram.node(need(node, "node")))
+        diagram.add_node(text or "", parent=chosen)
     diagram = call.document.diagram(target)
     return Result(summary=f"{action} on {target}", changed=[target],
                   data={"nodes": [short(t, 80) for t in diagram.texts]})
