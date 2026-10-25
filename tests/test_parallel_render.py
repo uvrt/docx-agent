@@ -14,7 +14,10 @@ from ooxml_edit.tools import InProcess, Limits, Toolbox  # noqa: E402
 
 from docx_agent import Document  # noqa: E402
 from docx_agent.tools import FORMAT, GROUPS, TOOLS  # noqa: E402
-from docx_agent.tools.shared import lay_out_pages, render_pages  # noqa: E402
+from ooxml_edit.tools.render import lay_out_views  # noqa: E402
+
+from docx_agent.tools.render import RENDERER  # noqa: E402
+from docx_agent.tools.shared import render_pages  # noqa: E402
 
 
 def _pages(count: int = 4) -> bytes:
@@ -114,31 +117,31 @@ def test_refusals_cost_no_render():
         assert runner.ran == []
 
 
-def test_lay_out_pages_leaves_out_the_svg_of_an_image_held():
+def test_lay_out_views_leaves_out_the_svg_of_an_image_held():
     data = _pages(2)
-    first = lay_out_pages(data, [1, 2], 300, [])
-    assert first["count"] == 2 and all(svg for _, _, svg in first["pages"])
-    key = first["pages"][0][1]
-    again = lay_out_pages(data, [1, 2], 300, [], known=[key])
-    assert again["pages"][0] == (1, key, None)
-    assert again["pages"][1][2] == first["pages"][1][2]
+    first = lay_out_views(RENDERER, data, [1, 2], 300, [])
+    assert first["facts"]["count"] == 2 and all(svg for _, _, svg, _ in first["views"])
+    key = first["views"][0][1]
+    again = lay_out_views(RENDERER, data, [1, 2], 300, [], known=[key])
+    assert again["views"][0] == (1, key, None, None)
+    assert again["views"][1][2] == first["views"][1][2]
 
 
 def test_a_layout_handed_back_draws_the_same_pages_without_laying_out_again(monkeypatch):
     import docx2svg
 
     data = _pages(3)
-    first = lay_out_pages(data, [1, 2, 3], 300, [])
-    assert first["laid_out"]
+    first = lay_out_views(RENDERER, data, [1, 2, 3], 300, [])
+    assert first["facts"]["laid_out"]
     calls = []
     lay_out = docx2svg.lay_out_docx
     monkeypatch.setattr(docx2svg, "lay_out_docx", lambda *a, **k: calls.append(1) or lay_out(*a, **k))
-    again = lay_out_pages(data, [3, 1], 300, [], laid_out=first["laid_out"])
-    assert calls == [] and again["laid_out"] is None
-    by_page = {page: svg for page, _, svg in first["pages"]}
-    assert [(page, svg) for page, _, svg in again["pages"]] == [(3, by_page[3]), (1, by_page[1])]
-    assert (again["count"], again["coverage"], again["raster"]) == (first["count"], first["coverage"],
-                                                                    first["raster"])
+    again = lay_out_views(RENDERER, data, [3, 1], 300, [], state=first["facts"]["laid_out"])
+    assert calls == [] and again["facts"]["laid_out"] is None
+    by_page = {page: svg for page, _, svg, _ in first["views"]}
+    assert [(page, svg) for page, _, svg, _ in again["views"]] == [(3, by_page[3]), (1, by_page[1])]
+    assert ((again["facts"]["count"], again["facts"]["coverage"], again["raster"])
+            == (first["facts"]["count"], first["facts"]["coverage"], first["raster"]))
 
 
 def test_the_next_call_on_the_same_version_hands_its_worker_the_layout():
@@ -148,8 +151,8 @@ def test_the_next_call_on_the_same_version_hands_its_worker_the_layout():
     run = runner.run
 
     def recording(fn, *args, timeout, **kwargs):
-        if fn.__name__ == "lay_out_pages":
-            seen.append(args[6] is not None)
+        if fn.__name__ == "lay_out_views":
+            seen.append(args[7] is not None)    # the layout handed over (state)
         return run(fn, *args, timeout=timeout, **kwargs)
 
     runner.run = recording

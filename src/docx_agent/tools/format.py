@@ -20,7 +20,7 @@ from ..edit.inline import SpanError
 from ..edit.pictures import PictureError
 from ..edit.ranges import AmbiguousAnchor, AnchorNotFound
 from ._base import checks, problem_key
-from .shared import warm_up
+from .render import warm_up
 from .table_data import source_hint
 from .touched import touched
 
