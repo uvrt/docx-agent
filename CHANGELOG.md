@@ -5,7 +5,16 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
-## Unreleased
+## 0.1.1 -- unreleased
+
+- **The Office theme read from ooxml-common, not copied** (review, S3): `edit/blank.py`
+  writes a new document's theme -- its colours, Aptos Display / Aptos, the per-script
+  faces, the format scheme's gradients and line widths -- from
+  `ooxml_common.drawingml.theme`, shared with pptx-agent's new deck, instead of its own
+  copy (`THEME_COLORS`, `MAJOR_FONT`, `MINOR_FONT`, `SCRIPT_FONTS` and `LINE_WIDTHS` stay,
+  as the shared values). A test compared the copy with the shared data, once, on the pull
+  request, before it went. The same theme as before, byte for byte. ooxml-common floor
+  0.31.0.
 
 - **One lookup for `edit_chart`'s series and category, name first** (review, N4): the
   handler finds them, and `edit_smartart` its node, with ooxml-edit 0.63.0's
