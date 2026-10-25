@@ -83,9 +83,9 @@ def image_format(data: bytes) -> tuple[str, str]:
 
 def natural_size(data: bytes) -> tuple[float, float]:
     """A picture's natural size in points: its pixels at its stated density, else 96 dpi."""
-    from ooxml_common.imagemeta import _pixels_and_density
+    from ooxml_common.imagemeta import pixels_and_density
 
-    found = _pixels_and_density(data)
+    found = pixels_and_density(data)
     if not found or not found[0] or not found[1]:
         raise PictureError("the picture's size cannot be read")
     width, height, density_x, density_y = found

@@ -81,7 +81,9 @@ classifiers = [
 # ooxml-edit 0.60.0: save_document's clean and OpcPackage.drop_orphans (round 16, F11), and a
 # made document as its call's doc (F10).
 # ooxml-edit 0.61.0: check's layout, min_size and styles (round 16, F8).
-dependencies = ["lxml>=4.9", "ooxml-edit>=0.61.0", "ooxml-common>=0.24.0", "docx2svg>=0.1", "markdown-it-py>=3.0", "mdit-py-plugins>=0.4"]
+# ooxml-edit 0.62.0 and ooxml-common 0.28.0: public names for what was imported private
+# (charts.create.check_options, imagemeta.pixels_and_density; review, N2).
+dependencies = ["lxml>=4.9", "ooxml-edit>=0.62.0", "ooxml-common>=0.28.0", "docx2svg>=0.1", "markdown-it-py>=3.0", "mdit-py-plugins>=0.4"]
 
 [project.optional-dependencies]
 # PNG output goes through docx2svg's rasteriser extra.
