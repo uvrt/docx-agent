@@ -97,8 +97,10 @@ def coverage_facts(coverage, *, at: str | None = None, ids: dict | None = None) 
     measured, say -- instead of stopping: what they touch may be off) and ``partial``
     (not complete)."""
     data = coverage if isinstance(coverage, dict) else coverage.as_dict()
-    approximations = data["approximations"]
-    facts = {"complete": data["complete"], "status": data["status"], "pages": data["pages"],
+    approximations = data.get("approximations") or []
+    status = data.get("status") or ("partial" if not data["complete"]
+                                    else "approximate" if approximations else "complete")
+    facts = {"complete": data["complete"], "status": status, "pages": data["pages"],
              "blocks_laid_out": [data["blocks_laid_out"], data["blocks"]]}
     if data["estimate_source"] == "app.xml":
         facts["pages_estimated"] = data["estimated_pages"]
@@ -120,7 +122,7 @@ def coverage_facts(coverage, *, at: str | None = None, ids: dict | None = None) 
                                     "message": _short(a["message"])} for a in approximations[:5]]
         if len(approximations) > 5:
             facts["approximations_total"] = len(approximations)
-    placeholders = data["placeholders"]
+    placeholders = data.get("placeholders") or []
     if placeholders:
         facts["placeholders"] = [{"page": p["page"], "reason": p["reason"],
                                   "at": (ids or {}).get(p.get("path")) or p.get("path"),

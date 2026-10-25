@@ -8,16 +8,16 @@ snapshot commit; the development history before it is summarised here.
 ## 0.1.0 -- 2026-10-25
 
 - **Versions that mean something** (review, N3): this is 0.1.0, the first version tagged
-  (`v0.1.0`). It asks for `docx2svg>=0.2.0` (the `png` extra too), docx2svg's first
-  tagged version, which always gives a layout its coverage, so the paths for a docx2svg
-  without one are gone: `DocumentLayout.coverage` is docx2svg's, never `None`;
-  `coverage_facts` no longer takes `stopped` (it answered from the stop alone when there
-  was no coverage) and reads `status`, `approximations` and `placeholders` as docx2svg
-  0.2.0 always gives them; a render's `coverage` is always given. The same facts for
-  every supported install. Each version that reaches `main` is tagged by the new tag
-  workflow, and CI's `build` job checks that `pyproject.toml`'s version is the one this
-  file's top version section names (`tools/check_version.py`). The dependency notes
-  moved from `pyproject.toml` to CONTRIBUTING.md, "Dependencies".
+  (`v0.1.0`). It asks for `docx2svg>=0.2.0` (the `png` extra too), docx2svg's first tagged
+  version, which always gives a layout its coverage, so the paths for a docx2svg without
+  one are gone: `DocumentLayout.coverage` is docx2svg's, never `None`; `coverage_facts` no
+  longer takes `stopped` (it answered from the stop alone when there was no coverage); a
+  render's `coverage` is always given. A coverage given as a dictionary still may leave
+  out `status`, `approximations` and `placeholders`. The same facts for every supported
+  install. Each version that reaches `main` is tagged by the new tag workflow, and CI's
+  `build` job checks that `pyproject.toml`'s version is the one this file's top version
+  section names (`tools/check_version.py`). The dependency notes moved from
+  `pyproject.toml` to CONTRIBUTING.md, "Dependencies".
 
 - No private name of a sibling is imported any more (review, N2): docx2svg's
   `parse.document.cell_conditions` (was `_conditions`), ooxml-common 0.28.0's
