@@ -10,16 +10,17 @@ the session's own (``shared.SESSION_TOOLS``); this module adds docx's ``new_docu
 from __future__ import annotations
 
 import hashlib
-import re
-import struct
 from typing import Any
 
 from ooxml_edit.tools import Result, ToolError, shared, tiles, worker_task
+from ooxml_edit.tools import render as pipeline
+from ooxml_edit.tools.render import png_size
 
 from ..edit.document import Document
 from ..edit.properties import refreshed_app
 from ..layout import font_dirs_of, lay_out_unlocked, locale_of
 from ..layout_facts import layout_facts
+from .render import RENDERER
 from ._base import need, outcome, page, reflow_json, remember, resolve, short, validate_delta, wrap
 
 KIND = "docx"
@@ -238,220 +239,41 @@ def render_pages(data: bytes, pages: list[int], width: int, font_dirs: list[str]
     return list(pngs), count, coverage_facts(options.coverage)
 
 
-@worker_task
-def rasterise_tiles(svg: str, font_dirs: list[str] | None = None) -> bytes:
-    """In a worker: the PNG of a contact sheet's SVG (``ooxml_edit.tools.tiles.tiled_svg``:
-    the pages' PNGs at their own size, their labels), drawn once at the SVG's own size."""
-    from docx2svg.png import svg_to_png
-
-    return svg_to_png(svg, font_dirs=font_dirs)
-
-
-def png_size(data: bytes) -> tuple[int, int]:
-    return struct.unpack(">II", data[16:24])
-
-
-# The render tool's tasks.  A document is laid out whole, so one worker lays it out once and
-# writes the pages' SVGs (lay_out_pages); the pages whose image is not held already are
-# then rasterised over all the workers at once (rasterise_pages), in chunks.  Both work
-# from the bytes they are given (docx2svg opens them itself); their PNGs are render_pages'
-# byte for byte: the same docx2svg passes and the same rasteriser arguments.
-
-
-@worker_task
-def warm_up() -> None:
-    """A new worker's first task, before any call's: the renderer's imports, the
-    rasteriser's own load of the system's fonts (once per process), and the stamp of the
-    renderers' code -- what the first render would pay for."""
-    import docx2svg  # noqa: F401
-    from docx2svg.png import svg_to_png
-
-    _code_stamp()
-    svg_to_png('<svg xmlns="http://www.w3.org/2000/svg" width="64" height="16">'
-               '<text x="0" y="12" font-family="sans-serif" font-size="10">Aa</text></svg>')
-
-
-#: The ``data-docx-*`` attributes of a page's SVG: where its elements come from (paths,
-#: ids), which the rasteriser never reads -- left out of the key, so the ids an edit gives
-#: every paragraph (``w14:paraId``) do not make every page new.
-_DOCX_DATA = re.compile(r' data-docx-[a-z-]+="[^"]*"')
-
-
-def _code_stamp() -> list:
-    from ooxml_edit.tools.rendercache import code_stamp
-
-    return code_stamp("docx2svg", "ooxml_common", "resvg_py")
-
-
-@worker_task
-def lay_out_pages(data: bytes, pages: list[int], width: int, font_dirs: list[str] | None = None,
-                  locale: Any = None, known: list[str] = (), laid_out: bytes | None = None) -> dict:
-    """In a worker: the document laid out once, and each of ``pages`` that it has as
-    ``(page, key, svg)`` -- ``key`` the image's content key (the SVG, and everything else the
-    pixels depend on: the font files the rasteriser is handed, with their times and sizes,
-    the embedded faces by digest, the rasteriser's options, the renderers' code), ``svg``
-    ``None`` where the key is in ``known`` (the caller holds that image).  Also ``count``
-    (the pages there are), ``coverage`` (as :func:`render_pages`) and ``raster``: what
-    :func:`rasterise_pages` hands the rasteriser, the embedded faces as bytes.
-
-    ``laid_out`` is a layout of these very bytes, font folders and locale that an earlier
-    call returned as ``"laid_out"`` (pickled: the layout and the faces it was measured
-    with, :func:`docx2svg.lay_out_docx`); given, the document is not laid out again --
-    the same pages, byte for byte, for the cost of unpickling it.  Without it, the layout
-    is made here and returned so, for the caller to hand the next call."""
-    import os
-    import pickle
-    import tempfile
-
-    import docx2svg
-    from docx2svg.fonts import rasteriser_files
-    from ooxml_common.fonts.rasterdb import file_stamps, resvg_system_dirs
-    from ooxml_edit.tools import content_key
-
-    from ..layout import coverage_facts, locale_of
-
-    locale = locale_of(None) if locale is None else locale
-    options = docx2svg.ConvertOptions(pages=pages, width=width, font_dirs=font_dirs, locale=locale)
-    fresh = None
-    if laid_out is not None:
-        layout, fonts = pickle.loads(laid_out)
-    else:
-        layout, _, fonts = docx2svg.lay_out_docx(data, options)
-        fresh = pickle.dumps((layout, fonts), protocol=pickle.HIGHEST_PROTOCOL)
-    count = len(layout.pages)
-    svgs = docx2svg.page_svgs(layout, data, options, device_size=True, fonts=fonts)
-    numbers = [page for page in pages if 1 <= page <= count]
-    # The rasteriser's arguments, as docx2svg's convert_docx_to_png makes them.
-    faces = docx2svg.drawn_faces(layout)
-    files: list = []
-    embedded: list = []
-    sans = None
-    missing = fonts is None
-    with tempfile.TemporaryDirectory(prefix="docx2svg-embedded-") as directory:
-        if fonts is not None:
-            found, lacking, _ = rasteriser_files(fonts, faces, directory)
-            missing = bool(lacking)
-            for path in found:
-                if os.path.dirname(path) == directory:
-                    with open(path, "rb") as handle:
-                        embedded.append((os.path.basename(path), handle.read()))
-                    files.append(["embedded", os.path.basename(path)])
-                else:
-                    files.append(path)
-            for family in ("Arial", "Helvetica", "Calibri"):
-                face = fonts.drawing_face(family, record=False)
-                if face is not None and not face.source.startswith("embedded:"):
-                    sans = family
-                    if face.source not in files:
-                        files.append(face.source)
-                    break
-    skip = not missing
-    dirs = docx2svg.user_font_dirs(options)
-    system = None
-    if not skip:
-        found_dirs = resvg_system_dirs()
-        system = file_stamps((), found_dirs) if found_dirs is not None else "fontconfig"
-    plain = [path for path in files if isinstance(path, str)]
-    fingerprint = content_key("docx-agent raster", _code_stamp(), skip, sans, file_stamps(plain, dirs),
-                              files, [(name, content_key(blob)) for name, blob in embedded], system)
-    known = set(known)
-    out = []
-    for page, svg in zip(numbers, svgs):
-        key = content_key("docx-agent png", _DOCX_DATA.sub("", svg), fingerprint)
-        out.append((page, key, None if key in known else svg))
-    return {"pages": out, "count": count,
-            "coverage": coverage_facts(layout.coverage),
-            "raster": {"files": files, "embedded": embedded, "dirs": dirs, "skip": skip,
-                       "sans": sans},
-            "laid_out": fresh}
-
-
-@worker_task
-def rasterise_pages(svgs: list[str], raster: dict) -> list[bytes]:
-    """In a worker: the PNG of each page SVG of :func:`lay_out_pages`, with its ``raster``
-    arguments (the embedded faces written to a temporary folder for as long as it takes)."""
-    import os
-    import tempfile
-
-    from docx2svg.png import svg_to_png
-
-    with tempfile.TemporaryDirectory(prefix="docx2svg-embedded-") as directory:
-        written = {}
-        for name, blob in raster["embedded"]:
-            path = written[name] = os.path.join(directory, name)
-            with open(path, "wb") as handle:
-                handle.write(blob)
-        files = [written[item[1]] if isinstance(item, list) else item for item in raster["files"]]
-        return [svg_to_png(svg, backend="auto", font_dirs=raster["dirs"], font_files=files,
-                           skip_system_fonts=raster["skip"], sans_serif_family=raster["sans"])
-                for svg in svgs]
-
-
 def draw(call: Any, pages: list[int], width: int) -> tuple[dict, int | None, dict | None]:
-    """``{page: (png, cached)}`` for the pages the document has among ``pages``, drawn
+    """``{page: (png, meta, cached)}`` for the pages the document has among ``pages``, drawn
     ``width`` px wide; the page count when the document was laid out (``None`` when every
     page was held already); and the layout's coverage facts then.
 
-    An image is kept by its content in the toolbox's store (``call.images``); this version's
-    key of each page is remembered on the document, so a repeat is answered here.  The rest:
-    one worker lays the document out (:func:`lay_out_pages`), told which images the store
-    holds -- a page an edit left as it was is keyed, found and not drawn again -- and the pages left are rasterised over the workers at once, in chunks
-    (:func:`rasterise_pages`).  The bytes are the version's snapshot, taken under the lock;
-    the workers work with the lock let go.  The layout comes back with the pages and is
-    kept on the document by the bytes' digest (the latest only): the next call drawing
-    other pages of the same bytes hands it to its worker instead of laying the document
-    out again (36 pages: about 1.5 s a call)."""
-    entry, version, limits, store = call.entry, call.entry.version, call.limits, call.images
-    fonts = tuple(font_dirs_of(call.document))
-    locale = locale_of(call.document)
-    drawn: dict = {}
-    todo = []
-    for number in dict.fromkeys(pages):
-        key = entry.render_keys.get((version, number, width, fonts, locale))
-        found = store.get(key) if key is not None else None
-        if found is not None:
-            drawn[number] = (found[0], True)
-        else:
-            todo.append(number)
-    if not todo:
+    ooxml-edit's render pipeline draws them (:func:`ooxml_edit.tools.render.draw`, with the
+    document's :data:`.render.RENDERER`): an image is kept by its content in the toolbox's
+    store (``call.images``), this version's key of each page on the document, so a repeat
+    is answered there.  The rest: one worker lays the document out, told which images the
+    store holds -- a page an edit left as it was is keyed, found and not drawn again -- and
+    the pages left are rasterised over the workers at once, in chunks.  The layout comes
+    back with the pages and is kept on the document by the bytes' digest (the latest only):
+    the next call drawing other pages of the same bytes hands it to its worker instead of
+    laying the document out again (36 pages: about 1.5 s a call)."""
+    document = call.document
+    fonts = tuple(font_dirs_of(document))
+    locale = locale_of(document)
+    layout_key = []
+
+    def kept_layout(data: bytes) -> bytes | None:
+        # The layout of these bytes an earlier call made, kept on the document (one: the
+        # latest), so that drawing another page of a version does not lay it out again.
+        layout_key.append((hashlib.sha256(data).digest(), fonts, locale))
+        kept = getattr(document, "_tool_render_layout", None)
+        return kept[1] if kept is not None and kept[0] == layout_key[0] else None
+
+    def on_facts(facts: dict, alone: bool) -> None:
+        if facts.get("laid_out") is not None:
+            document._tool_render_layout = (layout_key[0], facts["laid_out"])
+
+    drawn, facts = pipeline.draw(call, RENDERER, pages, width, ids={page: page for page in pages},
+                                 fonts=fonts, locale=locale, state=kept_layout, on_facts=on_facts)
+    if not facts:
         return drawn, None, None
-    data = entry.snapshot()
-    held = store.entries()           # what the worker is told is drawn already
-    # The layout of these bytes an earlier call made, kept on the document (one: the
-    # latest), so that drawing another page of a version does not lay it out again.
-    layout_key = (hashlib.sha256(data).digest(), fonts, locale)
-    kept = getattr(call.document, "_tool_render_layout", None)
-    laid_out = kept[1] if kept is not None and kept[0] == layout_key else None
-    with call.unlocked():
-        laid = call.run(lay_out_pages, data, todo, width, list(fonts), locale, list(held), laid_out,
-                        timeout=limits.render_timeout_for(len(todo)))
-        fresh = [(page, key, svg) for page, key, svg in laid["pages"] if svg is not None]
-        parallel = min(call.parallelism, len(fresh)) or 1
-        chunks = [fresh[start::parallel] for start in range(parallel)]
-        chunks = [chunk for chunk in chunks if chunk]
-        results = call.run_all(rasterise_pages, [([svg for _, _, svg in chunk], laid["raster"])
-                                                 for chunk in chunks],
-                               timeouts=[limits.render_timeout_for(len(chunk)) for chunk in chunks])
-    if laid.get("laid_out") is not None:
-        call.document._tool_render_layout = (layout_key, laid["laid_out"])
-    pngs: dict = {}
-    failed = None
-    for chunk, result in zip(chunks, results):
-        if isinstance(result, BaseException):
-            failed = failed or result
-            continue
-        for (page, key, _), png in zip(chunk, result):
-            store.put(key, png)
-            pngs[key] = png
-    for page, key, svg in laid["pages"]:
-        png = pngs.get(key) if svg is not None else held[key][0]
-        if png is None:
-            continue
-        entry.render_keys.put((version, page, width, fonts, locale), key)
-        drawn[page] = (png, svg is None)
-    if failed is not None:
-        raise failed                     # what the other chunks drew is kept
-    return drawn, laid["count"], laid["coverage"]
+    return drawn, facts[0]["count"], facts[0]["coverage"]
 
 
 @handler("render")
@@ -481,7 +303,7 @@ def render(call: Any, doc: str, slides: list | None = None, pages: list[int] | N
         images.append(call.image(png, w, h, label=f"page {number}").describe())
     result = Result(summary=f"Rendered page(s) {', '.join(map(str, pages))} (final view: changes accepted, "
                     "comments hidden)", data={"pages": pages,
-                                              "cached": [p for p in pages if drawn[p][1]]})
+                                              "cached": [p for p in pages if drawn[p][2]]})
     render_version, coverage = getattr(call.document, "_tool_render_coverage", (None, None))
     if coverage is not None and render_version == (version, fonts, locale):
         result.data["coverage"] = coverage
@@ -544,14 +366,10 @@ def _render_sheet(call: Any, pages: list[int] | None, width: int | None, sheet: 
         elif tiling.width != drawn_as.width:     # taller pages, or fewer than the first 30
             drawn, _, again = draw(call, pages, tiling.width)
             coverage = coverage if again is None else again
-        tiles_cached = [p for p in pages if drawn[p][1]]
-        with call.unlocked():
-            # The snapshot is taken (the tiles); the worker draws the sheet from it.
-            views = [(drawn[p][0], *png_size(drawn[p][0]), f"page {p}") for p in pages]
-            tiles.check_size(tiling, [h for _, _, h, _ in views], name="sheet", what="pages",
-                             max_edge=limits.max_image_edge)
-            svg, w, h = tiles.tiled_svg(views, tiling)
-            png = call.run(rasterise_tiles, svg, list(fonts))
+        tiles_cached = [p for p in pages if drawn[p][2]]
+        # The snapshot is taken (the tiles); the worker draws the sheet from it.
+        png, w, h = pipeline.draw_tiles(call, RENDERER, [(drawn[p][0], f"page {p}") for p in pages],
+                                        tiling, name="sheet", what="pages", fonts=fonts)
         if coverage is not None:
             call.document._tool_render_coverage = ((version, fonts, locale), coverage)
         made = (png, w, h, pages, tiling)
