@@ -127,7 +127,7 @@ validation -- each run as written by the tests: [docs/common-tasks.md](docs/comm
 
 ## Status
 
-Pre-release (0.0.1); the API may still change. Golden transcripts replay the end-to-end
+Pre-release (0.1.0); the API may still change. Golden transcripts replay the end-to-end
 trial's Word tasks with the tools alone to byte-identical outputs. The Microsoft Word
 oracle tests are local-only (macOS with Word) and skip elsewhere, including CI.
 

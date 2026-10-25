@@ -220,7 +220,7 @@ def replace_text(call: Any, doc: str, find: str, replace: str, expect: str, rege
 def render_pages(data: bytes, pages: list[int], width: int, font_dirs: list[str] | None = None,
                  locale: Any = None) -> tuple[list[bytes], int, dict | None]:
     """In a worker: the pages as PNGs at ``width`` pixels, the page count, and the layout's
-    coverage (``coverage_facts``; ``None`` from a docx2svg without it).  ``font_dirs`` is
+    coverage (``coverage_facts``).  ``font_dirs`` is
     the application's font folders, resolved by the caller (the worker sees neither the
     session nor a variable set since it started); ``None`` leaves the worker's default.
     ``locale`` is the session's (``call.locale``, an :class:`ooxml_common.locales.Locale`:
@@ -235,8 +235,7 @@ def render_pages(data: bytes, pages: list[int], width: int, font_dirs: list[str]
     count = (len(docx2svg.convert_docx_to_svg(data, docx2svg.ConvertOptions(font_dirs=font_dirs,
                                                                              locale=locale)))
              if len(pngs) < len(pages) else -1)
-    coverage = getattr(options, "coverage", None)
-    return list(pngs), count, coverage_facts(coverage) if coverage is not None else None
+    return list(pngs), count, coverage_facts(options.coverage)
 
 
 @worker_task
@@ -320,7 +319,6 @@ def lay_out_pages(data: bytes, pages: list[int], width: int, font_dirs: list[str
         layout, _, fonts = docx2svg.lay_out_docx(data, options)
         fresh = pickle.dumps((layout, fonts), protocol=pickle.HIGHEST_PROTOCOL)
     count = len(layout.pages)
-    coverage = getattr(layout, "coverage", None)
     svgs = docx2svg.page_svgs(layout, data, options, device_size=True, fonts=fonts)
     numbers = [page for page in pages if 1 <= page <= count]
     # The rasteriser's arguments, as docx2svg's convert_docx_to_png makes them.
@@ -362,7 +360,7 @@ def lay_out_pages(data: bytes, pages: list[int], width: int, font_dirs: list[str
         key = content_key("docx-agent png", _DOCX_DATA.sub("", svg), fingerprint)
         out.append((page, key, None if key in known else svg))
     return {"pages": out, "count": count,
-            "coverage": coverage_facts(coverage) if coverage is not None else None,
+            "coverage": coverage_facts(layout.coverage),
             "raster": {"files": files, "embedded": embedded, "dirs": dirs, "skip": skip,
                        "sans": sans},
             "laid_out": fresh}
