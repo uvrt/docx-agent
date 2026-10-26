@@ -5,6 +5,32 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.5 -- unreleased
+
+- **`edit_chart` and `edit_smartart` as in a deck** (review, S10; needs ooxml-edit 0.67.0).
+  The handlers (`tools/shared.py`) are now ooxml-edit's `charts.actions` -- the data
+  actions, the missing-argument messages (`_chart_need` is gone), `add`'s checks and look,
+  the SmartArt actions and the results -- with only finding the drawing and its `id` here.
+  What a model sees change, as the user chose for both formats:
+  - `add_category` takes the new label from `text`, as the shared definition says (it read
+    `category`; a call giving only `category` is now "add_category needs text"), and its
+    `values` may be left out (blanks), as `add_series`' may;
+  - `set_legend` without `position` puts the legend on the right (it was refused), and a
+    label position (`center`...) is refused (it was taken as the right);
+  - `edit_smartart` `set_text` without `text` sets empty text (it was refused), and every
+    result's `nodes` is `[{n, text, level}]` (it was each node's text, cut at 80
+    characters);
+  - every `edit_chart` result has `number_formats` (`values`, `data_labels`, `value_axis`)
+    and, for a bar or column chart, `gap_width`; numeric categories are listed as numbers
+    (they were text; dates are still ISO dates); `read` adds `axes` (each axis' title) and
+    drops `number_format`, which is `number_formats.values`.
+  Golden transcripts: w3-figures-update's `add_category` call now gives the label as
+  `text` (it gave `category`), and its saved document is byte for byte the one recorded;
+  the `data_sha`/`data_keys` of w3's, w9's and w14's chart results are re-recorded, each
+  checked to differ only by the result keys above. `tests/test_chart_cases.py` runs
+  ooxml-edit's table (`charts.cases`) through these tools, as pptx-agent's does through its
+  own. Tool definitions are unchanged.
+
 ## 0.1.4 -- unreleased
 
 - **Error codes with ooxml-edit's typed refusals** (review, S9; with ooxml-edit 0.66.0;
