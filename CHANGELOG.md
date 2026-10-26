@@ -7,7 +7,8 @@ snapshot commit; the development history before it is summarised here.
 
 ## 0.1.4 -- unreleased
 
-- **Error codes with ooxml-edit's typed refusals** (review, S9; needs ooxml-edit 0.66.0).
+- **Error codes with ooxml-edit's typed refusals** (review, S9; with ooxml-edit 0.66.0;
+  the tests skip on an older one, and the requirement stays `>=0.65.0`).
   ooxml-edit now raises an `ArgumentError` for a value it refuses and a `UnitError` for one
   out of its range (`ooxml_edit.errors`), and its dispatcher says `invalid_arguments` and
   `unit` for them. What a model sees change: `edit_smartart` removing a diagram's last node
