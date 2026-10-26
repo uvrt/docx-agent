@@ -5,6 +5,20 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.4 -- unreleased
+
+- **Error codes with ooxml-edit's typed refusals** (review, S9; with ooxml-edit 0.66.0;
+  the tests skip on an older one, and the requirement stays `>=0.65.0`).
+  ooxml-edit now raises an `ArgumentError` for a value it refuses and a `UnitError` for one
+  out of its range (`ooxml_edit.errors`), and its dispatcher says `invalid_arguments` and
+  `unit` for them. What a model sees change: `edit_smartart` removing a diagram's last node
+  is `invalid_arguments`, not `unit`, as in a deck. The library's own errors keep their
+  codes (`ERRORS` is unchanged: `FormattingError` `unit`, `SpanError`, `PictureError` and
+  `EditError` `refused`, `AnchorNotFound` `not_found`, `AmbiguousAnchor` `ambiguous`), and
+  nothing here mapped an ooxml-edit `ValueError` that the typing makes redundant
+  (`edit_chart`'s catch of `ChartDataError`, not one of the typed classes, stays). New
+  `tests/test_tool_errors.py`. Tool definitions are unchanged.
+
 ## 0.1.3 -- unreleased
 
 - **A linter, and `py.typed`** (review, S8): ruff checks pyflakes and a few bug-finding rules
