@@ -14,10 +14,10 @@ snapshot commit; the development history before it is summarised here.
   `<!-- t:3C table style: Report table alt: sample:record-table -->`. An inline content
   control's comment adds `tag: ...` and `title: ...` (`w:alias`), as a block control's
   already did. `describe` adds `alt` and `description` to each table that has them, and
-  `tagged_controls` (`[{id, kind, tag?, title?}]`, at most 30; left out when no control is
-  tagged or titled) beside the `controls` count. New: `Table.alt_text`
+  `tagged` (`[{id, kind, tag?, title?}]`: each content control with a tag or a title, at
+  most 30; left out when there is none). New: `Table.alt_text`
   (`{"alt"?, "description"?}`). Golden transcripts: w11-contract-form's `describe` result
-  is re-recorded with `--new-keys tagged_controls` (its data less that key as recorded).
+  is re-recorded with `--new-keys tagged` (its data less that key as recorded).
   Tool definitions are unchanged.
 
 ## 0.1.5 -- unreleased

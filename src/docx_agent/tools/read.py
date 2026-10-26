@@ -96,7 +96,6 @@ def word_describe(call: Any, doc: str) -> Result:
     threads = [c for c in comments if c.parent is None]
     revisions = document.revisions()
     fields = Counter(f.keyword for f in document.fields())
-    controls = document.content_controls()
     data: dict[str, Any] = {
         "name": entry.name, "pages": _pages(call), "compatibility_mode": document.compatibility_mode,
         "properties": {k: v for k, v in document.properties.items() if k in ("title", "author", "subject")},
@@ -117,14 +116,15 @@ def word_describe(call: Any, doc: str) -> Result:
         "drawings": [{"id": d.id, "kind": drawing_kind(d), **({"alt_text": short(d.alt_text, 60)} if d.alt_text else {})}
                      for d in _drawings(document)][:30],
         "notes": dict(Counter(n.kind for n in document.notes())),
-        "controls": len(controls),
+        "controls": len(document.content_controls()),
         "problems": [str(p) for p in entry.baseline_problems][:20],
     }
-    # The controls a tag or title names, so a sample can be found by it.
+    # Each content control a tag or title names, so a sample can be found by it.
     named = [{"id": c.id, "kind": c.kind, **({"tag": short(c.tag, 80)} if c.tag else {}),
-              **({"title": short(c.alias, 80)} if c.alias else {})} for c in controls if c.tag or c.alias]
+              **({"title": short(c.alias, 80)} if c.alias else {})}
+             for c in document.content_controls() if c.tag or c.alias]
     if named:
-        data["tagged_controls"] = named[:30]
+        data["tagged"] = named[:30]
     if len(data["headings"]) == 80:
         data["headings_note"] = "the first 80 headings; word_read a range for the rest"
     return Result(summary=f"Described {entry.name}", data=data)

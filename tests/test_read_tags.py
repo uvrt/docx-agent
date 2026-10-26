@@ -59,14 +59,14 @@ def test_table_comments_carry_the_alt_text(tmp_path):
     assert third.alt_text == {}
 
 
-def test_inline_controls_carry_their_tag_and_title(tmp_path):
+def test_an_inline_content_control_carries_its_tag_and_title(tmp_path):
     markdown = Document.open(_patched(tmp_path)).to_markdown()
     assert "Name: <!-- cc:301 text tag: sample:name title: Name -->Grace Hopper<!-- /cc:301 -->" in markdown
-    # Block controls as before.
+    # A block content control as before.
     assert "<!-- cc:303 rich-text tag: clause title: Clause -->" in markdown
 
 
-def test_describe_lists_alt_text_and_tagged_controls(tmp_path):
+def test_describe_lists_alt_text_and_tagged_content_control(tmp_path):
     path = _patched(tmp_path)
     with Toolbox(TOOLS, formats=[FORMAT], groups=GROUPS) as box:
         session = box.session()
@@ -78,10 +78,9 @@ def test_describe_lists_alt_text_and_tagged_controls(tmp_path):
         assert tables[0]["description"].startswith("One row per item")
         assert tables[1]["alt"] == "Second -- table" and "description" not in tables[1]
         assert "alt" not in tables[2]
-        assert result.data["controls"] == 3
-        assert result.data["tagged_controls"] == [
+        assert result.data["tagged"] == [
             {"id": "cc:301", "kind": "text", "tag": "sample:name", "title": "Name"},
             {"id": "cc:303", "kind": "rich-text", "tag": "clause", "title": "Clause"}]
         # Without any, the key is not there.
         plain = session.open(AGREEMENT.read_bytes(), AGREEMENT.name)
-        assert "tagged_controls" not in box.dispatch(session, "describe", {"doc": plain}).data
+        assert "tagged" not in box.dispatch(session, "describe", {"doc": plain}).data
