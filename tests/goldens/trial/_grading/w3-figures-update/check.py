@@ -1,5 +1,4 @@
 """W3: table + chart (cache and embedded workbook) + text updated from a CSV."""
-import io
 import sys
 import zipfile
 from pathlib import Path
@@ -22,14 +21,12 @@ TABLE = [
 
 def body(c, out: Path):
     doc = Document.open(out)
-    src = Document.open(INPUT)
     c.check("validate() clean", not doc.validate(), doc.validate())
     c.check("no tracked changes added", not doc.revisions(), len(doc.revisions()))
     t = doc.tables()[0]
     got = [[norm(t.cell(r, k).text) for k in range(t.column_count)] for r in range(len(t.rows))]
     c.check("table matches answer key", got == TABLE, got)
     c.check("table still 5 rows", len(t.rows) == 5, len(t.rows))
-    text = norm(doc.paragraphs()[2].text) if len(doc.paragraphs()) > 2 else ""
     full = " ".join(norm(p.text) for p in doc.paragraphs())
     c.check("text: year-to-date EUR 57.1 million", "EUR 57.1 million" in full and "41.6" not in full)
     c.check("text: North largest at EUR 22.0 million", "North remains the largest region at EUR 22.0 million" in full)

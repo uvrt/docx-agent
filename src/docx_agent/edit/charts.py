@@ -533,7 +533,7 @@ def _chart_drawing(graphic: Element, number: int, name: str, size: tuple[float, 
 @contextmanager
 def _no_edit() -> Iterator[None]:
     raise TypeError("a read-only host")  # pragma: no cover
-    yield
+    yield  # never reached, but it makes this a generator, which @contextmanager needs
 
 
 def chart_json(document: "Document", part: str, frame: Element) -> dict | None:

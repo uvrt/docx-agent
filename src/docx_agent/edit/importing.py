@@ -580,7 +580,7 @@ class Importer:
             target = self.body_style() if kind == "paragraph" else None
             self.style_map[style_id] = target  # type: ignore[assignment]
             self.warnings.append(f"style {name!r} not imported: "
-                                 + (f"the destination's body style" if kind == "paragraph" else "dropped"))
+                                 + ("the destination's body style" if kind == "paragraph" else "dropped"))
             return target
         imported = copy.deepcopy(node)
         new_id = self._free_style_id(style_id, name)

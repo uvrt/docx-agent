@@ -34,7 +34,7 @@ from lxml import etree
 
 from ..edit import inline as _inline
 from ..edit import text as _text
-from ..oxml.xml import Element, append_in_order, insert_in_order, make, qn, remove
+from ..oxml.xml import Element, append_in_order, insert_in_order, make, remove
 from .stamp import Stamp
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -249,7 +249,7 @@ def place_outside_revisions(node: Element, stamp: Stamp) -> None:
     while parent is not None and parent.tag in CONTAINERS:
         index = parent.index(node)
         if 0 < index < len(parent) - 1:
-            rest = _split_container(parent, index + 1, stamp)
+            _split_container(parent, index + 1, stamp)
             parent.addnext(node)
         elif index == 0:
             parent.addprevious(node)

@@ -28,7 +28,7 @@ import copy
 
 from lxml import etree
 
-from ..oxml.xml import XML_SPACE, Element, qn, remove
+from ..oxml.xml import XML_SPACE, Element, remove
 from . import text as _text
 from .text import Atom
 

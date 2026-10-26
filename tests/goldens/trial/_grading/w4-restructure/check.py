@@ -63,7 +63,6 @@ def body(c, out: Path):
         return where[0].page if where else None
 
     refs = {f.instruction.split()[1]: f for f in fields if f.keyword == "REF"}
-    pagerefs = {f.instruction.split()[1]: f for f in fields if f.keyword == "PAGEREF"}
     inc_p = norm(texts[at("Exceptions to these rules")]) if at("Exceptions to these rules") >= 0 else ""
     rev_p = norm(texts[at("This policy is reviewed")]) if at("This policy is reviewed") >= 0 else ""
     c.check("incident cross-reference shows '6 Incident response'",

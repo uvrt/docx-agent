@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "docx-agent"
-version = "0.1.2"
+version = "0.1.3"
 description = "An AI-editable Word layer: inspect, edit and re-render .docx documents losslessly"
 readme = "README.md"
 license = { text = "MIT" }
@@ -31,13 +31,28 @@ dependencies = ["lxml>=4.9", "ooxml-edit>=0.65.0", "ooxml-common>=0.31.0", "docx
 [project.optional-dependencies]
 # PNG output goes through docx2svg's rasteriser extra.
 png = ["docx2svg[png]>=0.2.0"]
-dev = ["pytest>=7", "pytest-xdist>=3"]
+# ruff: the linter, which CI's build job runs at the same pin ([tool.ruff] below).
+dev = ["pytest>=7", "pytest-xdist>=3", "ruff==0.17.2"]
 
 [project.urls]
 Repository = "https://github.com/uvrt/docx-agent"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+# py.typed: the package's annotations are for its callers' type checkers (PEP 561).
+[tool.setuptools.package-data]
+docx_agent = ["py.typed"]
+
+# A small set of bug-finding rules, not a style: pyflakes (F), syntax errors (E9),
+# mutable or called defaults (B006, B008), return in finally (B012), comparisons that do
+# nothing (B015) and pylint's errors (PLE).  No formatter and no import sorting.
+[tool.ruff]
+target-version = "py310"
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["F", "E9", "B006", "B008", "B012", "B015", "PLE"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

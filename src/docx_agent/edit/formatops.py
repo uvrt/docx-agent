@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ..oxml.xml import Element, append_in_order, make, qn, remove
+from ..oxml.xml import Element, remove
 from . import formatting as _formatting
 from . import inline as _inline
 from . import text as _text

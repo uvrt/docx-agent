@@ -44,11 +44,9 @@ import copy
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ..edit import ids as _ids
 from ..edit import inline as _inline
 from ..edit import text as _text
 from ..edit.annotations import REVISION_KINDS, revision_kind, revision_text
-from ..edit.ids import ParagraphEntry
 from ..oxml.xml import Element, insert_in_order, make, remove
 from . import track as _track
 
