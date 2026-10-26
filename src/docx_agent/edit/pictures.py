@@ -16,6 +16,17 @@ goes when nothing else uses it (ooxml-edit's ``release`` and ``reap``).
 **Size.**  Without a size, a picture is its natural size: pixels at the density it states,
 or 96 pixels to the inch where it states none (Word's assumption for a picture without one;
 see ROADMAP.md, Phase E1).  With one dimension given, the other keeps the aspect ratio.
+
+**An SVG** (round 17, P6) is stored as Word stores one it inserts (measured, Word for Mac,
+2026-10-26; agent-work feedback-round17/measurements-B.md, M1): the SVG a part of its own
+(``word/media/imageN.svg``, ``image/svg+xml`` by extension) behind an ordinary image
+relationship and the blip's SVG extension (:mod:`ooxml_edit.pictures`), the blip itself a
+PNG fallback drawn at twice the SVG's own size, the picture at the SVG's own size at 96 dpi
+and named "Graphic N".  ``color`` tints it as PowerPoint's Graphics Fill does
+(:func:`ooxml_edit.pictures.recolor`): every shape filled, a theme colour with its class
+(``MsftOfcThm_Accent2_Fill_v2``) and the theme's value -- Word draws the SVG, not the
+fallback, and resolves the class against the document's theme (M2, M3) -- and the fallback
+drawn from the tinted SVG.  A bitmap cannot be tinted.
 """
 
 from __future__ import annotations
@@ -267,6 +278,54 @@ class PictureOps:
                     pass
         return largest + 1
 
+    def _svg_picture(self: "Document", data: bytes, color: str | None) -> tuple[bytes, bytes, tuple[float, float]]:
+        """``(svg, fallback PNG, natural size in points)`` of an SVG picture, tinted with
+        ``color`` (``PictureError`` for what is refused)."""
+        from ooxml_edit import pictures
+        from ooxml_edit.errors import ArgumentError
+
+        try:
+            root = pictures.parse(data)
+            native = pictures.native_size(root)
+            if native is None:
+                raise PictureError("the SVG states no size (width, height or viewBox)")
+            if color is not None:
+                fill, fill_class = self._tint(color)
+                data = pictures.recolor(data, fill, fill_class)
+        except ArgumentError as error:
+            raise PictureError(str(error)) from None
+        return data, _fallback(data, native, self.font_dirs), (native[0] * 0.75, native[1] * 0.75)
+
+    def _tint(self: "Document", color: str) -> tuple[str, str | None]:
+        """``(#RRGGBB, class)`` for a tint: a theme colour's value and its class, or a hex
+        colour and none."""
+        from ooxml_edit.pictures import theme_class
+
+        from .formatting import THEME_COLORS, theme_color_name
+
+        name = theme_color_name(color)
+        if name is not None:
+            value = self._theme_color(name)
+            if value is None:
+                raise PictureError(f"the document's theme gives no value for {color!r}")
+            return f"#{value}", theme_class(_SCHEME_NAMES.get(name, name))
+        text = color.strip().lstrip("#") if isinstance(color, str) else ""
+        if len(text) == 6 and all(c in "0123456789abcdefABCDEF" for c in text):
+            return f"#{text.upper()}", None
+        raise PictureError(f"color is a theme colour ({', '.join(sorted(THEME_COLORS))}) or RRGGBB, "
+                           f"not {color!r}")
+
+    def _svg_media(self: "Document", part: str, data: bytes) -> str:
+        """A relationship from ``part`` to an SVG media part holding ``data`` (an existing
+        one with the same bytes, or a new one), as Word writes it: an image relationship."""
+        from ooxml_edit.pictures import SVG_CONTENT_TYPE
+
+        existing = self.package.find_part_with_bytes(data, "word/media")
+        if existing is None or not existing.endswith(".svg"):
+            target = self.package.unused_part_name("word/media/image{n}.svg")
+            existing = self.package.add_part(target, data, SVG_CONTENT_TYPE)
+        return self.package.add_relationship(part, REL_IMAGE, existing)
+
     def _media(self: "Document", part: str, data: bytes) -> str:
         """A relationship from ``part`` to a media part holding ``data``: an existing part
         with the same bytes, or a new one."""
@@ -279,16 +338,28 @@ class PictureOps:
 
     def insert_picture(self: "Document", at: "str | TextRange", image: "bytes | str | os.PathLike[str]", *,
                        width: float | None = None, height: float | None = None,
-                       alt_text: str | None = None, name: str | None = None) -> "EditResult":
+                       alt_text: str | None = None, name: str | None = None,
+                       color: str | None = None) -> "EditResult":
         """An inline picture at a position (a range id or range; its start), from bytes or a
-        file.  ``width``/``height`` in points (natural size by default; one alone keeps the
-        aspect ratio)."""
+        file: PNG, JPEG, GIF, BMP or SVG.  ``width``/``height`` in points (natural size by
+        default; one alone keeps the aspect ratio).  ``color`` tints an SVG (a theme colour,
+        ``accent2``, or ``RRGGBB``; the module says how)."""
         from .document import EditError, EditResult
 
         data = _read(image)
+        svg = None
         try:
-            image_format(data)
-            size = _fit(natural_size(data), width, height)
+            from ooxml_edit.pictures import looks_like_svg
+
+            if looks_like_svg(data, os.fspath(image).rpartition(".")[2]
+                              if isinstance(image, (str, os.PathLike)) else None):
+                svg, data, natural = self._svg_picture(data, color)
+            else:
+                if color is not None:
+                    raise PictureError("only an SVG picture can be tinted: this one is a bitmap")
+                image_format(data)
+                natural = natural_size(data)
+            size = _fit(natural, width, height)
         except PictureError as error:
             raise EditError(str(error)) from None
         where = at if isinstance(at, TextRange) else self.range(at)
@@ -306,10 +377,14 @@ class PictureOps:
             renames = self._prepare(part, [entry])
             rid = self._media(part, data)
             number = self._next_doc_pr()
-            label = name or f"Picture {number}"
+            label = name or f"{'Graphic' if svg is not None else 'Picture'} {number}"
             used = self._used()
             anchor_id, edit_id = _ids.generate(part + "\0picture", used, 2)
             drawing = _drawing(rid, number, label, alt_text, size, anchor_id, edit_id)
+            if svg is not None:
+                from ooxml_edit.pictures import attach
+
+                attach(drawing.find(f".//{_A}blip"), self._svg_media(part, svg))
             run = _inline.new_run(entry.element, where.start, [drawing])
             self._track_inserted(part, [run])
             _ids.ensure_w14(self.package.tree(part), drawings=True)
@@ -498,6 +573,42 @@ def _own_insertion(frame: Element, author: str) -> bool:
         if node.tag == _W + "p":
             return False
     return False
+
+
+#: Word's theme colour names (``w:themeColor``) -> DrawingML's scheme names, which name a
+#: recoloured SVG's class (:func:`ooxml_edit.pictures.theme_class`); accents are the same.
+_SCHEME_NAMES = {
+    "text1": "tx1", "background1": "bg1", "text2": "tx2", "background2": "bg2",
+    "dark1": "dk1", "light1": "lt1", "dark2": "dk2", "light2": "lt2",
+    "hyperlink": "hlink", "followedHyperlink": "folHlink",
+}
+#: The longest side of an SVG's fallback PNG, pixels.
+FALLBACK_MAX_PX = 4096
+
+
+def _fallback(svg: bytes, native: tuple[float, float], font_dirs=None) -> bytes:
+    """An SVG's PNG fallback, as Word draws one: twice the SVG's own size in pixels (M1),
+    its longer side at most :data:`FALLBACK_MAX_PX`; drawn by docx2svg's rasteriser."""
+    from ooxml_common.svgimage import with_pixel_size
+
+    scale = min(2.0, FALLBACK_MAX_PX / max(native[0], native[1], 1))
+    width, height = max(1, round(native[0] * scale)), max(1, round(native[1] * scale))
+    # The rasteriser reads a size in pixels only: the root's restated so, as pptx2svg does.
+    data = with_pixel_size(svg) or svg
+    try:
+        text = data.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise PictureError("the SVG is not UTF-8 text") from None
+    message = "an SVG picture needs a PNG fallback: install docx-agent[png] (pip install 'docx-agent[png]')"
+    try:
+        from docx2svg.png import RasterizerNotAvailable, svg_to_png
+    except ImportError:
+        raise PictureError(message) from None
+    try:
+        return svg_to_png(text, width=width, height=height,
+                          **({"font_dirs": list(font_dirs)} if font_dirs is not None else {}))
+    except RasterizerNotAvailable:
+        raise PictureError(message) from None
 
 
 def _fit(natural: tuple[float, float], width: float | None, height: float | None) -> tuple[float, float]:

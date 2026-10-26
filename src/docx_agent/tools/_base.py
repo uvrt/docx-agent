@@ -194,6 +194,48 @@ def reflow_json(reflow: Any) -> dict[str, Any]:
     return data
 
 
+# -- small text a builder wrote (round 17, P6b) -------------------------------------------------
+
+
+def note_small_text(call: Any, result: Result, blocks: Sequence[str]) -> Result:
+    """``result`` with ``small_text`` -- the text of ``blocks`` (paragraph, table or cell ids)
+    its styles make smaller than the application's minimum for its kind
+    (:func:`docx_agent.edit.minimums.styled_below`) -- and a warning saying so; ``result``
+    unchanged without a minimum or with nothing below it."""
+    from ..edit.minimums import styled_below, text_minimums
+
+    document = call.document
+    minimums = text_minimums(getattr(document, "min_text_size", None))
+    if not minimums:
+        return result
+    paragraphs: list[str] = []
+    for identifier in blocks:
+        try:
+            found = document.get(identifier)
+        except (KeyError, ValueError):
+            continue
+        if hasattr(found, "grid"):           # a table: every cell's paragraphs
+            seen = set()
+            for line in found.grid():
+                for cell in line:
+                    if cell is not None and cell.id not in seen:
+                        seen.add(cell.id)
+                        paragraphs += [p.id for p in cell.paragraphs]
+        elif hasattr(found, "paragraphs") and not hasattr(found, "text_boxes"):
+            paragraphs += [p.id for p in found.paragraphs]
+        else:
+            paragraphs.append(identifier)
+    below = styled_below(document, list(dict.fromkeys(paragraphs)), minimums)
+    if below:
+        if isinstance(result.data, dict):
+            result.data["small_text"] = below[:20]
+        smallest = below[0]
+        result.warnings.append(f"small_text: {len(below)} paragraph(s) below the minimum, the smallest "
+                               f"{smallest['para']} at {smallest['size']:g} pt ({smallest['kind']}, minimum "
+                               f"{smallest['min']:g} pt)")
+    return result
+
+
 # -- results -----------------------------------------------------------------------------------
 
 

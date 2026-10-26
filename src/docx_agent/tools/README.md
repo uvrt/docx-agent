@@ -126,6 +126,31 @@ sent = toolbox.definitions("anthropic", roles=["review", "accept"])
 system = toolbox.system_prompt(roles=["review", "accept"], tools=sent)  # follows `sent`
 ```
 
+### The application's settings: an asset catalogue, minimum text sizes
+
+`docx_format(...)` is `FORMAT` with settings of the application's own -- never tool
+arguments, so the definitions stay the same unless a setting adds a tool (pptx-agent's
+`deck_format` takes the same two):
+
+```python
+from ooxml_edit.tools import FolderCatalogue
+from docx_agent.tools import docx_format
+
+icons = FolderCatalogue("brand-icons")             # brand-icons/index.json: id, file, name, keywords
+fmt = docx_format(assets=icons, min_text_size={"body": 10, "table": 9, "footnote": 8, "caption": 9})
+toolbox = Toolbox(TOOLS, formats=[fmt], groups=GROUPS)
+```
+
+- `assets` (ooxml-edit's catalogue protocol, `search` and `get`): `word_find_asset` finds
+  ids by words, and `word_drawings` `insert_picture` takes `asset` in place of `image` --
+  inline, or floating with `wrap`; `at` a position or a cell (`t:1A/c0,0`); `size_pt` or
+  `width`; `color` a theme colour (`accent2`) or `RRGGBB` to tint an SVG, as Word draws a
+  recoloured SVG (its theme class kept, so the icon follows the document's theme).
+- `min_text_size`: one number, or points per kind (`body`, `table`, `footnote`,
+  `endnote`, `header`, `footer`, `caption`; a kind left out is not checked). `check`
+  reports `small_text` against it, and `word_insert_markdown` and `word_edit_table`
+  `set_cells` report the text they wrote that its styles make smaller.
+
 ### Tables from data
 
 `word_insert_markdown` (in place of `markdown` or `blob`) and `word_edit_table`'s `set_cells`

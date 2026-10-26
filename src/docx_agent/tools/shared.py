@@ -426,9 +426,12 @@ def check(call: Any, doc: str, slides: list | None = None, pages: list[int] | No
         raise ToolError("invalid_arguments", f"{', '.join(deck_only)} are deck facts; a document reports "
                         "validate, reflow, fields and layout", field="include",
                         valid_options=["validate", "reflow", "fields", "layout"])
+    document, entry = call.document, call.entry
+    if min_size is None:
+        # The application's minimums (round 17, P6b: docx_format(min_text_size=...)).
+        min_size = getattr(document, "min_text_size", None)
     if (min_size is not None or styles is not None) and "layout" not in wanted:
         wanted.append("layout")               # what they measure (round 16, F8)
-    document, entry = call.document, call.entry
     report: dict[str, Any] = {}
     if "validate" in wanted:
         problems = [str(p) for p in document.validate()]

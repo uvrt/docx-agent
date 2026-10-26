@@ -13,9 +13,11 @@ takes its targets as one list with the values for all, so it is ``calls``, not `
     The smallest size drawn, pt, per kind: ``body``, ``table`` (text in a table cell),
     ``footnote``, ``endnote``, ``header``, ``footer``.  Superscript and subscript text (a
     note's reference mark) is left out: it is drawn small by design.
-``small_text`` (with ``min_size``)
+``small_text`` (with ``min_size``, or the application's ``min_text_size``)
     ``{"para", "kind", "size", "chars", "pages", "style_size"}``: text drawn below the
-    minimum, one entry per paragraph, kind and size, smallest first.  ``style_size`` is what
+    minimum, one entry per paragraph, kind and size, smallest first.  The minimum is one
+    number, or one per kind (:mod:`docx_agent.edit.minimums`: a caption has its own) --
+    then each entry says its ``min``.  ``style_size`` is what
     the paragraph's styles give it; where that is at least the minimum the small size is
     direct formatting, and ``fix`` clears it (``word_format`` ``clear: ["size"]``).
 ``direct_formatting``
@@ -76,7 +78,10 @@ from typing import TYPE_CHECKING, Any, Iterable
 
 from docx2svg.paths import resolve_path
 
+from collections.abc import Mapping
+
 from .edit import effective as _effective
+from .edit.minimums import is_caption, minimum_for, text_minimums
 from .edit import text as _text
 from .layout import PX_PER_PT, _block_id, _in_body, _story_kind
 
@@ -127,7 +132,12 @@ class _Facts:
         self.layout = layout
         self.document: "Document" = layout._document
         self.wanted = None if pages is None else set(pages)
-        self.min_size = None if min_size is None else float(min_size)
+        # One number for every kind, or a mapping by kind (round 17, P6b: the application's
+        # setting, docx_format(min_text_size=...)), read as docx_agent.edit.minimums reads it.
+        self.minimums = text_minimums(min_size)
+        self.min_size = None if not self.minimums else min(self.minimums.values())
+        self.per_kind = isinstance(min_size, Mapping)
+        self._captions: dict[str, bool] = {}
         self.styles = styles
         document = self.document
         self.main = document.package.document_part()
@@ -237,8 +247,11 @@ class _Facts:
                     if size < smallest.get(kind, 10_000):
                         smallest[kind] = size
                     if self.min_size is not None and size < self.min_size and key is not None:
-                        entry = small.setdefault((self.layout._canon(key), kind, size),
-                                                 {"chars": 0, "pages": set()})
+                        named, minimum = self.minimum(key, kind)
+                        if minimum is None or size >= minimum:
+                            continue
+                        entry = small.setdefault((self.layout._canon(key), named, size),
+                                                 {"chars": 0, "pages": set(), "min": minimum})
                         entry["chars"] += chars
                         entry["pages"].add(number)
         out["smallest_text"] = {kind: smallest[kind] for kind in sorted(smallest)}
@@ -251,13 +264,33 @@ class _Facts:
                 baselines[identifier] = self._style_size(identifier)
             entry = {"para": identifier, "kind": kind, "size": size, "chars": seen["chars"],
                      "pages": sorted(seen["pages"])}
+            if self.per_kind:
+                entry["min"] = seen["min"]
             style_size = baselines[identifier]
             if style_size is not None:
                 entry["style_size"] = style_size
-                if style_size >= self.min_size:
+                if style_size >= seen["min"]:
                     entry["fix"] = {"tool": "word_format", "calls": [{"targets": [identifier], "clear": ["size"]}]}
             entries.append(entry)
         self.capped(entries, "small_text", out)
+
+    def minimum(self, key: str, kind: str) -> tuple[str, float | None]:
+        """``(kind, minimum)`` of a line's text: its kind's, a caption's own where set."""
+        if not self.per_kind:
+            return kind, self.min_size          # one number: every line's, as before
+        place = "header" if kind.startswith("header") else "footer" if kind.startswith("footer") else kind
+        caption = False
+        if "caption" in self.minimums:
+            canon = self.layout._canon(key)
+            if canon not in self._captions:
+                try:
+                    _, entry = self.document._resolve(canon)
+                    self._captions[canon] = is_caption(self.document, entry.element)
+                except Exception:  # noqa: BLE001 -- an id the document no longer resolves
+                    self._captions[canon] = False
+            caption = self._captions[canon]
+        named, minimum = minimum_for(self.minimums, place, caption)
+        return (kind if named == place else named), minimum
 
     def _style_size(self, identifier: str) -> float | None:
         try:
