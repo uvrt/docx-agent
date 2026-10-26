@@ -44,6 +44,7 @@ from ..edit import effective as _effective
 from ..edit import ids as _ids
 from ..edit import text as _text
 from ..edit.annotations import control_kind, drawing_kind
+from ..edit.document import table_alt_text
 from ..edit.numbering import membership
 from ..oxml.xml import Element
 from . import model as m
@@ -537,6 +538,17 @@ def _comment(text: str) -> str:
     return "<!-- " + text.replace("--", "- -").replace(">", "&gt;") + " -->"
 
 
+def _control_words(node: Element) -> list[str]:
+    """A content control's ``tag: ...`` and ``title: ...`` (``w:alias``) words, where set."""
+    out = []
+    for label, tag in (("tag", "tag"), ("title", "alias")):
+        found = node.find(f"{_W}sdtPr/{_W}{tag}")
+        value = found.get(_W + "val") if found is not None else None
+        if value:
+            out.append(f"{label}: {_one_line(value)}")
+    return out
+
+
 def comment_text(text: str) -> str:
     return text.replace("--", "- -").replace(">", "&gt;")
 
@@ -690,7 +702,7 @@ class _Inline:
         kind = control_kind(node)
         content = node.find(_W + "sdtContent")
         self.record.controls.append({"id": identifier, "kind": kind})
-        self.out.append(m.Html(_comment(f"{identifier} {kind}")))
+        self.out.append(m.Html(_comment(" ".join([f"{identifier} {kind}"] + _control_words(node)))))
         if content is not None:
             self._container(content)
         self.out.append(m.Html(_comment(f"/{identifier}")))
@@ -1000,8 +1012,8 @@ def build(reader: Reader, records: list, options: Options, *, trailing: bool = F
         elif isinstance(record, Marker):
             if options.ids:
                 if record.begin:
-                    words = [record.id, record.kind] + ([f"tag: {record.tag}"] if record.tag else []) + \
-                        ([f"title: {record.alias}"] if record.alias else [])
+                    words = [record.id, record.kind] + ([f"tag: {_one_line(record.tag)}"] if record.tag else []) + \
+                        ([f"title: {_one_line(record.alias)}"] if record.alias else [])
                     out.append(m.Comment(comment_text(" ".join(w for w in words if w))))
                 else:
                     out.append(m.Comment(f"/{record.id}"))
@@ -1167,6 +1179,8 @@ def _table(reader: Reader, table: TableRecord, options: Options) -> list:
         words = [table.id] + (["volatile"] if table.volatile else [])
         if table.style_name:
             words.append(f"table style: {comment_text(table.style_name)}")
+        for label, value in table_alt_text(table.element).items():
+            words.append(f"{label}: {comment_text(_one_line(value))}")
         out.append(m.Comment(" ".join(words)))
     gfm = _gfm(reader, table, options)
     if gfm is not None:
@@ -1176,6 +1190,12 @@ def _table(reader: Reader, table: TableRecord, options: Options) -> list:
 
         out.append(m.HtmlBlock(table_html(reader, table, options)))
     return out
+
+
+def _one_line(text: str, limit: int = 120) -> str:
+    """``text`` on one line, at most ``limit`` characters (an ellipsis where cut)."""
+    text = " ".join(text.split())
+    return text if len(text) <= limit else text[:limit - 1].rstrip() + "\u2026"
 
 
 def _gfm(reader: Reader, table: TableRecord, options: Options) -> m.Table | None:
