@@ -10,7 +10,7 @@ import datetime as _dt
 import pytest
 from lxml import etree
 
-from docx_agent import Document, EditError
+from docx_agent import Document
 from docx_agent.revisions.review import DESCRIBES
 from docx_agent.validate import check
 

@@ -31,7 +31,7 @@ from typing import TYPE_CHECKING
 
 from lxml import etree
 
-from ..oxml.xml import Element, make, qn, remove
+from ..oxml.xml import Element, make, remove
 from . import inline as _inline
 from . import text as _text
 from .ids import ParagraphEntry

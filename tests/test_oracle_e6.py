@@ -26,7 +26,6 @@ import re
 import sys
 import warnings
 import zipfile
-from collections import Counter
 from pathlib import Path
 
 import pytest
@@ -37,7 +36,6 @@ from conftest import fixture_id, fixture_paths
 from docx_agent import Document
 from docx_agent.edit import blank
 
-from test_oracle_e3 import _plain
 
 pytestmark = pytest.mark.oracle
 

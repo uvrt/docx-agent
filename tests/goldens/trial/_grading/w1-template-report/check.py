@@ -101,7 +101,6 @@ def body(c, out: Path):
         c.check("TOC lists every Heading 1/2", not missing, {"missing": missing, "toc": lines[:20]})
         nums = [re.search(r"(\d+)$", l) for l in lines]
         c.check("TOC entries carry page numbers", lines and all(nums), lines[:20])
-        order = [p.id for p in ps]
         ids = [p.id for p in ps]
         try:
             toc_at = ids.index(toc.paragraph_id)

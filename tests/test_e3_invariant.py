@@ -34,7 +34,6 @@ def _table_of(document: Document):
             spans = {c.id for line in grid for c in line}
             if len(spans) == len(grid) * len(grid[0]):
                 return table
-    paragraph = text_of(document)
     return None
 
 

@@ -42,7 +42,7 @@ from dataclasses import dataclass, field
 
 from lxml import etree
 
-from ..oxml.xml import MC, W14, Element, qn
+from ..oxml.xml import MC, W14, Element
 
 _W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 W_P = _W + "p"

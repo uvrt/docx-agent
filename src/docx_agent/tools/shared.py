@@ -287,7 +287,7 @@ def render(call: Any, doc: str, slides: list | None = None, pages: list[int] | N
         raise ToolError("limit", f"at most {call.limits.max_images_per_call} pages per call; sheet: {{}} tiles "
                         f"up to {tiles.MAX_TILES} into one image", field="pages")
     call.check_images(len(pages))        # before drawing: a refused call costs nothing
-    entry, version = call.entry, call.entry.version
+    version = call.entry.version
     fonts = tuple(font_dirs_of(call.document))
     locale = locale_of(call.document)
     drawn, count, coverage = draw(call, pages, width)

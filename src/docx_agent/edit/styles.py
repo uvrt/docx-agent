@@ -19,7 +19,6 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from lxml import etree
 
 from ..oxml.xml import Element, append_in_order, make, qn, remove
 from . import formatting as _formatting

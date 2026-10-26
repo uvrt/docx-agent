@@ -48,7 +48,6 @@ and 14, with every one of the 65 legacy options set):
 
 from __future__ import annotations
 
-import copy
 import os
 import urllib.parse
 import warnings
@@ -62,7 +61,7 @@ from ooxml_common.kinds import kind_for as _kind_for
 
 from ..oxml.xml import make, qn, remove
 from . import blank
-from .properties import APP_NS, core_part, now, write_core
+from .properties import APP_NS, now, write_core
 
 if TYPE_CHECKING:  # pragma: no cover
     from .document import Document, EditResult

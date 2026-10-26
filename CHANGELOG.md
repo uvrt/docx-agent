@@ -5,6 +5,18 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.3 -- unreleased
+
+- **A linter, and `py.typed`** (review, S8): ruff checks pyflakes and a few bug-finding rules
+  (`[tool.ruff]` in pyproject.toml; no formatter, no import sorting), as a step of CI's build
+  job, pinned in the dev extra. What it found is fixed: unused imports and locals (the render
+  tool's unused `entry`, `revisions/track.py`'s unused `rest`, the tests and the golden
+  graders) and an f-string without a placeholder. `edit/charts.py`'s `_no_edit` keeps the
+  `yield` after its `raise`: never reached, it is what makes the function a generator, which
+  `@contextmanager` needs; a comment now says so. The wheel and sdist now carry `py.typed`,
+  so a caller's type checker reads the annotations. mypy is not run here yet. Tools behave
+  as before.
+
 ## 0.1.2 -- unreleased
 
 - **The render plumbing is ooxml-edit's** (review, S5): a new `tools/render.py` is a thin

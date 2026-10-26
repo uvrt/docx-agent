@@ -41,7 +41,6 @@ from typing import TYPE_CHECKING
 
 from ..oxml.xml import Element, insert_in_order, make, remove
 from . import ids as _ids
-from . import text as _text
 from .ids import TableEntry
 
 if TYPE_CHECKING:  # pragma: no cover

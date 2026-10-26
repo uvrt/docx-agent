@@ -32,7 +32,7 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ..oxml.xml import Element, remove
+from ..oxml.xml import remove
 from . import inline as _inline
 from . import text as _text
 from .ids import ParagraphEntry

@@ -34,13 +34,13 @@ from . import inline as _inline
 from . import formatting as _formatting
 from .annotations import AnnotationOps
 from .formatops import FormatOps
-from .links import Bookmark, Hyperlink, LinkOps
+from .links import Bookmark, Hyperlink, LinkOps  # noqa: F401 -- Bookmark: edit/__init__.py imports it from here
 from .numbering import ListMembership, ListOps
 from .pictures import Picture, PictureOps
 from .ranges import TextOps, TextRange
 from .comments import CommentOps
 from .tables import TableOps
-from .table_format import UNSET, TableFormatOps
+from .table_format import TableFormatOps
 from .drawings import DrawingOps
 from .charts import ChartOps
 from .controls import ControlOps
