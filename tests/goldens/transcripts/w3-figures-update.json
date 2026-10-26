@@ -70,12 +70,19 @@
    "expect": {
     "ok": true,
     "summary": "Read d:1",
-    "data_sha": "eb167d073a230334",
+    "data_sha": "68806cae3fe51339",
     "data_keys": [
+     "axes",
+     "axes.category",
+     "axes.value",
      "categories",
+     "gap_width",
      "id",
      "legend",
-     "number_format",
+     "number_formats",
+     "number_formats.data_labels",
+     "number_formats.value_axis",
+     "number_formats.values",
      "scales",
      "scales.category",
      "scales.value",
@@ -89,7 +96,7 @@
      "workbook.sheet",
      "workbook.workbook"
     ],
-    "data_sha_core": "eb167d073a230334"
+    "data_sha_core": "68806cae3fe51339"
    }
   },
   {
@@ -177,7 +184,7 @@
        "doc": "d1",
        "target": "d:1",
        "action": "add_category",
-       "category": "Q4",
+       "text": "Q4",
        "values": [
         5.9,
         4.6,
@@ -251,11 +258,11 @@
      "p:6B2F1D53",
      "p:0890725E"
     ],
-    "data_sha": "230b15a0d3ea1c17",
+    "data_sha": "f1254888b5ae76b9",
     "data_keys": [
      "ops"
     ],
-    "data_sha_core": "230b15a0d3ea1c17"
+    "data_sha_core": "f1254888b5ae76b9"
    }
   },
   {
@@ -268,12 +275,19 @@
    "expect": {
     "ok": true,
     "summary": "Read d:1",
-    "data_sha": "a3a878c92ebd8539",
+    "data_sha": "a0d56ec8fa83b314",
     "data_keys": [
+     "axes",
+     "axes.category",
+     "axes.value",
      "categories",
+     "gap_width",
      "id",
      "legend",
-     "number_format",
+     "number_formats",
+     "number_formats.data_labels",
+     "number_formats.value_axis",
+     "number_formats.values",
      "scales",
      "scales.category",
      "scales.value",
@@ -287,7 +301,7 @@
      "workbook.sheet",
      "workbook.workbook"
     ],
-    "data_sha_core": "a3a878c92ebd8539"
+    "data_sha_core": "a0d56ec8fa83b314"
    }
   },
   {

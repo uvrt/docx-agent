@@ -327,7 +327,7 @@ def test_a_chart_from_a_source_is_keyed_by_its_drawing_id(toolbox, session):
     assert (entry.get("kind"), entry.get("key")) == ("chart", address)
     # add_category without from: every series' rows changed, the record goes.
     ok(call(toolbox, session, "edit_chart", doc="d1", target=address, action="add_category",
-            category="Delta", values=[2]))
+            text="Delta", values=[2]))
     assert session.provenance("d1") == {}
     ok(call(toolbox, session, "undo", doc="d1"))
     assert list(session.provenance("d1")) == [address]

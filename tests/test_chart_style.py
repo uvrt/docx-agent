@@ -215,9 +215,8 @@ def test_a_scale_without_an_axis_and_what_a_refusal_names():
                  "rename_series needs series: 'Score' (or 0)"),
                 ({"action": "set_values", "series": "Score"},
                  "set_values needs values: one number per category (3)"),
-                ({"action": "add_category", "category": "D"},
-                 "add_category needs values: one number per series (1)"),
-                ({"action": "set_legend"}, "set_legend needs position: right, left, top"),
+                ({"action": "add_category", "category": "D"},  # the label is text (S10)
+                 "add_category needs text: the new category's label"),
                 ({"action": "set_axis_scale", "scale": {"reverse": True}},
                  "set_axis_scale needs axis: category or value"),
                 ({"action": "format_point", "series": "Score", "style": {"fill": "tx2"}},

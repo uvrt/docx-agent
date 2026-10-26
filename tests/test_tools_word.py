@@ -776,7 +776,7 @@ def test_charts_and_smartart(box, session):
     target = document(session, s).diagrams()[0]
     nodes = ok(box, session, "edit_smartart", doc=s, target=target.address if hasattr(target, "address") else "d:1",
                action="set_text", node=0, text="First").data["nodes"]
-    assert nodes[0] == "First"
+    assert nodes[0] == {"n": 0, "text": "First", "level": 0}
 
 
 def test_set_properties(box, session):

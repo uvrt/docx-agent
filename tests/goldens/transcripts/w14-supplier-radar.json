@@ -145,17 +145,21 @@
     "refs": {
      "chart": "d:1"
     },
-    "data_sha": "9b83b2d4c50de531",
+    "data_sha": "e0cce2aafde8de73",
     "data_keys": [
      "categories",
      "id",
      "legend",
+     "number_formats",
+     "number_formats.data_labels",
+     "number_formats.value_axis",
+     "number_formats.values",
      "paragraph",
      "series",
      "title",
      "type"
     ],
-    "data_sha_core": "9b83b2d4c50de531"
+    "data_sha_core": "e0cce2aafde8de73"
    }
   },
   {
