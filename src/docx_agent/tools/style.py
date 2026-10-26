@@ -1,4 +1,4 @@
-"""Style: ``word_lists``, ``word_styles``, ``word_template`` and ``word_design_facts``
+"""Style: ``word_lists``, ``word_styles``, ``word_template``, ``word_design_facts`` and ``word_compare_blocks``
 (``word_format``, the general setter, is in :mod:`.text` and in this group)."""
 
 from __future__ import annotations
@@ -7,7 +7,7 @@ from typing import Any
 
 import json
 
-from ooxml_edit.tools import REVIEW, Result, ToolError, array, boolean, integer, string
+from ooxml_edit.tools import REVIEW, Result, ToolError, array, boolean, integer, obj, page_list, string
 
 from ..edit.design import CAPS, KINDS
 from ..edit.formatting import RUN_PROPERTIES, read_paragraph, read_run
@@ -205,4 +205,46 @@ def word_design_facts(call: Any, doc: str, include: list[str] | None = None) -> 
         if left else ""), data=data)
 
 
-TOOLS = [word_lists, word_styles, word_template, word_design_facts]
+# -- round 17, P3 word_compare_blocks ---------------------------------------------------------
+
+#: Differences in one page of a comparison.
+COMPARE_PAGE = 60
+
+
+def _compared_documents(arguments: Any) -> list[str]:
+    """``doc`` and, when it names another, the reference's document."""
+    out = [arguments["doc"]] if isinstance(arguments.get("doc"), str) else []
+    reference = arguments.get("reference")
+    other = reference.get("doc") if isinstance(reference, dict) else None
+    if isinstance(other, str) and other not in out:
+        out.append(other)
+    return out
+
+
+@word_tool("word_compare_blocks", "Compare tables or paragraphs with a reference block (a sample, here or in another open document): rows, merges, widths, styles, shading, borders, direct formatting; each difference with fix calls. Measures only.",
+           {"doc": DOC,
+            "blocks": array(string(), "Blocks to compare, t:... or p:....", min_items=1),
+            "reference": obj({"doc": string("Its document. Default doc.", optional=True),
+                              "block": string("Its block.")}, "The block with the expected values."),
+            "cursor": string("next_cursor of the previous page.", optional=True)},
+           refs=('blocks[]',), group="word_style", documents=_compared_documents)
+def word_compare_blocks(call: Any, doc: str, blocks: list[str], reference: dict,
+                        cursor: str | None = None) -> Result:
+    """:meth:`Document.compare_blocks <docx_agent.Document.compare_blocks>`, paged by
+    difference."""
+    other = reference.get("doc") or doc
+    if other not in call.entries:
+        raise ToolError("not_found", f"no open document {other!r}", field="reference.doc",
+                        valid_options=list(call.entries)[:50])
+    source = call.entries[other].document
+    data = call.document.compare_blocks(resolve(call, blocks), reference["block"],
+                                        reference_document=source if other != doc else None)
+    differences, total, next_cursor = page_list(data["differences"], cursor=cursor, limit=COMPARE_PAGE)
+    data["differences"] = differences
+    fixes = sum(1 for d in differences if d["fix"])
+    return Result(summary=f"Compared {len(data['compared'])} block(s) with {data['reference']}: "
+                  f"{len(data['same'])} the same, {total} difference(s) ({fixes} with a fix on this page)",
+                  data=data, total=total, next_cursor=next_cursor)
+
+
+TOOLS = [word_lists, word_styles, word_template, word_design_facts, word_compare_blocks]

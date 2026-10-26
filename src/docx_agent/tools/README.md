@@ -35,7 +35,7 @@ ooxml-edit's Responses round-trip test). Chat Completions has not been run live.
 | `word_review` | `word_set_tracking`, `word_changes`, `word_comments` |
 | `word_structure` | `word_move`, `word_copy_from`, `word_sections`, `word_headers_footers`, `word_fields`, `word_notes`, `word_links` |
 | `word_objects` | `word_edit_table`, `word_format_table`, `word_drawings`, `word_controls` |
-| `word_style` | `word_format`, `word_lists`, `word_styles`, `word_template`, `word_design_facts` |
+| `word_style` | `word_format`, `word_lists`, `word_styles`, `word_template`, `word_design_facts`, `word_compare_blocks` |
 
 ## Setup (every provider)
 

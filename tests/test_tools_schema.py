@@ -108,10 +108,15 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 #: Round 16, F9: word_design_facts (deferred, in word_style: a template's design facts) adds
 #: 169 to every definition (12,655 -> 12,824), none to the core (2,816).  The guard rises to
 #: 12,825.  It is a reading tool, not sent strict: the strict set is unchanged.
+#: Round 17, P4: word_copy_from's description says it copies from "an open document, this one
+#: too": +1 to every definition (12,824 -> 12,825), the guard.  P3: word_compare_blocks
+#: (deferred, in word_style: blocks compared with a reference block, the fixes as calls) adds
+#: 258 to every definition (12,825 -> 13,083), none to the core (2,816).  The guard rises to
+#: 13,085.  It is a reading tool, not sent strict: the strict set is unchanged.
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 6500
-ALL_GUARD = 12825
+ALL_GUARD = 13085
 
 
 @pytest.fixture(scope="module")
@@ -171,7 +176,7 @@ def test_the_groups_are_the_roadmaps():
     assert groups["word_objects"] == {"word_edit_table", "word_format_table",
                                       "word_drawings", "word_controls"}
     assert groups["word_style"] == {"word_format", "word_lists", "word_styles", "word_template",
-                                    "word_design_facts"}
+                                    "word_design_facts", "word_compare_blocks"}
     assert all(len(names) < 10 for group, names in groups.items() if group != "core")
 
 

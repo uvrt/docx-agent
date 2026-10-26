@@ -39,8 +39,10 @@ from test_tools_word import AGREEMENT, CLOCK_AT
 REVIEW_CORE_GUARD = 2609
 #: Every definition a reviewer is sent, estimated.  Measured 6,820 (6,813 before); round 9,
 #: N1, 6,884; round 12, Q1, 6,919; round 15, T2, 6,955; round 16, F11, 6,997; F8, 7,064; F9
-#: (word_design_facts, a reading tool, deferred: +170) 7,234.
-REVIEW_ALL_GUARD = 7235
+#: (word_design_facts, a reading tool, deferred: +170) 7,234; round 17, P3
+#: (word_compare_blocks, a reading tool, deferred) and P4 (word_copy_from's description) 7,492
+#: (review, resolve and accept, the largest).
+REVIEW_ALL_GUARD = 7495
 
 REVIEW_CORE = {"save_document", "describe", "find_text", "render", "check", "open_document",
                "batch", "word_read", "word_comments", "word_changes"}
@@ -90,7 +92,8 @@ def test_a_reviewer_is_sent_the_reading_tools_the_list_actions_and_comments(box)
     core = {d["name"] for d in box.definitions("anthropic", groups="core", roles=["review"])}
     assert core == REVIEW_CORE
     assert set(sent) == REVIEW_CORE | LISTING | {"word_inspect", "word_styles", "edit_chart",
-                                                 "close_document", "read_blob", "word_design_facts"}
+                                                 "close_document", "read_blob", "word_design_facts",
+                                                 "word_compare_blocks"}
     for name in LISTING:
         assert _enum(sent[name]) == ["list"], name
     assert _enum(sent["word_styles"]) == ["list", "describe"]

@@ -5,6 +5,33 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.8 -- unreleased
+
+- **`word_compare_blocks`** (round 17, P3; deferred, in `word_style`), the Word counterpart
+  of `ppt_compare_slides` with a reference: `{doc, blocks: [...], reference: {doc?, block}}`
+  compares each table or paragraph with the reference block -- a sample, in this document or
+  another open one -- and lists every difference as `{block, property, cells | rows |
+  paragraphs | columns, value, reference, fix}`, `fix` `{tool, calls}` (each call's
+  arguments but `doc`) where a Word tool writes the reference's value, else `null`; paged
+  by difference (`cursor`). Compared (`docx_agent.edit.compare`, as the tables state
+  themselves): `header_rows`, `columns`, `rows` (body rows, the header rows apart; no fix:
+  a filled copy has more by design), `merges` per row (split and merge calls), `widths` (the
+  grid, within 0.5 pt: lengths are whole twips and every route to a width rounds to them;
+  `WIDTH_TOLERANCE` says why), `width`, `table_style`, `table_alignment`, `table_shading`,
+  `table_borders`; per cell `shading`, `borders`, `vertical_alignment`; per paragraph
+  `paragraph_style` (by name, so another document's compare) and its direct formatting in
+  `word_format`'s names (`clear` where the reference states none). Rows correspond by the
+  reference's structure: its header rows one to one, then body row *i* to its body row *i*
+  or its last. The tests run every fix call through the tools and compare again: nothing
+  with a fix is left. New: `Document.compare_blocks`.
+- **Fix: `word_format_table` `scope: "table"` with `borders`** set the table's style to the
+  border's name ("the document has no table style 'single'"): the border style shadowed
+  the `style` argument. Borders alone now leave the style as it was.
+- Definitions: word_compare_blocks adds 258 to every definition (12,825 -> 13,083 by the
+  offline estimate; the guard rises to 13,085), none to the core (2,816). A reviewer is
+  sent it too (a reading tool): every definition a reviewer is sent 7,234 -> 7,492 (guard
+  7,495). The strict set is unchanged.
+
 ## 0.1.7 -- unreleased
 
 - **`word_copy_from` within one document** (round 17, P4): `source_doc` may be `doc` (it was

@@ -408,8 +408,8 @@ def word_format_table(call: Any, doc: str, table: str, scope: str, row: int | No
     table = resolve(call, table)
     view = document.table(table)
     fill = None if shading == "none" else shading
-    style = None if borders in (None, "none") else borders
-    sides = {side: style for side in _TABLE_SIDES} if borders is not None else {}
+    line = None if borders in (None, "none") else borders
+    sides = {side: line for side in _TABLE_SIDES} if borders is not None else {}
     edits = []
     if scope == "table":
         values: dict[str, Any] = {}
