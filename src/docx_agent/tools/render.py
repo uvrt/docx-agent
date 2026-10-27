@@ -34,8 +34,15 @@ class PageRenderer(RendererBase):
     faces it was measured with, :func:`docx2svg.lay_out_docx`); given, the document is not
     laid out again -- the same pages, byte for byte, for the cost of unpickling it.
     Without it, the layout is made and returned so, for the caller to hand the next call.
-    The facts are also ``count`` (the pages there are) and ``coverage`` (the layout's
-    coverage facts, :func:`docx_agent.layout.coverage_facts`)."""
+    ``("previous", laid_out)`` is such a layout of an **earlier version** of the document
+    (round 19): the document is laid out again from it -- from the page the first changed
+    block is on until the pages line up with it again (``lay_out_docx``'s ``previous``) --
+    the same pages, byte for byte, as a layout of the bytes alone; the pages an edit left
+    as they were then key to the images held, and are not drawn again.
+    The facts are also ``count`` (the pages there are), ``coverage`` (the layout's
+    coverage facts, :func:`docx_agent.layout.coverage_facts`), and from an earlier
+    version's layout ``changed`` (the pages whose drawing changed) and ``relaid`` (why the
+    whole document was laid out again, or ``None``)."""
 
     name = "docx-agent"
     whole_document = True
@@ -59,11 +66,16 @@ class PageRenderer(RendererBase):
         options = docx2svg.ConvertOptions(pages=items, width=width, font_dirs=font_dirs,
                                           locale=locale)
         fresh = None
+        previous = None
+        if isinstance(state, tuple) and len(state) == 2 and state[0] == "previous":
+            previous = _loaded(state[1])[0]
+            state = None
         if state is not None:
-            layout, fonts = pickle.loads(state)
+            layout, fonts = _loaded(state)
         else:
-            layout, _, fonts = docx2svg.lay_out_docx(data, options)
-            fresh = pickle.dumps((layout, fonts), protocol=pickle.HIGHEST_PROTOCOL)
+            layout, _, fonts = docx2svg.lay_out_docx(data, options, previous=previous)
+            fresh = pickle.dumps((_light(layout), fonts), protocol=pickle.HIGHEST_PROTOCOL)
+            _remember(fresh, (layout, fonts))
         count = len(layout.pages)
         svgs = docx2svg.page_svgs(layout, data, options, device_size=True, fonts=fonts)
         numbers = [page for page in items if 1 <= page <= count]
@@ -102,7 +114,8 @@ class PageRenderer(RendererBase):
                       raster={"files": files, "embedded": embedded, "dirs": dirs, "skip": skip,
                               "sans": sans},
                       facts={"count": count, "coverage": coverage_facts(layout.coverage),
-                             "laid_out": fresh})
+                             "laid_out": fresh, "changed": getattr(layout, "changed_pages", None),
+                             "relaid": getattr(layout, "relaid", None) if previous is not None else None})
 
     def key_text(self, svg: str) -> str:
         return _DOCX_DATA.sub("", svg)
@@ -147,6 +160,48 @@ class PageRenderer(RendererBase):
 
         svg_to_png('<svg xmlns="http://www.w3.org/2000/svg" width="64" height="16">'
                    '<text x="0" y="12" font-family="sans-serif" font-size="10">Aa</text></svg>')
+
+
+#: The layouts this process made or read last, by a digest of their pickle (``laid_out``):
+#: the next call handing one back to the same process does not read it again, and finds
+#: what the layout's flow measured, which the pickle leaves out (:func:`_light`).
+_RECENT: dict = {}
+_RECENT_SIZE = 2
+
+
+def _light(layout):
+    """``layout`` to pickle: without what its flow measured (``layout.state.memo``, which
+    a layout of the next version reuses for the blocks that did not change -- most of a
+    long document's pickle).  The process that made it keeps it (:data:`_RECENT`); a layout
+    read in another is laid out again from without it: the same pages, measured again."""
+    import dataclasses
+
+    state = getattr(layout, "state", None)
+    if state is None or not getattr(state, "memo", None):
+        return layout
+    return dataclasses.replace(layout, state=dataclasses.replace(state, memo={}))
+
+
+def _remember(blob: bytes, laid: tuple) -> None:
+    import hashlib
+
+    key = hashlib.sha256(blob).digest()
+    _RECENT.pop(key, None)
+    _RECENT[key] = laid
+    while len(_RECENT) > _RECENT_SIZE:
+        _RECENT.pop(next(iter(_RECENT)))
+
+
+def _loaded(blob: bytes) -> tuple:
+    """``(layout, fonts)`` of a ``laid_out`` pickle: the one this process holds, else read."""
+    import hashlib
+    import pickle
+
+    found = _RECENT.get(hashlib.sha256(blob).digest())
+    if found is None:
+        found = pickle.loads(blob)
+        _remember(blob, found)
+    return found
 
 
 #: The document's renderer, handed to the pipeline's worker tasks.

@@ -164,9 +164,74 @@ def test_the_next_call_on_the_same_version_hands_its_worker_the_layout():
         _ok(box, session, "replace_text", doc=d, find="Page 3 of", replace="Page three of", expect="one")
         third = _ok(box, session, "render", doc=d, pages=[3], width=300)
         expected = render_pages(session.entry(d).document.to_bytes(), [3], 300, [])[0]
-    assert seen == [False, True, False]
+    # After the edit, the layout of the version before is handed over (round 19).
+    assert seen == [False, True, True]
     assert [image.data for image in third.images] == expected
     assert first.data["coverage"] == second.data["coverage"]
+
+
+def test_a_layout_of_an_earlier_version_is_laid_out_again_only_where_the_edit_reaches():
+    data = _pages(4)
+    first = lay_out_views(RENDERER, data, [1, 2, 3, 4], 300, [])
+    document = Document.open(data)
+    edited = next(p for p in document.paragraphs() if p.text.startswith("Page 3 "))
+    edited.set_text("Page three of a made-up note, edited.")
+    after = document.to_bytes()
+    known = [key for _, key, _, _ in first["views"]]
+    again = lay_out_views(RENDERER, after, [1, 2, 3, 4], 300, [], known=known,
+                          state=("previous", first["facts"]["laid_out"]))
+    fresh = lay_out_views(RENDERER, after, [1, 2, 3, 4], 300, [], known=known)
+    assert again["facts"]["laid_out"] and again["facts"]["count"] == 4
+    # The same pages as a layout of the new bytes alone, byte for byte.
+    assert again["views"] == fresh["views"] and again["raster"] == fresh["raster"]
+    assert again["facts"]["coverage"] == fresh["facts"]["coverage"]
+    # The first edit stamps every paragraph's id, so the whole body is new to the layout
+    # before it -- but only page 3 draws anything else; the others' images are held.
+    assert again["facts"]["changed"] == [3]
+    assert [page for page, _, svg, _ in again["views"] if svg is not None] == [3]
+    # A second edit, from the first's layout: only what it reaches is laid out again.
+    edited.set_text("Page three of a made-up note, edited twice.")
+    later = lay_out_views(RENDERER, document.to_bytes(), [3], 300, [],
+                          state=("previous", again["facts"]["laid_out"]))
+    assert later["facts"]["relaid"] is None and later["facts"]["changed"] == [3]
+    assert later["views"] == lay_out_views(RENDERER, document.to_bytes(), [3], 300, [])["views"]
+
+
+def test_a_layout_this_process_made_is_not_read_again(monkeypatch):
+    import pickle
+
+    from docx_agent.tools import render
+
+    data = _pages(2)
+    first = lay_out_views(RENDERER, data, [1, 2], 300, [])
+    reads = []
+    loads = pickle.loads
+    monkeypatch.setattr(pickle, "loads", lambda blob: reads.append(1) or loads(blob))
+    again = lay_out_views(RENDERER, data, [1, 2], 300, [], state=first["facts"]["laid_out"])
+    assert reads == [] and again["views"] == first["views"]
+    # One it did not make (another process's, or one it has let go) is read.
+    render._RECENT.clear()
+    lay_out_views(RENDERER, data, [1, 2], 300, [], state=first["facts"]["laid_out"])
+    assert reads == [1]
+
+
+def test_a_layout_read_in_another_process_lays_out_again_without_its_measurements():
+    import pickle
+
+    from docx_agent.tools import render
+
+    data = _pages(3)
+    first = lay_out_views(RENDERER, data, [1, 2, 3], 300, [])
+    # What another process reads: the layout without what its flow measured.
+    layout, _ = pickle.loads(first["facts"]["laid_out"])
+    assert layout.state is not None and layout.state.memo == {}
+    render._RECENT.clear()
+    document = Document.open(data)
+    next(p for p in document.paragraphs() if p.text.startswith("Page 2 ")).set_text("Page two, edited.")
+    after = document.to_bytes()
+    again = lay_out_views(RENDERER, after, [1, 2, 3], 300, [], state=("previous", first["facts"]["laid_out"]))
+    assert again["views"] == lay_out_views(RENDERER, after, [1, 2, 3], 300, [])["views"]
+    assert again["facts"]["changed"] == [2]
 
 
 def test_a_warmed_worker_draws_the_same_pages(monkeypatch):
