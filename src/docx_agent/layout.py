@@ -13,6 +13,9 @@ What it answers (ROADMAP.md, "Reflow feedback"):
 
 * ``where(id)`` -- one :class:`Placement` per page and text column the paragraph (or table)
   is drawn in, in points from the page's top; ``page_of(id)`` -- the page, or ``(first, last)``;
+* ``blocks_on(page)`` and ``pages_of(id)`` -- the top-level blocks a page draws, and every
+  page a paragraph, table or row is drawn on (round 19), from docx2svg's own page <-> block
+  map (``Page.blocks``: element paths, mapped onto this API's ids);
 * ``compare(before)`` -- which pages differ from an earlier layout, by a signature of what
   each page draws (glyphs, positions, rules, pictures; not the SVG text), and which blocks
   moved to another page;
@@ -268,6 +271,95 @@ class DocumentLayout:
             if key is not None and self._canon(key) not in seen:
                 seen.append(self._canon(key))
         return seen
+
+    def blocks_on(self, page: int) -> list[str]:
+        """The ids of the body's top-level blocks -- paragraphs and tables, the ids the Word
+        tools take -- that the 1-based ``page`` draws something of, in document order: a
+        paragraph or table split across pages is on each (docx2svg's ``Page.blocks``,
+        round 19).  ``[]`` for a page the layout does not have."""
+        if not 1 <= page <= len(self.pages):
+            return []
+        from docx2svg.paths import block_keys
+
+        order = self._block_order()
+        found: dict[str, int] = {}
+        for key in self.pages[page - 1].blocks:
+            if block_keys(key)[0] != key:
+                continue
+            identifier, element = self._key_id(key)
+            if identifier is not None and identifier not in found:
+                found[identifier] = order.get(element, -1)
+        return sorted(found, key=found.__getitem__)
+
+    def pages_of(self, identifier: str) -> list[int]:
+        """Every 1-based page a paragraph, table, table row or cell (its id, or an alias of
+        it) is drawn on, in order -- each page of one split across pages, each page a header
+        row is drawn again on.
+        ``[]`` for a block nothing of which is drawn (hidden, past a stop, not the body's)
+        or an id the document does not have."""
+        index = self._pages_index()
+        return list(index.get(self._canon(identifier), []))
+
+    def _pages_index(self) -> dict[str, list[int]]:
+        index = getattr(self, "_page_ids_index", None)
+        if index is None:
+            index = {}
+            for page in self.pages:
+                for key in page.blocks:
+                    identifier, _ = self._key_id(key)
+                    if identifier is None:
+                        continue
+                    pages = index.setdefault(self._canon(identifier), [])
+                    if not pages or pages[-1] != page.number + 1:
+                        pages.append(page.number + 1)
+            self._page_ids_index = index
+        return index
+
+    def _key_id(self, key: str) -> "tuple[str | None, Any]":
+        """The id of the body block docx2svg's key names (a paragraph's, a table's, a
+        row's or a cell's), and its element, cached."""
+        keys = self.__dict__.setdefault("_key_ids", {})
+        if key not in keys:
+            document = self._document
+            part = document.package.document_part()
+            element = resolve_path(document.package.tree(part), key)
+            identifier = None
+            if element is not None and element.tag in (_W + "p", _W + "tbl"):
+                entry = document._index(part).entry_for(element)
+                identifier = entry.id if entry is not None else None
+            elif element is not None and element.tag in (_W + "tr", _W + "tc"):
+                identifier = self._row_ids().get(element)
+            keys[key] = (identifier, element)
+        return keys[key]
+
+    def _row_ids(self) -> dict:
+        """Each body table row's and cell's element -> its id (``tr:...``; a cell's
+        ``<table id>/c<row>,<column>``, its column its grid origin, as :class:`Cell` counts it)."""
+        rows = self.__dict__.get("_rows")
+        if rows is None:
+            from .edit.document import _cells, _find, _int
+
+            document = self._document
+            index = document._index(document.package.document_part())
+            rows = {}
+            for table in index.tables:
+                for number, (row, row_id) in enumerate(table.rows):
+                    rows[row] = row_id
+                    column = _int(_find(row, "w:trPr/w:gridBefore"), 0)
+                    for cell in _cells(row):
+                        rows[cell] = f"{table.id}/c{number},{column}"
+                        column += max(1, _int(_find(cell, "w:tcPr/w:gridSpan"), 1))
+            self.__dict__["_rows"] = rows
+        return rows
+
+    def _block_order(self) -> dict:
+        order = self.__dict__.get("_order")
+        if order is None:
+            document = self._document
+            root = document.package.tree(document.package.document_part())
+            # Keyed by the elements themselves (lxml's proxies, kept alive here), in document order.
+            order = self.__dict__["_order"] = {element: k for k, element in enumerate(root.iter())}
+        return order
 
     def _wanted(self, identifier: str) -> set[str]:
         document = self._document

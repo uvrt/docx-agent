@@ -5,6 +5,21 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.12 -- unreleased
+
+- **Pages and blocks both ways, in this API's ids** (production round 19, R3):
+  `DocumentLayout.blocks_on(page)` is the ids of the body's top-level blocks (paragraphs and
+  tables, the ids the Word tools take) that a 1-based page draws something of, in document
+  order; `DocumentLayout.pages_of(id)` every page a paragraph, table, table row or cell (or
+  an alias of its id) is drawn on -- each page of one split across pages, each page a header
+  row is drawn again on; `[]` for a block nothing of which is drawn. Both read docx2svg's own
+  page <-> block map (`Page.blocks`, docx2svg 0.6.0: element paths derived from the XML) and
+  map its keys onto ids through the live tree, once per layout. `page_of` and
+  `ids_on_page` are unchanged. No tool needs it: `check`'s facts already say each entry's
+  pages and `render` returns images, so the definitions are unchanged; an application
+  showing which pages an agent's section covers, or jumping from a reviewer's entry to its
+  page, calls `doc.layout()`. docx2svg's floor is raised to 0.6.0.
+
 ## 0.1.11 -- unreleased
 
 - **Empty paragraphs between text** (production round 18, Q4): `check`'s layout facts

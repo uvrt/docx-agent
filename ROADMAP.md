@@ -957,6 +957,11 @@ doc.render_svg(pages=diff.changed)     # or render_png; ids on every paragraph g
   a page; `unmapped` lists any line path no paragraph answers to (none on any fixture).
   Renders carry `data-docx-agent-id` on paragraph groups; tables and drawings, which
   docx2svg draws without a group of their own, wait for E5.
+- **Pages and blocks both ways (round 19, R3):** `blocks_on(page)` lists the top-level
+  blocks a page draws, in document order, and `pages_of(id)` every page a paragraph, table,
+  row or cell is drawn on, from docx2svg's `Page.blocks` (element paths, mapped onto ids
+  through the live tree, as line paths are). For an application's live view: which pages an
+  agent's section covers, and from a reviewer's entry to its page.
 - **Cost.** One full layout per document state, cached by the bytes' hash: `layout()` and
   `render_svg()` of the same state read one `docx2svg.convert_docx` (every page laid out
   and written as SVG; writing the SVG costs little beside the layout), tested by counting
