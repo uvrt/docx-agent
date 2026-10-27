@@ -117,14 +117,15 @@ repositories, as CI does. `pyproject.toml` names versions, never URLs, since PyP
 a distribution whose dependencies name one. Each floor is the first version with what
 this package uses; what each earlier version added is in that package's CHANGELOG.
 
-- `ooxml-edit>=0.67.0`: the format-neutral editing core (the OPC package, ordered
+- `ooxml-edit>=0.68.0`: the format-neutral editing core (the OPC package, ordered
   insertion, undo, the tool layer, and in `ooxml_edit.charts` charts, their workbooks and
   SmartArt, which docx-agent hosts in Word's drawings), extracted from pptx-agent. 0.62.0
   gives public names to what was imported private (`charts.create.check_options`;
   review, N2); 0.63.0 the one lookup for `edit_chart`'s series and category and
   `edit_smartart`'s node (`charts.actions.resolve_*`; review, N4); 0.67.0 the handlers'
   work itself, the same in a deck (`charts.actions.apply_data_action`, `add_plan`,
-  `chart_json`..., and the table `charts.cases` the tests replay; review, S10).
+  `chart_json`..., and the table `charts.cases` the tests replay; review, S10); 0.68.0 an
+  SVG picture and its recolouring, as a deck's (`ooxml_edit.pictures`; round 17, P6).
 - `ooxml-common>=0.31.0`: standard library only and docx2svg's own dependency, named for
   what docx-agent imports from it directly (the package kinds, the font folders, the
   locale). 0.28.0 has the public `imagemeta.pixels_and_density` (review, N2); 0.31.0

@@ -6,18 +6,22 @@ controls (``word_controls``)."""
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from ooxml_edit.tools import (REVIEW, Result, ToolError, array, integer, names_as, number, obj,
                               string)
 
 from ..edit import provenance as _provenance
-from ._base import need, outcome, remember, resolve, short, word_tool
+from ..edit.pictures import PictureError
+from ._base import need, note_small_text, outcome, remember, resolve, short, word_tool
 from .structure import _position
 from .table_data import DATE_FORMAT, FROM_COLUMNS, HEADER, cell_text, fits, no_source, placed
 
 DOC = string("Document id.")
 TABLE = string("Table (t:...).")
+#: A cell's id, ``t:<table>/c<row>,<column>``.
+_CELL = re.compile(r"^t[:@].+/c\d+,\d+$")
 
 
 def table_json(document: Any, table_id: str, *, markdown: bool = True) -> dict[str, Any]:
@@ -142,7 +146,7 @@ def word_edit_table(call: Any, doc: str, table: str, action: str, cells: list[di
     result = outcome(edits, f"{action} on {table}", data=table_json(document, now), changed=[now])
     if now != table:
         result.renamed[table] = now
-    return result
+    return note_small_text(call, result, [now]) if action == "set_cells" else result
 
 
 def _set_from(call: Any, view: Any, source: str, from_columns: list[str] | None,
@@ -185,7 +189,7 @@ def _set_from(call: Any, view: Any, source: str, from_columns: list[str] | None,
         result.warnings.append(f"from filled rows {top}-{top + need_rows - 1}, columns "
                                f"0-{need_columns - 1} of a {height}x{width} table; the other "
                                "cells keep their text")
-    return result
+    return note_small_text(call, result, [view.id])
 
 
 # -- the table's record, kept true ---------------------------------------------------------------
@@ -474,100 +478,149 @@ def word_format_table(call: Any, doc: str, table: str, scope: str, row: int | No
 WRAPS = ["square", "tight", "top_and_bottom", "front", "behind"]
 
 
-@word_tool("word_drawings", "Drawings: list; insert a picture from an image blob (width keeps the aspect ratio), a text box or a shape, inline or floating; move, resize, float or inline, set wrapping and order.",
-           {"doc": DOC,
-            "action": string("What to do.", enum=["list", "insert_picture", "insert_text_box", "insert_shape",
-                                                   "move", "resize", "float", "inline", "set"]),
-            "target": string("The drawing (d:...).", optional=True),
-            "image": string("insert_picture: image blob handle, e.g. b2.", optional=True),
-            "at": string("insert_*: position, or after:/before: a block (a paragraph of its own).",
-                         optional=True),
-            "find": string("insert_*: text occurring once to anchor after.", optional=True),
-            "x": number("move, float, insert_*: offset.", minimum=-1584, maximum=1584, optional=True),
-            "y": number("move, float, insert_*: offset.", minimum=-1584, maximum=1584, optional=True),
-            "align": string("float, insert_*: across, instead of x; own paragraph: its alignment.",
-                            enum=["left", "center", "right"],
-                            optional=True),
-            "against": string("What x and align measure from. Default column.",
-                              enum=["column", "margin", "page"], optional=True),
-            "width": number("resize, insert_*.", minimum=1, maximum=1584, optional=True),
-            "height": number("resize, insert_text_box, insert_shape.", minimum=1, maximum=1584, optional=True),
-            "wrap": string("float, set, insert_*: text wrapping; inserts float with it.",
-                           enum=WRAPS, optional=True),
-            "z_order": string("set: z-order.", enum=["front", "back", "forward", "backward"],
-                              optional=True),
-            "text": string("insert_text_box, insert_shape: the text inside.", optional=True),
-            "preset": string("insert_shape: geometry, e.g. rect, ellipse.", optional=True),
-            "alt_text": string("insert_picture (needed), set: text for screen readers.", optional=True),
-            "ref": string("insert_*: ref name for $name.", optional=True),
-            "key": string("Retry key: a repeat with the same key makes nothing new.", optional=True)},
-           refs=('target', 'at'), group="word_objects", mutates=True,
-           action_roles={"list": REVIEW})
-def word_drawings(call: Any, doc: str, action: str, target: str | None = None, image: str | None = None,
-                  at: str | None = None, find: str | None = None, x: float | None = None, y: float | None = None,
-                  align: str | None = None, against: str | None = None, width: float | None = None,
-                  height: float | None = None, wrap: str | None = None, z_order: str | None = None,
-                  text: str | None = None, preset: str | None = None, alt_text: str | None = None,
-                  ref: str | None = None, key: str | None = None) -> Result:
-    document = call.document
-    if action == "list":
-        from .read import _drawings, drawing_kind
+#: The tool that finds a catalogue's assets, when the application configured one.
+FIND_ASSET = "word_find_asset"
 
-        rows = []
-        for drawing in _drawings(document):
-            row = {"id": drawing.id, "kind": drawing_kind(drawing), "size": [round(v, 2) for v in drawing.size],
-                   "inline": drawing.inline}
-            if drawing.alt_text:
-                row["alt_text"] = short(drawing.alt_text, 80)
-            rows.append(row)
-        return Result(summary=f"{len(rows)} drawing(s)", data=rows)
-    if action == "insert_picture":
-        own = []
-        if at and find is None and at.split(":", 1)[0] in ("after", "before"):
-            # A paragraph of its own, beside the block, holding only the picture.
-            side, block = at.split(":", 1)
-            own.append(document.insert_paragraph("", **{side: resolve(call, block)}))
-            at = f"{own[0].id}@0"
-            if wrap is None and align is not None:
-                own.append(document.format_paragraph(own[0].id, alignment=align))
-                align = None
-        return _insert_picture(call, need(image, "image"), need(alt_text, "alt_text", " for a picture"),
-                               at, find, width, height, _floating(wrap, x, y, align, against, picture=True), ref,
-                               own)
-    if action.startswith("insert_"):
-        where = _position(call, at, find)
-        options = {k: v for k, v in (("x", x), ("y", y), ("width", width), ("height", height), ("wrap", wrap))
-                   if v is not None}
-        if action == "insert_text_box":
-            edit = document.insert_text_box(where, text or "", **options)
+
+def drawings_tool(catalogue: Any = None) -> Any:
+    """``word_drawings``; with the application's asset catalogue (:func:`docx_agent.tools.docx_format`'s
+    ``assets``), the same tool taking ``asset``, an id :data:`FIND_ASSET` found, in place of
+    ``image`` -- the protocol pptx-agent's ``ppt_add_picture`` takes it by
+    (:mod:`ooxml_edit.tools.assets`)."""
+    params = {"doc": DOC,
+              "action": string("What to do.", enum=["list", "insert_picture", "insert_text_box", "insert_shape",
+                                                     "move", "resize", "float", "inline", "set"]),
+              "target": string("The drawing (d:...).", optional=True),
+              "image": string("insert_picture: image blob handle, e.g. b2.", optional=True),
+              "at": string("insert_*: position, or after:/before: a block (a paragraph of its own).",
+                           optional=True),
+              "find": string("insert_*: text occurring once to anchor after.", optional=True),
+              "x": number("move, float, insert_*: offset.", minimum=-1584, maximum=1584, optional=True),
+              "y": number("move, float, insert_*: offset.", minimum=-1584, maximum=1584, optional=True),
+              "align": string("float, insert_*: across, instead of x; own paragraph: its alignment.",
+                              enum=["left", "center", "right"],
+                              optional=True),
+              "against": string("What x and align measure from. Default column.",
+                                enum=["column", "margin", "page"], optional=True),
+              "width": number("resize, insert_*.", minimum=1, maximum=1584, optional=True),
+              "height": number("resize, insert_text_box, insert_shape.", minimum=1, maximum=1584, optional=True),
+              "wrap": string("float, set, insert_*: text wrapping; inserts float with it.",
+                             enum=WRAPS, optional=True),
+              "z_order": string("set: z-order.", enum=["front", "back", "forward", "backward"],
+                                optional=True),
+              "text": string("insert_text_box, insert_shape: the text inside.", optional=True),
+              "preset": string("insert_shape: geometry, e.g. rect, ellipse.", optional=True),
+              "alt_text": string("insert_picture (needed), set: text for screen readers.", optional=True),
+              "color": string("insert_picture: tint an SVG, theme colour or RRGGBB.", optional=True),
+              "ref": string("insert_*: ref name for $name.", optional=True),
+              "key": string("Retry key: a repeat with the same key makes nothing new.", optional=True)}
+    if catalogue is not None:
+        params["asset"] = string(f"insert_picture: or an asset id from {FIND_ASSET}.", optional=True)
+
+    @word_tool("word_drawings", "Drawings: list; insert a picture from an image blob" + (" or catalogue asset" if catalogue is not None else "") + " (width keeps the aspect ratio), a text box or a shape, inline or floating; move, resize, float or inline, set wrapping and order.",
+               params, refs=('target', 'at'), group="word_objects", mutates=True,
+               action_roles={"list": REVIEW}, aliases={"size_pt": "width"})
+    def word_drawings(call: Any, doc: str, action: str, target: str | None = None, image: str | None = None,
+                      at: str | None = None, find: str | None = None, x: float | None = None, y: float | None = None,
+                      align: str | None = None, against: str | None = None, width: float | None = None,
+                      height: float | None = None, wrap: str | None = None, z_order: str | None = None,
+                      text: str | None = None, preset: str | None = None, alt_text: str | None = None,
+                      ref: str | None = None, key: str | None = None, color: str | None = None,
+                      asset: str | None = None) -> Result:
+        document = call.document
+        if action == "list":
+            from .read import _drawings, drawing_kind
+
+            rows = []
+            for drawing in _drawings(document):
+                row = {"id": drawing.id, "kind": drawing_kind(drawing), "size": [round(v, 2) for v in drawing.size],
+                       "inline": drawing.inline}
+                if drawing.alt_text:
+                    row["alt_text"] = short(drawing.alt_text, 80)
+                rows.append(row)
+            return Result(summary=f"{len(rows)} drawing(s)", data=rows)
+        if action == "insert_picture":
+            own = []
+            if at and find is None and at.split(":", 1)[0] in ("after", "before"):
+                # A paragraph of its own, beside the block, holding only the picture.
+                side, block = at.split(":", 1)
+                own.append(document.insert_paragraph("", **{side: resolve(call, block)}))
+                at = f"{own[0].id}@0"
+                if wrap is None and align is not None:
+                    own.append(document.format_paragraph(own[0].id, alignment=align))
+                    align = None
+            if asset is not None:
+                if image is not None:
+                    raise ToolError("invalid_arguments", "give image or asset, not both", field="asset")
+                from ooxml_edit.tools import assets
+
+                data, _ = assets.fetch(catalogue, asset, call.session.limits, search_tool=FIND_ASSET)
+                # An icon's text for screen readers, unless given: its id's last part, in words.
+                alt_text = alt_text or " ".join(re.split(r"[-_\s]+", asset.rsplit("/", 1)[-1])).strip() or asset
+            else:
+                data = _image_blob(call, need(image, "image"))
+            return _insert_picture(call, data, need(alt_text, "alt_text", " for a picture"),
+                                   at, find, width, height, _floating(wrap, x, y, align, against, picture=True), ref,
+                                   own, color=color)
+        if action.startswith("insert_"):
+            where = _position(call, at, find)
+            options = {k: v for k, v in (("x", x), ("y", y), ("width", width), ("height", height), ("wrap", wrap))
+                       if v is not None}
+            if action == "insert_text_box":
+                edit = document.insert_text_box(where, text or "", **options)
+            else:
+                edit = document.insert_shape(where, preset or "rect", text=text, **options)
+            remember(call, ref, edit.id)
+            return outcome([edit], f"Inserted {edit.id}", data={"id": edit.id})
+        target = resolve(call, need(target, "target"))
+        if action == "move":
+            edit = document.move_drawing(target, need(x, "x"), need(y, "y"))
+        elif action == "resize":
+            edit = document.resize_drawing(target, width, height)
+        elif action == "float":
+            edit = document.float_drawing(target, **_floating(wrap, x, y, align, against, picture=False))
+        elif action == "inline":
+            edit = document.inline_drawing(target)
         else:
-            edit = document.insert_shape(where, preset or "rect", text=text, **options)
-        remember(call, ref, edit.id)
-        return outcome([edit], f"Inserted {edit.id}", data={"id": edit.id})
-    target = resolve(call, need(target, "target"))
-    if action == "move":
-        edit = document.move_drawing(target, need(x, "x"), need(y, "y"))
-    elif action == "resize":
-        edit = document.resize_drawing(target, width, height)
-    elif action == "float":
-        edit = document.float_drawing(target, **_floating(wrap, x, y, align, against, picture=False))
-    elif action == "inline":
-        edit = document.inline_drawing(target)
-    else:
-        values = {k: v for k, v in (("wrap", wrap), ("z_order", z_order), ("x", x), ("y", y)) if v is not None}
-        edits = []
-        if alt_text is not None:
-            picture = document.picture(target)
-            with document.batch():
-                picture.alt_text = alt_text
-            edits.append(None)
-        if values:
-            edits.append(document.set_drawing(target, **values))
-        if not edits:
-            raise ToolError("invalid_arguments", "set needs something to set",
-                            valid_options=["wrap", "z_order", "x", "y", "alt_text"])
-        return outcome(edits, f"Set {target}", changed=[target])
-    return outcome([edit], f"{action}: {target}", changed=[target])
+            values = {k: v for k, v in (("wrap", wrap), ("z_order", z_order), ("x", x), ("y", y)) if v is not None}
+            edits = []
+            if alt_text is not None:
+                picture = document.picture(target)
+                with document.batch():
+                    picture.alt_text = alt_text
+                edits.append(None)
+            if values:
+                edits.append(document.set_drawing(target, **values))
+            if not edits:
+                raise ToolError("invalid_arguments", "set needs something to set",
+                                valid_options=["wrap", "z_order", "x", "y", "alt_text"])
+            return outcome(edits, f"Set {target}", changed=[target])
+        return outcome([edit], f"{action}: {target}", changed=[target])
+
+    return word_drawings
+
+
+word_drawings = drawings_tool()
+
+
+def find_asset_tool(catalogue: Any) -> Any:
+    """``word_find_asset``: the application's asset catalogue searched by words; offered only
+    with one (:func:`docx_agent.tools.docx_format`'s ``assets``), as pptx-agent's
+    ``ppt_find_asset``."""
+    from ooxml_edit.tools import assets, tool
+
+    @tool(FIND_ASSET, "Search the brand asset catalogue (icons, logos) by words. Returns ids, names and "
+               "keywords; place one with word_drawings insert_picture asset.",
+               {"query": string("Words, e.g. arrow up."),
+                "limit": integer("Default 10.", minimum=1, maximum=assets.MAX_RESULTS, optional=True)},
+               group="word_objects", documents=())
+    def word_find_asset(call: Any, query: str, limit: int | None = None) -> Result:
+        found = assets.find(catalogue, query, limit or 10)
+        names = ", ".join(item["id"] for item in found[:10])
+        return Result(summary=f"{len(found)} asset(s)" + (f": {names}" if names else "; try other words"),
+                      data={"assets": found})
+
+    return word_find_asset
 
 
 def _floating(wrap: str | None, x: float | None, y: float | None, align: str | None, against: str | None, *,
@@ -593,16 +646,36 @@ def _floating(wrap: str | None, x: float | None, y: float | None, align: str | N
     return values
 
 
-def _insert_picture(call: Any, image: str, alt_text: str, at: str | None, find: str | None,
-                    width: float | None, height: float | None, floating: dict[str, Any] | None,
-                    ref: str | None, before: list | None = None) -> Result:
-    if height is not None:
-        raise ToolError("invalid_arguments", "a picture keeps its aspect ratio: give width", field="height")
+def _image_blob(call: Any, image: str) -> bytes:
     blob = call.blob(image)
     if not blob.mime.startswith("image/"):
         raise ToolError("invalid_arguments", f"{image} is {blob.mime}, not an image", field="image")
+    return blob.data
+
+
+def _insert_picture(call: Any, data: bytes, alt_text: str, at: str | None, find: str | None,
+                    width: float | None, height: float | None, floating: dict[str, Any] | None,
+                    ref: str | None, before: list | None = None, *, color: str | None = None) -> Result:
+    if height is not None:
+        raise ToolError("invalid_arguments", "a picture keeps its aspect ratio: give width", field="height")
     document = call.document
-    edit = document.insert_picture(_position(call, at, find), blob.data, width=width, alt_text=alt_text)
+    where = _position(call, at, find)
+    if isinstance(where, str) and _CELL.match(where):
+        # A cell: the start of its first paragraph.
+        row, column = (int(n) for n in where.rsplit("/c", 1)[1].split(","))
+        cell = document.table(where.rsplit("/c", 1)[0]).cell(row, column)
+        where = f"{cell.paragraphs[0].id}@0"
+    if color is not None:
+        from ooxml_edit.pictures import looks_like_svg
+
+        if not looks_like_svg(data):
+            raise ToolError("invalid_arguments", "only an SVG picture can be tinted: this one is a bitmap; "
+                            "leave color out, or give an SVG", field="color")
+        try:
+            document._tint(color)
+        except PictureError as error:
+            raise ToolError("invalid_arguments", str(error), field="color") from None
+    edit = document.insert_picture(where, data, width=width, alt_text=alt_text, color=color)
     edits = [*(before or []), edit]
     if floating is not None:
         edits.append(document.float_drawing(edit.id, **floating))
