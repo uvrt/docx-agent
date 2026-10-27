@@ -149,10 +149,14 @@ class PageRenderer(RendererBase):
         return svg_to_png(svg, font_dirs=font_dirs)
 
     def warm_up(self) -> None:
-        """The renderer's imports and the rasteriser's own load of the system's fonts (once
-        per process): one line of text."""
-        import docx2svg  # noqa: F401
+        """What a worker's first layout and raster would pay for once (per process): docx2svg's
+        imports and its scan of the font folders (:func:`docx2svg.warm`, for the folders
+        ``OOXML_FONT_DIRS`` names), and the rasteriser's own load of the system's fonts: one
+        line of text."""
+        import docx2svg
         from docx2svg.png import svg_to_png
+
+        docx2svg.warm()
 
         svg_to_png('<svg xmlns="http://www.w3.org/2000/svg" width="64" height="16">'
                    '<text x="0" y="12" font-family="sans-serif" font-size="10">Aa</text></svg>')
