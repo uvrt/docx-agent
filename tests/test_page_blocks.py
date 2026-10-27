@@ -36,7 +36,7 @@ def _body_pages(layout, identifier: str) -> list[int]:
 def test_pages_of_a_paragraph_are_where_its_lines_are(long_layout):
     document, layout = long_layout
     paragraphs = [p.id for p in document.paragraphs()]
-    assert layout.page_count > 30
+    assert layout.page_count > 10   # 36 with Office's faces, fewer with their substitutes
     for identifier in paragraphs:
         pages = layout.pages_of(identifier)
         assert pages == _body_pages(layout, identifier), identifier
