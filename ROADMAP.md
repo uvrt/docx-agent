@@ -965,10 +965,11 @@ doc.render_svg(pages=diff.changed)     # or render_png; ids on every paragraph g
 - **Cost.** One full layout per document state, cached by the bytes' hash: `layout()` and
   `render_svg()` of the same state read one `docx2svg.convert_docx` (every page laid out
   and written as SVG; writing the SVG costs little beside the layout), tested by counting
-  the calls. Incremental layout
-  (re-lay from the page before the first changed block) is a docx2svg proposal for later,
-  not a requirement: page-number fields and footnotes make "earlier pages are unchanged"
-  false often enough to need care.
+  the calls. **Incremental layout (round 19, R1)** is docx2svg's now
+  (`lay_out_docx(previous=...)`: from the page the first changed block is on until the pages
+  line up again, byte for byte a full layout's, with the cases it lays out whole -- styles,
+  sections, page-number fields in the body... -- said); the `render` tool's worker uses it,
+  handing over the layout of the version before an edit.
 
 ---
 

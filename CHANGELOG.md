@@ -5,6 +5,21 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.13 -- unreleased
+
+- **The render worker lays out again only what an edit reaches** (production round 19, R1):
+  `render` keeps the latest layout on the document (as before) and, when the document has
+  changed since, hands it to its worker as the layout of an earlier version
+  (`("previous", laid_out)` as the task's `state`); the worker lays the new bytes out from it
+  (docx2svg 0.7.0's `lay_out_docx(previous=...)`: from the page the first changed block is
+  on until the pages line up again), the pages byte for byte those of a layout of the bytes
+  alone. The pages an edit left as they were then key to the images the store holds and are
+  not drawn again, as before; the worker's facts say which pages changed (`changed`) and why
+  the whole document was laid out again where it was (`relaid`). The first edit of a
+  document stamps an id on every paragraph, which docx2svg measures nothing again for. A
+  different font folder or locale lays the document out whole, as before. Tool definitions
+  unchanged. docx2svg's floor is raised to 0.7.0.
+
 ## 0.1.12 -- unreleased
 
 - **Pages and blocks both ways, in this API's ids** (production round 19, R3):

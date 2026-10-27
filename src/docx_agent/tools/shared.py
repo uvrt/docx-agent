@@ -252,18 +252,26 @@ def draw(call: Any, pages: list[int], width: int) -> tuple[dict, int | None, dic
     the pages left are rasterised over the workers at once, in chunks.  The layout comes
     back with the pages and is kept on the document by the bytes' digest (the latest only):
     the next call drawing other pages of the same bytes hands it to its worker instead of
-    laying the document out again (36 pages: about 1.5 s a call)."""
+    laying the document out again (36 pages: about 1.5 s a call); a call after an edit
+    hands it over as the layout of an earlier version, and the worker lays out again only
+    the pages the edit reaches (round 19: :class:`.render.PageRenderer`)."""
     document = call.document
     fonts = tuple(font_dirs_of(document))
     locale = locale_of(document)
     layout_key = []
 
-    def kept_layout(data: bytes) -> bytes | None:
+    def kept_layout(data: bytes) -> Any:
         # The layout of these bytes an earlier call made, kept on the document (one: the
-        # latest), so that drawing another page of a version does not lay it out again.
+        # latest), so that drawing another page of a version does not lay it out again;
+        # one of an earlier version with the same font folders and locale, so that the
+        # worker lays out again only what the edits since reach.
         layout_key.append((hashlib.sha256(data).digest(), fonts, locale))
         kept = getattr(document, "_tool_render_layout", None)
-        return kept[1] if kept is not None and kept[0] == layout_key[0] else None
+        if kept is None:
+            return None
+        if kept[0] == layout_key[0]:
+            return kept[1]
+        return ("previous", kept[1]) if kept[0][1:] == layout_key[0][1:] else None
 
     def on_facts(facts: dict, alone: bool) -> None:
         if facts.get("laid_out") is not None:
