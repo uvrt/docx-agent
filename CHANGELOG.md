@@ -5,6 +5,38 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.9 -- unreleased
+
+Needs ooxml-edit 0.68.0 (`ooxml_edit.pictures`, the SVG recolouring shared with pptx-agent).
+
+- **An icon from the application's asset catalogue** (round 17, P6a). `docx_format(assets=...)`
+  (new, `deck_format`'s counterpart; the catalogue protocol is ooxml-edit's
+  `tools.assets`, the one pptx-agent takes) offers `word_find_asset` (deferred, in
+  `word_objects`) and `word_drawings` `insert_picture` `asset` in place of `image`; without
+  a catalogue neither is sent. Inline, or floating with `wrap`, as any picture; `at` may
+  be a cell (`t:1A/c0,0`: the start of its first paragraph); `size_pt` is read as
+  `width`; an asset's `alt_text` defaults to its id's last part in words.
+- **SVG pictures and their tint**: `Document.insert_picture` takes an SVG and stores it as
+  Word stores one it inserts (measured in Word for Mac, 2026-10-26: the SVG part by
+  extension behind an image relationship and the blip's SVG extension, a PNG fallback at
+  twice the SVG's own size, the picture at its own size at 96 dpi, named "Graphic N").
+  `color` (on `word_drawings` too) tints it as PowerPoint's Graphics Fill does -- a theme
+  colour with its `MsftOfcThm_..._Fill_v2` class and the theme's value, or `RRGGBB` --
+  and draws the fallback from the tinted SVG. Measured: Word draws the SVG, not the
+  fallback, and resolves the class against the document's theme. A bitmap cannot be
+  tinted (`invalid_arguments`, field `color`).
+- **Minimum text sizes by kind** (P6b): `docx_format(min_text_size=...)` -- one number, or
+  `{"body", "table", "footnote", "endnote", "header", "footer", "caption"}` points
+  (`docx_agent.edit.minimums`; `caption` is the Caption style's own) -- sets
+  `Document.min_text_size`, which `check` reads when it is given no `min_size` (its layout
+  facts' `small_text`, each entry with its kind's `min` for a mapping) and the builders
+  read too: `word_insert_markdown` and `word_edit_table` `set_cells` report `small_text`
+  (and a warning) for the text they wrote that its styles make smaller. Unset (the
+  default), nothing changes.
+- Definitions: word_drawings' `color` +27 to every definition (13,083 -> 13,110; guard
+  13,115), none to the core (2,816); with a catalogue configured, +151 more (13,261).
+  Reviewers: 7,492 -> 7,519 (guard 7,520). The strict set is unchanged.
+
 ## 0.1.8 -- unreleased
 
 - **`word_compare_blocks`** (round 17, P3; deferred, in `word_style`), the Word counterpart

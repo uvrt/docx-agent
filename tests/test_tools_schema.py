@@ -113,10 +113,15 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 #: (deferred, in word_style: blocks compared with a reference block, the fixes as calls) adds
 #: 258 to every definition (12,825 -> 13,083), none to the core (2,816).  The guard rises to
 #: 13,085.  It is a reading tool, not sent strict: the strict set is unchanged.
+#: Round 17, P6: word_drawings' ``color`` (an SVG's tint) adds 27 to every definition
+#: (13,083 -> 13,110), none to the core; the guard rises to 13,115.  ``size_pt`` is an alias
+#: of ``width`` (no definition).  With an asset catalogue configured (docx_format(assets=...)),
+#: ``asset`` and word_find_asset add 151 more (13,261): what the application chose to send.
+#: word_drawings is not strict: the strict set is unchanged.
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 6500
-ALL_GUARD = 13085
+ALL_GUARD = 13115
 
 
 @pytest.fixture(scope="module")

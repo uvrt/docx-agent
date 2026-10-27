@@ -13,7 +13,7 @@ from ..edit.styles import StyleError
 from ..markdown import model as m
 from ..markdown.stylemap import StyleMap
 from ..markdown.write import insert_blocks
-from ._base import need, one_of, outcome, remember, resolve, short, word_tool
+from ._base import need, note_small_text, one_of, outcome, remember, resolve, short, word_tool
 from .table_data import (DATE_FORMAT, FROM_COLUMNS, HEADER, MAX_COLUMNS, MAX_ROWS, fits, no_source,
                          placed)
 
@@ -270,7 +270,7 @@ def word_insert_markdown(call: Any, doc: str, at: str, markdown: str | None = No
         raise ToolError("not_found", str(error), field="style_map",
                         valid_options=[s.name for s in call.document.styles][:50]) from None
     result = outcome([edit], f"Inserted {len(edit.blocks)} block(s)", data={"blocks": edit.blocks})
-    return result
+    return note_small_text(call, result, edit.blocks)
 
 
 def _table_from(call: Any, source: str, from_columns: list[str] | None,
@@ -294,8 +294,8 @@ def _table_from(call: Any, source: str, from_columns: list[str] | None,
     rows, columns = block.size
     data = {"blocks": edit.blocks, **table_json(document, table, markdown=False), "from": block.provenance(0)}
     call.keep_provenance(table, block.rows, data["from"])   # kept in the file, this undo step
-    return outcome([edit], f"Inserted a {rows}x{columns} table {table} from {block.rows.address}",
-                   data=data)
+    return note_small_text(call, outcome([edit], f"Inserted a {rows}x{columns} table {table} from "
+                                          f"{block.rows.address}", data=data), [table])
 
 
 def _inline(lines: list[str]) -> list:
