@@ -877,6 +877,19 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
 
         return design_facts(self, include, caps)
 
+    def compare_blocks(self, blocks, reference: str, *, reference_document: "Document | None" = None) -> dict:
+        """Each of ``blocks`` (paragraph or table ids) compared with ``reference``, a block of
+        ``reference_document`` (another open document) or of this one: every difference with
+        the reference's value and the Word tool calls that give it
+        (:mod:`docx_agent.edit.compare`)::
+
+            doc.compare_blocks(["t:1A", "t:2B"], "t:9C", reference_document=samples)["differences"]
+        """
+        from .compare import compare_blocks
+
+        return compare_blocks(self, [blocks] if isinstance(blocks, str) else list(blocks), reference,
+                              reference_document)
+
     def validate(self, target: str | os.PathLike[str] | None = None) -> list:
         """The structural problems Word would repair or refuse (:func:`docx_agent.validate.check`):
         schema order, relationships, content types, unique ids, paired ranges, numbering,

@@ -23,6 +23,7 @@ come from trial 3 (Sonnet 5.5), its fix round and the Haiku 5.5 trial; the tool 
 | comments | `word_comments` `list` | each thread: anchor text, author, replies, resolved or open |
 | formatting | `word_inspect` | a block's style, its runs' direct formatting, the effective font, size, spacing and indents |
 | design facts | `word_design_facts` | for analysing a template: each style in use per role (body, headings by level, captions, lists, table text, headers and footers) with its usage and effective look; each table style's header row, bands, first column, borders and text as drawn; the page grid and header and footer variants per section; the theme's palette and fonts; block shapes repeated under headings, with example spans to copy |
+| copies against their sample | `word_compare_blocks` | tables or paragraphs copied from a sample, compared with it (`reference`, here or in another open document): header rows, body rows, columns, merges, column widths (within 0.5 pt), table style, alignment, shading and borders, each cell's shading, borders and vertical alignment, each paragraph's style and direct formatting; every difference with the reference's value and, where a tool writes it, the calls that give it. Rows by the reference's structure: its header rows one to one, its last body row the pattern for any more |
 | `validate` on save | `save_document` | the save refuses new validation problems; only the application can allow them |
 
 How to use them:
