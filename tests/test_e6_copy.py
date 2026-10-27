@@ -328,11 +328,99 @@ def test_places_and_refusals():
     assert "Destination heading" not in [p.text for p in target.paragraphs()]
     assert copy_blocks(src, one, to=target, at="end").changed
     with pytest.raises(Exception):
-        target.copy_blocks(target, anchor)
+        target.copy_blocks(target, "p:FFFFFFFF")
     with pytest.raises(Exception):
         target.copy_blocks(src, one, styles="whatever")
     with pytest.raises(Exception):
         target.copy_blocks(src, [])
+
+
+# -- within one document (round 17, P4) ------------------------------------------------------
+
+
+def _tables(document: Document) -> list[str]:
+    return [t.id for t in document.tables()]
+
+
+def _grid(document: Document, table: str) -> list[list[str | None]]:
+    return [[c.text if c is not None else None for c in line] for line in document.table(table).grid()]
+
+
+def test_a_copy_within_a_document_is_a_copy_from_it_as_it_was():
+    """Copying from the document itself is copying from another document holding what it
+    held before the call: the same bytes, part for part."""
+    within = source()
+    within._stamp_document()
+    start = within.to_bytes()
+    result = within.copy_blocks(within, everything(within), at="end")
+    other = Document.open(start)
+    expected = other.copy_blocks(Document.open(start), everything(Document.open(start)), at="end")
+    assert entries(within.to_bytes()) == entries(other.to_bytes())
+    assert result.copied == expected.copied and result.warnings == expected.warnings
+
+
+def test_a_copy_within_a_document_renames_bookmarks_and_reissues_ids():
+    within = source()
+    before = [p.text for p in within.paragraphs()]
+    result = within.copy_blocks(within, everything(within), at="end")
+    assert [p.text for p in within.paragraphs()] == before + before
+    names = sorted(b.name for b in within.bookmarks())
+    assert names == ["Shared", "Shared_1"] and any("Shared_1" in w for w in result.warnings)
+    assert all(new != old for old, new in result.copied.items() if old.startswith(("p:", "t:", "fn:")))
+    raw = [p.get(W14 + "paraId") for p in etree.fromstring(parts(within.to_bytes())["word/document.xml"]).iter(W + "p")]
+    assert len(raw) == len(set(raw))
+    assert sorted(c.text for c in within.comments()) == ["Source comment", "Source comment"]
+    assert len({c.id for c in within.comments()}) == 2
+    assert check(within.package) == []
+    dropped = source()
+    dropped.copy_blocks(dropped, everything(dropped), at="end", bookmarks="drop")
+    assert sorted(b.name for b in dropped.bookmarks()) == ["Shared"]
+
+
+def test_a_table_copied_after_itself_and_one_undo_step():
+    within = source()
+    table = _tables(within)[0]
+    original = within.to_bytes()
+    result = within.copy_blocks(within, table, at=f"after:{table}")
+    edited = within.to_bytes()
+    first, second = _tables(within)[:2]
+    assert first == table and second == result.copied[table] != table and result.blocks == [second]
+    assert _grid(within, first) == _grid(within, second)
+    # The table and its copy are adjacent: nothing between them.
+    body = [n for n in etree.fromstring(parts(edited)["word/document.xml"]).find(W + "body")]
+    tables = [k for k, n in enumerate(body) if n.tag == W + "tbl"]
+    assert tables[1] == tables[0] + 1
+    assert check(within.package) == []
+    assert within.undo() and entries(within.to_bytes()) == entries(original)
+    assert within.redo() and entries(within.to_bytes()) == entries(edited)
+
+
+def test_a_copy_within_a_document_reads_the_blocks_as_they_were():
+    """``replace:`` over the very blocks copied puts back what they held before the call."""
+    within = source()
+    table = _tables(within)[0]
+    before = ([p.text for p in within.paragraphs()], _grid(within, table))
+    result = within.copy_blocks(within, table, at=f"replace:{table}")
+    # The copy keeps the ids the blocks it replaced had, as a copy from another document
+    # keeps those nothing here uses, and the result names the ids it has.
+    copy = result.copied[table]
+    assert _tables(within)[0] == copy == table and result.blocks == [copy]
+    assert ([p.text for p in within.paragraphs()], _grid(within, copy)) == before
+    assert check(within.package) == []
+
+
+def test_a_tracked_copy_within_a_document():
+    within = source()
+    within._stamp_document()
+    start = within.to_bytes()
+    table = _tables(within)[0]
+    with within.tracking(author=AUTHOR, date=DATE):
+        within.copy_blocks(within, table, at=f"after:{table}")
+    data = within.to_bytes()
+    assert check(Document.open(data).package) == [] and within.revisions(author=AUTHOR)
+    rejected = Document.open(data)
+    rejected.reject(author=AUTHOR)
+    assert [p.text for p in rejected.paragraphs()] == [p.text for p in Document.open(start).paragraphs()]
 
 
 def test_the_copy_lays_out():

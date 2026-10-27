@@ -5,6 +5,24 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.7 -- unreleased
+
+- **`word_copy_from` within one document** (round 17, P4): `source_doc` may be `doc` (it was
+  refused, "copy from another open document"). `Document.copy_blocks(self, ...)` copies from
+  a snapshot of the document as it is before the call and inserts as from another
+  document: bookmarks renamed (or dropped), colliding paragraph, drawing, note, comment and
+  control ids re-issued, lists, comments, notes and tracked changes as a copy from another
+  document takes them; one undo step. A table can be copied after itself
+  (`at: "after:t:1A"`), or over itself (`replace:`). The result is the same, part for part,
+  as copying from a second open copy of the document (`tests/test_e6_copy.py`).
+- `copy_blocks` with `replace:` (untracked) now takes the replaced blocks out before it puts
+  the copy in, as the tracked replace did, unless nothing follows them in their container
+  (a cell's last blocks): a copy that kept the ids of the blocks it replaced had them
+  re-issued after the result's `copied` and `blocks` named them, so those named ids that
+  were no longer there.
+- `word_copy_from`'s description says "an open document, this one too" (every definition
+  12,824 -> 12,825 by the offline estimate, the guard; the core unchanged).
+
 ## 0.1.6 -- unreleased
 
 - **What names a block, in `word_read` and `describe`** (round 17, P5), so a sample table or

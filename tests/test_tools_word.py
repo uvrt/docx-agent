@@ -383,7 +383,21 @@ def test_copy_from_another_document_maps_styles(box, session):
                 at="end", style_map=[{"source": "heading 2", "destination": "Heading 1"}])
     heading = result.data["copied"]["p:73D22116"]
     assert document(session).paragraph(heading).style_name.lower() == "heading 1"
-    fails(box, session, "word_copy_from", "invalid_arguments", doc=d1, source_doc=d1, range="p:73D22116", at="end")
+
+
+def test_copy_from_the_same_document_copies_it_as_it_was_and_undoes_in_one_step(box, session):
+    """Round 17, P4: source_doc may be doc."""
+    d = open_doc(session, FIXTURES / "generated" / "markdown" / "constructs.docx")
+    table = document(session).tables()[0].id
+    before = document(session).to_bytes()
+    count = len(document(session).tables())
+    result = ok(box, session, "word_copy_from", doc=d, source_doc=d, range=table, at=f"after:{table}")
+    copy = result.data["copied"][table]
+    assert copy != table and result.data["blocks"] == [copy] and copy in result.created
+    tables = [t.id for t in document(session).tables()]
+    assert len(tables) == count + 1 and tables[tables.index(table) + 1] == copy
+    ok(box, session, "undo", doc=d)
+    assert document(session).to_bytes() == before
 
 
 def test_sections_break_and_page_setup_in_points(box, session):

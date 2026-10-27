@@ -1083,6 +1083,33 @@ def _current_view(element: Element) -> None:
 # -- the operation -------------------------------------------------------------------------------
 
 
+def _snapshot(document: "Document", ids):
+    """``(copy, ids)``: a separate :class:`Document` holding ``document`` as it is now, and
+    ``ids`` with each id as that copy knows it (an id this session renamed, its new one)."""
+    import warnings
+
+    from .document import Document
+
+    def canonical(identifier):
+        if not isinstance(identifier, str):
+            return identifier
+        try:
+            return document._resolve(identifier)[1].id
+        except (KeyError, EditError):
+            return identifier  # the copy refuses it as the document would
+
+    def item(value):
+        if not isinstance(value, str):
+            return value
+        first, sep, last = value.partition("..")
+        return canonical(first) + (sep + canonical(last) if sep else "")
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")  # a template's TemplateOpened: it is the same file
+        copy = Document.open(document.to_bytes())
+    return copy, item(ids) if isinstance(ids, str) else [item(i) for i in ids] if isinstance(ids, (list, tuple)) else ids
+
+
 def _source_blocks(source: "Document", ids) -> tuple[str, list[Element]]:
     """The source blocks ``ids`` names: one id, ``first..last`` (blocks of one container),
     or a list of either; all in one story."""
@@ -1140,6 +1167,11 @@ class ImportOps:
         """Copy blocks of ``source`` (another :class:`Document`) here, with what they depend
         on (:mod:`docx_agent.edit.importing` says how, measured against Word).
 
+        ``source`` may be this document: the blocks are then copied from a snapshot of it as
+        it is before the call and inserted as from another document -- bookmarks renamed
+        (or dropped), every id fresh, lists, comments, notes and tracked changes as a copy
+        from another document takes them -- so a table can be copied after itself.
+
         ``ids``: a paragraph or table id, ``"first..last"`` (blocks of one container), or a
         list of them.  ``at``: as :meth:`insert_markdown` takes it -- ``"end"``,
         ``"end:<story>"``, ``"after:<id>"``, ``"before:<id>"``, ``"replace:<id>[..<id>]"``.
@@ -1164,7 +1196,7 @@ class ImportOps:
         if not isinstance(source, Document):
             raise EditError("copy_blocks copies from another Document")
         if source is self:
-            raise EditError("copy_blocks copies between documents: within one, use move_block")
+            source, ids = _snapshot(self, ids)
         if styles not in STYLE_POLICIES:
             raise EditError(f"styles is one of {', '.join(STYLE_POLICIES)}")
         if lists not in LIST_POLICIES:
@@ -1185,9 +1217,15 @@ class ImportOps:
         removed: list[str] = []
         with self._edit():
             renames = self._prepare(place.part, [], place.position)
-            if place.replaced and tracking is not None:
-                last = self._resolve(place.replaced[-1])[1].element
-                following = _next_block(last)
+            # What is replaced goes first, so the copy's ids never meet the ids of the blocks
+            # it replaces (a copy of them, from this document, has theirs): met, the copy's
+            # would be re-issued after `copied` named them.  Last only where nothing follows
+            # (a cell's last blocks), so the container keeps a paragraph throughout.
+            first = False
+            if place.replaced:
+                following = _next_block(self._resolve(place.replaced[-1])[1].element)
+                first = tracking is not None or following is not None
+            if first:
                 for identifier in place.replaced:
                     removed += self.delete_block(identifier).removed
                 place.before = following
@@ -1201,7 +1239,7 @@ class ImportOps:
             elements = [copy.deepcopy(element) for element in originals]
             importer.bring(elements, source_part, place.part)
             _place(place, elements)
-            if place.replaced and tracking is None:
+            if place.replaced and not first:
                 for identifier in place.replaced:
                     removed += self.delete_block(identifier).removed
             trailing = None

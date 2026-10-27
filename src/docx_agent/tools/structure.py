@@ -57,7 +57,7 @@ def word_move(call: Any, doc: str, section_heading: str | None = None, blocks: s
 # -- W12 word_copy_from ------------------------------------------------------------------------
 
 
-@word_tool("word_copy_from", "Copy blocks from another open document with their styles, lists, pictures, notes and comments; style_map renames source styles.",
+@word_tool("word_copy_from", "Copy blocks from an open document, this one too, with styles, lists, pictures, notes, comments; style_map renames source styles.",
            {"doc": DOC,
             "source_doc": string("Open document to copy from, e.g. d2."),
             "range": string("Source block or span p:A..t:B.", optional=True),
@@ -77,9 +77,8 @@ def word_copy_from(call: Any, doc: str, source_doc: str, at: str, range: str | N
                    style_map: list[dict] | None = None, unmapped: str = "import") -> Result:
     from .text import _at
 
+    # source_doc may be doc: copy_blocks then copies from the document as it was before the call.
     source = call.entries[source_doc].document
-    if source_doc == doc:
-        raise ToolError("invalid_arguments", "copy from another open document", field="source_doc")
     ids = source.section_blocks(section_heading) if section_heading else range
     mapping = {m["source"]: m["destination"] for m in style_map} if style_map else None
     edit = call.document.copy_blocks(source, ids, at=_at(call, at), styles=styles, style_map=mapping,
