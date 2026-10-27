@@ -276,7 +276,9 @@ def word_tool(name: str, description: str, params: Mapping[str, Any], *, group: 
               aliases: Mapping[str, Any] | None = None,
               action_roles: Mapping[str, str] | None = None,
               call_role: Callable[[Mapping[str, Any]], str | None] | None = None,
-              review_core: bool = False) -> Callable[[Callable[..., Any]], Any]:
+              review_core: bool = False,
+              action_fields: Mapping[str, Sequence[str]] | None = None
+              ) -> Callable[[Callable[..., Any]], Any]:
     """A Word tool (kind ``docx``): ``handler(call, **arguments) -> Result | data``.
 
     Around the handler: the layout engine; for a changing call, the layout before it (for
@@ -290,14 +292,16 @@ def word_tool(name: str, description: str, params: Mapping[str, Any], *, group: 
     (``Tool.aliases``); ``action_roles`` and ``call_role`` the roles of a changing tool's
     actions that are not ``edit``'s (``Tool.action_roles``: a ``list`` action is
     ``review``'s); ``review_core`` loads it in the core of a role set without ``edit``
-    (``Tool.review_core``)."""
+    (``Tool.review_core``); ``action_fields`` the parameters only some actions take, not sent
+    to a role set offered none of them (``Tool.action_fields``, ooxml-edit 0.69.0)."""
 
     def make(handler: Callable[..., Any]) -> Any:
         return _tool(name, description, params, group=group, mutates=mutates, kind="docx",
                      exactly_one=exactly_one, documents=documents, priority=priority, refs=refs,
                      batchable=batchable, reads=reads, sources=sources, facts=facts,
                      aliases=aliases, action_roles=action_roles,
-                     call_role=call_role, review_core=review_core)(wrap(handler, mutates=mutates, track=track))
+                     call_role=call_role, review_core=review_core,
+                     action_fields=action_fields)(wrap(handler, mutates=mutates, track=track))
 
     return make
 
