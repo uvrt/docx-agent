@@ -457,6 +457,18 @@ def _follows(run: Element, element: Element) -> bool:
     return parent is not None and parent.tag != W_P and _follows(run, parent)
 
 
+def table_alt_text(element: Element) -> dict[str, str]:
+    """A table's alt text, what it states: ``alt`` (its title, ``w:tblCaption``) and
+    ``description`` (``w:tblDescription``), each only when set and not empty."""
+    out = {}
+    for label, tag in (("alt", "tblCaption"), ("description", "tblDescription")):
+        node = element.find(f"{_W}tblPr/{_W}{tag}")
+        value = node.get(_W + "val") if node is not None else None
+        if value:
+            out[label] = value
+    return out
+
+
 class Table:
     """A ``w:tbl``, with a grid view that resolves ``w:gridSpan`` and ``w:vMerge``."""
 
@@ -474,6 +486,12 @@ class Table:
     def id(self) -> str:
         """The table's id (``t:...``)."""
         return self._entry()[1].id
+
+    @property
+    def alt_text(self) -> dict[str, str]:
+        """The table's alt text as it states it: ``alt`` (its title) and ``description``,
+        each only when set (:func:`table_alt_text`)."""
+        return table_alt_text(self._entry()[1].element)
 
     @property
     def rows(self) -> list["Row"]:

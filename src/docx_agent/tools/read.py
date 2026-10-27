@@ -110,7 +110,8 @@ def word_describe(call: Any, doc: str) -> Result:
                       "by_author": dict(Counter(r.author for r in revisions))},
         "fields": dict(fields),
         "tables": [{"id": t.id, "rows": len(t.rows), "columns": t.column_count,
-                    "first_row": short(" | ".join(_cell_text(t, 0, k) for k in range(t.column_count)), 80)}
+                    "first_row": short(" | ".join(_cell_text(t, 0, k) for k in range(t.column_count)), 80),
+                    **{key: short(value, 80) for key, value in t.alt_text.items()}}
                    for t in document.tables()][:30],
         "drawings": [{"id": d.id, "kind": drawing_kind(d), **({"alt_text": short(d.alt_text, 60)} if d.alt_text else {})}
                      for d in _drawings(document)][:30],
@@ -118,6 +119,12 @@ def word_describe(call: Any, doc: str) -> Result:
         "controls": len(document.content_controls()),
         "problems": [str(p) for p in entry.baseline_problems][:20],
     }
+    # Each content control a tag or title names, so a sample can be found by it.
+    named = [{"id": c.id, "kind": c.kind, **({"tag": short(c.tag, 80)} if c.tag else {}),
+              **({"title": short(c.alias, 80)} if c.alias else {})}
+             for c in document.content_controls() if c.tag or c.alias]
+    if named:
+        data["tagged"] = named[:30]
     if len(data["headings"]) == 80:
         data["headings_note"] = "the first 80 headings; word_read a range for the rest"
     return Result(summary=f"Described {entry.name}", data=data)

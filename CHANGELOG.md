@@ -5,6 +5,21 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.6 -- unreleased
+
+- **What names a block, in `word_read` and `describe`** (round 17, P5), so a sample table or
+  control can be found without reading the XML. A table's id comment adds its alt text when
+  it has some: `alt: ...` (its title, `w:tblCaption`) and `description: ...`
+  (`w:tblDescription`), after `table style: ...`, on one line and cut at 120 characters;
+  `<!-- t:3C table style: Report table alt: sample:record-table -->`. An inline content
+  control's comment adds `tag: ...` and `title: ...` (`w:alias`), as a block control's
+  already did. `describe` adds `alt` and `description` to each table that has them, and
+  `tagged` (`[{id, kind, tag?, title?}]`: each content control with a tag or a title, at
+  most 30; left out when there is none). New: `Table.alt_text`
+  (`{"alt"?, "description"?}`). Golden transcripts: w11-contract-form's `describe` result
+  is re-recorded with `--new-keys tagged` (its data less that key as recorded).
+  Tool definitions are unchanged.
+
 ## 0.1.5 -- unreleased
 
 - **`edit_chart` and `edit_smartart` as in a deck** (review, S10; needs ooxml-edit 0.67.0).
