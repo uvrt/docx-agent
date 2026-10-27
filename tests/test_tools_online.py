@@ -133,6 +133,18 @@ def _missing(given, got, where=""):
     return []
 
 
+def _fitting(schema, arguments):
+    """``arguments`` with an action the items given apply to: the example's first action,
+    ``list``, takes no ``items`` ("not list"), and a model asked for both left the items
+    out (round 17); the first other action is asked for instead."""
+    actions = schema["properties"].get("action", {}).get("enum") or []
+    if "items" in arguments and arguments.get("action") == "list":
+        others = [action for action in actions if action != "list"]
+        if others:
+            arguments = {**arguments, "action": others[0]}
+    return arguments
+
+
 def _ask_for(name, schema, arguments):
     """A user message asking for one call with every argument, the optional ones listed
     first: a model writes the arguments it must give first, which is what lost trial 3's
@@ -159,15 +171,24 @@ def test_strict_tools_keep_every_field_given(toolbox):
                    if d.get("strict") and d not in strict]
     lost = {}
     for definition in strict:
-        arguments = example_arguments(definition["input_schema"])
+        arguments = _fitting(definition["input_schema"],
+                             example_arguments(definition["input_schema"]))
         reply = _post("messages", {
             "model": MODEL, "max_tokens": 1500, "tools": [definition],
             "tool_choice": {"type": "auto"}, "output_config": {"effort": "low"},
             "messages": [{"role": "user", "content": _ask_for(
                 definition["name"], definition["input_schema"], arguments)}]})
         calls = [b for b in reply["content"] if b["type"] == "tool_use"]
-        assert [c["name"] for c in calls] == [definition["name"]], reply["content"]
-        missing = _missing(arguments, calls[0]["input"])
+        # The model may split the request into several calls of the same tool (seen with
+        # word_comments, round 17: the fields shared out between two calls): the fields of
+        # all of them together are checked, a field none of them has is still lost; another
+        # tool, or no call, still fails.
+        assert calls and {c["name"] for c in calls} == {definition["name"]}, reply["content"]
+        given = {}
+        for call in calls:
+            for key, value in call["input"].items():
+                given.setdefault(key, value)
+        missing = _missing(arguments, given)
         if missing:
             lost[definition["name"]] = missing
     print(f"\nstrict tools checked: {[d['name'] for d in strict]}")

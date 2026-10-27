@@ -88,7 +88,8 @@ def _listing(arguments: Any) -> bool:
             "detail": string("list. Default grouped.", enum=["grouped", "records"], optional=True),
             "cursor": CURSOR},
            refs=('ids[]', 'within'), group="word_review", mutates=True, track=False, reads=_listing,
-           action_roles={"list": REVIEW, "accept": ACCEPT, "reject": ACCEPT}, review_core=True)
+           action_roles={"list": REVIEW, "accept": ACCEPT, "reject": ACCEPT}, review_core=True,
+           action_fields={"ids": ("accept", "reject"), "all": ("accept", "reject")})
 def word_changes(call: Any, doc: str, action: str, ids: list[str] | None = None, author: str | None = None,
                  kind: str | None = None, within: str | None = None, all: bool = False,
                  detail: str = "grouped", cursor: str | None = None) -> Result:

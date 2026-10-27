@@ -5,6 +5,19 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.10 -- unreleased
+
+- **A reviewer's `word_changes` without `ids` and `all`** (round 17; needs ooxml-edit
+  0.69.0, `Tool.action_fields`): a role set offered `list` alone (`review`,
+  `review`+`resolve`, `review`+`edit`) is no longer sent the two parameters only `accept`
+  and `reject` take. The full definition keeps them. Offline estimates: review core 2,595 ->
+  2,544, all 7,506 -> 7,455; review+resolve core 2,603 -> 2,552, all 7,514 -> 7,463; the
+  default and accept sets unchanged. Strict sets: unchanged except `review`+`edit`, which
+  now sends `edit_smartart` strict too (the optional parameters freed make room).
+- Online strict test (`tests/test_tools_online.py`): several calls of the same tool are
+  taken together, and a definition with `items` is asked for its first action other than
+  `list` (which takes no items).
+
 ## 0.1.9 -- unreleased
 
 Needs ooxml-edit 0.68.0 (`ooxml_edit.pictures`, the SVG recolouring shared with pptx-agent).
