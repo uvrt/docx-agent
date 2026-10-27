@@ -167,3 +167,19 @@ def test_the_next_call_on_the_same_version_hands_its_worker_the_layout():
     assert seen == [False, True, False]
     assert [image.data for image in third.images] == expected
     assert first.data["coverage"] == second.data["coverage"]
+
+
+def test_a_warmed_worker_draws_the_same_pages(monkeypatch):
+    """A worker's warm-up (``RENDERER.warm_up``: docx2svg's ``warm``, its imports and font
+    scan) changes nothing it then draws."""
+    import docx2svg
+
+    data = _pages(2)
+    before = [view.svg for view in RENDERER.lay_out(data, [1, 2], 200, [], None, None).views]
+    warmed = []
+    real = docx2svg.warm
+    monkeypatch.setattr(docx2svg, "warm", lambda *a, **k: warmed.append(1) or real(*a, **k))
+    RENDERER.warm_up()
+    assert warmed == [1]
+    after = [view.svg for view in RENDERER.lay_out(data, [1, 2], 200, [], None, None).views]
+    assert after == before and len(after) == 2
