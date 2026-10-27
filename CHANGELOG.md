@@ -5,6 +5,29 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.11 -- unreleased
+
+- **Empty paragraphs between text** (production round 18, Q4): `check`'s layout facts
+  (`include: ["layout"]`, the family the spacers are in) list `empty_paragraphs`: per table
+  cell of the main story and for the body, the empty paragraphs with a paragraph of text on
+  both sides -- `{"kind": "empty_paragraphs", "at": "t:1A/c1,0" | "body", "paragraphs":
+  [positions among the container's paragraphs, 0-based], "ids", "fix"}`, every run of a
+  container in its one entry. Empty: no text but whitespace (tracked deleted text counts as
+  text) and no tab, break, drawing, object, field, note or comment reference, content
+  control or equation. A table, a block-level content control, and an empty paragraph that
+  carries a section break, a frame or a page break before end a run and are not
+  neighbours, so the empties beside them are not listed; leading and trailing empties
+  (the paragraph a cell or the body ends on among them) never are; a paragraph whose mark
+  is a tracked deletion is passed over. `fix`: `word_delete` calls, one span per run whose
+  paragraphs are siblings, else one per paragraph, the last run first; under tracking they
+  delete as tracked changes, as every `word_delete`. Read from the document, so listed when
+  the layout failed too; `pages` keeps those on the pages asked for. Headers, footers,
+  notes and text boxes are not looked at (the layout facts' spacers are the body's too). A
+  run in the body is also among the `spacers` (with its height and a `space_before`
+  alternative); either fix deletes it. Kept in docx-agent (`layout_facts.empty_paragraphs`):
+  pptx-agent's rule is over DrawingML, and the two share only the grouping of a run.
+  Definitions unchanged; strict sets unchanged.
+
 ## 0.1.10 -- unreleased
 
 - **A reviewer's `word_changes` without `ids` and `all`** (round 17; needs ooxml-edit

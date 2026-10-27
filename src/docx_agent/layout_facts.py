@@ -40,6 +40,12 @@ takes its targets as one list with the values for all, so it is ``calls``, not `
     ``page_end`` where the run reaches the foot of its page (the next block is on a later
     page).  One empty paragraph between two tables (it keeps them apart) or ending the
     document is not one.
+``empty_paragraphs`` (round 18, Q4)
+    ``{"kind", "at", "paragraphs", "ids", "fix"}``: per table cell (its id) and for the body
+    (``"body"``), the empty paragraphs with a paragraph of text on both sides -- blank lines
+    used for spacing -- every run in the container in its one entry; read from the document,
+    so listed where the layout failed too.  :func:`empty_paragraphs` has the rule.  A body
+    run is a spacer too, measured there.
 ``keep_with_next_at_foot``
     ``{"para", "style", "page", "next", "next_page"}``: a keep-with-next paragraph drawn
     last on its page, its next block on a later page.
@@ -83,6 +89,7 @@ from collections.abc import Mapping
 from .edit import effective as _effective
 from .edit.minimums import is_caption, minimum_for, text_minimums
 from .edit import text as _text
+from .edit.document import _cells, _find, _int
 from .layout import PX_PER_PT, _block_id, _in_body, _story_kind
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -221,6 +228,9 @@ class _Facts:
         if self.styles is not None:
             self.style_list(out)
         self.capped(self.spacers(), "spacers", out)
+        self.capped([e for e in empty_paragraphs(self.document)
+                     if self.shown({p for i in e["ids"] for p in self.pages_of(i)})],
+                    "empty_paragraphs", out)
         self.capped(self.keep_with_next(), "keep_with_next_at_foot", out)
         split, unrepeated = self.tables()
         self.capped(split, "split_rows", out)
@@ -742,3 +752,132 @@ def _drawing_id(element, by_frame: dict) -> str | None:
 
 
 __all__ = ["CAP", "MARGIN_TOLERANCE", "layout_facts"]
+
+
+# -- empty paragraphs between text (round 18, Q4) ------------------------------------------------
+
+#: What gives a paragraph visible content beyond its text: something drawn, a break or tab,
+#: a field, a note or comment reference, a content control, an equation.
+_VISIBLE = frozenset(_W + tag for tag in (
+    "drawing", "pict", "object", "br", "cr", "sym", "tab", "ptab", "fldChar", "fldSimple",
+    "instrText", "footnoteReference", "endnoteReference", "commentReference", "sdt",
+    "noBreakHyphen", "softHyphen", "pgNum")) | {
+    "{http://schemas.openxmlformats.org/officeDocument/2006/math}oMath",
+    "{http://schemas.openxmlformats.org/officeDocument/2006/math}oMathPara"}
+_TEXT = (_W + "t", _W + "delText")
+#: A paragraph mark deleted or moved away as a tracked change: the paragraph is going.
+_GOING = (_W + "del", _W + "moveFrom")
+#: A container's edge, a table or a block-level content control in the sequence.
+_EDGE = object()
+
+
+def empty_paragraphs(document: "Document") -> list[dict[str, Any]]:
+    """``check``'s ``empty_paragraphs`` (round 18, Q4): in the body and in each table cell
+    of the main story, every run of empty paragraphs with a non-empty paragraph on both
+    sides -- blank lines used for spacing.
+
+    ``{"kind": "empty_paragraphs", "at": "body" | <cell id>, "paragraphs": [0-based
+    positions among the container's paragraphs], "ids": [...], "fix"}``.  A paragraph is
+    empty when it shows nothing: no text but whitespace (tracked deleted text counts as
+    text) and nothing of :data:`_VISIBLE`.  A table, a block-level content control, a
+    paragraph carrying a section break, a frame or a page break before ends a run without
+    being a neighbour, so neither it nor the empties beside it are listed; a paragraph
+    whose mark is a tracked deletion is passed over.  ``fix``: ``word_delete`` of each run,
+    one span where its paragraphs are siblings, else each paragraph, the last first
+    (tracked where tracking is on, as every ``word_delete``)."""
+    part = document.package.document_part()
+    index = document._index(part)
+    body = document.package.tree(part).find(_W + "body")
+    found: list[dict[str, Any]] = []
+    if body is not None:
+        found += _empty_runs(document, index, "body", _sequence(body))
+    for table in index.tables:
+        for r, (row, _) in enumerate(table.rows):
+            column = _int(_find(row, "w:trPr/w:gridBefore"), 0)
+            for cell in _cells(row):
+                properties = cell.find(_W + "tcPr")
+                merge = properties.find(_W + "vMerge") if properties is not None else None
+                if merge is None or merge.get(_W + "val") == "restart":
+                    found += _empty_runs(document, index, f"{table.id}/c{r},{column}", _sequence(cell))
+                column += max(1, _int(_find(cell, "w:tcPr/w:gridSpan"), 1))
+    return found
+
+
+def _sequence(container) -> list:
+    """A container's paragraphs in order, :data:`_EDGE` for a table and around a block-level
+    content control's paragraphs (which are counted)."""
+    out: list = []
+    for child in container:
+        if child.tag == _W + "p":
+            out.append(child)
+        elif child.tag == _W + "sdt":
+            content = child.find(_W + "sdtContent")
+            out += [_EDGE, *(_sequence(content) if content is not None else ()), _EDGE]
+        elif child.tag in (_W + "tbl", _W + "customXml"):
+            out.append(_EDGE)
+    return out
+
+
+def _state(document: "Document", paragraph) -> str | None:
+    """``"text"``, ``"empty"``, ``"kept"`` (empty, but a section break, frame or page break
+    before it carries) or ``None`` (its mark a tracked deletion)."""
+    properties = paragraph.find(_W + "pPr")
+    mark = properties.find(_W + "rPr") if properties is not None else None
+    if mark is not None and any(mark.find(tag) is not None for tag in _GOING):
+        return None
+    for child in paragraph:
+        if child is properties or not isinstance(child.tag, str):
+            continue
+        for node in child.iter():
+            if node.tag in _VISIBLE or (node.tag in _TEXT and (node.text or "").strip()):
+                return "text"
+    if properties is not None and (properties.find(_W + "sectPr") is not None
+                                   or properties.find(_W + "framePr") is not None):
+        return "kept"
+    if _effective.paragraph(document, paragraph).page_break_before:
+        return "kept"
+    return "empty"
+
+
+def _empty_runs(document: "Document", index, at: str, sequence: list) -> list[dict[str, Any]]:
+    entries = []
+    states: list[tuple[int, Any, str]] = []      # (position, element, state); edges as "kept"
+    position = 0
+    for item in sequence:
+        if item is _EDGE:
+            states.append((-1, None, "kept"))
+            continue
+        state = _state(document, item)
+        if state is not None:
+            states.append((position, item, state))
+        position += 1
+    positions: list[int] = []
+    ids: list[str] = []
+    calls: list[dict[str, str]] = []
+    k = 0
+    while k < len(states):
+        if states[k][2] != "empty":
+            k += 1
+            continue
+        start = k
+        while k < len(states) and states[k][2] == "empty":
+            k += 1
+        if start == 0 or k == len(states) or states[start - 1][2] != "text" or states[k][2] != "text":
+            continue
+        run = states[start:k]
+        mine = [index.entry_for(element).id for _, element, _ in run]
+        elements = [element for _, element, _ in run]
+        siblings = [c for c in elements[0].getparent() if c.tag in (_W + "p", _W + "tbl")]
+        first = siblings.index(elements[0])
+        if len(mine) > 1 and siblings[first:first + len(elements)] == elements:
+            found = [{"target": f"{mine[0]}..{mine[-1]}"}]
+        else:
+            found = [{"target": identifier} for identifier in reversed(mine)]
+        calls[:0] = found                         # the last run first: a p@ id stays true
+        positions += [p for p, _, _ in run]
+        ids += mine
+    if ids:
+        entries.append({"kind": "empty_paragraphs", "at": at, "paragraphs": positions, "ids": ids,
+                        "fix": {"tool": "word_delete", "calls": calls}})
+    return entries
+
