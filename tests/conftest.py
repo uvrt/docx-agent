@@ -207,8 +207,8 @@ def _skip_where_faces_are_absent(request, monkeypatch):
 
     lay_out, convert = docx2svg.lay_out_docx, agent_layout.convert
 
-    def checked_lay_out(source, options=None):
-        result = lay_out(source, options)
+    def checked_lay_out(source, options=None, **keywords):
+        result = lay_out(source, options, **keywords)
         _skip_if_a_face_is_absent(result[0].warnings, getattr(result[0], "coverage", None))
         return result
 
