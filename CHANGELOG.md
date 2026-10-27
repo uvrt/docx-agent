@@ -5,7 +5,7 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
-## 0.1.12 -- unreleased
+## 0.1.13 -- unreleased
 
 - **Pages and blocks both ways, in this API's ids** (production round 19, R3):
   `DocumentLayout.blocks_on(page)` is the ids of the body's top-level blocks (paragraphs and
