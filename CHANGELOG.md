@@ -5,6 +5,16 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.12 -- unreleased
+
+- **A render worker does docx2svg's one-time work at its start** (production round 19, R2):
+  `PageRenderer.warm_up` -- a new worker's first task -- calls `docx2svg.warm()`, which
+  imports docx2svg's modules and scans the font folders (the system's, Word's and
+  `OOXML_FONT_DIRS`), so the worker's first layout does not. docx2svg 0.5.0 also reads only
+  each font file's header tables for that scan, not the whole file: a worker's first
+  16-page layout is about a second faster here, and its memory 1.4 GB smaller. The pages
+  are the same bytes (`tests/test_parallel_render.py`). docx2svg >= 0.5.0.
+
 ## 0.1.11 -- unreleased
 
 - **Empty paragraphs between text** (production round 18, Q4): `check`'s layout facts
