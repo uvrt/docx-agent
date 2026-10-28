@@ -5,6 +5,50 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.16 -- unreleased
+
+- **A table of contents lists what Word lists for `\o`, `\t` and `\u`** (production round
+  21, T1): `update_fields` (and `word_fields`' update) rebuilt every table of contents
+  from every outline-level paragraph, `\t` ignored -- a `TOC \h \z \t "Section title,1"`
+  listed the body's Heading 2s as well. The entries are now chosen by Word's rules,
+  measured on 51 made-up documents updated by Word (Dutch and English;
+  `tools/toc_probe.py`, `tests/observations/toc-word.json`, the `fields` module
+  docstring): `\o "a-b"` the paragraphs whose *style's* outline level is in the range
+  (built-in `heading N` styles are level N whatever their definition says; a paragraph's
+  own `w:outlineLvl` is not read); `\t` the paragraphs in each named style at its level,
+  before `\o`'s; `\u` the paragraph's own level before its style's, and with `\u` a
+  paragraph with none is never listed; neither `\o` nor `\t` is `\o "1-9"`; empty
+  paragraphs never. `\t`'s list is split on the document's locale's list separator
+  (`Document.locale`, en-US's `,` by default): Dutch Word takes `"Section title,1"` as one
+  style name. `docx_agent.edit.fields.toc_options` reads an instruction as Word does.
+  Not modelled: Word compares `\t`'s names with its own UI language's display names (Dutch
+  Word: "Kop 2"); the styles part's names are compared, which are English Word's.
+- **`Document.blocks()`** (T6): the body's top-level blocks in order, one dict each --
+  `id`, `kind` (`paragraph`, `table`, `control`, `custom_xml`), `style` (display name),
+  `level` (the outline level 1-9 a table of contents reads: `\u`'s, which for a paragraph
+  stating none is `\o`'s), `section_break`, `movable` (`move_blocks` takes it). And
+  `Document.outline_level(id)`. `word_describe`'s heading tree and `word_design_facts`'
+  patterns read it, so their headings are now Word's outline levels: a built-in heading
+  style is its level even where a paragraph states another; a body-text paragraph
+  (`w:outlineLvl` 9) in a style with a level is not a heading.
+- **`word_design_facts` reports every declared style** (T7): `include: ["declared_styles"]`
+  (not in the default) lists every paragraph, character and table style, used or not
+  (`used`), with its `basedOn` chain and its look after inheritance (what differs from the
+  default paragraph style's, that style given whole), a table style its conditional
+  formats (`parts`) and each place's fill, borders and text -- the resolution the styles in
+  use go through. Paged by size (`cursor`, `next_cursor`): a template of 164 styles (100 of
+  them table styles) is 152,000 characters of facts, about 7 pages at the default limit.
+  **Colours are what Word draws**: a theme colour with its tint or shade
+  (`w:themeColor`/`w:themeTint`/`w:themeShade`, `w:themeFill`...) is resolved to RGB --
+  measured: Word draws the theme colour, not the `w:val` beside it, and the tint or shade
+  is the HLS luminance's (ooxml-common's `lumMod`/`lumOff`, channels rounded down; 24 of
+  27 swatches exact, 3 one level off; `tools/theme_tint_probe.py`,
+  `tests/observations/theme-tints-word.json`) -- with `theme_color`, `theme_fill` (and in
+  a border's text) naming it. This applies to the styles in use and table styles too, and
+  paragraph shading and borders now appear in a style's look. word_design_facts' definition
+  grows 42 offline tokens (every definition 13,110 -> 13,152, the guard 13,155; the core
+  unchanged; a reviewer's largest 7,519 -> 7,560); it is not strict.
+
 ## 0.1.15 -- unreleased
 
 - **Why a refresh was slow** (production round 20, S2): where the render worker lays a

@@ -26,6 +26,34 @@ runs and paragraphs) or simple (``w:fldSimple``).  What Word writes was measured
   around its text (Word reuses one that is there).  The TOC 1-9 styles are Word's
   (``word_toc_styles.py``).
 
+**Which paragraphs a table of contents lists** (production round 21, T1; measured with
+``tools/toc_probe.py``, ``tests/observations/toc-word.json``: 51 made-up documents updated
+by Word 16, Dutch and English): the body's paragraphs, those in table cells too, in document
+order, empty ones never, each once:
+
+* **Outline levels.**  A built-in heading style (``heading 1`` to ``heading 9`` by name) has
+  its number, whatever its definition or the paragraph states; another style the
+  ``w:outlineLvl`` its ``basedOn`` chain declares first (a built-in heading in the chain
+  counting as its number).  ``\\o "a-b"`` lists the paragraphs whose *style's* level is in
+  the range, at it -- a paragraph's own ``w:outlineLvl`` is not read.  ``\\o`` with no range
+  is 1-9, and so is a field with neither ``\\o`` nor ``\\t``.
+* ``\\t "Style,level,..."`` lists the paragraphs in each named style (the applied style
+  itself, not one based on it) at the level given -- before ``\\o``'s level for the same
+  paragraph, and whatever outline level the paragraph or style states.  Names are compared
+  without case and trimmed; a missing or bad level (``0``, ``10``, ``x``) is 1; a name
+  given twice keeps its first level; every ``\\t`` switch counts; an unknown name lists
+  nothing.  **The list is split on the locale's list separator**: Dutch Word took
+  ``"Section title,1"`` as one (unknown) style name and listed nothing, English Word split
+  it; here that is :attr:`Document.locale`'s ``list_separator`` (en-US's ``,`` by
+  default).  Word compares the names with *its own* display names: English Word's
+  "Heading 2" is the styles part's ``heading 2``, which is what is compared here; Dutch
+  Word matched "Kop 2" and not "Heading 2" (not modelled).
+* ``\\u`` reads each paragraph's level as the paragraph states it before its style's (a
+  built-in heading excepted, as above; ``w:outlineLvl`` 9, body text, is none).  With
+  ``\\u``, a paragraph with no level is never listed, not even for ``\\t``; one whose level
+  is in ``\\o``'s range (1-9 with neither ``\\o`` nor ``\\t``) is listed at it, before
+  ``\\t``; another in a ``\\t`` style at ``\\t``'s level.
+
 **Results are computed here**, never by asking Word to (``w:updateFields`` is not set:
 Word would prompt on every open): ``PAGE``, ``NUMPAGES``, ``SECTIONPAGES`` and ``PAGEREF``
 from docx2svg's layout -- the page's number as Word shows it (``w:pgNumType``'s start and
@@ -211,6 +239,36 @@ def switches(instruction: str) -> dict[str, str | bool]:
                 k += 1
         out.setdefault(key, argument)
     return out
+
+
+def toc_options(instruction: str, separator: str = ",") -> dict:
+    """What a TOC field's instruction asks to list: ``outline`` -- ``\\o``'s levels as
+    ``(first, last)`` (``\\o`` with no range, or neither ``\\o`` nor ``\\t``: 1-9), else
+    ``None``; ``own`` -- ``\\u``; ``styles`` -- every ``\\t``'s ``(style name, level)``
+    pairs, split on the locale's list ``separator`` and trimmed, a level that is not 1-9 (or
+    none) level 1 (measured, module docstring)."""
+    options = switches(instruction)
+    tokens = re.findall(r'"[^"]*"|\\.|[^\s\\"]+', instruction)
+    named = [tokens[k + 1].strip('"') for k, token in enumerate(tokens[:-1])
+             if token.lower() == "\\t" and not tokens[k + 1].startswith("\\")]
+    styles: list[tuple[str, int]] = []
+    for value in named:
+        items = value.split(separator)
+        for k in range(0, len(items), 2):
+            name = items[k].strip()
+            raw = items[k + 1].strip() if k + 1 < len(items) else ""
+            level = int(raw) if raw.isdigit() and 1 <= int(raw) <= 9 else 1
+            if name:
+                styles.append((name, level))
+    outline = options.get("o")
+    span = None
+    if outline is True or (outline is None and not named):
+        span = (1, 9)
+    elif isinstance(outline, str):
+        found = re.fullmatch(r"\s*([1-9])\s*-\s*([1-9])\s*", outline)
+        if found:
+            span = (int(found.group(1)), int(found.group(2)))
+    return {"outline": span, "own": "u" in options, "styles": styles}
 
 
 def _argument(instruction: str) -> str | None:
@@ -576,7 +634,9 @@ class FieldOps:
                       passes: int = 4) -> "EditResult":
         """Compute the cached results of the document's fields (or those named): page
         numbers from docx2svg's layout, laid out again until they hold (at most
-        ``passes``), tables of contents rebuilt from the headings, ``REF`` from bookmarks,
+        ``passes``), tables of contents rebuilt from the paragraphs their ``\\o``, ``\\t``
+        and ``\\u`` select (module docstring; ``\\t``'s list split on :attr:`locale`'s list
+        separator), ``REF`` from bookmarks,
         ``SEQ`` counted, ``DATE`` from ``date`` (today, UTC).  Results are caches: not
         tracked.  What the layout cannot say is left as it was and listed in ``unknown``
         (never marked dirty: Word would ask on opening); ``count`` is how many results
@@ -818,16 +878,13 @@ class FieldOps:
         """Rebuild a table of contents' entries from the headings, with their pages."""
         part = item.part
         options = switches(item.instruction)
-        levels = (1, 9)
-        if isinstance(options.get("o"), str) and re.fullmatch(r"\d-\d", options["o"]):
-            levels = tuple(int(v) for v in options["o"].split("-"))  # type: ignore[assignment]
-        hyperlinks, hidden, outline = "h" in options, "z" in options, "u" in options
+        hyperlinks, hidden = "h" in options, "z" in options
         omit = options.get("n")
         omit_levels = (1, 9) if omit is True else tuple(int(v) for v in omit.split("-")) if isinstance(omit, str) \
             and re.fullmatch(r"\d-\d", omit) else None
         entries_place = _toc_paragraphs(item)
         inside = {id(p) for p in entries_place[:-1]}  # the end's paragraph may be a heading
-        headings = [h for h in self._headings(levels, outline) if id(h[0].element) not in inside]
+        headings = [h for h in self._toc_entries(item.instruction) if id(h[0].element) not in inside]
         style_ids = {}
         for _, level in headings:
             style_ids[level] = style_ids.get(level) or self.styles._ensure(f"toc {level}", "paragraph")
@@ -917,45 +974,56 @@ class FieldOps:
         self._invalidate()
         item.begin = head[0].find(_W + "fldChar")
 
-    def _headings(self: "Document", levels: tuple[int, int], outline: bool) -> list:
-        """``(entry, level)`` of the body's paragraphs a TOC lists: outline levels from
-        their styles (``\\o``), and their own with ``outline`` (``\\u``); empty ones aside."""
+    def _toc_entries(self: "Document", instruction: str) -> list:
+        """``(entry, level)`` of the body's paragraphs a TOC field lists, in order, by
+        Word's rules (measured: module docstring, "Which paragraphs a table of contents
+        lists")."""
+        from .document import _OutlineLevels
+
+        options = toc_options(instruction, self._list_separator())
+        levels = _OutlineLevels(self)
+        named: dict[str, int] = {}
+        if options["styles"]:
+            wanted: dict[str, int] = {}
+            for name, level in options["styles"]:
+                wanted.setdefault(name.casefold(), level)    # a style named twice: the first
+            for style in self.styles:
+                if style.kind != "paragraph":
+                    continue
+                for name in (style.name, *style.aliases):
+                    if name and name.casefold() in wanted:
+                        named.setdefault(style.id, wanted[name.casefold()])
+        span, own = options["outline"], options["own"]
         part = self.package.document_part()
         out = []
         for entry in self._index(part).paragraphs:
-            level = self._outline_level(entry.element, outline)
-            if level is None or not levels[0] <= level + 1 <= levels[1]:
+            element = entry.element
+            style_id = levels.style_id(element)
+            level = None
+            if own:
+                # \u: the paragraph's own level before its style's; a paragraph with none
+                # (body text) is not listed, not even for \t; one in \o's range at it.
+                found = levels.effective(element)
+                if found is None:
+                    continue
+                level = found if span is not None and span[0] <= found <= span[1] else named.get(style_id)
+            else:
+                level = named.get(style_id)
+                if level is None and span is not None:
+                    found = levels.style(style_id)
+                    if found is not None and span[0] <= found <= span[1]:
+                        level = found
+            if level is None or not _heading_text(element).strip():
                 continue
-            if not _heading_text(entry.element).strip():
-                continue
-            out.append((entry, level + 1))
+            out.append((entry, level))
         return out
 
-    def _outline_level(self: "Document", paragraph: Element, own: bool) -> int | None:
-        properties = paragraph.find(W_PPR)
-        if own and properties is not None:
-            node = properties.find(_W + "outlineLvl")
-            if node is not None and (node.get(_W + "val") or "").isdigit():
-                value = int(node.get(_W + "val"))
-                return value if value < 9 else None
-        style = properties.find(_W + "pStyle") if properties is not None else None
-        style_id = style.get(_W + "val") if style is not None else None
-        if style_id is None:
-            default = self.styles.default("paragraph")
-            style_id = default.id if default is not None else None
-        seen = set()
-        while style_id and style_id not in seen:
-            seen.add(style_id)
-            node = self.styles._node(style_id)
-            if node is None:
-                return None
-            level = node.find(f"{W_PPR}/{_W}outlineLvl")
-            if level is not None and (level.get(_W + "val") or "").isdigit():
-                value = int(level.get(_W + "val"))
-                return value if value < 9 else None
-            based = node.find(_W + "basedOn")
-            style_id = based.get(_W + "val") if based is not None else None
-        return None
+    def _list_separator(self: "Document") -> str:
+        """The list separator of the document's locale (en-US's ``,`` without one): what
+        separates ``\\t``'s styles and levels (measured: Word splits them on its own
+        locale's)."""
+        locale = getattr(self, "locale", None)
+        return getattr(locale, "list_separator", None) or ","
 
     def _toc_tab(self: "Document", paragraph: Element) -> int:
         """A TOC entry's right tab stop: its section's text width less 10 twips (measured)."""
@@ -1230,4 +1298,4 @@ def _insert_content(paragraph: Element, stamp, part: str) -> None:
     del _track
 
 
-__all__ = ["Field", "FieldOps", "TOC_INSTRUCTION", "format_date", "scan", "switches"]
+__all__ = ["Field", "FieldOps", "TOC_INSTRUCTION", "format_date", "scan", "switches", "toc_options"]

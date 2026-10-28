@@ -9,7 +9,7 @@ import json
 
 from ooxml_edit.tools import REVIEW, Result, ToolError, array, boolean, integer, obj, page_list, string
 
-from ..edit.design import CAPS, KINDS
+from ..edit.design import ALL_KINDS, CAPS, KINDS
 from ..edit.formatting import RUN_PROPERTIES, read_paragraph, read_run
 from ..edit.styles import StyleError
 from ._base import need, outcome, resolve, word_tool
@@ -182,27 +182,52 @@ def word_template(call: Any, doc: str, action: str) -> Result:
 # -- F9 word_design_facts ---------------------------------------------------------------------
 
 
-@word_tool("word_design_facts", "Measured design facts for template analysis, no verdicts: styles in use per role with usage and effective look, table styles by place (header row, bands, label column), page grid per section, theme, repeated block shapes.",
+@word_tool("word_design_facts", "Measured design facts for template analysis, no verdicts: styles in use per role with usage and effective look, table styles by place (header row, bands, label column), page grid per section, theme, repeated block shapes; or every declared style resolved.",
            {"doc": DOC,
-            "include": array(string(enum=list(KINDS)), "Facts to report. Default all.", optional=True)},
+            "include": array(string(enum=list(ALL_KINDS)), "Facts to report. Default all but declared_styles.",
+                             optional=True),
+            "cursor": string("next_cursor (declared_styles).", optional=True)},
            group="word_style")
-def word_design_facts(call: Any, doc: str, include: list[str] | None = None) -> Result:
+def word_design_facts(call: Any, doc: str, include: list[str] | None = None, cursor: str | None = None) -> Result:
     """:meth:`Document.design_facts <docx_agent.Document.design_facts>`; a result too long
-    for the call's limit keeps fewer entries per list (``omitted`` counts the rest)."""
+    for the call's limit keeps fewer entries per list (``omitted`` counts the rest), except
+    ``declared_styles``, which is paged: as many styles as fit, ``next_cursor`` for the rest
+    (a later page holds only them)."""
     document = call.document
+    kinds = list(include) if include else list(KINDS)
+    declared = "declared_styles" in kinds or cursor is not None
+    others = [] if cursor is not None else [k for k in kinds if k != "declared_styles"]
     caps = dict(CAPS)
     limit = call.limits.max_result_chars - 1500
-    while True:
-        data = document.design_facts(include or None, caps=caps)
-        if len(json.dumps(data, ensure_ascii=False)) <= limit or max(caps.values()) <= 1:
+    data: dict[str, Any] = {}
+    while others:
+        data = document.design_facts(others, caps=caps)
+        if len(json.dumps(data, ensure_ascii=False)) <= (limit // 2 if declared else limit) \
+                or max(caps.values()) <= 1:
             break
         caps = {k: max(1, v // 2) for k, v in caps.items()}
     counts = [f"{len(data[k])} {k.replace('_', ' ')}" for k in ("styles", "table_styles", "sections", "patterns")
               if k in data]
+    total, next_cursor = None, None
+    if declared:
+        styles = document.design_facts(["declared_styles"], caps={"declared_styles": 10 ** 6})["declared_styles"]
+        page, total, _ = page_list(styles, cursor=cursor, limit=len(styles))
+        start = len(styles) - len(page)
+        room = limit - len(json.dumps(data, ensure_ascii=False))
+        kept: list = []
+        for entry in page:
+            room -= len(json.dumps(entry, ensure_ascii=False)) + 2
+            if room < 0 and kept:
+                break
+            kept.append(entry)
+        data["declared_styles"] = kept
+        end = start + len(kept)
+        next_cursor = f"c{end}" if end < total else None
+        counts.append(f"declared styles {start + 1}-{end} of {total}" if kept else f"no declared styles of {total}")
     left = data.get("omitted")
     return Result(summary="Design facts: " + ", ".join(counts) + (
         "; " + ", ".join(f"{n} more {k.replace('_', ' ')}" for k, n in left.items()) + " left out (include fewer kinds)"
-        if left else ""), data=data)
+        if left else ""), data=data, total=total, next_cursor=next_cursor)
 
 
 # -- round 17, P3 word_compare_blocks ---------------------------------------------------------

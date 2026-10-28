@@ -227,18 +227,20 @@ def paragraph(document: "Document", element: Element, *, direct: bool = True) ->
 
 
 def style_look(document: "Document", style_id: str | None, *, table_style: str | None = None,
-               conditions: tuple[str, ...] = ()) -> tuple[EffectiveParagraph, EffectiveRun]:
+               conditions: tuple[str, ...] = (), character_style: str | None = None,
+               ) -> tuple[EffectiveParagraph, EffectiveRun]:
     """What a paragraph of ``style_id`` (``None``: the default paragraph style) with no
     direct formatting, and a run in it with none, get: the style's look after inheritance.
     With ``table_style`` (``""``: the default table style) the paragraph is in a cell of a
     table of that style, under the cell's conditional formats ``conditions``
-    (``("wholeTable",)`` for a cell no row or column format reaches)."""
+    (``("wholeTable",)`` for a cell no row or column format reaches).  With
+    ``character_style`` the run is in that character style."""
     state = model(document)
     owner = _model.Paragraph(
         properties=_model.ParagraphProperties(style_id=style_id, declared={},
                                               run_properties=_model.RunProperties(declared={})),
         table_style_id=table_style, table_conditions=tuple(conditions))
-    return _paragraph(state, owner), _run(state, owner, None, {}, "a")
+    return _paragraph(state, owner), _run(state, owner, character_style, {}, "a")
 
 
 def _paragraph(state: _Model, owner: _model.Paragraph) -> EffectiveParagraph:
