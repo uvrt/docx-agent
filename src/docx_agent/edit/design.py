@@ -532,7 +532,7 @@ def _place(document: "Document", resolved: Any, r: int, c: int, conditions: tupl
 def _table_theme_colors(document: "Document", style_id: str,
                         conditions: tuple = ()) -> dict[str, dict[str, tuple[str, str]]]:
     """A table style's theme colours at a place, by the ``w:fill`` / ``w:color`` value
-    written beside them (``{"fill": {...}, "border": {...}}``, value -> ``(RRGGBB, label)``):
+    written beside them and by the colour itself (``{"fill": {...}, "border": {...}}``, value -> ``(RRGGBB, label)``):
     docx2svg's table resolver reports the value, and this names the theme colour of the
     element holding it -- over the ``basedOn`` chain, root first, each style's own
     properties and then the place's conditional formats in ``conditions``' order, a later
@@ -558,6 +558,7 @@ def _table_theme_colors(document: "Document", style_id: str,
                 themed = _themed_element(document, element, _THEME_ATTRIBUTES["shd"])
                 if themed is not None and element.get(_W + "fill"):
                     out["fill"][element.get(_W + "fill").upper()] = themed
+                    out["fill"][themed[0]] = themed     # docx2svg 0.10 reports the theme's colour
             for borders in (*holder.iter(_W + "tblBorders"), *holder.iter(_W + "tcBorders")):
                 for element in borders:
                     themed = _themed_element(document, element, _THEME_ATTRIBUTES["color"])
