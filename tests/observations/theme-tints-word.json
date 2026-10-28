@@ -1,0 +1,193 @@
+{
+ "swatches": [
+  {
+   "theme": "accent1",
+   "tint": null,
+   "shade": "BF",
+   "word": "0F4761",
+   "fill": "0F4761"
+  },
+  {
+   "theme": "accent1",
+   "tint": "99",
+   "shade": null,
+   "word": "45B0E1",
+   "fill": "45B0E1"
+  },
+  {
+   "theme": "accent1",
+   "tint": "66",
+   "shade": null,
+   "word": "83CAEB",
+   "fill": "83CAEB"
+  },
+  {
+   "theme": "accent1",
+   "tint": "33",
+   "shade": null,
+   "word": "C1E4F5",
+   "fill": "C1E4F5"
+  },
+  {
+   "theme": "accent2",
+   "tint": null,
+   "shade": "80",
+   "word": "80340D",
+   "fill": "80340D"
+  },
+  {
+   "theme": "accent2",
+   "tint": "BF",
+   "shade": null,
+   "word": "EE9465",
+   "fill": "EE9465"
+  },
+  {
+   "theme": "text1",
+   "tint": "BF",
+   "shade": null,
+   "word": "404040",
+   "fill": "404040"
+  },
+  {
+   "theme": "text1",
+   "tint": "80",
+   "shade": null,
+   "word": "7F7F7F",
+   "fill": "7F7F7F"
+  },
+  {
+   "theme": "background2",
+   "tint": null,
+   "shade": "BF",
+   "word": "ADADAD",
+   "fill": "ADADAD"
+  },
+  {
+   "theme": "background2",
+   "tint": null,
+   "shade": "E6",
+   "word": "D1D1D1",
+   "fill": "D1D1D1"
+  },
+  {
+   "theme": "background1",
+   "tint": null,
+   "shade": "A6",
+   "word": "A6A6A6",
+   "fill": "A6A6A6"
+  },
+  {
+   "theme": "background2",
+   "tint": "BF",
+   "shade": null,
+   "word": "EDEDED",
+   "fill": "EDEDED"
+  },
+  {
+   "theme": "text2",
+   "tint": "99",
+   "shade": null,
+   "word": "2C7FCE",
+   "fill": "2C7FCE"
+  },
+  {
+   "theme": "accent4",
+   "tint": null,
+   "shade": null,
+   "word": "0F9ED5",
+   "fill": "0F9ED5"
+  },
+  {
+   "theme": "accent5",
+   "tint": null,
+   "shade": "40",
+   "word": "270A24",
+   "fill": "270A24"
+  },
+  {
+   "theme": "accent6",
+   "tint": "1A",
+   "shade": null,
+   "word": "EBF8E7",
+   "fill": "EBF8E7"
+  },
+  {
+   "theme": "dark2",
+   "tint": null,
+   "shade": null,
+   "word": "0E2841",
+   "fill": "0E2841"
+  },
+  {
+   "theme": "light2",
+   "tint": null,
+   "shade": "80",
+   "word": "747474",
+   "fill": "747474"
+  },
+  {
+   "theme": "accent1",
+   "tint": "99",
+   "shade": "BF",
+   "word": "45B0E1",
+   "fill": "45B0E1"
+  },
+  {
+   "theme": "accent3",
+   "tint": "F2",
+   "shade": null,
+   "word": "1C7A29",
+   "fill": "1C7A29"
+  },
+  {
+   "theme": "accent3",
+   "tint": null,
+   "shade": "0D",
+   "word": "010501",
+   "fill": "010501"
+  },
+  {
+   "theme": "hyperlink",
+   "tint": null,
+   "shade": null,
+   "word": "467886",
+   "fill": "467886"
+  },
+  {
+   "theme": "accent2",
+   "tint": "00",
+   "shade": null,
+   "word": "FFFFFF",
+   "fill": "FFFFFF"
+  },
+  {
+   "theme": "accent2",
+   "tint": null,
+   "shade": "FF",
+   "word": "E97132",
+   "fill": "E97132"
+  },
+  {
+   "theme": "accent2",
+   "tint": "FF",
+   "shade": null,
+   "word": "E97132",
+   "fill": "E97132"
+  },
+  {
+   "theme": "accent4",
+   "tint": "7F",
+   "shade": null,
+   "word": "7BD3F5",
+   "fill": "7BD3F5"
+  },
+  {
+   "theme": "accent4",
+   "tint": null,
+   "shade": "7F",
+   "word": "074E69",
+   "fill": "074E69"
+  }
+ ]
+}

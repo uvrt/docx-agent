@@ -72,6 +72,7 @@ from docx_agent import Document
 doc = Document.open("agreement.docx")
 termination = doc.section_blocks("p:058B17C9")  # the heading and everything up to the next ## or #
 print(termination)                             # ['p:058B17C9', 'p:6A70E1A8']
+print([b["id"] for b in doc.blocks() if b["level"] == 1])   # every top-level block: id, kind, style, level...
 with doc.tracking(author="Claude"):            # tracked: Word's moves, accepted or rejected whole
     doc.move_blocks(termination, before="p:12972045")   # before "Pricing"; or after=, or "p:A..t:B"
 print([change.kind for change in doc.changes()])   # ['move']

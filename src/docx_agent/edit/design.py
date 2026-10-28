@@ -29,6 +29,11 @@ Each kind (:data:`KINDS`):
   section has a title page, ``even`` only where the document has even and odd headers).
 * ``theme`` -- the theme's name, colour palette (``dk1`` ... ``folHlink``) and fonts
   (major and minor; East Asian and complex-script faces where it names them).
+* ``declared_styles`` (only when asked for) -- every paragraph, character and table style
+  the document declares, used or not (``used``), with its ``basedOn`` chain and its look
+  after inheritance -- what differs from the default paragraph style's, which is given
+  whole -- and for a table style the conditional formats it declares and each place's fill,
+  borders and text (:func:`_declared_styles`).
 * ``patterns`` -- repeated block shapes under headings, as samples to copy.  The **shape**
   of a heading is the blocks after it up to the next heading of any level (an empty
   paragraph is never a heading): a paragraph is its style's name, consecutive paragraphs of
@@ -37,15 +42,22 @@ Each kind (:data:`KINDS`):
   entries or more; each lists how many headings of that level have it, of how many, and a
   few examples (heading id and the span of blocks).
 
+**Colours** are what Word draws: where the element that gives a colour, a shading's fill or
+a border names a theme colour (``w:themeColor``, ``w:themeFill``, with a tint or shade),
+the theme's colour (:func:`theme_rgb`, measured) -- Word does not draw the ``w:val`` beside
+it -- and ``theme_color`` / ``theme_fill`` (or the border's text) says which.
+
 Long lists are capped (:data:`CAPS`); ``omitted`` counts what was left out.
 """
 
 from __future__ import annotations
 
+import math
 from collections import Counter
 from typing import TYPE_CHECKING, Any
 
 from docx2svg import model as _model
+from ooxml_common.drawingml.color import ColorRules
 from docx2svg.parse.document import cell_conditions
 from docx2svg.paths import resolve_path
 from docx2svg.table import edge_winner, resolve_table, table_style_id
@@ -58,11 +70,14 @@ if TYPE_CHECKING:  # pragma: no cover
 _W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 _A = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
 
-#: The facts there are, in the order they are reported.
+#: The facts reported by default, in the order they are reported.
 KINDS = ("styles", "table_styles", "sections", "theme", "patterns")
 
+#: Every kind there is: :data:`KINDS` and ``declared_styles``, reported only when asked for.
+ALL_KINDS = (*KINDS, "declared_styles")
+
 #: How many entries of each list are reported; ``omitted`` counts the rest.
-CAPS = {"styles": 60, "table_styles": 12, "sections": 20, "patterns": 12}
+CAPS = {"styles": 60, "table_styles": 12, "sections": 20, "patterns": 12, "declared_styles": 300}
 
 #: Roles in the order they are listed.
 ROLES = ("title", "subtitle", *(f"heading {n}" for n in range(1, 10)), "body", "list", "caption",
@@ -81,16 +96,17 @@ _DEFAULT_LOOK = {"firstRow": True, "lastRow": False, "firstColumn": True, "lastC
 
 
 def design_facts(document: "Document", include=None, caps: dict | None = None) -> dict[str, Any]:
-    """The facts of ``include`` (default all of :data:`KINDS`) as JSON-ready data."""
-    kinds = [k for k in KINDS if include is None or k in include]
-    unknown = [k for k in (include or ()) if k not in KINDS]
+    """The facts of ``include`` (default all of :data:`KINDS`; ``declared_styles`` only when
+    named) as JSON-ready data."""
+    kinds = [k for k in (KINDS if include is None else ALL_KINDS) if include is None or k in include]
+    unknown = [k for k in (include or ()) if k not in ALL_KINDS]
     if unknown:
-        raise ValueError(f"no design facts {', '.join(map(repr, unknown))}: the kinds are {', '.join(KINDS)}")
+        raise ValueError(f"no design facts {', '.join(map(repr, unknown))}: the kinds are {', '.join(ALL_KINDS)}")
     limits = {**CAPS, **(caps or {})}
     out: dict[str, Any] = {}
     omitted: dict[str, int] = {}
     builders = {"styles": _styles, "table_styles": _table_styles, "sections": _sections,
-                "patterns": _patterns}
+                "patterns": _patterns, "declared_styles": _declared_styles}
     for kind in kinds:
         if kind == "theme":
             out["theme"] = _theme(document)
@@ -131,8 +147,9 @@ def _fill(shading) -> str | None:
     return None if fill in (None, "auto") else fill.upper()
 
 
-def _text_look(run: Any) -> dict[str, Any]:
-    out: dict[str, Any] = {"font": run.font, "size": _pt(run.size), "color": run.color}
+def _text_look(document: "Document", run: Any) -> dict[str, Any]:
+    out: dict[str, Any] = {"font": run.font, "size": _pt(run.size)}
+    out.update(_color(document, run._resolved, "color", run.color))
     for name in ("bold", "italic", "caps", "small_caps"):
         if getattr(run, name):
             out[name] = True
@@ -142,7 +159,7 @@ def _text_look(run: Any) -> dict[str, Any]:
 
 
 def _look(document: "Document", paragraph: Any, run: Any) -> dict[str, Any]:
-    out = _text_look(run)
+    out = _text_look(document, run)
     out["alignment"] = paragraph.alignment
     out["space_before"] = _pt(paragraph.space_before)
     out["space_after"] = _pt(paragraph.space_after)
@@ -162,7 +179,124 @@ def _look(document: "Document", paragraph: Any, run: Any) -> dict[str, Any]:
         out["outline_level"] = paragraph.outline_level + 1
     if paragraph.numbering is not None:
         out["numbering"] = _numbering(document, *paragraph.numbering)
+    resolved = paragraph._resolved
+    shading = resolved.get("shd")
+    if _fill(shading) is not None:
+        out.update(_color(document, resolved, "shd", _fill(shading), name="shading"))
+    borders = {}
+    for side in ("top", "left", "bottom", "right", "between"):
+        border = resolved.get(f"pBdr.{side}")
+        if border and border[0] not in (None, "nil", "none"):
+            themed = _color(document, resolved, f"pBdr.{side}", border[3] or "auto")
+            borders[side] = _border((border[0], border[1], border[2], themed["color"])) + (
+                f" ({themed['theme_color']})" if "theme_color" in themed else "")
+    if borders:
+        out["borders"] = borders
     return out
+
+
+# -- theme colours -----------------------------------------------------------------------------
+
+#: The attributes naming a theme colour: on ``w:color`` and a border, and on ``w:shd`` (its fill).
+_THEME_ATTRIBUTES = {"color": ("themeColor", "themeTint", "themeShade"),
+                     "shd": ("themeFill", "themeFillTint", "themeFillShade")}
+
+
+def theme_rgb(document: "Document", name: str, tint: str | None = None, shade: str | None = None) -> str | None:
+    """A Word theme colour (``w:themeColor``'s ``accent1``, ``text1``, ``background2``...;
+    the text and background names through the settings' ``w:clrSchemeMapping``) with its
+    ``w:themeTint`` / ``w:themeShade`` (hex bytes), as ``RRGGBB``; ``None`` for a name the
+    theme does not define.
+
+    Measured (Word 16, 27 swatches, text and paragraph shading alike;
+    ``feedback-round21/measurements-B.md``): **Word draws the theme colour, not the ``w:val``
+    / ``w:fill`` written beside it**; the tint and shade work on the HLS luminance -- a shade
+    multiplies it by ``shade / 255``, a tint takes it toward white, ``lum * t + (1 - t)``
+    with ``t = tint / 255`` (``00`` white, ``FF`` the colour itself); with both, the tint
+    alone counts.  That is ooxml-common's ``lumMod`` (and ``lumOff``) on unrounded channels,
+    each channel then rounded **down**: 24 of the 27 swatches to the level, the other three
+    one level high in one channel (a saturated colour's middle or top channel at a deep
+    shade)."""
+    from ooxml_common.drawingml.color import apply_transforms
+    from ooxml_common.drawingml.model import ColorTransform
+
+    from .formatops import _SCHEME
+
+    if name not in _SCHEME:
+        return None
+    base = document._theme_color(name)
+    if base is None:
+        return None
+    value, tinting = (tint, True) if tint else (shade, False)
+    try:
+        amount = int(value, 16) / 255 if value else 1.0
+    except ValueError:
+        amount = 1.0
+    if amount >= 1:
+        return base.upper()
+    transforms = [ColorTransform("lumMod", amount * 100000)]
+    if tinting:
+        transforms.append(ColorTransform("lumOff", (1 - amount) * 100000))
+    return apply_transforms(base, transforms, _THEME_TINTS).hex.upper().lstrip("#")
+
+
+def _round_down(value: float) -> int:
+    return math.floor(value + 1e-9)
+
+
+#: Word's rules for a theme colour's tint and shade: as ooxml-common's ``WORD``, each
+#: channel rounded down (measured: :func:`theme_rgb`).
+_THEME_TINTS = ColorRules("word theme tint", _round_down)
+
+
+def _declaring(document: "Document", resolved: Any, key: str) -> Any:
+    """The element that gave ``resolved``'s ``key`` (a ``w:color``, ``w:shd`` or border side),
+    from docx2svg's account of where it came from; ``None`` where it cannot be found."""
+    origin = resolved.origin(key) if hasattr(resolved, "origin") else None
+    if origin is None:
+        return None
+    root = document.styles._root()
+    if root is None:
+        return None
+    paragraph_key = key == "shd" or key.startswith("pBdr.")
+    local = key.split(".")[-1] if key.startswith("pBdr.") else key
+    if origin.level == "docDefaults":
+        holder = root.find(f"{_W}docDefaults/{_W}{'pPrDefault' if paragraph_key else 'rPrDefault'}")
+    elif origin.style_id or origin.declared_in:
+        holder = document.styles._node(origin.declared_in or origin.style_id)
+        if holder is not None and origin.detail:
+            holder = next((c for c in holder.findall(_W + "tblStylePr") if c.get(_W + "type") == origin.detail),
+                          None)
+    else:
+        return None
+    if holder is None:
+        return None
+    path = f"{_W}pPr/{_W}pBdr/{_W}{local}" if key.startswith("pBdr.") else (
+        f"{_W}pPr/{_W}shd" if key == "shd" else f"{_W}rPr/{_W}{key}")
+    return holder.find(path)
+
+
+def _themed_element(document: "Document", node: Any, attributes: tuple[str, str, str]) -> tuple[str, str] | None:
+    """``(RRGGBB, "accent1 shade BF")`` for an element naming a theme colour, else ``None``."""
+    if node is None or not node.get(_W + attributes[0]):
+        return None
+    name, tint, shade = (node.get(_W + a) for a in attributes)
+    rgb = theme_rgb(document, name, tint, shade)
+    if rgb is None:
+        return None
+    label = " ".join([name] + [f"{kind} {value.upper()}" for kind, value in (("tint", tint), ("shade", shade))
+                               if value])
+    return rgb, label
+
+
+def _color(document: "Document", resolved: Any, key: str, value: str | None, name: str = "color") -> dict[str, Any]:
+    """``{name: RRGGBB}`` -- the theme's colour where the declaring element names one, with
+    ``theme_<name>`` saying which -- else ``{name: value}``."""
+    themed = _themed_element(document, _declaring(document, resolved, key),
+                             _THEME_ATTRIBUTES["shd" if key == "shd" else "color"])
+    if themed is None:
+        return {name: value}
+    return {name: themed[0], f"theme_{name}": themed[1]}
 
 
 def _numbering(document: "Document", num_id: int, level: int) -> dict[str, Any]:
@@ -408,13 +542,185 @@ def _place(document: "Document", resolved: Any, r: int, c: int, conditions: tupl
     bottom = cell.borders.get("bottom") if below is None else edge_winner(
         (cell.borders.get("bottom"), cell.own.get("bottom")), (below.borders.get("top"), below.own.get("top")))[0]
     paragraph, run = _effective.style_look(document, cell_style, table_style=style_id, conditions=conditions)
-    text = _text_look(run)
+    text = _text_look(document, run)
     if paragraph.alignment != "left":
         text["alignment"] = paragraph.alignment
-    return {"conditions": [k for k in conditions if k != "wholeTable"], "fill": _fill(cell.properties.get("shd")),
-            "borders": {"top": _border(top), "bottom": _border(bottom), "left": _border(cell.left_edge[0]),
-                        "right": _border(cell.right_edge[0])},
-            "text": text}
+    themed = _table_theme_colors(document, style_id, conditions)
+    out = {"conditions": [k for k in conditions if k != "wholeTable"], "fill": _fill(cell.properties.get("shd"))}
+    if out["fill"] in themed["fill"]:
+        out["fill"], out["theme_fill"] = themed["fill"][out["fill"]]
+    out["borders"] = {side: _themed_border(border, themed["border"]) for side, border in
+                      (("top", top), ("bottom", bottom), ("left", cell.left_edge[0]), ("right", cell.right_edge[0]))}
+    out["text"] = text
+    return out
+
+
+def _table_theme_colors(document: "Document", style_id: str,
+                        conditions: tuple = ()) -> dict[str, dict[str, tuple[str, str]]]:
+    """A table style's theme colours at a place, by the ``w:fill`` / ``w:color`` value
+    written beside them (``{"fill": {...}, "border": {...}}``, value -> ``(RRGGBB, label)``):
+    docx2svg's table resolver reports the value, and this names the theme colour of the
+    element holding it -- over the ``basedOn`` chain, root first, each style's own
+    properties and then the place's conditional formats in ``conditions``' order, a later
+    one taking a value over (the order the resolver merges them in)."""
+    out: dict[str, dict[str, tuple[str, str]]] = {"fill": {}, "border": {}}
+    chain, current = [], style_id
+    while current and current not in chain:
+        node = document.styles._node(current)
+        if node is None:
+            break
+        chain.append(current)
+        based = node.find(_W + "basedOn")
+        current = based.get(_W + "val") if based is not None else None
+    for current in reversed(chain):
+        node = document.styles._node(current)
+        holders = [child for child in node if child.tag in (_W + "tblPr", _W + "tcPr")]
+        parts = {part.get(_W + "type"): part for part in node.findall(_W + "tblStylePr")}
+        for condition in conditions:
+            if condition in parts:
+                holders.append(parts[condition])
+        for holder in holders:
+            for element in holder.iter(_W + "shd"):
+                themed = _themed_element(document, element, _THEME_ATTRIBUTES["shd"])
+                if themed is not None and element.get(_W + "fill"):
+                    out["fill"][element.get(_W + "fill").upper()] = themed
+            for borders in (*holder.iter(_W + "tblBorders"), *holder.iter(_W + "tcBorders")):
+                for element in borders:
+                    themed = _themed_element(document, element, _THEME_ATTRIBUTES["color"])
+                    if themed is not None and element.get(_W + "color"):
+                        out["border"][element.get(_W + "color").upper()] = themed
+    return out
+
+
+def _themed_border(border, themed: dict[str, tuple[str, str]]) -> str:
+    """:func:`_border`, the colour the theme's where the style's element names a theme colour."""
+    if border and border[0] not in (None, "nil", "none") and (border[3] or "").upper() in themed:
+        rgb, label = themed[border[3].upper()]
+        return _border((border[0], border[1], border[2], rgb)) + f" ({label})"
+    return _border(border)
+
+
+# -- declared styles ---------------------------------------------------------------------------
+
+#: ``w:tblStylePr`` types -> the style options that turn them on.
+_PART_OPTIONS = {"firstRow": "firstRow", "lastRow": "lastRow", "firstCol": "firstColumn", "lastCol": "lastColumn"}
+
+
+def _style_usage(document: "Document") -> set[str]:
+    """The ids of the styles content applies -- paragraphs, runs and tables in every story,
+    the default paragraph style for a paragraph naming none."""
+    used: set[str] = set()
+    default = document.styles.default("paragraph")
+    for part in document._parts():
+        tree = document.package.tree(part)
+        if tree is None:
+            continue
+        for node in tree.iter(_W + "pStyle", _W + "rStyle", _W + "tblStyle"):
+            if node.get(_W + "val"):
+                used.add(node.get(_W + "val"))
+        if default is not None and any(p.find(f"{_W}pPr/{_W}pStyle") is None for p in tree.iter(_W + "p")):
+            used.add(default.id)
+    return used
+
+
+def _declared_styles(document: "Document") -> list[dict[str, Any]]:
+    """Every paragraph, character and table style the document declares, used or not, in
+    its order: its type, whether content applies it (``used``), its ``basedOn`` chain
+    (``based_on``, nearest first) and its look after inheritance as a paragraph, a run or a
+    table of it draws it -- the same resolution as the styles in use.  To keep the list
+    short, a look leaves out what is the same as the default paragraph style's look (that
+    style's entry, ``default: true``, has all of it); a table style lists the conditional
+    formats its chain declares (``parts``) and, per place (as ``table_styles`` names them),
+    its fill, the borders drawn (sides with the same border joined: ``"top,bottom"``) and
+    the text where it differs from the default paragraph style's.  Used styles come first,
+    then paragraph, character and table styles, each in the document's order.  Kept for
+    the document's state: a tool reading it a page at a time resolves it once."""
+    cached = document.__dict__.get("_declared_styles")
+    if cached is not None and cached[0] == document._state:
+        return list(cached[1])
+    out = _resolve_declared(document)
+    document.__dict__["_declared_styles"] = (document._state, out)
+    return list(out)
+
+
+def _resolve_declared(document: "Document") -> list[dict[str, Any]]:
+    styles = {s.id: s for s in document.styles}
+    used = _style_usage(document)
+    default = document.styles.default("paragraph")
+    paragraph, run = _effective.style_look(document, default.id if default is not None else None)
+    base = _look(document, paragraph, run)
+    out = []
+    for style in styles.values():
+        if style.kind not in ("paragraph", "character", "table"):
+            continue
+        entry: dict[str, Any] = {"name": style.name or style.id, "type": style.kind, "used": style.id in used}
+        if style.default:
+            entry["default"] = True
+        chain, current = [], style.based_on
+        while current and current in styles and current not in chain and current != style.id:
+            chain.append(current)
+            current = styles[current].based_on
+        if chain:
+            entry["based_on"] = [styles[c].name or c for c in chain]
+        if style.kind == "paragraph":
+            paragraph, run = _effective.style_look(document, style.id)
+            look = _look(document, paragraph, run)
+            entry["look"] = look if default is not None and style.id == default.id else _differences(look, base)
+        elif style.kind == "character":
+            _, run = _effective.style_look(document, None, character_style=style.id)
+            entry["look"] = _differences(_text_look(document, run), base)
+        else:
+            parts = _table_parts(document, [style.id, *chain])
+            entry["parts"] = parts
+            options = {option: part in parts for part, option in _PART_OPTIONS.items()}
+            options.update(noHBand=not ({"band1Horz", "band2Horz"} & set(parts)), noVBand=True)
+            places = {}
+            for name, place in _places(document, style.id, options, None).items():
+                compact: dict[str, Any] = {}
+                for key in ("fill", "theme_fill"):
+                    if place.get(key):
+                        compact[key] = place[key]
+                drawn: dict[str, list[str]] = {}
+                for side, border in place["borders"].items():
+                    if border != "none":
+                        drawn.setdefault(border, []).append(side)
+                if drawn:
+                    compact["borders"] = {",".join(sides): border for border, sides in drawn.items()}
+                text = _differences(place["text"], base)
+                if text:
+                    compact["text"] = text
+                places[name] = compact
+            entry["places"] = places
+        out.append(entry)
+    # Used styles first, then by type: a capped list keeps them.
+    out.sort(key=lambda e: (not e["used"], ("paragraph", "character", "table").index(e["type"])))
+    return out
+
+
+def _differences(look: dict[str, Any], base: dict[str, Any]) -> dict[str, Any]:
+    """``look`` less what is the same in ``base``; a flag ``base`` has and ``look`` lacks is
+    given as ``False``, a theme colour's name kept with its colour."""
+    out = {key: value for key, value in look.items() if base.get(key) != value
+           and not (key.startswith("theme_") and look.get(key[6:]) == base.get(key[6:]))}
+    for key in ("color", "shading"):
+        if key in out and f"theme_{key}" in look:
+            out[f"theme_{key}"] = look[f"theme_{key}"]
+    for key, value in base.items():
+        if value is True and key not in look:
+            out[key] = False
+    return out
+
+
+def _table_parts(document: "Document", chain: list[str]) -> list[str]:
+    """The conditional formats (``w:tblStylePr`` types) a table style's chain declares."""
+    found: list[str] = []
+    for style_id in chain:
+        node = document.styles._node(style_id)
+        for part in node.findall(_W + "tblStylePr") if node is not None else ():
+            kind = part.get(_W + "type")
+            if kind and kind not in found:
+                found.append(kind)
+    return found
 
 
 # -- sections ----------------------------------------------------------------------------------
@@ -487,27 +793,21 @@ def _theme(document: "Document") -> dict[str, Any] | None:
 
 
 def _patterns(document: "Document") -> list[dict[str, Any]]:
-    from .document import _MOVABLE, W_BODY, W_P, _HeadingLevels
     from ..oxml.xml import qn
 
-    names = _Names(document)
-    levels = _HeadingLevels(document)
     body = document.package.document_part()
     index = document._index(body)
-    root = document.package.tree(body).find(W_BODY)
     blocks = []   # (level or None, token or None, id or None)
-    for node in root:
-        if not isinstance(node.tag, str) or node.tag not in _MOVABLE:
-            continue
-        entry = index.entry_for(node)
-        identifier = entry.id if entry is not None else None
-        if node.tag == W_P:
-            if _empty(node):
+    for block in document.blocks():
+        identifier = block["id"]
+        if block["kind"] == "paragraph":
+            entry = index.by_id.get(identifier)
+            if entry is None or _empty(entry.element):
                 blocks.append((None, None, identifier))
                 continue
-            style = names.applied(_style_id(node))
-            blocks.append((levels.of(node), style.name if style is not None else "", identifier))
-        elif node.tag == qn("w:tbl"):
+            blocks.append((block["level"], block["style"] or "", identifier))
+        elif block["kind"] == "table" and identifier in index.by_id:
+            node = index.by_id[identifier].element
             declared = node.find(f"{qn('w:tblPr')}/{qn('w:tblStyle')}")
             name = _table_style_name(document, declared.get(qn("w:val")) if declared is not None else "")
             columns = len(node.findall(f"{qn('w:tblGrid')}/{qn('w:gridCol')}"))
