@@ -49,6 +49,8 @@ How to use them:
   as those lines are `word_format_table` `width_of: "body"`, and `past_margins` does not
   count them; a cell style inheriting such an indent is named in `word_insert_markdown`'s
   warnings (its text runs past the cell, in Word too): map `table_cell` to a style that fits.
+- **Markdown columns aligned `:-:` or `-:`** are direct alignment that `check` reports unless
+  `style_map` names `table_cell_center` / `table_cell_right` styles; the warning names the role.
 - **A layout fact is only as good as the page it is on.** `layout.uncertain` names the
   pages the layout drew a placeholder on or laid out by an unmeasured rule: judge those
   from the facts, not the render, or say they could not be judged.

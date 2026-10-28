@@ -126,10 +126,15 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 #: paragraphs around the table, their indents included) adds 31 to every definition
 #: (13,152 -> 13,183), none to the core (2,816); the guard rises to 13,185.  word_format_table
 #: is not strict: the strict set is unchanged (6 tools, 24 optional parameters).
+#: Round 22, Q3: word_insert_markdown's style_map elements ``table_cell_center`` and
+#: ``table_cell_right`` (a column's alignment through a style) add 11 to every definition
+#: (13,183 -> 13,194), none to the core (2,816); the guard rises to 13,195.  word_insert_markdown
+#: is strict: two enum values, no parameter, so the strict set is unchanged (6 tools, 24
+#: optional parameters; word_insert_markdown 8).
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 6500
-ALL_GUARD = 13185
+ALL_GUARD = 13195
 
 
 @pytest.fixture(scope="module")

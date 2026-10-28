@@ -120,6 +120,19 @@ def resolve(call: Any, value: Any) -> Any:
     return value
 
 
+def block_of(call: Any, identifier: str) -> str | None:
+    """:meth:`Document.block_of <docx_agent.Document.block_of>` for a handler: the call's
+    document's top-level body block holding ``identifier``, which may be a ``$name`` ref
+    (refs live in the session, not the document: resolved here as the tools resolve them)."""
+    return call.document.block_of(resolve(call, identifier))
+
+
+def blocks_between(call: Any, first: str, last: str) -> list[str]:
+    """:meth:`Document.blocks_between <docx_agent.Document.blocks_between>` for a handler,
+    either end a ``$name`` ref."""
+    return call.document.blocks_between(resolve(call, first), resolve(call, last))
+
+
 def remember(call: Any, ref: str | None, identifier: str | None) -> None:
     """Name ``identifier`` ``ref`` for later calls (``"$ref"``)."""
     if ref and identifier is not None:

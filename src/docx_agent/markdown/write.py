@@ -29,7 +29,9 @@ the reader reads -- resolved in the document by ``w:name``:
 * **Tables** (GFM) in the document's table style -- the one its tables use most, else Table
   Grid -- as Word makes a table (``tools/e2_probe.py``): ``w:tblW`` auto, ``tblLook``
   ``04A0``, the text width shared among the columns; the header row repeats
-  (``w:tblHeader``) and a column's alignment is its cells' ``w:jc``.  A cell's paragraphs
+  (``w:tblHeader``) and a column's alignment is its cells' style -- ``table_cell_center``,
+  ``table_cell_right``, when the style map names one (round 22, Q3) -- else their direct
+  ``w:jc``, which the result's warning names the role for.  A cell's paragraphs
   take the ``table_cell`` style as it is; one whose indents run the text past the cell or
   leave it no width is named in a warning (:func:`cell_indent_warnings`).
 * **Footnotes** (``[^label]``) are real footnotes, in the footnotes part Word makes with
@@ -780,6 +782,7 @@ class Writer:
         for share in shares:
             grid.append(make("w:gridCol", **{"w:w": str(share)}))
         aligns = list(block.aligns) + [None] * columns
+        looks = [self.cell_look(align) for align in aligns[:columns]]
         for k, row in enumerate(rows):
             tr = make("w:tr")
             table.append(tr)
@@ -790,9 +793,27 @@ class Writer:
                 tr.append(cell)
                 append_in_order(cell, make("w:tcPr")).append(make("w:tcW", **{"w:w": str(shares[c]), "w:type": "dxa"}))
                 inline = row[c] if c < len(row) else []
-                cell.append(self.paragraph(inline, self.style("table_cell"), align=aligns[c]))
+                style, align = looks[c]
+                cell.append(self.paragraph(inline, style, align=align))
         self.tables.append((table, shares))
         return table
+
+    def cell_look(self, align: str | None) -> tuple[str | None, str | None]:
+        """A column's cells' paragraph style and direct ``w:jc``: for a column aligned
+        centre or right, the style ``table_cell_center`` / ``table_cell_right`` names and no
+        ``w:jc`` (round 22, Q3); with no style named, ``table_cell`` and the direct ``w:jc``,
+        and a warning, once, naming the role that would avoid it."""
+        if align not in ("center", "right"):
+            return self.style("table_cell"), align
+        role = f"table_cell_{align}"
+        rule = self.map.style_for(role)
+        if rule is not None and rule.style is not None:
+            return self.style(role), None
+        note = (f"a column aligned {align} is written as direct alignment (w:jc) on its cells, which check "
+                f"reports as direct_formatting; map {role} to a style aligned {align} to avoid it")
+        if note not in self.warnings:
+            self.warnings.append(note)
+        return self.style("table_cell"), align
 
     def text_width(self) -> int:
         """The text width of the body's section (twentieths of a point)."""

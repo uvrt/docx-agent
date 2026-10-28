@@ -35,6 +35,7 @@ from typing import Any
 
 from ooxml_edit.tools import CORE, DocumentFormat, ToolGroup, shared as _shared
 
+from ._base import block_of, blocks_between
 from .format import FORMAT, PROMPT
 from . import read, text, review, structure, objects, style
 
@@ -110,4 +111,5 @@ def docx_format(*, min_text_size: "float | dict[str, float] | None" = None, asse
     return dataclasses.replace(FORMAT, configure=configured, tools=tools)
 
 
-__all__ = ["CORE_TOOLS", "FORMAT", "GROUPS", "PROMPT", "TOOLS", "WORD_TOOLS", "docx_format"]
+__all__ = ["CORE_TOOLS", "FORMAT", "GROUPS", "PROMPT", "TOOLS", "WORD_TOOLS", "block_of", "blocks_between",
+           "docx_format"]

@@ -73,6 +73,8 @@ doc = Document.open("agreement.docx")
 termination = doc.section_blocks("p:058B17C9")  # the heading and everything up to the next ## or #
 print(termination)                             # ['p:058B17C9', 'p:6A70E1A8']
 print([b["id"] for b in doc.blocks() if b["level"] == 1])   # every top-level block: id, kind, style, level...
+print(doc.block_of("c:76FCC91F"))              # the top-level block holding any id (a cell's paragraph, a note...)
+print(doc.blocks_between("c:76FCC91F", "c:22CB2567"))   # the top-level blocks from one id's through the other's
 with doc.tracking(author="Claude"):            # tracked: Word's moves, accepted or rejected whole
     doc.move_blocks(termination, before="p:12972045")   # before "Pricing"; or after=, or "p:A..t:B"
 print([change.kind for change in doc.changes()])   # ['move']
@@ -201,7 +203,9 @@ print(StyleMap.DEFAULT.to_dict())              # every key and its default style
 The keys: `paragraph` (body paragraphs only; a table cell's are `table_cell` and a
 footnote's `footnote`, which keep the document's defaults unless named), `h1` to `h6`,
 `quote`, `code` (a code block), `inline_code`, `bullet`, `bullet2` to `bullet5`, `number`,
-`number2` to `number5`, `table`, `footnote_reference`, `emphasis`, `strong` and `link`.
+`number2` to `number5`, `table`, `footnote_reference`, `emphasis`, `strong` and `link`;
+`table_cell_center` and `table_cell_right` style the cells of a column aligned `:-:` or `-:`
+(with neither named, those cells keep a direct alignment and the result's warning says so).
 A `StyleMap` (with `Rule`s) does the same: `StyleMap.from_dict({...})`,
 `StyleMap.DEFAULT.with_rules(Rule("heading", "Title", 1))`.
 
