@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import urllib.error
 import urllib.request
 
@@ -133,24 +134,100 @@ def _missing(given, got, where=""):
     return []
 
 
-def _fitting(schema, arguments):
-    """``arguments`` with an action the items given apply to: the example's first action,
-    ``list``, takes no ``items`` ("not list"), and a model asked for both left the items
-    out (round 17); the first other action is asked for instead."""
-    actions = schema["properties"].get("action", {}).get("enum") or []
-    if "items" in arguments and arguments.get("action") == "list":
-        others = [action for action in actions if action != "list"]
-        if others:
-            arguments = {**arguments, "action": others[0]}
-    return arguments
+#: An item's field that names its actions by exception ("The comment (c:...), except for
+#: add."; "The comments to act on (not list).").
+_EXCEPT = re.compile(r"\(not (\w+)\)|except for (\w+)")
+
+
+def _applies(tool, name, schema):
+    """The actions of ``tool`` a field ``name`` (with ``schema``) is given with:
+    :attr:`Tool.action_fields` where it names the field, else the actions its description
+    starts with (``"accept, reject: ..."``, ``"list. ..."``), else every action but the one
+    it says it is not for, else every action (``None``: the field is for any action)."""
+    actions = tool.actions
+    if name in tool.action_fields:
+        return set(tool.action_fields[name])
+    text = schema.get("description", "")
+    lead = re.match(r"([a-z_]+(?:, [a-z_]+)*)[:.]", text)
+    if lead and set(lead.group(1).split(", ")) <= set(actions):
+        return set(lead.group(1).split(", "))
+    unless = _EXCEPT.search(text)
+    if unless and (unless.group(1) or unless.group(2)) in actions:
+        return set(actions) - {unless.group(1) or unless.group(2)}
+    return None
+
+
+def _for_action(tool, schema, arguments, action):
+    """The part of ``arguments`` (``schema``'s example) to give with ``action``: every field
+    for it, an array of objects by the fields of its item that are; ``None`` when none is.
+    A field for any action is given with each: a model asked for a few fields only now and
+    then left out an array among them under strict decoding (``ids`` beside ``author``,
+    ``items``: 2026-10-28), and kept them all when asked for the action's every field."""
+    part = {}
+    for key, value in arguments.items():
+        prop = schema["properties"][key]
+        applies = _applies(tool, key, prop)
+        if applies is not None and action not in applies:
+            continue
+        if isinstance(value, list) and value and isinstance(value[0], dict):
+            item = _for_action(tool, prop["items"], value[0], action)
+            if item:
+                part[key] = [item]
+        else:
+            part[key] = value
+    return part or None
+
+
+def _requests(tool, schema, arguments):
+    """``arguments`` shared out over the actions ``schema`` offers, as few as cover every
+    field, in their order: each request gives one action and only the fields for it, the
+    required ones too (2026-10-28: a model asked for fields of two actions in one call
+    sensibly made two calls, or left one action's fields out).  A tool without ``action``:
+    one request with everything.  A field for none of the actions offered (a reviewer's
+    word_notes offers ``list`` only) is not asked for; a tool left nothing to ask for is
+    asked for its first action alone."""
+    offered = (schema["properties"].get("action") or {}).get("enum")
+    if not offered:
+        return [arguments]
+    required = set(schema.get("required", ())) - {"action"}
+    done, requests = set(), []
+    for action in offered:
+        part = _for_action(tool, schema, {k: v for k, v in arguments.items()
+                                          if k not in required and k != "action"},
+                           action)
+        if not part:
+            continue
+        new = set(_paths(part)) - done
+        if not new:
+            continue
+        done |= new
+        requests.append({**{k: arguments[k] for k in arguments if k in required},
+                         "action": action, **part})
+    # A tool none of whose fields is for an action offered is still called once.
+    return requests or [{**{k: arguments[k] for k in arguments if k in required},
+                         "action": offered[0]}]
+
+
+def _paths(arguments, where=""):
+    """The dotted paths of ``arguments``, an array by its first item."""
+    for key, value in arguments.items():
+        path = f"{where}.{key}" if where else key
+        yield path
+        if isinstance(value, list) and value and isinstance(value[0], dict):
+            yield from _paths(value[0], path + "[]")
 
 
 def _ask_for(name, schema, arguments):
     """A user message asking for one call with every argument, the optional ones listed
     first: a model writes the arguments it must give first, which is what lost trial 3's
-    optional fields when they were listed before a required one."""
-    required = set(schema.get("required", ()))
-    order = [k for k in arguments if k not in required] + [k for k in arguments if k in required]
+    optional fields when they were listed before a required one.  The action, where there is
+    one, comes before them all: the fields are its, and a model told the action last now and
+    then made a first call without an array among them (``items``, 2026-10-28), and never did
+    when told it first."""
+    required = set(schema.get("required", ())) - {"action"}
+    order = ([k for k in arguments if k == "action"]
+             + [k for k in arguments if k not in required and k != "action"]
+             + [k for k in arguments if k in required])
     lines = "\n".join(f"- {key}: {json.dumps(arguments[key])}" for key in order)
     return (f"This is a test of the tool interface; nothing is edited. Call {name} exactly "
             f"once, with exactly these arguments and values, none dropped or changed, and "
@@ -158,8 +235,9 @@ def _ask_for(name, schema, arguments):
 
 
 def test_strict_tools_keep_every_field_given(toolbox):
-    """Each strict tool, as the adapter sends it, gets one scripted request asking for a
-    call that uses every optional field; every field must arrive (finding S1 of trial 3)."""
+    """Each strict tool, as the adapter sends it, gets a scripted request per action whose
+    fields it asks for (one for a tool without ``action``), asking for a call that uses them
+    all; every field asked for must arrive (trial 3, S1)."""
     from ooxml_edit.tools.schema import example_arguments    # ooxml-edit 0.8.0
 
     strict = [d for d in toolbox.definitions("anthropic", defer=False) if d.get("strict")]
@@ -169,27 +247,32 @@ def test_strict_tools_keep_every_field_given(toolbox):
     for roles in REVIEW_SETS:
         strict += [d for d in toolbox.definitions("anthropic", defer=False, roles=roles)
                    if d.get("strict") and d not in strict]
-    lost = {}
+    lost, asked = {}, []
     for definition in strict:
-        arguments = _fitting(definition["input_schema"],
-                             example_arguments(definition["input_schema"]))
-        reply = _post("messages", {
-            "model": MODEL, "max_tokens": 1500, "tools": [definition],
-            "tool_choice": {"type": "auto"}, "output_config": {"effort": "low"},
-            "messages": [{"role": "user", "content": _ask_for(
-                definition["name"], definition["input_schema"], arguments)}]})
-        calls = [b for b in reply["content"] if b["type"] == "tool_use"]
-        # The model may split the request into several calls of the same tool (seen with
-        # word_comments, round 17: the fields shared out between two calls): the fields of
-        # all of them together are checked, a field none of them has is still lost; another
-        # tool, or no call, still fails.
-        assert calls and {c["name"] for c in calls} == {definition["name"]}, reply["content"]
-        given = {}
-        for call in calls:
-            for key, value in call["input"].items():
-                given.setdefault(key, value)
-        missing = _missing(arguments, given)
-        if missing:
-            lost[definition["name"]] = missing
-    print(f"\nstrict tools checked: {[d['name'] for d in strict]}")
+        schema = definition["input_schema"]
+        for arguments in _requests(toolbox.tools[definition["name"]], schema,
+                                   example_arguments(schema)):
+            label = definition["name"] + (f" {arguments['action']}" if "action" in arguments
+                                          else "")
+            asked.append(label)
+            reply = _post("messages", {
+                "model": MODEL, "max_tokens": 1500, "tools": [definition],
+                "tool_choice": {"type": "auto"}, "output_config": {"effort": "low"},
+                "messages": [{"role": "user", "content": _ask_for(
+                    definition["name"], schema, arguments)}]})
+            calls = [b for b in reply["content"] if b["type"] == "tool_use"]
+            # The model may still split a request into several calls of the same tool (seen
+            # with word_comments, round 17): the fields of all of them together are
+            # checked, a field none of them has is still lost; another tool, or no call,
+            # still fails.
+            assert calls and {c["name"] for c in calls} == {definition["name"]}, \
+                reply["content"]
+            given = {}
+            for call in calls:
+                for key, value in call["input"].items():
+                    given.setdefault(key, value)
+            missing = _missing(arguments, given)
+            if missing:
+                lost[label] = missing
+    print(f"\nstrict requests: {asked}")
     assert lost == {}, lost
