@@ -973,7 +973,10 @@ doc.render_svg(pages=diff.changed)     # or render_png; ids on every paragraph g
   (`lay_out_docx(previous=...)`: from the page the first changed block is on until the pages
   line up again, byte for byte a full layout's, with the cases it lays out whole -- styles,
   sections, page-number fields in the body... -- said); the `render` tool's worker uses it,
-  handing over the layout of the version before an edit.
+  handing over the layout of the version before an edit. Since docx2svg 0.8.0 (round 20,
+  S1) a body with a table of contents, `PAGEREF`, `PAGE`, `SEQ` or `REF` is laid out from the
+  edit too; where a version is still laid out whole, `render` says why (`data.relaid`, S2:
+  the reason, the block by its id, the field or the part).
 
 ---
 

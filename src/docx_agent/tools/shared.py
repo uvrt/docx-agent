@@ -239,10 +239,13 @@ def render_pages(data: bytes, pages: list[int], width: int, font_dirs: list[str]
     return list(pngs), count, coverage_facts(options.coverage)
 
 
-def draw(call: Any, pages: list[int], width: int) -> tuple[dict, int | None, dict | None]:
+def draw(call: Any, pages: list[int], width: int, relaid: list | None = None
+         ) -> tuple[dict, int | None, dict | None]:
     """``{page: (png, meta, cached)}`` for the pages the document has among ``pages``, drawn
     ``width`` px wide; the page count when the document was laid out (``None`` when every
-    page was held already); and the layout's coverage facts then.
+    page was held already); and the layout's coverage facts then.  ``relaid``, a list,
+    is given why the document was laid out whole where a layout of the version before was
+    handed over (:func:`docx_agent.layout.relaid_facts`).
 
     ooxml-edit's render pipeline draws them (:func:`ooxml_edit.tools.render.draw`, with the
     document's :data:`.render.RENDERER`): an image is kept by its content in the toolbox's
@@ -281,6 +284,11 @@ def draw(call: Any, pages: list[int], width: int) -> tuple[dict, int | None, dic
                                  fonts=fonts, locale=locale, state=kept_layout, on_facts=on_facts)
     if not facts:
         return drawn, None, None
+    if relaid is not None and facts[0].get("relaid_cause"):
+        # Laid out whole from the layout of the version before (round 20): why, in block ids.
+        from ..layout import relaid_facts
+
+        relaid.append(relaid_facts(document, facts[0]["relaid_cause"]))
     return drawn, facts[0]["count"], facts[0]["coverage"]
 
 
@@ -298,7 +306,8 @@ def render(call: Any, doc: str, slides: list | None = None, pages: list[int] | N
     version = call.entry.version
     fonts = tuple(font_dirs_of(call.document))
     locale = locale_of(call.document)
-    drawn, count, coverage = draw(call, pages, width)
+    relaid: list = []
+    drawn, count, coverage = draw(call, pages, width, relaid)
     if len(drawn) < len(pages):
         raise ToolError("not_found", f"the document has {count} page(s)", field="pages",
                         valid_options=list(range(1, count + 1))[:50])
@@ -315,6 +324,11 @@ def render(call: Any, doc: str, slides: list | None = None, pages: list[int] | N
     render_version, coverage = getattr(call.document, "_tool_render_coverage", (None, None))
     if coverage is not None and render_version == (version, fonts, locale):
         result.data["coverage"] = coverage
+    if relaid:
+        # The document was laid out whole although a layout of the version before was kept:
+        # what caused it (a styles change, an edited section break, a field one block opens
+        # and another closes...), to explain a slow refresh.
+        result.data["relaid"] = relaid[0]
     return result
 
 
