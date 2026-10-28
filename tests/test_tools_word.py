@@ -639,13 +639,69 @@ def test_replace_text_within_a_span_of_paragraphs_and_a_table(box, session):
     assert "First 1." in text and "Last 1." in text and "two 1" in text
     # A reversed or unknown span fails as it does for the block tools (word_delete).
     reversed_span = f"{blocks[3]}..{blocks[1]}"
-    for tool, arguments in (("replace_text", {"find": "1", "replace": "x", "expect": "all", "range": reversed_span}),
+    for name, arguments in (("replace_text", {"find": "1", "replace": "x", "expect": "all", "range": reversed_span}),
                             ("word_delete", {"target": reversed_span})):
-        assert "ends before it starts" in fails(box, session, tool, "refused", doc=d, **arguments).message
+        assert "ends before it starts" in fails(box, session, name, "refused", doc=d, **arguments).message
     unknown = f"p:0BADF00D..{blocks[3]}"
-    for tool, arguments in (("replace_text", {"find": "1", "replace": "x", "expect": "all", "range": unknown}),
+    for name, arguments in (("replace_text", {"find": "1", "replace": "x", "expect": "all", "range": unknown}),
                             ("word_delete", {"target": unknown})):
-        assert "p:0BADF00D" in fails(box, session, tool, "not_found", doc=d, **arguments).message
+        assert "p:0BADF00D" in fails(box, session, name, "not_found", doc=d, **arguments).message
+
+
+EVERY_ROLE_MARKDOWN = """# One
+## Two
+### Three
+#### Four
+##### Five
+###### Six
+
+Body with *emphasis*, **strong**, `code`, [a link](https://example.com) and a note.[^1]
+
+> A quote.
+
+```
+code block
+```
+
+- bullet
+  - bullet two
+    - bullet three
+
+1. number
+   1. number two
+      1. number three
+
+| Item | Note |
+|---|---|
+| one | two |
+
+[^1]: The note.
+"""
+
+
+@pytest.mark.parametrize("normal", [{"indent_left": 12, "indent_right": -30, "first_line": 9},
+                                    {"indent_left": 18, "indent_right": 24, "hanging": 6}])
+def test_insert_markdown_with_every_style_role_writes_no_direct_formatting(box, session, normal):
+    """Round 21, T4: whatever the styles mapped (each role its own style, inheriting
+    Normal's indents), what insert_markdown writes takes its styles as they are: check
+    finds no direct formatting on it."""
+    from docx_agent.markdown.stylemap import DICT_KEYS, STYLE_KINDS
+    from docx_agent.tools.text import STYLE_KEYS
+
+    d = ok(box, session, "new_document", kind="docx").created[0]
+    doc = document(session, d)
+    doc.styles.modify("Normal", **normal)
+    mapping = []
+    for role in STYLE_KEYS:
+        kind = STYLE_KINDS[DICT_KEYS[role][0]]
+        name = "Table Grid" if kind == "table" else f"Mapped {role}"
+        if kind != "table":
+            doc.styles.add(name, kind, **({"based_on": "Normal"} if kind == "paragraph" else {}))
+        mapping.append({"element": role, "style": name})
+    ok(box, session, "word_insert_markdown", doc=d, at="end", markdown=EVERY_ROLE_MARKDOWN, style_map=mapping)
+    report = ok(box, session, "check", doc=d, include=["validate", "layout"]).data
+    assert report["validate"]["problems"] == []
+    assert report["layout"]["direct_formatting"] == []
 
 
 def test_render_pages_within_limits_and_cached_by_version(box, session):
@@ -1247,3 +1303,52 @@ def test_comments_with_no_items_at_all_still_need_them(box, session):
     d = open_doc(session)
     error = fails(box, session, "word_comments", "invalid_arguments", doc=d, action="delete")
     assert error.message == "delete needs items"
+
+
+def test_cells_take_a_style_whose_indent_does_not_fit_and_say_so(box, session):
+    """Round 21, T4: a cell style inheriting Normal's -170 pt right indent is written as it
+    is -- no direct indent on the cells -- and the result names the style and the indent."""
+    d = ok(box, session, "new_document", kind="docx").created[0]
+    doc = document(session, d)
+    doc.styles.modify("Normal", indent_right=-170)
+    doc.styles.add("Cell text", "paragraph", based_on="Normal")
+    result = ok(box, session, "word_insert_markdown", doc=d, at="end", markdown="| A | B |\n|---|---|\n| 1 | 2 |",
+                style_map=[{"element": "table_cell", "style": "Cell text"}])
+    with zipfile.ZipFile(io.BytesIO(doc.to_bytes())) as archive:
+        assert b"<w:ind" not in archive.read("word/document.xml")
+    warning = [w for w in result.warnings if "Cell text" in w]
+    assert len(warning) == 1 and "indent_right -170 pt (from Normal)" in warning[0]
+    assert ok(box, session, "check", doc=d, include=["layout"]).data["layout"]["direct_formatting"] == []
+
+
+def test_a_table_as_wide_as_the_body_lines_is_not_past_the_margins(box, session):
+    """Round 21, T5: Normal runs its lines 60 pt past the right margin; width_of body makes
+    a table as wide as those lines, on their edges, and check has nothing past the margins
+    -- while a table reaching beyond the lines still is."""
+    d = ok(box, session, "new_document", kind="docx").created[0]
+    doc = document(session, d)
+    doc.styles.modify("Normal", indent_left=12, indent_right=-60)
+    blocks = ok(box, session, "word_insert_markdown", doc=d, at="end",
+                markdown="Body text.\n\n| A | B |\n|---|---|\n| 1 | 2 |").data["blocks"]
+    table = next(b for b in blocks if b.startswith("t:"))
+    lines = doc.body_lines(table)
+    assert (lines["left"], lines["right"]) == (12, -60) and lines["width"] == lines["text_width"] + 48
+    ok(box, session, "word_format_table", doc=d, table=table, scope="table", width_of="body")
+    properties = doc.table_properties(table)
+    assert properties["width"] == lines["width"] and properties["indent"] == 12
+    assert sum(properties["columns"]) == pytest.approx(lines["width"], abs=0.05)
+    assert ok(box, session, "check", doc=d, include=["layout"]).data["layout"]["past_margins"] == []
+    # Half as wide, centred between the lines' edges.
+    ok(box, session, "word_format_table", doc=d, table=table, scope="table", width_of="body", width_percent=50,
+       alignment="center")
+    properties = doc.table_properties(table)
+    assert properties["width"] == pytest.approx(lines["width"] / 2, abs=0.01)
+    assert properties["indent"] == pytest.approx(12 + lines["width"] / 4, abs=0.01)
+    # Past the lines: reported, by how far past the margin.
+    ok(box, session, "word_format_table", doc=d, table=table, scope="table", width_of="body")
+    ok(box, session, "word_format_table", doc=d, table=table, scope="column", column=1,
+       width=properties["columns"][1] * 2 + 40)
+    past = ok(box, session, "check", doc=d, include=["layout"]).data["layout"]["past_margins"]
+    assert [entry["table"] for entry in past] == [table] and past[0]["past"]["right"] > 60
+    fails(box, session, "word_format_table", "invalid_arguments", doc=d, table=table, scope="table",
+          width_of="body", width=300)

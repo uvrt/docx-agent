@@ -390,8 +390,10 @@ _TABLE_SIDES = ("top", "bottom", "left", "right", "inside_h", "inside_v")
             "column": integer("column, cell: from 0.", minimum=0, optional=True),
             "style": string("table: style name.", optional=True),
             "width": number("table, column, cell: width.", minimum=1, maximum=1584, optional=True),
-            "width_percent": number("table: width, % of the text width.", minimum=1, maximum=100,
+            "width_percent": number("table: width, % of width_of.", minimum=1, maximum=100,
                                     optional=True),
+            "width_of": string("Default text width; body: its paragraphs' lines.", enum=["text", "body"],
+                               optional=True),
             "alignment": string("table: on the page.", enum=["left", "center", "right"], optional=True),
             "shading": string("Fill RRGGBB, or none.", optional=True),
             "borders": BORDERS,
@@ -404,8 +406,8 @@ _TABLE_SIDES = ("top", "bottom", "left", "right", "inside_h", "inside_v")
            refs=('table',), group="word_objects", mutates=True)
 def word_format_table(call: Any, doc: str, table: str, scope: str, row: int | None = None,
                       column: int | None = None, style: str | None = None, width: float | None = None,
-                      width_percent: float | None = None, alignment: str | None = None,
-                      shading: str | None = None, borders: str | None = None,
+                      width_percent: float | None = None, width_of: str | None = None,
+                      alignment: str | None = None, shading: str | None = None, borders: str | None = None,
                       vertical_alignment: str | None = None, height: float | None = None,
                       height_rule: str = "at_least", header_rows: int | None = None) -> Result:
     document = call.document
@@ -420,7 +422,12 @@ def word_format_table(call: Any, doc: str, table: str, scope: str, row: int | No
         for key, value in (("style", style), ("alignment", alignment), ("header_rows", header_rows)):
             if value is not None:
                 values[key] = value
-        if width is not None or width_percent is not None:
+        if width_of == "body":
+            if width is not None:
+                raise ToolError("invalid_arguments", "width_of is what width_percent is of: give width_percent "
+                                "(or nothing, for 100), not width", field="width_of")
+            values.update(_body_width(document, table, width_percent or 100, alignment))
+        elif width is not None or width_percent is not None:
             values["width"] = f"{width_percent:g}%" if width_percent is not None else width
         if shading is not None:
             values["shading"] = fill
@@ -430,6 +437,14 @@ def word_format_table(call: Any, doc: str, table: str, scope: str, row: int | No
             raise ToolError("invalid_arguments", "nothing to set for the table",
                             valid_options=["style", "width", "width_percent", "alignment", "shading", "borders",
                                            "header_rows"])
+        if width_of == "body":
+            # The columns shared again first, the cells' widths with them: an autofit
+            # table is drawn at its cells' widths, which a table width alone leaves.
+            from ..edit.table_format import share, twips
+
+            grid = [twips(w) for w in document.table_properties(table)["columns"]]
+            for column, new in enumerate(share(twips(values["width"]), grid)):
+                edits.append(document.set_column_width(table, column, new / 20))
         edits.append(document.set_table(table, **values))
         return outcome(edits, f"Formatted {table}", changed=[table])
     cell_values: dict[str, Any] = {}
@@ -471,6 +486,25 @@ def word_format_table(call: Any, doc: str, table: str, scope: str, row: int | No
         raise ToolError("invalid_arguments", f"nothing to set for the {scope}",
                         valid_options=["shading", "borders", "vertical_alignment", "width", "height"])
     return outcome(edits, f"Formatted {scope} of {table}", changed=[table])
+
+
+def _body_width(document: Any, table: str, percent: float, alignment: str | None) -> dict[str, Any]:
+    """``width_of: "body"`` (round 21, T5): the share of the body's lines beside the table
+    (:meth:`~docx_agent.Document.body_lines`: the text width less the effective indents of
+    the paragraph around it) as a width in points, and the table placed on those lines --
+    left on their left edge, centred or right between their edges -- by its indent from
+    the margin, aligned left: what Word draws at the lines' edges and keeps when the table
+    is edited (round 21 measurements)."""
+    lines = document.body_lines(table)
+    width = round(lines["width"] * percent / 100, 2)
+    if width < 1:
+        raise ToolError("invalid_arguments", f"the body's lines beside {table} are {lines['width']:g} pt wide",
+                        field="width_of")
+    current = document.table_properties(table)["alignment"]
+    where = alignment or ("left" if current in (None, "start", "both") else current)
+    room = lines["width"] - width
+    offset = {"left": 0, "center": room / 2, "right": room}.get(where, 0)
+    return {"width": width, "indent": round(lines["left"] + offset, 2), "alignment": "left"}
 
 
 # -- W25, W26 word_drawings (inserting a picture too) -------------------------------------------

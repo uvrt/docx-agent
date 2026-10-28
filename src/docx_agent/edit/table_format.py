@@ -622,6 +622,35 @@ class TableFormatOps:
                 pass
         return 9026
 
+    def body_lines(self: "Document", table: str) -> dict:
+        """Where the body's lines run beside ``table`` (round 21, T5): the text width it sits
+        in (its section's, or its cell's) less the effective left and right indents of the
+        paragraph around it -- the nearest paragraph before it in its container, else after
+        it, else the default paragraph style's.  ``{"paragraph", "text_width", "left",
+        "right", "width"}`` in points; ``left`` and ``right`` the indents (a negative one
+        runs the lines past the margin), ``width`` the lines' width."""
+        from . import effective as _effective
+
+        part, entry = self._table_entry(table)
+        around = None
+        for step in (_previous_block, _next_block):
+            node = step(entry.element)
+            while node is not None and node.tag != W_P:
+                node = step(node)
+            if node is not None:
+                around = node
+                break
+        if around is not None:
+            look = _effective.paragraph(self, around)
+            found = self._index(part).entry_for(around)
+            identifier = found.id if found is not None else None
+        else:
+            look, identifier = _effective.style_look(self, None)[0], None
+        text_width = self._room_for(part, entry.element) / 20
+        left, right = look.indent_left, look.indent_right
+        return {"paragraph": identifier, "text_width": text_width, "left": left, "right": right,
+                "width": text_width - left - right}
+
     # -- a table's properties ---------------------------------------------------------------
 
     def set_table(self: "Document", table: str, *, style=UNSET, width=UNSET, layout=UNSET, alignment=UNSET,

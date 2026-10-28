@@ -118,10 +118,14 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 #: of ``width`` (no definition).  With an asset catalogue configured (docx_format(assets=...)),
 #: ``asset`` and word_find_asset add 151 more (13,261): what the application chose to send.
 #: word_drawings is not strict: the strict set is unchanged.
+#: Round 21, T5: word_format_table's ``width_of`` (``body``: a share of the lines of the
+#: paragraphs around the table, their indents included) adds 32 to every definition
+#: (13,110 -> 13,142), none to the core (2,816); the guard rises to 13,145.  word_format_table
+#: is not strict: the strict set is unchanged (6 tools, 24 optional parameters).
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 6500
-ALL_GUARD = 13115
+ALL_GUARD = 13145
 
 
 @pytest.fixture(scope="module")
