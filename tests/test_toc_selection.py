@@ -25,9 +25,12 @@ OBSERVED = json.loads((ROOT / "tests" / "observations" / "toc-word.json").read_t
 DUTCH = Locale(decimal_separator=",", thousands_separator=".", date_order="dmy", language="nl-NL",
                list_separator=";")
 #: Dutch Word matches ``\t``'s names against its own display names: a built-in heading is
-#: "Kop 2" there, "Heading 2" in English Word (``t-heading-en``).  This API matches the
-#: names the styles part gives (English Word's), so these differ from what Dutch Word did.
-LOCALISED_NAMES = {"t-heading-en-name-nl", "t-heading-nl-name-nl", "t-overrides-style-level"}
+#: "Kop 2" there, "Heading 2" in English Word (``t-heading-en``), and Dutch Word listed nothing
+#: for "Heading 2".  The Word that wrote a field cannot be known from the file, so a name is
+#: taken in the document's language *and* in English (ooxml_common.stylenames.find_style): in
+#: these two cases this lists what English Word lists for "Heading 2", where Dutch Word
+#: listed nothing (feedback-round21/measurements-D.md).
+ENGLISH_TOO = {"t-heading-en-name-nl", "t-overrides-style-level"}
 
 
 def listed(case: str) -> list[list]:
@@ -42,9 +45,45 @@ def listed(case: str) -> list[list]:
 
 @pytest.mark.parametrize("case", sorted(OBSERVED))
 def test_the_entries_are_words(case):
-    if case in LOCALISED_NAMES:
-        pytest.xfail("Word matched its own language's display names for built-in styles")
+    if case in ENGLISH_TOO:
+        return      # test_english_names_are_taken_too
     assert listed(case) == OBSERVED[case]["entries"]
+
+
+def test_english_names_are_taken_too():
+    # The Dutch document's "Heading 2;1" is what English Word's "Heading 2,1" lists ...
+    assert listed("t-heading-en-name-nl") == OBSERVED["t-heading-en"]["entries"]
+    # ... and "Kop 2" what Dutch Word's does: the two names are one style here.
+    observed = OBSERVED["t-overrides-style-level"]
+    document = Document.open(toc_probe.make(observed["body"], observed["instruction"].replace("Heading 2", "Kop 2")))
+    document.locale = DUTCH
+    kop = [[level, _heading_text(entry.element)] for entry, level in document._toc_entries(
+        observed["instruction"].replace("Heading 2", "Kop 2"))]
+    assert listed("t-overrides-style-level") == kop
+    assert [entry for entry in kop if entry[0] == 5] == observed["entries"]   # Word's Leveled entries
+
+
+def _with_language(instruction: str, language: str) -> list[list]:
+    from docx_agent.edit import authoring
+
+    document = Document.open(toc_probe.make("base", instruction))
+    authoring._restyle(document, None, None, language)
+    return [[level, _heading_text(entry.element)] for entry, level in document._toc_entries(instruction)]
+
+
+@pytest.mark.parametrize("language, name", [("fr-FR", "Titre 2"), ("de-DE", "Überschrift 2"),
+                                            ("es-ES", "Título 2"), ("it-IT", "Titolo 2"), ("nl-BE", "Kop 2")])
+def test_a_documents_language_names_its_built_in_styles(language, name):
+    # Word's display names in that language (ooxml_common.stylenames, measured), split on
+    # its list separator (";" in all five) without a locale; and English's names still.
+    english = OBSERVED["t-heading-en"]["entries"]
+    assert _with_language(f' TOC \\h \\z \\t "{name};1" ', language) == english
+    assert _with_language(' TOC \\h \\z \\t "Heading 2;1" ', language) == english
+    assert _with_language(f' TOC \\h \\z \\t "{name},1" ', language) == []      # one unknown name
+
+
+def test_another_languages_names_are_not_taken():
+    assert _with_language(' TOC \\h \\z \\t "Kop 2,1" ', "en-US") == []
 
 
 def test_the_options_read_as_word_reads_them():

@@ -14,9 +14,6 @@ from docx_agent.edit.design import theme_rgb
 
 ROOT = Path(__file__).resolve().parent.parent
 SWATCHES = json.loads((ROOT / "tests" / "observations" / "theme-tints-word.json").read_text())["swatches"]
-#: Within one level of Word's in one channel (a saturated colour at a deep shade): theme_rgb's
-#: docstring.
-ONE_LEVEL = {("accent2", None, "80"), ("accent5", None, "40"), ("accent4", None, "7F")}
 
 
 @pytest.mark.parametrize("swatch", SWATCHES, ids=lambda s: f"{s['theme']}-{s['tint']}-{s['shade']}")
@@ -24,10 +21,7 @@ def test_a_theme_colour_with_its_tint_or_shade_is_what_word_draws(swatch):
     document = Document.new()
     ours = theme_rgb(document, swatch["theme"], swatch["tint"], swatch["shade"])
     assert swatch["word"] == swatch["fill"]
-    if (swatch["theme"], swatch["tint"], swatch["shade"]) in ONE_LEVEL:
-        assert all(abs(int(ours[k:k + 2], 16) - int(swatch["word"][k:k + 2], 16)) <= 1 for k in (0, 2, 4))
-    else:
-        assert ours == swatch["word"]
+    assert ours == swatch["word"]
 
 
 def made() -> Document:

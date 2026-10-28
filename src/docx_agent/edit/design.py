@@ -52,12 +52,10 @@ Long lists are capped (:data:`CAPS`); ``omitted`` counts what was left out.
 
 from __future__ import annotations
 
-import math
 from collections import Counter
 from typing import TYPE_CHECKING, Any
 
 from docx2svg import model as _model
-from ooxml_common.drawingml.color import ColorRules
 from docx2svg.parse.document import cell_conditions
 from docx2svg.paths import resolve_path
 from docx2svg.table import edge_winner, resolve_table, table_style_id
@@ -208,17 +206,12 @@ def theme_rgb(document: "Document", name: str, tint: str | None = None, shade: s
     ``w:themeTint`` / ``w:themeShade`` (hex bytes), as ``RRGGBB``; ``None`` for a name the
     theme does not define.
 
-    Measured (Word 16, 27 swatches, text and paragraph shading alike;
-    ``feedback-round21/measurements-B.md``): **Word draws the theme colour, not the ``w:val``
-    / ``w:fill`` written beside it**; the tint and shade work on the HLS luminance -- a shade
-    multiplies it by ``shade / 255``, a tint takes it toward white, ``lum * t + (1 - t)``
-    with ``t = tint / 255`` (``00`` white, ``FF`` the colour itself); with both, the tint
-    alone counts.  That is ooxml-common's ``lumMod`` (and ``lumOff``) on unrounded channels,
-    each channel then rounded **down**: 24 of the 27 swatches to the level, the other three
-    one level high in one channel (a saturated colour's middle or top channel at a deep
-    shade)."""
-    from ooxml_common.drawingml.color import apply_transforms
-    from ooxml_common.drawingml.model import ColorTransform
+    Measured (Word 16, text and shading alike; ``feedback-round21/measurements-B.md`` and
+    ``measurements-D.md``): **Word draws the theme colour, not the ``w:val`` / ``w:fill``
+    written beside it**, its tint or shade applied by
+    :func:`ooxml_common.themetint.word_theme_tint` -- Windows' integer HLS on a scale of
+    1530, every swatch measured to the level; with both, the tint alone counts."""
+    from ooxml_common.themetint import word_theme_tint
 
     from .formatops import _SCHEME
 
@@ -227,26 +220,7 @@ def theme_rgb(document: "Document", name: str, tint: str | None = None, shade: s
     base = document._theme_color(name)
     if base is None:
         return None
-    value, tinting = (tint, True) if tint else (shade, False)
-    try:
-        amount = int(value, 16) / 255 if value else 1.0
-    except ValueError:
-        amount = 1.0
-    if amount >= 1:
-        return base.upper()
-    transforms = [ColorTransform("lumMod", amount * 100000)]
-    if tinting:
-        transforms.append(ColorTransform("lumOff", (1 - amount) * 100000))
-    return apply_transforms(base, transforms, _THEME_TINTS).hex.upper().lstrip("#")
-
-
-def _round_down(value: float) -> int:
-    return math.floor(value + 1e-9)
-
-
-#: Word's rules for a theme colour's tint and shade: as ooxml-common's ``WORD``, each
-#: channel rounded down (measured: :func:`theme_rgb`).
-_THEME_TINTS = ColorRules("word theme tint", _round_down)
+    return word_theme_tint(base, tint, shade)
 
 
 def _declaring(document: "Document", resolved: Any, key: str) -> Any:
@@ -558,7 +532,7 @@ def _place(document: "Document", resolved: Any, r: int, c: int, conditions: tupl
 def _table_theme_colors(document: "Document", style_id: str,
                         conditions: tuple = ()) -> dict[str, dict[str, tuple[str, str]]]:
     """A table style's theme colours at a place, by the ``w:fill`` / ``w:color`` value
-    written beside them (``{"fill": {...}, "border": {...}}``, value -> ``(RRGGBB, label)``):
+    written beside them and by the colour itself (``{"fill": {...}, "border": {...}}``, value -> ``(RRGGBB, label)``):
     docx2svg's table resolver reports the value, and this names the theme colour of the
     element holding it -- over the ``basedOn`` chain, root first, each style's own
     properties and then the place's conditional formats in ``conditions``' order, a later
@@ -584,6 +558,7 @@ def _table_theme_colors(document: "Document", style_id: str,
                 themed = _themed_element(document, element, _THEME_ATTRIBUTES["shd"])
                 if themed is not None and element.get(_W + "fill"):
                     out["fill"][element.get(_W + "fill").upper()] = themed
+                    out["fill"][themed[0]] = themed     # docx2svg 0.10 reports the theme's colour
             for borders in (*holder.iter(_W + "tblBorders"), *holder.iter(_W + "tcBorders")):
                 for element in borders:
                     themed = _themed_element(document, element, _THEME_ATTRIBUTES["color"])
