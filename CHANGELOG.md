@@ -5,7 +5,20 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
-## 0.1.17 -- unreleased
+## 0.1.18 -- unreleased
+
+- **`update_fields` writes `STYLEREF` results** (production round 21, T2): the text docx2svg
+  draws for the field (its 0.9.0) -- in the body, the last text of the style before the
+  field, else the first after it; in a header or footer, the text on **the first page that
+  shows it**. Measured (`tools/styleref_probe.py`, `tests/observations/styleref-word.json`,
+  nine made-up documents updated and saved by Word): Word stores the body's values so, and
+  a header's from the pages its window drew (page 2's for a header shown on pages 1 and 2;
+  for a header not drawn yet, neither the first page's nor page 2's) -- not knowable from the
+  file, so the first page that shows it is written. The paragraph number switches (`\n`,
+  `\r`, `\w`) and what docx2svg does not compute are left as they were and listed in
+  `unknown`. The live view (`render`, `layout`) shows each page's text through docx2svg.
+
+## 0.1.17
 
 - **`replace_text` and `find_text` take a span** (production round 21, T3): `range`
   `p:A..t:B` is the blocks from A to B inclusive, their tables' cells too, resolved by the
