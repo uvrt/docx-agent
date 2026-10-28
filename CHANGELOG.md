@@ -5,6 +5,26 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.19 -- unreleased
+
+- **A table of contents' `\t` names built-in styles in the document's language too**
+  (production round 21, D1). Word compares `\t`'s names with its own display names --
+  Dutch Word lists a `\t "Kop 2;1"` heading and not a `\t "Heading 2;1"` one -- while the
+  styles part stores built-in styles under their English names. A name is now taken as a
+  stored name or alias, then as the built-in style the document's language shows under it,
+  then as English's (`ooxml_common.stylenames.find_style`, Word's display names measured
+  in English, Dutch, French, German, Spanish and Italian). The document's language is
+  `Document.locale`'s, else the settings' `w:themeFontLang`, else `w:docDefaults`' `w:lang`.
+  Without a locale the list is split on the separator Word uses in that language (`;` for
+  the five, `,` in English and in a language not measured). Lane B's three cases that were
+  expected failures pass: "Kop 2" as Dutch Word, and "Heading 2" in a Dutch document as
+  English Word lists it (Dutch Word lists nothing there: the Word that wrote a field cannot
+  be known, so both are taken).
+- **Theme colours with a tint or shade are Word's to the level** (production round 21, D2):
+  `word_design_facts`' theme colours come from `ooxml_common.themetint.word_theme_tint`,
+  Windows' integer HLS on a scale of 1530, which draws all 27 swatches of T7 (and 559 more)
+  as Word does; three were a level off. Needs ooxml-common 0.34.0.
+
 ## 0.1.17 -- unreleased
 
 - **`replace_text` and `find_text` take a span** (production round 21, T3): `range`

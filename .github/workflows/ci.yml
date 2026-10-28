@@ -39,7 +39,8 @@ jobs:
         # They are @main, so a sibling change this repository depends on lands there first.
         run: |
           python -m pip install --upgrade pip
-          python -m pip install "ooxml-common @ git+https://github.com/uvrt/ooxml-common@main"
+          # TEMPORARY (r21d): ooxml-common 0.34.0 (stylenames, themetint) from its PR branch.
+          python -m pip install "ooxml-common @ git+https://github.com/uvrt/ooxml-common@names-r21"
           python -m pip install "ooxml-edit @ git+https://github.com/uvrt/ooxml-edit@main"
           python -m pip install "docx2svg[png] @ git+https://github.com/uvrt/docx2svg@main"
           python -m pip install -e .[dev,png]

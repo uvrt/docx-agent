@@ -44,10 +44,17 @@ order, empty ones never, each once:
   given twice keeps its first level; every ``\\t`` switch counts; an unknown name lists
   nothing.  **The list is split on the locale's list separator**: Dutch Word took
   ``"Section title,1"`` as one (unknown) style name and listed nothing, English Word split
-  it; here that is :attr:`Document.locale`'s ``list_separator`` (en-US's ``,`` by
-  default).  Word compares the names with *its own* display names: English Word's
-  "Heading 2" is the styles part's ``heading 2``, which is what is compared here; Dutch
-  Word matched "Kop 2" and not "Heading 2" (not modelled).
+  it; here that is :attr:`Document.locale`'s ``list_separator`` when the document has a
+  locale, else the separator Word uses in the document's language
+  (``ooxml_common.stylenames.list_separator``, measured; ``,`` for a language not
+  measured).  **Word compares the names with its own display names**: English Word's
+  "Heading 2" is the styles part's ``heading 2``, Dutch Word's "Kop 2" (and Dutch Word
+  does not take "Heading 2").  The Word that wrote a field cannot be known, so a name is
+  taken in the document's language and in English
+  (``ooxml_common.stylenames.find_style``: a stored name or alias, then the built-in
+  style the language displays under that name, then English's).  The document's language
+  is :attr:`Document.locale`'s, else the settings' ``w:themeFontLang``, else the default
+  run language (``w:docDefaults``' ``w:lang``).
 * ``\\u`` reads each paragraph's level as the paragraph states it before its style's (a
   built-in heading excepted, as above; ``w:outlineLvl`` 9, body text, is none).  With
   ``\\u``, a paragraph with no level is never listed, not even for ``\\t``; one whose level
@@ -74,6 +81,8 @@ import datetime as _dt
 import re
 from dataclasses import dataclass, field as _field
 from typing import TYPE_CHECKING
+
+from ooxml_common.stylenames import find_style, list_separator
 
 from ..oxml.xml import XML_SPACE, Element, make, remove
 from . import ids as _ids
@@ -984,15 +993,17 @@ class FieldOps:
         levels = _OutlineLevels(self)
         named: dict[str, int] = {}
         if options["styles"]:
-            wanted: dict[str, int] = {}
-            for name, level in options["styles"]:
-                wanted.setdefault(name.casefold(), level)    # a style named twice: the first
+            stored: dict[str, str] = {}
             for style in self.styles:
-                if style.kind != "paragraph":
-                    continue
-                for name in (style.name, *style.aliases):
-                    if name and name.casefold() in wanted:
-                        named.setdefault(style.id, wanted[name.casefold()])
+                if style.kind == "paragraph":
+                    for name in (style.name, *style.aliases):
+                        if name:
+                            stored.setdefault(name, style.id)
+            language = self._field_language()
+            for name, level in options["styles"]:
+                found = find_style(name, stored, language)
+                if found is not None:
+                    named.setdefault(found, level)               # a style named twice: the first
         span, own = options["outline"], options["own"]
         part = self.package.document_part()
         out = []
@@ -1019,11 +1030,29 @@ class FieldOps:
         return out
 
     def _list_separator(self: "Document") -> str:
-        """The list separator of the document's locale (en-US's ``,`` without one): what
-        separates ``\\t``'s styles and levels (measured: Word splits them on its own
-        locale's)."""
+        """What separates ``\\t``'s styles and levels (measured: Word splits them on its own
+        locale's): the document locale's list separator, else the one Word uses in the
+        document's language (``,`` for a language not measured)."""
         locale = getattr(self, "locale", None)
-        return getattr(locale, "list_separator", None) or ","
+        if getattr(locale, "list_separator", None):
+            return locale.list_separator
+        return list_separator(self._field_language(), ",")
+
+    def _field_language(self: "Document") -> str | None:
+        """The language a field's style names are read in: the document locale's, else the
+        settings' ``w:themeFontLang``, else ``w:docDefaults``' ``w:lang``; ``None`` (English
+        only) when none says."""
+        locale = getattr(self, "locale", None)
+        if getattr(locale, "language", None):
+            return locale.language
+        settings = self.package.settings_part()
+        node = self.package.tree(settings).find(_W + "themeFontLang") if settings else None
+        if node is not None and node.get(_W + "val"):
+            return node.get(_W + "val")
+        styles = self.package.styles_part()
+        root = self.package.tree(styles) if styles else None
+        node = root.find(f"{_W}docDefaults/{_W}rPrDefault/{_W}rPr/{_W}lang") if root is not None else None
+        return node.get(_W + "val") if node is not None and node.get(_W + "val") else None
 
     def _toc_tab(self: "Document", paragraph: Element) -> int:
         """A TOC entry's right tab stop: its section's text width less 10 twips (measured)."""
