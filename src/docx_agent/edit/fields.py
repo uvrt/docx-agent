@@ -65,7 +65,8 @@ order, empty ones never, each once:
 Word would prompt on every open): ``PAGE``, ``NUMPAGES``, ``SECTIONPAGES`` and ``PAGEREF``
 from docx2svg's layout -- the page's number as Word shows it (``w:pgNumType``'s start and
 format, docx2svg's ``fields.field_text`` for the switches); ``REF`` from the bookmark;
-``SEQ`` by counting; ``DATE`` from the date given; a table of contents rebuilt from the
+``SEQ`` by counting; ``DATE`` from the date given; ``STYLEREF`` as docx2svg draws it (a
+header's on the first page that shows it: round 21); a table of contents rebuilt from the
 headings with their pages.  A table of contents changes the layout it reports, so
 :meth:`FieldOps.update_fields` lays the document out again until the numbers stop moving
 (at most ``passes`` times).  **Where docx2svg's layout cannot say** (a target past where it
@@ -709,7 +710,8 @@ class FieldOps:
 
     def _compute(self: "Document", found: list[_Found], date=None) -> list[str]:
         """Write each field's result from one layout; the ids of those it cannot compute."""
-        needs_layout = any(f.keyword in ("PAGE", "NUMPAGES", "SECTIONPAGES", "PAGEREF", "TOC") for f in found)
+        needs_layout = any(f.keyword in ("PAGE", "NUMPAGES", "SECTIONPAGES", "PAGEREF", "TOC", "STYLEREF")
+                           for f in found)
         context = _Context(self.layout() if needs_layout else None, self.sections(),
                            date or _dt.datetime.now(_dt.timezone.utc).date())
         sequences: dict[str, int] = {}
@@ -773,6 +775,8 @@ class FieldOps:
                 return self.bookmark(name).text.split("\n")[0].replace(_text.OBJECT, "") if name else None
             except KeyError:
                 raise _Unknown() from None
+        if keyword == "STYLEREF":
+            return self._style_reference(item, context)
         if keyword == "DATE":
             picture = switches(item.instruction).get("@")
             return format_date(picture if isinstance(picture, str) else "d-M-yyyy", context.date)
@@ -802,6 +806,54 @@ class FieldOps:
                               pages=pages, section_pages=section_pages, section_format=fmt)
         except Uncomputable:
             raise _Unknown() from None
+
+    def _style_reference(self: "Document", item: _Found, context: _Context) -> str:
+        """A ``STYLEREF``'s result: the text docx2svg draws for it (round 21, measured) --
+        in the body, on its paragraph's page (the last text of its style before it, else the
+        first after it); in a header or footer, on **the first page that shows it**, which is
+        what Word stores for a header it has laid out (a header Word has not drawn yet keeps
+        whatever Word's window last computed: not reproducible).  Unknown where docx2svg does
+        not compute it (the paragraph number switches ``\\n`` ``\\r`` ``\\w``, a switch not
+        measured), or the page is not laid out."""
+        from docx2svg.fields import Uncomputable, style_reference, style_reference_target
+        from docx2svg.parse.styles import parse_styles
+        from docx2svg.paths import resolve_path
+        from lxml import etree
+
+        from ..layout import _part_of
+
+        part = self.package.styles_part()
+        sheet = parse_styles(etree.tostring(self.package.tree(part))) if part is not None else None
+        try:
+            style_reference_target(style_reference(item.instruction), sheet,
+                                   getattr(getattr(self, "locale", None), "language", None) or "en-US")
+        except Uncomputable:
+            raise _Unknown() from None
+        layout = context.layout
+        paragraph = _paragraph_of(item.begin)
+        entry = self._index(item.part).entry_for(paragraph) if paragraph is not None else None
+        if entry is None or layout is None:
+            raise _Unknown()
+        placed = layout.where(entry.id)
+        if not placed:
+            raise _Unknown()
+        # The element docx2svg's drawn text names: a simple field's, else the run holding
+        # the instruction's first piece.
+        target = item.begin
+        if not item.simple:
+            stop = item.separate if item.separate is not None else item.end
+            first = next((node for node in _between(item.begin, stop) if node.tag == _W + "instrText"), None) \
+                if stop is not None else None
+            if first is None:
+                raise _Unknown()
+            target = _run_of(first)
+        tree = self.package.tree(item.part)
+        page = layout.pages[placed[0].page - 1]
+        texts = [("".join(span.chars)) for line in page.text_lines()
+                 if _part_of(self, line.path, line.part) == item.part
+                 for span in line.spans if resolve_path(tree, span.path) is target]
+        # Nothing drawn: an empty text of the style (Word stores it empty: measured).
+        return "".join(texts)
 
     def _section_format(self: "Document", index: int, context: _Context) -> str | None:
         sections = context.sections
