@@ -5,7 +5,7 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
-## 0.1.17 -- unreleased
+## 0.1.16 -- unreleased
 
 - **A table of contents lists what Word lists for `\o`, `\t` and `\u`** (production round
   21, T1): `update_fields` (and `word_fields`' update) rebuilt every table of contents
