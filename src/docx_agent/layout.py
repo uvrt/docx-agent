@@ -135,6 +135,36 @@ def coverage_facts(coverage, *, at: str | None = None, ids: dict | None = None) 
     return facts
 
 
+def relaid_facts(document: "Document", cause: dict | None) -> dict | None:
+    """Why docx2svg laid a version out whole from the layout of an earlier one, in this
+    API's ids (round 20): docx2svg's :attr:`~docx2svg.layout.Layout.relaid_cause` --
+    ``reason`` (``styles``, ``sections``, ``fields-open``...; docx2svg's
+    ``relayout.FALLBACKS``), ``field`` (the instruction of the field an edited block opens and
+    another closes) and ``part`` (the part that changed) as they are -- with ``at`` the id of
+    the block it names (``p:1A2B3C4D``, ``t:...``): the block in ``document`` at docx2svg's
+    element path, else (a block the edit deleted) ``p:`` and its paragraph id, else the path.
+    ``None`` for ``None``: the layout was made from the earlier one only where the edit
+    reached, or without one."""
+    if not cause:
+        return None
+    out = {"reason": cause.get("reason")}
+    path = cause.get("at")
+    if path:
+        part = document.package.document_part()
+        found = None
+        try:
+            found = _block_id(document, part, path)
+        except (KeyError, ValueError):
+            found = None
+        if found is None and cause.get("para_id"):
+            found = "p:" + str(cause["para_id"]).upper()
+        out["at"] = found or path
+    for key in ("field", "part"):
+        if cause.get(key):
+            out[key] = cause[key]
+    return out
+
+
 def _short(text: str, limit: int = 160) -> str:
     text = " ".join((text or "").split())
     return text if len(text) <= limit else text[:limit - 1] + "\u2026"

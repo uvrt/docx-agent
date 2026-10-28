@@ -41,8 +41,10 @@ class PageRenderer(RendererBase):
     as they were then key to the images held, and are not drawn again.
     The facts are also ``count`` (the pages there are), ``coverage`` (the layout's
     coverage facts, :func:`docx_agent.layout.coverage_facts`), and from an earlier
-    version's layout ``changed`` (the pages whose drawing changed) and ``relaid`` (why the
-    whole document was laid out again, or ``None``)."""
+    version's layout ``changed`` (the pages whose drawing changed), ``relaid`` (why the
+    whole document was laid out again, or ``None``) and ``relaid_cause`` (what caused it:
+    docx2svg's ``Layout.relaid_cause``, element paths as docx2svg writes them; the tool maps
+    them to block ids, :func:`docx_agent.layout.relaid_facts`)."""
 
     name = "docx-agent"
     whole_document = True
@@ -115,7 +117,9 @@ class PageRenderer(RendererBase):
                               "sans": sans},
                       facts={"count": count, "coverage": coverage_facts(layout.coverage),
                              "laid_out": fresh, "changed": getattr(layout, "changed_pages", None),
-                             "relaid": getattr(layout, "relaid", None) if previous is not None else None})
+                             "relaid": getattr(layout, "relaid", None) if previous is not None else None,
+                             "relaid_cause": getattr(layout, "relaid_cause", None) if previous is not None
+                             else None})
 
     def key_text(self, svg: str) -> str:
         return _DOCX_DATA.sub("", svg)
