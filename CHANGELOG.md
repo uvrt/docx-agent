@@ -5,6 +5,21 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.15 -- unreleased
+
+- **Why a refresh was slow** (production round 20, S2): where the render worker lays a
+  version out whole although it was handed the layout of the version before, `render`'s
+  result says why in `data.relaid` -- `reason` (docx2svg's `relayout.FALLBACKS`: `styles`,
+  `sections`, `fields-open`...), `at` (the block it names, by the id the Word tools take: the
+  block in the document now, or `p:<paraId>` of one the edit deleted), `field` (the
+  instruction of a field an edited block opens and another closes: the contents' `TOC`) and
+  `part` (the part that changed: `word/styles.xml`). Nothing is added where only what the
+  edit reaches was laid out. The worker's facts carry docx2svg's cause as it is
+  (`relaid_cause`); `docx_agent.layout.relaid_facts` maps it. With docx2svg 0.8.0 a document
+  with a table of contents, `PAGEREF`, `PAGE`, `SEQ` or `REF` in its body is laid out from
+  the edit too (S1), where 0.7.0 laid it out whole (`relaid: "page-fields"`). Tool
+  definitions unchanged. docx2svg's floor is raised to 0.8.0.
+
 ## 0.1.14 -- unreleased
 
 - **The render worker lays out again only what an edit reaches** (production round 19, R1):

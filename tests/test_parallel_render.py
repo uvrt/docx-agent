@@ -248,3 +248,49 @@ def test_a_warmed_worker_draws_the_same_pages(monkeypatch):
     assert warmed == [1]
     after = [view.svg for view in RENDERER.lay_out(data, [1, 2], 200, [], None, None).views]
     assert after == before and len(after) == 2
+
+
+def test_a_version_laid_out_whole_says_why_in_the_documents_ids():
+    """Round 20, S2: where the worker lays a version out whole although it was handed the
+    layout of the version before, the render tool says why -- the reason, the block (its id)
+    or the part -- to explain a slow refresh; nothing where it laid out only what the edit
+    reached."""
+    data = _pages(4)
+    with _box() as box:
+        session = box.session()
+        d = session.open(data, "note.docx")
+        _ok(box, session, "render", doc=d, pages=[1], width=300)
+        _ok(box, session, "replace_text", doc=d, find="Page 3 of", replace="Page three of", expect="one")
+        edited = _ok(box, session, "render", doc=d, pages=[3], width=300)
+        assert "relaid" not in edited.data
+        document = session.entry(d).document
+        second = next(p.id for p in document.paragraphs() if p.text.startswith("Page 2 "))
+        _ok(box, session, "word_sections", doc=d, action="insert_break", after=second, start="nextPage")
+        broken = _ok(box, session, "render", doc=d, pages=[1], width=300)
+    relaid = broken.data["relaid"]
+    assert relaid["reason"] == "sections"
+    # The block holding the new section's properties, as the Word tools name it.
+    assert relaid["at"].startswith("p:") and relaid["at"] in {p.id for p in document.paragraphs()}
+
+
+def test_the_worker_says_which_part_a_layout_laid_out_whole_was_for():
+    from docx_agent.layout import relaid_facts
+
+    data = _pages(3)
+    first = lay_out_views(RENDERER, data, [1], 300, [])
+    document = Document.open(data)
+    document.package.tree("word/styles.xml")
+    document.package.mark_dirty("word/styles.xml")
+    styles = document.package.tree("word/styles.xml")
+    styles.append(styles[-1].__copy__())
+    after = document.to_bytes()
+    again = lay_out_views(RENDERER, after, [1], 300, [], state=("previous", first["facts"]["laid_out"]))
+    assert again["facts"]["relaid"] == "styles"
+    assert again["facts"]["relaid_cause"] == {"reason": "styles", "part": "word/styles.xml"}
+    assert relaid_facts(document, again["facts"]["relaid_cause"]) == {"reason": "styles", "part": "word/styles.xml"}
+    # A block the edit deleted is named by its paragraph id; one in the document by its id.
+    assert relaid_facts(document, {"reason": "joined", "at": "w:body/w:p[40]", "para_id": "1a2b3c4d"}) == {
+        "reason": "joined", "at": "p:1A2B3C4D"}
+    found = relaid_facts(document, {"reason": "sections", "at": "w:body/w:p[2]"})
+    assert found == {"reason": "sections", "at": document.paragraphs()[1].id}
+    assert relaid_facts(document, None) is None
