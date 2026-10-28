@@ -21,6 +21,7 @@ from pathlib import Path
 import pytest
 
 from docx_agent import Document
+from docx_agent.edit import fields as _fields
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
@@ -43,6 +44,11 @@ NOT_COMPUTED = {
     "latent": {"l8", "lc"},
 }
 
+#: ``STYLEREF "Kop 1"`` in a Dutch document: the English Word measured gave its error; this
+#: reads a document without a locale in its own language, as TOC ``\\t`` does, where "Kop 1"
+#: is heading 1 (feedback-round21/measurements-D.md).
+DOCUMENT_LANGUAGE = {"nl": {"n4": "Part one heading"}} if _fields._NAMES_LANGUAGE else {}   # docx2svg 0.10
+
 
 def _stored(data: bytes) -> dict:
     out = {}
@@ -62,7 +68,9 @@ def test_an_update_stores_what_word_stores(case):
     word = OBSERVED["documents"][case]
     window, cached = WINDOW.get(case, set()), NOT_COMPUTED.get(case, set())
     for label, text in word.items():
-        if label in cached:
+        if label in DOCUMENT_LANGUAGE.get(case, {}):
+            assert text.startswith("Error!") and ours[label] == DOCUMENT_LANGUAGE[case][label]
+        elif label in cached:
             assert ours[label] == "?", label
         elif label not in window:
             assert ours[label] == text, (label, ours[label], text)

@@ -85,6 +85,12 @@ from typing import TYPE_CHECKING
 
 from ooxml_common.stylenames import find_style, list_separator
 
+try:   # docx2svg 0.10: STYLEREF names read in the document's language, as TOC \t's here
+    from docx2svg.fields import names_language as _names_language  # noqa: F401
+    _NAMES_LANGUAGE = True
+except ImportError:
+    _NAMES_LANGUAGE = False
+
 from ..oxml.xml import XML_SPACE, Element, make, remove
 from . import ids as _ids
 from . import inline as _inline
@@ -826,7 +832,8 @@ class FieldOps:
         sheet = parse_styles(etree.tostring(self.package.tree(part))) if part is not None else None
         try:
             style_reference_target(style_reference(item.instruction), sheet,
-                                   getattr(getattr(self, "locale", None), "language", None) or "en-US")
+                                   getattr(getattr(self, "locale", None), "language", None) or "en-US",
+                                   *((self._field_language(),) if _NAMES_LANGUAGE else ()))
         except Uncomputable:
             raise _Unknown() from None
         layout = context.layout

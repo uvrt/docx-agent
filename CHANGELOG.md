@@ -20,6 +20,11 @@ snapshot commit; the development history before it is summarised here.
   expected failures pass: "Kop 2" as Dutch Word, and "Heading 2" in a Dutch document as
   English Word lists it (Dutch Word lists nothing there: the Word that wrote a field cannot
   be known, so both are taken).
+- **`STYLEREF` names read as `\t`'s** (with docx2svg 0.10): `update_fields` looks a
+  `STYLEREF`'s style up in the same language -- the document's locale, else its
+  `w:themeFontLang` / default `w:lang` -- and in English, untrimmed as Word reads it, so
+  `STYLEREF "Kop 1"` in a Dutch document stores the heading's text where the English Word
+  measured stored its error (`tests/test_styleref_update.py`, `DOCUMENT_LANGUAGE`).
 - **Theme colours with a tint or shade are Word's to the level** (production round 21, D2):
   `word_design_facts`' theme colours come from `ooxml_common.themetint.word_theme_tint`,
   Windows' integer HLS on a scale of 1530, which draws all 27 swatches of T7 (and 559 more)
