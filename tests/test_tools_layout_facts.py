@@ -315,3 +315,25 @@ def test_a_table_outdented_as_word_places_it_is_not_past_the_margin(box, session
     past = {e.get("table"): e for e in facts(box, session, d)["past_margins"]}
     assert first not in past
     assert 29 < past[second]["past"]["left"] < 32          # 36 pt, less the 5.65 Word allows
+
+
+def test_markdown_column_alignment_through_styles_leaves_check_clean(box, session):
+    """Round 22, Q3: a Markdown table's centred and right-aligned columns take the styles
+    ``style_map`` names for ``table_cell_center`` and ``table_cell_right``, so check finds no
+    direct formatting in them; with no style named, the cells keep their direct alignment,
+    which check reports, and the result names the role that would avoid it."""
+    made = Document.new()
+    made.styles.add("Cell Centred", "paragraph", based_on="Normal", alignment="center")
+    made.styles.add("Cell Right", "paragraph", based_on="Normal", alignment="right")
+    markdown = "| Item | Count | Share |\n| :-- | :-: | --: |\n| One | 2 | 40% |\n| Two | 3 | 60% |\n"
+    d = session.open(made.to_bytes(), "styled.docx")
+    styled = ok(box, session, "word_insert_markdown", doc=d, at="end", markdown=markdown,
+                style_map=[{"element": "table_cell_center", "style": "Cell Centred"},
+                           {"element": "table_cell_right", "style": "Cell Right"}])
+    assert not any("table_cell_" in w for w in styled.warnings)
+    assert facts(box, session, d)["direct_formatting"] == []
+    plain = session.open(made.to_bytes(), "plain.docx")
+    direct = ok(box, session, "word_insert_markdown", doc=plain, at="end", markdown=markdown)
+    assert sum("table_cell_center" in w or "table_cell_right" in w for w in direct.warnings) == 2
+    found = facts(box, session, plain)["direct_formatting"]
+    assert len(found) == 6 and all(set(e["props"]) == {"alignment"} for e in found)

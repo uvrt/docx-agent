@@ -323,6 +323,58 @@ def test_a_table_is_written_as_word_makes_one():
     assert result.blocks[-1].startswith("p:")
 
 
+ALIGNED = "| a | b | c |\n| :- | :-: | -: |\n| 1 | 2 | 3 |\n"
+
+
+def _aligned_styles(document: Document) -> None:
+    document.styles.add("Cell Centred", "paragraph", based_on="Normal", alignment="center")
+    document.styles.add("Cell Right", "paragraph", based_on="Normal", alignment="right")
+
+
+def _cells(document: Document, result) -> list[list[tuple[str | None, str | None]]]:
+    """Each row's cells as ``(w:pStyle, w:jc)`` of its paragraph."""
+    table = document._resolve(result.blocks[0])[1].element
+
+    def value(paragraph, tag):
+        node = paragraph.find(f"{W}pPr/{W}{tag}")
+        return node.get(W + "val") if node is not None else None
+
+    return [[(value(p, "pStyle"), value(p, "jc")) for p in row.iter(W + "p")] for row in table.iter(W + "tr")]
+
+
+def test_an_aligned_column_takes_the_style_the_map_names_and_no_direct_alignment():
+    document = blank()
+    _aligned_styles(document)
+    result = document.insert_markdown(ALIGNED, style_map={"table_cell_center": "Cell Centred",
+                                                          "table_cell_right": "Cell Right"})
+    centred, right = document.styles.find("Cell Centred").id, document.styles.find("Cell Right").id
+    for row in _cells(document, result):              # the header row too
+        assert row == [(None, "left"), (centred, None), (right, None)]
+    assert not any("table_cell_" in w for w in result.warnings)
+    # Read back, the styles give the alignment.
+    assert "| --- | :---: | ---: |" in document.to_markdown(ids=False)
+
+
+def test_an_aligned_column_without_a_style_keeps_its_direct_alignment_and_says_which_role():
+    document = blank()
+    _aligned_styles(document)
+    result = document.insert_markdown(ALIGNED, style_map={"table_cell_center": "Cell Centred"})
+    centred = document.styles.find("Cell Centred").id
+    assert _cells(document, result)[1] == [(None, "left"), (centred, None), (None, "right")]
+    notes = [w for w in result.warnings if "table_cell_" in w]
+    assert len(notes) == 1 and "table_cell_right" in notes[0] and "direct_formatting" in notes[0]
+    plain = blank().insert_markdown(ALIGNED)
+    assert sorted(w.split("map ")[1].split()[0] for w in plain.warnings if "table_cell_" in w) == [
+        "table_cell_center", "table_cell_right"]
+
+
+def test_the_alignment_roles_are_style_map_keys_with_no_default():
+    mapping = DEFAULT.from_dict({"table_cell_center": "Cell Centred", "table_cell_right": "Cell Right"})
+    assert mapping.style_for("table_cell_center").style == "Cell Centred"
+    assert mapping.to_dict()["table_cell_right"] == "Cell Right"
+    assert DEFAULT.style_for("table_cell_center").style is None and DEFAULT.to_dict()["table_cell_right"] is None
+
+
 def test_footnotes_are_real_notes_with_the_parts_word_makes():
     document = blank()
     result = document.insert_markdown("A[^x] and B[^y].\n\n[^x]: First.\n[^y]: Second, *two*.\n")

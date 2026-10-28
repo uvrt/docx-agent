@@ -206,7 +206,7 @@ def word_delete(call: Any, doc: str, find: str | None = None, within: str | None
 
 STYLE_KEYS = ["paragraph", "h1", "h2", "h3", "h4", "h5", "h6", "quote", "code", "inline_code",
               "bullet", "bullet2", "bullet3", "number", "number2", "number3", "table", "table_cell",
-              "footnote", "footnote_reference", "emphasis", "strong", "link"]
+              "table_cell_center", "table_cell_right", "footnote", "footnote_reference", "emphasis", "strong", "link"]
 
 STYLE_MAP = array(obj({"element": string("Markdown element.", enum=STYLE_KEYS),
                        "style": string("The document's style name for it.")}),
