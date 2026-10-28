@@ -29,7 +29,9 @@ the reader reads -- resolved in the document by ``w:name``:
 * **Tables** (GFM) in the document's table style -- the one its tables use most, else Table
   Grid -- as Word makes a table (``tools/e2_probe.py``): ``w:tblW`` auto, ``tblLook``
   ``04A0``, the text width shared among the columns; the header row repeats
-  (``w:tblHeader``) and a column's alignment is its cells' ``w:jc``.
+  (``w:tblHeader``) and a column's alignment is its cells' ``w:jc``.  A cell's paragraphs
+  take the ``table_cell`` style as it is; one whose indents run the text past the cell or
+  leave it no width is named in a warning (:func:`cell_indent_warnings`).
 * **Footnotes** (``[^label]``) are real footnotes, in the footnotes part Word makes with
   the first (and its endnotes part, both with their separators, and the settings'
   ``w:footnotePr``/``w:endnotePr``: measured).
@@ -220,9 +222,91 @@ def _insert(document, place, blocks, notes, options, pictures, style_map, tracki
             writer.track(elements, tracking, old_mark=lone_properties)
         writer.finish()
         document.package.mark_dirty(place.part)
+    writer.warnings += cell_indent_warnings(document, writer.tables)
     first = created[0] if created else None
     return EditResult(first, created=created + writer.created_notes, renamed=renames, removed=removed,
                       warnings=writer.warnings, blocks=writer.top_ids)
+
+
+def cell_indent_warnings(document: "Document", tables: list[tuple[Element, list[int]]]) -> list[str]:
+    """Round 21, T4: a cell paragraph takes its style as it is -- no direct indent is written
+    to undo what the style inherits -- and where the style's effective indents leave its
+    text no width in a cell, or run it past the cell's edge (an indent more negative than
+    the cell's margin), a warning names the style and the indent, once per table and
+    style.  Read after the edit, from the cascade docx2svg resolves."""
+    from ..edit import effective as _effective
+
+    out: list[str] = []
+    for table, shares in tables:
+        if table.getparent() is None:
+            continue
+        margins = _cell_margins(document, table)
+        seen: set[tuple[str | None, str]] = set()
+        for r, row in enumerate(table.iter(_W + "tr")):
+            for column, cell in enumerate(c for c in row if c.tag == _W + "tc"):
+                width = shares[column] / 20 if column < len(shares) else None
+                left_margin, right_margin = margins.get((r, column), (_DEFAULT_CELL_MARGIN,) * 2)
+                for paragraph in cell.iter(W_P):
+                    look = _effective.paragraph(document, paragraph)
+                    style = _style_name(document, look.style)
+                    first = max(look.first_line - look.hanging, 0)
+                    problems = []
+                    for side, value, margin in (("indent_left", look.indent_left, left_margin),
+                                                ("indent_right", look.indent_right, right_margin)):
+                        if value < -margin:
+                            source = _declared_in(document, look, "ind.left" if side == "indent_left" else "ind.right")
+                            problems.append((side, f"{side} {value:g} pt{source} runs its text "
+                                                   f"{-value - margin:g} pt past the cell's edge"))
+                    room = (width or 0) - left_margin - right_margin
+                    if width is not None and room - look.indent_left - look.indent_right - first <= 0:
+                        problems.append(("width", f"indent_left {look.indent_left:g} pt and indent_right "
+                                                  f"{look.indent_right:g} pt leave its text no width in a "
+                                                  f"{width:g} pt cell"))
+                    for key, text in problems:
+                        if (look.style, key) not in seen:
+                            seen.add((look.style, key))
+                            out.append(f"table cells in style {style!r}: the style's {text}; give the style "
+                                       "indents that fit a cell, or map table_cell to another style")
+    return out
+
+
+#: A cell's side margin, pt, where the table cannot be resolved: Word's Normal Table's.
+_DEFAULT_CELL_MARGIN = 5.4
+
+
+def _cell_margins(document: "Document", table: Element) -> dict[tuple[int, int], tuple[float, float]]:
+    """``{(row, cell): (left, right)}`` margins in points, as docx2svg resolves the table
+    (its style's, the table's, the cell's own); empty when it is not a body table."""
+    from docx2svg import model as _model
+    from docx2svg.paths import resolve_path
+    from docx2svg.table import resolve_table
+
+    from ..edit import effective as _effective
+
+    state = _effective.model(document).model
+    tree = document.package.tree(document.package.document_part())
+    for block in state.body or ():
+        if isinstance(block, _model.Table) and block.path and resolve_path(tree, block.path) is table:
+            resolved = resolve_table(state, block)
+            return {(r, k): (cell.margins.get("left", 0) / 20, cell.margins.get("right", 0) / 20)
+                    for r, row in enumerate(resolved.rows) for k, cell in enumerate(row.cells)}
+    return {}
+
+
+def _declared_in(document: "Document", look, key: str) -> str:
+    """`` (from <style>)`` when the value comes from a style the paragraph's is based on."""
+    resolved = getattr(look, "_resolved", None)
+    origin = resolved.origin(key) if resolved is not None else None
+    declared = getattr(origin, "declared_in", None)
+    return f" (from {_style_name(document, declared)})" if declared else ""
+
+
+def _style_name(document: "Document", style_id: str | None) -> str:
+    if style_id is None:
+        default = next((s for s in document.styles if s.kind == "paragraph" and s.default), None)
+        return default.name if default is not None and default.name else "Normal"
+    found = next((s for s in document.styles if s.id == style_id), None)
+    return found.name if found is not None and found.name else style_id
 
 
 # -- where ------------------------------------------------------------------------------------
@@ -488,6 +572,8 @@ class Writer:
         #: Writing a footnote's blocks: its paragraphs are footnote text, not body text.
         self._note = 0
         self._snapshot: list | None = None
+        #: The tables written, with their columns' widths (twips), for the cell checks.
+        self.tables: list[tuple[Element, list[int]]] = []
 
     # -- styles -----------------------------------------------------------------------------
 
@@ -705,6 +791,7 @@ class Writer:
                 append_in_order(cell, make("w:tcPr")).append(make("w:tcW", **{"w:w": str(shares[c]), "w:type": "dxa"}))
                 inline = row[c] if c < len(row) else []
                 cell.append(self.paragraph(inline, self.style("table_cell"), align=aligns[c]))
+        self.tables.append((table, shares))
         return table
 
     def text_width(self) -> int:

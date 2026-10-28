@@ -64,7 +64,8 @@ takes its targets as one list with the values for all, so it is ``calls``, not `
     stays inside is not past them), beyond Word's own placement of it: a table is outdented
     by its first cell's left margin and half its outer border so that the cell's text
     lines up with the margin (and the same on the right), so only what reaches further
-    counts -- an indent that pushes it out does.  ``fix`` for an inline picture that only runs past
+    counts -- an indent that pushes it out does -- and a side that stays within the body's
+    lines beside it (a negative indent's reach, ``Document.body_lines``) does not.  ``fix`` for an inline picture that only runs past
     the right margin: resized to fit (``word_drawings`` ``resize``, keeping its aspect).
 ``uncertain``
     ``{"page", "placeholders", "approximations", "story_stops"}``: the pages the layout drew
@@ -113,6 +114,10 @@ _RUN_DECLARES = {
     "size": ("sz", "szCs"), "font": ("rFonts",), "color": ("color",), "highlight": ("highlight",),
 }
 _PARAGRAPH_DECLARES = ("jc", "spacing", "ind", "keepNext", "pageBreakBefore")
+
+#: A note that is not one: the separator lines Word writes in every notes part, their
+#: paragraphs with Word's own direct spacing (round 21, T4: not content, not looked at).
+_SEPARATOR_NOTES = frozenset(_W + tag for tag in ("footnote", "endnote"))
 
 #: A table's row as a line's or rule's path names it: the outermost table in the body (in
 #: block-level w:sdt too) and its 1-based row.
@@ -319,6 +324,9 @@ class _Facts:
                 continue
             for entry in index.paragraphs:
                 order += 1
+                note = entry.element.getparent()
+                if note is not None and note.tag in _SEPARATOR_NOTES and note.get(_W + "type"):
+                    continue          # separator, continuationSeparator, continuationNotice
                 found = self._direct(entry.element, entry.id)
                 if found is None:
                     continue
@@ -631,11 +639,30 @@ class _Facts:
                 # half (and the last cell's text ending on the right one): only past that.
                 left_allow, right_allow = self._table_allowance(table)
                 past = _past(low + left_allow, high - right_allow, None, None, page.column, False)
+                identifier = _block_id(document, self.main, table) or table
                 if past:
-                    entries.append({"table": _block_id(document, self.main, table) or table, "page": number,
-                                    "past": past})
+                    drawn = _past(low, high, None, None, page.column, False)
+                    past = self._past_body_lines(identifier, past, drawn)
+                if past:
+                    entries.append({"table": identifier, "page": number, "past": past})
         entries.sort(key=lambda e: -max(e["past"].values()))
         return entries
+
+    def _past_body_lines(self, table: str, past: dict[str, float], drawn: dict[str, float]) -> dict[str, float]:
+        """``past`` less the sides on which the table, as drawn (``drawn``: its borders'
+        reach past the margins), stays within the body's lines beside it (round 21, T5): a
+        template whose Normal runs its lines past a margin (a negative indent) has tables as
+        wide as those lines -- their borders on the lines' edges, as Word draws a table as
+        wide as the text width with its borders on the margins (measured) -- which is not
+        past anything.  The borders' outer halves are allowed for within a point.  A side
+        reaching further than the lines is reported as before, by how far past the margin."""
+        try:
+            lines = self.document.body_lines(table)
+        except Exception:  # noqa: BLE001 -- not a table the document resolves: as measured
+            return past
+        reach = {"left": -lines["left"], "right": -lines["right"]}
+        return {side: amount for side, amount in past.items()
+                if not (reach[side] > 0 and drawn.get(side, 0) <= reach[side] + 2 * MARGIN_TOLERANCE)}
 
     def _table_allowance(self, path: str) -> tuple:
         """``(left, right)`` device px a table may reach past the margins as Word places

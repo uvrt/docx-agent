@@ -45,6 +45,10 @@ How to use them:
   paragraph carries (font, size, colour on its runs) against its style; `word_format` with
   `clear_direct` takes it off, with `clear` only the properties named. `check` with
   `layout` lists every paragraph that differs from its style, with that call.
+- **Templates whose body lines pass a margin** (a negative indent on Normal): tables as wide
+  as those lines are `word_format_table` `width_of: "body"`, and `past_margins` does not
+  count them; a cell style inheriting such an indent is named in `word_insert_markdown`'s
+  warnings (its text runs past the cell, in Word too): map `table_cell` to a style that fits.
 - **A layout fact is only as good as the page it is on.** `layout.uncertain` names the
   pages the layout drew a placeholder on or laid out by an unmeasured rule: judge those
   from the facts, not the render, or say they could not be judged.

@@ -5,6 +5,34 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.17 -- unreleased
+
+- **`replace_text` and `find_text` take a span** (production round 21, T3): `range`
+  `p:A..t:B` is the blocks from A to B inclusive, their tables' cells too, resolved by the
+  block tools' own resolver, with their errors for a reversed (`refused`) or unknown
+  (`not_found`) span; `expect` counts over the whole span. `word_insert_text`'s and
+  `word_delete`'s `within` take one the same way. Definitions unchanged.
+- **Cells take their style as it is, and a style that does not fit a cell is named**
+  (round 21, T4): `word_insert_markdown` writes no direct indent on a cell paragraph (it
+  wrote none on main either: the report did not reproduce; the only direct paragraph
+  property it writes there is a Markdown column alignment's `w:jc`). Where the `table_cell`
+  style's effective indents run the text past the cell's edge (an indent more negative
+  than the cell margin: Word draws the text past it, into the next cell, measured; docx2svg
+  the same) or leave it no width, the result warns once per table and style, naming the
+  style, the indent and the style it comes from. `check`'s `direct_formatting` leaves out
+  the footnote and endnote separators' paragraphs (Word's own spacing; not content), so
+  Markdown with every style role mapped checks clean.
+- **A table as wide as the body's lines** (round 21, T5): `word_format_table` `width_of`
+  `"body"` takes `width_percent` (default 100) of the lines of the paragraph around the
+  table (the text width less its effective left and right indents,
+  `Document.body_lines(table)`), stored as a width in points with the table's indent on the
+  lines' left edge (centre and right placed by the indent), the columns' and cells' widths
+  shared to it. Word draws its borders on the lines' edges, as it draws a text-width table's
+  on the margins, and keeps it when it saves (measured; docx2svg draws it identically).
+  `check`'s `past_margins` leaves out a table's side that stays within the body's lines
+  (a negative indent's reach), and reports one reaching further as before. Tool
+  definitions: +31 estimated tokens over every definition (13,152 -> 13,183, after T7's), none in the
+  core; word_format_table is not strict.
 ## 0.1.16 -- unreleased
 
 - **A table of contents lists what Word lists for `\o`, `\t` and `\u`** (production round
