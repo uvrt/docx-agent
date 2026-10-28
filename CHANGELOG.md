@@ -5,6 +5,27 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.20 -- unreleased
+
+- **Markdown column alignment through styles** (production round 22, Q3): `insert_markdown`'s
+  `style_map` (and `word_insert_markdown`'s, and a table from `from`) takes
+  `table_cell_center` and `table_cell_right`. A cell of a column aligned `:-:` or `-:`
+  takes the style named for it and no direct `w:jc`, so `check` reports no direct
+  formatting there; with no style named, the direct `w:jc` stays as before and the result's
+  warning names the role that would avoid it. Left and unaligned columns are unchanged; no
+  default names either role. Every tool definition +11 tokens (13,183 -> 13,194, guard
+  13,195), the core unchanged.
+- **`Document.block_of(id)` and `Document.blocks_between(a, b)`** (production round 22, U1):
+  the top-level body block holding any id the library takes -- a nested paragraph (cell,
+  nested table, text box, content control), range, run, table, row, cell, drawing (a
+  group's member too), hyperlink, field, revision, content control, a note (the block of
+  its reference), a comment (the block its range starts in), a bookmark (`bm:<name>` or the
+  name: its start), a section (its break's paragraph) -- or `None` outside the body (a
+  header's paragraph, a note's own text, `s:body`); an unknown id is a `KeyError`. And the
+  inclusive span of top-level blocks between two such ids, through `_blocks_of`, so a
+  reversed span is the block tools' `EditError`. Refs (`$name`) live in the tools' session:
+  `docx_agent.tools.block_of(call, id)` and `blocks_between(call, a, b)` resolve them first.
+
 ## 0.1.19 -- unreleased
 
 - **A table of contents' `\t` names built-in styles in the document's language too**

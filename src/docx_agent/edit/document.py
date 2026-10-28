@@ -1834,6 +1834,118 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
                 return identifier
         raise EditError("not a paragraph, table or content control")
 
+    def block_of(self, identifier: str) -> str | None:
+        """The id of the body's top-level block (:meth:`blocks`' ids: a paragraph, table or
+        block-level content control) that holds ``identifier`` -- any id the library takes::
+
+            doc.block_of("p:0D2C4E61")          # a paragraph in a table's cell -> "t:5B1F07A2"
+            doc.block_of("fn:2")                # the block holding the note's reference
+            doc.block_of("bm:Results")          # the block its start is in
+
+        A nested paragraph (in a cell, a nested table, a text box, a content control), a
+        range (``p:A@4:11``: its start), run, table, row or cell, drawing (``d:``, a group's
+        member too), hyperlink, field, revision or content control gives the block it is
+        in; a footnote or endnote (``fn:``, ``en:``) the block holding its reference; a
+        comment (``c:``, ``c#``) the block its range starts in (a reply's own range, else
+        its thread's, as ``comment.anchor`` reads it); a bookmark (``bm:<name>``, or the
+        plain name) the block of its start; a section (``s:``) the block holding its break.
+        A marker standing between blocks counts as the next block's, as a range reads it.
+
+        ``None`` for what is not in the body: a header's or footer's paragraph, a note's or
+        comment's own text, a story's name, a note or comment referenced from no body
+        block, and the body's last section (``s:body``: no block holds its break).  An id
+        the document does not have raises ``KeyError``, as :meth:`get` does; a span
+        (``p:A..t:B``) is :meth:`blocks_between`'s.  A ``$name`` ref lives in the tools'
+        session, not in the document: :func:`docx_agent.tools.block_of` resolves it
+        first."""
+        found = self._held(identifier)
+        if found is None:
+            return None
+        part, element = found
+        if part != self.package.document_part():
+            return None
+        top = _top_block(element)
+        if top is None and element.getparent() is not None:
+            # A marker between blocks (a bookmark's start): the next paragraph's.
+            entry, _ = self._marker_place(part, element, forward=True)
+            top = _top_block(entry.element)
+        return self._block_id(part, top) if top is not None else None
+
+    def blocks_between(self, first: str, last: str) -> list[str]:
+        """The ids of the body's top-level blocks from the one holding ``first`` through the
+        one holding ``last`` (:meth:`block_of`: either may be a nested id), in order::
+
+            doc.blocks_between("p:0D2C4E61", "fn:3")   # a cell's table .. the block citing fn:3
+
+        The span the block tools take (``p:A..t:B``, read by the same resolver), so a
+        ``last`` before ``first`` is refused as theirs is (``EditError``).  An id not in the
+        body (a header's paragraph) is an ``EditError``, one the document does not have a
+        ``KeyError``."""
+        ends = []
+        for identifier in (first, last):
+            block = self.block_of(identifier)
+            if block is None:
+                raise EditError(f"{identifier} is not in the body: blocks_between spans the body's blocks")
+            ends.append(block)
+        elements, part = self._blocks_of(f"{ends[0]}..{ends[1]}")
+        return [self._block_id(part, element) for element in elements]
+
+    def _held(self, identifier: str) -> tuple[str, Element] | None:
+        """The part and element :meth:`block_of` starts from: the element ``identifier``
+        names, a note's reference, the paragraph a comment's range starts in, a bookmark's
+        start; ``None`` for a story's name, the body's last section, a comment or note
+        with no reference.  ``KeyError`` for an id the document lacks."""
+        if not isinstance(identifier, str) or not identifier:
+            raise KeyError(f"no block {identifier!r}")
+        if identifier.startswith("$"):
+            raise KeyError(f"{identifier} is a ref: refs live in the tools' session, and "
+                           "docx_agent.tools.block_of(call, ...) resolves one")
+        if ".." in identifier and "@" not in identifier:
+            raise EditError(f"{identifier!r} is a span of blocks: blocks_between takes its two ends")
+        if _RANGE_ID.fullmatch(identifier):
+            return self._element_of(self.range(identifier).start_id)
+        if identifier.startswith("hl:"):
+            part, _, node = self.hyperlink(identifier)._locate()
+            return part, node
+        if identifier.startswith("bm:") or not re.search(r"[:@/#]", identifier):
+            if not identifier.startswith("bm:") and any(s.name == identifier for s in self.stories):
+                return None
+            part, start, _ = self._bookmark_markers()[self.bookmark(identifier).name]
+            return part, start
+        if identifier.startswith("d:"):
+            self.drawing(identifier)                       # KeyError if there is none
+            frame = identifier.partition("/")[0]           # a group's member: its group
+            for part, found, element in self._all_drawings():
+                if found == frame:
+                    return part, element
+            raise KeyError(f"no drawing {identifier!r}")
+        if identifier.startswith(("fn:", "en:")):
+            self.note(identifier)
+            return self._note_reference(identifier)
+        if identifier.startswith(("c:", "c#")):
+            anchor = self.comment(identifier).anchor
+            return self._element_of(anchor.start_id) if anchor is not None else None
+        if identifier.startswith("fld:"):
+            begin = self._field(identifier).begin
+            return self._part_for_story(identifier[4:].rpartition("/")[0]), begin  # type: ignore[return-value]
+        if identifier.startswith("rev:"):
+            return self.revision(identifier)._locate()
+        if identifier.startswith(("cc:", "cc@")):
+            return self.content_control(identifier)._locate()
+        if identifier.startswith(("s:", "s@")):
+            _, _, paragraph = self._section_record(identifier)
+            return (self.package.document_part(), paragraph) if paragraph is not None else None
+        found = self.get(identifier)
+        if isinstance(found, (Row, Cell)):
+            return self._element_of(found._table.id)
+        if isinstance(found, Run):
+            return self._element_of(found._paragraph.id)
+        return self._element_of(identifier)
+
+    def _element_of(self, identifier: str) -> tuple[str, Element]:
+        part, entry = self._resolve(identifier)
+        return part, entry.element
+
     def _track_move(self, part: str, element: Element, anchor: Element, after: bool, tracking) -> Element:
         """A block's tracked move: the paragraph stays where it was, its runs in
         ``w:moveFrom`` and its mark ``w:moveFrom``, between ``w:moveFromRangeStart`` (after its
@@ -2073,6 +2185,27 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
 
 #: Blocks a section is made of.
 _MOVABLE = (W_P, W_TBL, _W + "sdt", _W + "customXml")
+
+#: A text range's id (``p:A@4:11``, ``p:A@5``, ``p:A@3..p:B@8``), not a positional block id
+#: (``p@body/7``, which the ``@`` of a range may follow).
+_RANGE_ID = re.compile(r".+@\d+(?::\d+|\.\..+@\d+)?")
+
+
+def _top_block(element: Element) -> Element | None:
+    """The body's top-level block holding ``element`` (it, or an ancestor): the outermost
+    paragraph, table or content control under the body, custom XML passed through as
+    :meth:`Document.blocks` passes it; ``None`` for an element outside every block (a
+    marker standing between blocks, the body's ``w:sectPr``) or not in the body."""
+    chain = [element, *element.iterancestors()]
+    body = next((k for k, node in enumerate(chain) if node.tag == W_BODY), None)
+    if body is None:
+        return None
+    for node in reversed(chain[:body]):
+        if node.tag in (W_P, W_TBL, _W + "sdt"):
+            return node
+        if node.tag != _W + "customXml":
+            return None
+    return None
 
 
 class _HeadingLevels:

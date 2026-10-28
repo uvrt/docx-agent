@@ -966,6 +966,13 @@ doc.render_svg(pages=diff.changed)     # or render_png; ids on every paragraph g
   kind, style, outline level (a table of contents' `\u` level), whether it ends a section
   and whether `move_blocks` takes it -- and `outline_level(id)`. `word_describe`'s heading
   tree and `word_design_facts`' patterns read it.
+- **The block holding an id (round 22, U1):** `Document.block_of(id)` -- the top-level body
+  block holding any id the library takes (a cell's, text box's or control's paragraph, a
+  row or cell, a drawing, a note by its reference, a comment by its range's start, a
+  bookmark by its start, a field, a revision); `None` outside the body -- and
+  `blocks_between(a, b)`, the inclusive span of top-level blocks through `_blocks_of`, the
+  span tools' resolver. `$name` refs live in the tools' session: `docx_agent.tools.block_of`
+  and `blocks_between` take a handler's `call` and resolve them first.
 - **Cost.** One full layout per document state, cached by the bytes' hash: `layout()` and
   `render_svg()` of the same state read one `docx2svg.convert_docx` (every page laid out
   and written as SVG; writing the SVG costs little beside the layout), tested by counting
@@ -2586,7 +2593,10 @@ PowerPoint run). The merge-a-section task's inputs and the reproduction are in
    `DEFAULT_STYLE_MAP` (also `StyleMap.DEFAULT`) are exported. `paragraph` is the body's
    paragraphs only: table cells (`table_cell`) and a footnote's text (`footnote`) keep the
    defaults unless named. A mapped built-in body style the document lacks is added, where
-   it was silently Normal. A README recipe.
+   it was silently Normal. A README recipe. Round 22, Q3: `table_cell_center` and
+   `table_cell_right` (no default) style the cells of a column aligned `:-:` or `-:`, so no
+   direct `w:jc` is written and `check` finds no direct formatting; unnamed, the direct
+   `w:jc` stays and the result's warning names the role.
 3. **Copying in the destination's styles.** `copy_blocks(style_map={source name: destination
    name}, unmapped="body")`: a source style neither mapped nor in the destination by name
    becomes the destination's body style (the style most of its plain body paragraphs use) --
