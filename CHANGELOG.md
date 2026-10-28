@@ -5,7 +5,7 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
-## 0.1.16 -- unreleased
+## 0.1.17 -- unreleased
 
 - **`replace_text` and `find_text` take a span** (production round 21, T3): `range`
   `p:A..t:B` is the blocks from A to B inclusive, their tables' cells too, resolved by the
