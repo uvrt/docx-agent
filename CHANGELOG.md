@@ -48,6 +48,7 @@ snapshot commit; the development history before it is summarised here.
   paragraph shading and borders now appear in a style's look. word_design_facts' definition
   grows 42 offline tokens (every definition 13,110 -> 13,152, the guard 13,155; the core
   unchanged; a reviewer's largest 7,519 -> 7,560); it is not strict.
+
 ## 0.1.15 -- unreleased
 
 - **Why a refresh was slow** (production round 20, S2): where the render worker lays a
