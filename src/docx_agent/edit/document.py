@@ -880,8 +880,11 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
         look after inheritance, each table style's look by place (header row, bands, label
         column), each section's page grid and header and footer variants, the theme's
         palette and fonts, repeated block shapes under headings.  ``include`` picks kinds of
-        :data:`~docx_agent.edit.design.KINDS`; ``caps`` overrides how many entries a list
-        keeps (``omitted`` counts the rest)."""
+        :data:`~docx_agent.edit.design.ALL_KINDS` (default :data:`~docx_agent.edit.design.KINDS`);
+        ``declared_styles``, only when named, is every paragraph, character and table style
+        the document declares, used or not, resolved -- theme colours with their tint or
+        shade as the RGB Word draws.  ``caps`` overrides how many entries a list keeps
+        (``omitted`` counts the rest)."""
         from .design import design_facts
 
         return design_facts(self, include, caps)
@@ -961,6 +964,59 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
     def tables(self, story: str = "body") -> list[Table]:
         """The tables of a story (the body by default), in order."""
         return self.story(story).tables
+
+    def blocks(self) -> list[dict]:
+        """The body's top-level blocks in order, one dict each::
+
+            {"id": "p:1A2B3C4D", "kind": "paragraph", "style": "heading 1", "level": 1,
+             "section_break": False, "movable": True}
+
+        ``kind`` is ``paragraph``, ``table``, ``control`` (a block-level content control,
+        ``cc:...``) or ``custom_xml`` (its ``id`` ``None``: nothing addresses it).
+        ``style`` is the paragraph style's name (the default style's for a paragraph naming
+        none) or the table style's (``None`` for none); ``None`` for the others.  ``level``
+        is the paragraph's outline level, 1-9, as Word reads it for a table of contents
+        (:meth:`outline_level`), else ``None`` (body text, and every block that is not a
+        paragraph).  ``section_break``: the paragraph ends a section (holds ``w:sectPr``).
+        ``movable``: :meth:`move_blocks` takes it -- a paragraph or table, not a paragraph
+        ending a section."""
+        part = self.package.document_part()
+        index = self._index(part)
+        levels = _OutlineLevels(self)
+        table_styles = {s.id: s.name or s.id for s in self.styles if s.kind == "table"}
+        out: list[dict] = []
+        root = self.package.tree(part).find(W_BODY)
+        for node in root:
+            if not isinstance(node.tag, str) or node.tag not in _MOVABLE:
+                continue
+            item: dict = {"id": None, "kind": None, "style": None, "level": None, "section_break": False,
+                          "movable": False}
+            if node.tag == W_P:
+                entry = index.entry_for(node)
+                breaks = node.find(f"{W_PPR}/{W_SECTPR}") is not None
+                item.update(id=entry.id if entry is not None else None, kind="paragraph",
+                            style=levels.style_name(node), level=levels.effective(node),
+                            section_break=breaks, movable=not breaks)
+            elif node.tag == W_TBL:
+                entry = index.entry_for(node)
+                declared = node.find(f"{_W}tblPr/{_W}tblStyle")
+                style_id = declared.get(_W + "val") if declared is not None else None
+                item.update(id=entry.id if entry is not None else None, kind="table",
+                            style=table_styles.get(style_id, style_id) if style_id else None, movable=True)
+            elif node.tag == _W + "sdt":
+                item.update(id=self._block_id(part, node), kind="control")
+            else:
+                item.update(kind="custom_xml")
+            out.append(item)
+        return out
+
+    def outline_level(self, identifier: str) -> int | None:
+        """A paragraph's outline level (1-9) as Word reads it for a table of contents, or
+        ``None`` for body text: :meth:`blocks`' ``level``."""
+        _, entry = self._resolve(identifier)
+        if not isinstance(entry, ParagraphEntry):
+            raise EditError(f"{identifier} is not a paragraph")
+        return _OutlineLevels(self).effective(entry.element)
 
     # -- addressing ---------------------------------------------------------------------------
 
@@ -2041,6 +2097,95 @@ class _HeadingLevels:
         style_id = style.get(_W + "val") if style is not None else None
         name = self.reader.style_name(style_id) if style_id else None
         return self.reader.map.heading_level(name, self.reader.outline_level(style_id))
+
+
+class _OutlineLevels:
+    """Paragraphs' outline levels (1-9, ``None`` for body text) as Word reads them for a
+    table of contents (measured: ``fields`` module docstring, "Which paragraphs a table of
+    contents lists").  One per document state: styles are read once."""
+
+    def __init__(self, document: "Document") -> None:
+        self.document = document
+        self.nodes = {node.get(_W + "styleId"): node for node in document.styles._nodes()}
+        default = document.styles.default("paragraph")
+        self.default = default.id if default is not None else None
+        self._levels: dict[str | None, int | None] = {}
+
+    def style_id(self, paragraph: Element) -> str | None:
+        """The paragraph style applied: the one named if the document has it, else the default."""
+        found = paragraph.find(f"{W_PPR}/{_W}pStyle")
+        named = found.get(_W + "val") if found is not None else None
+        return named if named in self.nodes else self.default
+
+    def style_name(self, paragraph: Element) -> str | None:
+        style_id = self.style_id(paragraph)
+        node = self.nodes.get(style_id)
+        name = node.find(_W + "name") if node is not None else None
+        return name.get(_W + "val") if name is not None else style_id
+
+    def style(self, style_id: str | None) -> int | None:
+        """The level a paragraph style gives (what ``\\o`` reads): a built-in heading's
+        (``heading 1`` to ``heading 9``, by name) is its number, whatever its definition
+        states; another style's is the ``w:outlineLvl`` its ``basedOn`` chain declares
+        first, a built-in heading in the chain counting as its number."""
+        if style_id in self._levels:
+            return self._levels[style_id]
+        level = None
+        current, seen = style_id, set()
+        while current and current not in seen and current in self.nodes:
+            seen.add(current)
+            node = self.nodes[current]
+            heading = _BUILTIN_HEADING.fullmatch(_style_name(node) or "")
+            if heading:
+                level = int(heading.group(1))
+                break
+            stated = node.find(f"{W_PPR}/{_W}outlineLvl")
+            if stated is not None:
+                level = _level(stated)
+                break
+            based = node.find(_W + "basedOn")
+            current = based.get(_W + "val") if based is not None else None
+        self._levels[style_id] = level
+        return level
+
+    def own(self, paragraph: Element) -> int | None:
+        """The level the paragraph states itself; ``None`` where it states none or body text."""
+        node = paragraph.find(f"{W_PPR}/{_W}outlineLvl")
+        return _level(node) if node is not None else None
+
+    def from_style(self, paragraph: Element) -> int | None:
+        return self.style(self.style_id(paragraph))
+
+    def effective(self, paragraph: Element) -> int | None:
+        """The paragraph's level (what ``\\u`` reads): a built-in heading style's number;
+        else the level the paragraph states (body text, ``w:outlineLvl`` 9, is ``None``,
+        whatever its style gives); else its style's."""
+        style_id = self.style_id(paragraph)
+        node = self.nodes.get(style_id)
+        heading = _BUILTIN_HEADING.fullmatch(_style_name(node) or "") if node is not None else None
+        if heading:
+            return int(heading.group(1))
+        if paragraph.find(f"{W_PPR}/{_W}outlineLvl") is not None:
+            return self.own(paragraph)
+        return self.style(style_id)
+
+
+#: A built-in heading style's name (``w:name``, any case): Word fixes its outline level.
+_BUILTIN_HEADING = re.compile(r"heading ([1-9])", re.IGNORECASE)
+
+
+def _style_name(node: Element) -> str | None:
+    name = node.find(_W + "name")
+    return name.get(_W + "val") if name is not None else None
+
+
+def _level(node: Element) -> int | None:
+    """``w:outlineLvl``'s value as a level 1-9; ``None`` for body text (9) or a bad value."""
+    try:
+        value = int(node.get(_W + "val") or "")
+    except ValueError:
+        return None
+    return value + 1 if 0 <= value <= 8 else None
 
 
 def _find(node: Element | None, path: str) -> Element | None:

@@ -9,7 +9,6 @@ from typing import Any
 
 from ooxml_edit.tools import Result, ToolError, boolean, page_text, string
 
-from ..edit.document import _MOVABLE, W_BODY, W_P, _HeadingLevels
 from ..markdown.read import _TYPED_NUMBER
 from ._base import resolve, short, word_tool
 
@@ -23,20 +22,10 @@ _PAGE_MARGIN = 1500
 def heading_tree(document: Any) -> list[dict[str, Any]]:
     """The body's headings in order (LW6's tree, composed): id, level, text, how it is
     numbered (``list`` or typed ``text``), and ``blocks``: how many blocks its section holds,
-    itself and everything up to the next heading at its level or above."""
-    levels = _HeadingLevels(document)
-    body = document.package.document_part()
-    index = document._index(body)
-    blocks: list[tuple[int | None, str | None]] = []   # (heading level or None, id) per body block
-    root = document.package.tree(body).find(W_BODY)
-    for node in root:
-        if not isinstance(node.tag, str) or node.tag not in _MOVABLE:
-            continue
-        if node.tag == W_P:
-            entry = index.entry_for(node)
-            blocks.append((levels.of(node), entry.id if entry is not None else None))
-        else:
-            blocks.append((None, None))
+    itself and everything up to the next heading at its level or above.  A heading is a
+    top-level paragraph with an outline level, as :meth:`Document.blocks` and a table of
+    contents read it."""
+    blocks = [(b["level"], b["id"]) for b in document.blocks()]   # (outline level or None, id) per body block
     out = []
     for k, (level, identifier) in enumerate(blocks):
         if level is None or identifier is None:

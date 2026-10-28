@@ -30,7 +30,7 @@ with Toolbox(TOOLS, formats=[FORMAT], groups=GROUPS) as toolbox:
   and footers, fields and the TOC, notes, links, lists, styles, tables (a new one is Markdown,
   through `word_insert_markdown`, or a dataset's or another document's table's rows with its
   `from`, as `word_edit_table`'s `set_cells` takes them), pictures and other drawings, content controls and the
-  compatibility mode; a template's design facts (`word_design_facts`); blocks compared with a sample block, the fixes as calls (`word_compare_blocks`). Core: `describe`, `word_read`, `word_set_text` and the shared core;
+  compatibility mode; a template's design facts (`word_design_facts`; every declared style resolved with `include: ["declared_styles"]`, paged); blocks compared with a sample block, the fixes as calls (`word_compare_blocks`). Core: `describe`, `word_read`, `word_set_text` and the shared core;
   the rest load on demand in five groups. What is supported and what is not:
   [SUPPORTED.md](../src/docx_agent/tools/SUPPORTED.md); for the application's thinking layer:
   [GUIDANCE.md](../src/docx_agent/tools/GUIDANCE.md).
