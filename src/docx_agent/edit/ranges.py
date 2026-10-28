@@ -278,13 +278,18 @@ class TextOps:
         return parse_range(self, identifier, view)
 
     def _scope(self: "Document", within: str | None) -> list[tuple[str, list[ParagraphEntry]]]:
-        """The stories' paragraphs a find looks in: everything, a story, a table or one
-        paragraph."""
+        """The stories' paragraphs a find looks in: everything, a story, a table, a span of
+        blocks (``p:A..t:B``, inclusive, its tables' cells included: the span the block tools
+        take, resolved by ``_blocks_of``) or one paragraph."""
         if within is None:
             return [(part, self._index(part).paragraphs) for part in self._parts()]
         part = self._part_for_story(within)
         if part is not None:
             return [(part, self._index(part).paragraphs)]
+        if ".." in within and "@" not in within:
+            elements, part = self._blocks_of(within)
+            nested = {id(p) for element in elements for p in element.iter(_W + "p")}
+            return [(part, [e for e in self._index(part).paragraphs if id(e.element) in nested])]
         part, entry = self._resolve(within)
         if isinstance(entry, ParagraphEntry):
             return [(part, [entry])]

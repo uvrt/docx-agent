@@ -622,6 +622,32 @@ def test_find_and_replace_one_or_all_body_or_all_stories(box, session):
     fails(box, session, "replace_text", "not_found", doc=d, find="months", replace="x", expect="all")
 
 
+def test_replace_text_within_a_span_of_paragraphs_and_a_table(box, session):
+    d = open_doc(session)
+    markdown = "Kept one.\n\nFirst one.\n\n| Item | Note |\n|---|---|\n| one | two one |\n\nLast one.\n\nAfter one."
+    blocks = ok(box, session, "word_insert_markdown", doc=d, markdown=markdown, at="end").data["blocks"]
+    assert blocks[2].startswith("t:")
+    span = f"{blocks[1]}..{blocks[3]}"
+    # expect counts over the whole span: four places, so one is ambiguous.
+    fails(box, session, "replace_text", "ambiguous", doc=d, find="one", replace="1", expect="one", range=span)
+    found = ok(box, session, "find_text", doc=d, text="one", range=span)
+    assert found.total == 4
+    result = ok(box, session, "replace_text", doc=d, find="one", replace="1", expect="all", range=span)
+    assert result.data["count"] == 4
+    text = document(session).to_markdown(ids=False)
+    assert "Kept one." in text and "After one." in text
+    assert "First 1." in text and "Last 1." in text and "two 1" in text
+    # A reversed or unknown span fails as it does for the block tools (word_delete).
+    reversed_span = f"{blocks[3]}..{blocks[1]}"
+    for tool, arguments in (("replace_text", {"find": "1", "replace": "x", "expect": "all", "range": reversed_span}),
+                            ("word_delete", {"target": reversed_span})):
+        assert "ends before it starts" in fails(box, session, tool, "refused", doc=d, **arguments).message
+    unknown = f"p:0BADF00D..{blocks[3]}"
+    for tool, arguments in (("replace_text", {"find": "1", "replace": "x", "expect": "all", "range": unknown}),
+                            ("word_delete", {"target": unknown})):
+        assert "p:0BADF00D" in fails(box, session, tool, "not_found", doc=d, **arguments).message
+
+
 def test_render_pages_within_limits_and_cached_by_version(box, session):
     d = open_doc(session)
     first = ok(box, session, "render", doc=d, pages=[1], width=400)
