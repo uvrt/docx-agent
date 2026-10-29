@@ -120,17 +120,49 @@ def resolve(call: Any, value: Any) -> Any:
     return value
 
 
-def block_of(call: Any, identifier: str) -> str | None:
-    """:meth:`Document.block_of <docx_agent.Document.block_of>` for a handler: the call's
-    document's top-level body block holding ``identifier``, which may be a ``$name`` ref
-    (refs live in the session, not the document: resolved here as the tools resolve them)."""
-    return call.document.block_of(resolve(call, identifier))
+def block_of(where: Any, *args: str) -> str | None:
+    """:meth:`Document.block_of <docx_agent.Document.block_of>` with a ``$name`` ref resolved
+    first (refs live in the session, not the document): the top-level body block holding an
+    id.  In a handler, ``block_of(call, identifier)`` -- the call's document, its refs as the
+    tools resolve them; in the application, outside a call, ``block_of(session, doc,
+    identifier)`` -- the open document ``doc`` (``"d1"``), under its lock, its refs as
+    :meth:`Session.resolve_ref <ooxml_edit.tools.Session.resolve_ref>` resolves them::
+
+        block_of(session, "d1", "$intro")     # -> "t:5B1F07A2"
+    """
+    with _addressed(where, args, 1, "block_of") as (document, (identifier,)):
+        return document.block_of(identifier)
 
 
-def blocks_between(call: Any, first: str, last: str) -> list[str]:
-    """:meth:`Document.blocks_between <docx_agent.Document.blocks_between>` for a handler,
-    either end a ``$name`` ref."""
-    return call.document.blocks_between(resolve(call, first), resolve(call, last))
+def blocks_between(where: Any, *args: str) -> list[str]:
+    """:meth:`Document.blocks_between <docx_agent.Document.blocks_between>`, either end a
+    ``$name`` ref: ``blocks_between(call, first, last)`` in a handler,
+    ``blocks_between(session, doc, first, last)`` outside a call (see :func:`block_of`)."""
+    with _addressed(where, args, 2, "blocks_between") as (document, (first, last)):
+        return document.blocks_between(first, last)
+
+
+@contextmanager
+def _addressed(where: Any, args: Sequence[str], count: int, name: str) -> Iterator[tuple[Any, list[str]]]:
+    """The document and the ``count`` ids of a call's ``(call, *ids)`` or the application's
+    ``(session, doc, *ids)``, each ``$name`` resolved: :func:`block_of`'s and
+    :func:`blocks_between`'s one way in."""
+    in_call = hasattr(where, "document")      # a session has documents, not one
+    if in_call and len(args) == count:        # a handler's call: it holds the document's lock
+        yield where.document, [resolve(where, value) for value in args]
+        return
+    if in_call or len(args) != count + 1:
+        ends = "identifier" if count == 1 else "first, last"
+        raise TypeError(f"{name} takes (call, {ends}) in a handler or (session, doc, {ends}) outside one")
+    from .format import KIND                  # format imports this module
+
+    doc, *values = args
+    entry = where.entry(doc)                  # not_found names the open documents
+    if entry.kind != KIND:
+        raise ToolError("invalid_arguments", f"{doc} is a {entry.kind} document; {name} reads a Word "
+                        "document's blocks", field="doc")
+    with entry.lock:
+        yield entry.document, [where.resolve_ref(doc, value) for value in values]
 
 
 def remember(call: Any, ref: str | None, identifier: str | None) -> None:

@@ -131,10 +131,14 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 #: (13,183 -> 13,194), none to the core (2,816); the guard rises to 13,195.  word_insert_markdown
 #: is strict: two enum values, no parameter, so the strict set is unchanged (6 tools, 24
 #: optional parameters; word_insert_markdown 8).
+#: Round 23, V3 (ooxml-edit 0.70.0, Tool.kind_fields): the shared check is sent without a
+#: deck's slides, boxes, spacing and contrast (406 -> 262): the core 2,816 -> 2,672 (about
+#: 3,955 counted by the proxy), every definition 13,194 -> 13,051.  The guard falls to
+#: 13,055.  check is not strict: the strict set is unchanged (6 tools, 24 optional parameters).
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 6500
-ALL_GUARD = 13195
+ALL_GUARD = 13055
 
 
 @pytest.fixture(scope="module")

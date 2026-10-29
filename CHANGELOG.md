@@ -5,6 +5,27 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.22 -- unreleased
+
+- **A Word toolbox's `check` has a document's parameters only** (production round 23, V3;
+  ooxml-edit 0.70.0, `Tool.kind_fields`): `doc`, `pages`, `include`, `min_size`, `styles`.
+  A deck's `slides`, `boxes`, `spacing` and `contrast` are no longer sent. `contrast` could
+  apply to Word text (its colour against shading or a page colour), but nothing here
+  measures it and the handler refuses it, so it is left out until it is measured. A call
+  that still passes one is answered as before: `boxes`, `spacing` and `contrast` are refused
+  with `<name> is for decks; for a document use include`, `slides` read as `pages` with a
+  warning. A toolbox with pptx-agent's tools too still sends all of them. `check` 406 -> 262
+  tokens offline; the core 2,816 -> 2,672, every definition 13,194 -> 13,051 (guard 13,055);
+  a reviewer's core 2,608 -> 2,464 (guard 2,465), all 7,560 -> 7,417 (guard 7,420).
+  `check` is not strict: the strict set is unchanged (6 tools, 24 optional parameters).
+- **`block_of(session, doc, id)` and `blocks_between(session, doc, a, b)`** (production
+  round 23, V5): `docx_agent.tools.block_of` and `blocks_between` take the application's
+  session and a document id outside a call -- each `$name` resolved by ooxml-edit 0.70.0's
+  `Session.resolve_ref`, the document read under its lock -- beside a handler's
+  `(call, ...)` forms, one implementation for both. An unknown ref or document is
+  `not_found`; a document of another kind `invalid_arguments`. `session.refs(doc)` lists a
+  document's refs. Requires ooxml-edit 0.70.0.
+
 ## 0.1.20 -- unreleased
 
 - **Markdown column alignment through styles** (production round 22, Q3): `insert_markdown`'s

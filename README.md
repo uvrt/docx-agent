@@ -69,6 +69,16 @@ a page's foot, rows split across pages and header rows that do not repeat, pictu
 tables past the margins, and the pages a reviewer cannot judge from the render -- as facts
 with block ids and pages; `docx_agent.layout_facts.layout_facts(doc.layout())` in the
 library.
+A Word toolbox is sent `check` with a document's parameters only (`pages`, `include`,
+`min_size`, `styles`): a deck's `slides`, `boxes`, `spacing` and `contrast` are left out of
+its definition (ooxml-edit's `Tool.kind_fields`), and a call that still passes one gets the
+refusal it always got (`slides` is read as `pages`, with a warning).
+
+Refs (`$name`) live in the tools' session, not the document. Outside a call the application
+reads them with `session.refs("d1")` (`{name: address}`, a copy) and finds the top-level
+block holding one with `docx_agent.tools.block_of(session, "d1", "$intro")` or the blocks
+between two with `blocks_between(session, "d1", "$intro", "$closing")`; a handler passes
+its `call` instead (`block_of(call, "$intro")`).
 
 The user's regional settings -- the separator a decimal tab stop aligns on, a chart's
 decimal and thousands separators, the language of new chart text in a document that states

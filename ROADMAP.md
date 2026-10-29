@@ -972,7 +972,12 @@ doc.render_svg(pages=diff.changed)     # or render_png; ids on every paragraph g
   bookmark by its start, a field, a revision); `None` outside the body -- and
   `blocks_between(a, b)`, the inclusive span of top-level blocks through `_blocks_of`, the
   span tools' resolver. `$name` refs live in the tools' session: `docx_agent.tools.block_of`
-  and `blocks_between` take a handler's `call` and resolve them first.
+  and `blocks_between` take a handler's `call` and resolve them first. Round 23, V5: they also take
+  the application's `(session, doc, ...)` outside a call, resolving through ooxml-edit's
+  `Session.resolve_ref`; `session.refs(doc)` lists the refs.
+- **`check` without a deck's parameters (round 23, V3):** a Word toolbox's `check` is sent
+  `pages`, `include`, `min_size` and `styles` only (ooxml-edit's `Tool.kind_fields`); a
+  call that still passes `slides`, `boxes`, `spacing` or `contrast` is answered as before.
 - **Cost.** One full layout per document state, cached by the bytes' hash: `layout()` and
   `render_svg()` of the same state read one `docx2svg.convert_docx` (every page laid out
   and written as SVG; writing the SVG costs little beside the layout), tested by counting

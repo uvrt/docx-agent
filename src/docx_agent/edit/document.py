@@ -1857,7 +1857,7 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
         the document does not have raises ``KeyError``, as :meth:`get` does; a span
         (``p:A..t:B``) is :meth:`blocks_between`'s.  A ``$name`` ref lives in the tools'
         session, not in the document: :func:`docx_agent.tools.block_of` resolves it
-        first."""
+        first (``block_of(session, doc, id)``, or ``block_of(call, id)`` in a handler)."""
         found = self._held(identifier)
         if found is None:
             return None
@@ -1899,7 +1899,8 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
             raise KeyError(f"no block {identifier!r}")
         if identifier.startswith("$"):
             raise KeyError(f"{identifier} is a ref: refs live in the tools' session, and "
-                           "docx_agent.tools.block_of(call, ...) resolves one")
+                           "docx_agent.tools.block_of(session, doc, ...) resolves one "
+                           "(block_of(call, ...) in a handler)")
         if ".." in identifier and "@" not in identifier:
             raise EditError(f"{identifier!r} is a span of blocks: blocks_between takes its two ends")
         if _RANGE_ID.fullmatch(identifier):

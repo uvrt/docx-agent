@@ -35,15 +35,17 @@ from test_tools_word import AGREEMENT, CLOCK_AT
 #: 9, N1 (render's ``sheet``, +64) 2,427; round 12, Q1 (check's ``spacing``, +35) 2,462;
 #: round 15, T2 (check's ``contrast``, +37) 2,499; round 16, F11 (save_document's
 #: ``clean``, +42) 2,541; round 16, F8 (check's ``layout``, ``min_size`` and ``styles``,
-#: +67) 2,608.
-REVIEW_CORE_GUARD = 2609
+#: +67) 2,608; round 23, V3 (check without a deck's slides, boxes, spacing and contrast,
+#: -144) 2,464.
+REVIEW_CORE_GUARD = 2465
 #: Every definition a reviewer is sent, estimated.  Measured 6,820 (6,813 before); round 9,
 #: N1, 6,884; round 12, Q1, 6,919; round 15, T2, 6,955; round 16, F11, 6,997; F8, 7,064; F9
 #: (word_design_facts, a reading tool, deferred: +170) 7,234; round 17, P3
 #: (word_compare_blocks, a reading tool, deferred) and P4 (word_copy_from's description) 7,492
 #: (review, resolve and accept, the largest); P6 (word_drawings' ``color``) 7,519; round 21, T7
-#: (word_design_facts' ``declared_styles`` and ``cursor``) 7,560.
-REVIEW_ALL_GUARD = 7561
+#: (word_design_facts' ``declared_styles`` and ``cursor``) 7,560; round 23, V3 (check
+#: without a deck's parameters) 7,417.
+REVIEW_ALL_GUARD = 7420
 
 REVIEW_CORE = {"save_document", "describe", "find_text", "render", "check", "open_document",
                "batch", "word_read", "word_comments", "word_changes"}
