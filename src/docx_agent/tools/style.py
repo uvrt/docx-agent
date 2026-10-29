@@ -10,7 +10,7 @@ import json
 from ooxml_edit.tools import REVIEW, Result, ToolError, array, boolean, integer, obj, page_list, string
 
 from ..edit.design import ALL_KINDS, CAPS, KINDS
-from ..edit.formatting import RUN_PROPERTIES, read_paragraph, read_run
+from ..edit.formatting import RUN_PROPERTIES, read_paragraph, read_run, read_shading
 from ..edit.styles import StyleError
 from ._base import need, outcome, resolve, word_tool
 from .text import PARAGRAPH_FIELDS, RUN_FIELDS, paragraphs_of, split_formatting  # noqa: F401
@@ -21,6 +21,8 @@ DOC = string("Document id.")
 STYLE_FIELDS = {k: v for k, v in {**RUN_FIELDS, **PARAGRAPH_FIELDS}.items()
                 if k in ("bold", "italic", "size", "font", "color", "alignment", "space_before", "space_after",
                          "line_spacing", "indent_left", "indent_first", "keep_with_next")}
+# Round 24, W6: a paragraph style's shading (behind its paragraphs), a character style's.
+STYLE_FIELDS["shading"] = string("Fill: RRGGBB, theme colour, 'accent1 lighter 80%' or none.", optional=True)
 
 
 # -- W10 word_lists ----------------------------------------------------------------------------
@@ -107,6 +109,9 @@ def describe_style(document: Any, style: Any) -> dict[str, Any]:
                 value = read_paragraph(paragraph, name)
                 if value is not None:
                     declared[name] = value
+        shading = read_shading(paragraph if style.kind == "paragraph" else run)
+        if shading is not None:
+            declared["shading"] = shading
         data["declared"] = declared
     data["usage"] = document.styles.usage(style.name, style.kind)
     return data
@@ -149,6 +154,8 @@ def word_styles(call: Any, doc: str, action: str, name: str | None = None, kind:
             return outcome([styles.remove(name, kind, replacement=replacement)], f"Removed style {name}")
         run, paragraph = split_formatting(values)
         formatting = {**run, **paragraph}
+        if values.get("shading") is not None:
+            formatting["shading"] = None if values["shading"].strip().lower() == "none" else values["shading"]
         if action == "add":
             edit = styles.add(name, kind or "paragraph", based_on=based_on, next_style=next_style, **formatting)
             return outcome([edit], f"Added style {name}")

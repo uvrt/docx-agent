@@ -274,9 +274,15 @@ def look_node(values: dict) -> Element:
 
 
 def read_look(node: Element | None) -> dict:
-    out = dict(DEFAULT_LOOK) if node is None else {}
+    """``w:tblLook`` as the style options it switches on: an attribute (``w:firstRow``)
+    where it is written, else its bit in ``w:val``; a table without one has the default
+    look, the header row's formatting on (measured, round 24, W2: Word draws a table
+    style's first-row formatting for a table with no ``w:tblLook``, for ``w:firstRow="1"``
+    with ``w:val`` 0480 and not for ``w:firstRow="0"`` with 04A0; a row's ``w:tblHeader``
+    does not switch it on)."""
     if node is None:
-        return {name: False for name in out}  # no look: no conditional formatting applies
+        return dict(DEFAULT_LOOK)
+    out = {}
     raw = node.get(_W + "val")
     bits = int(raw, 16) if raw and all(c in "0123456789abcdefABCDEF" for c in raw) else None
     for name, attribute, bit, negated in LOOK:

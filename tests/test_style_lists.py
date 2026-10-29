@@ -168,11 +168,45 @@ def test_restart_on_a_style_numbered_item_overrides_that_item_alone():
     assert problems(document) == []
 
 
-def test_restart_says_when_the_level_s_indent_differs_from_the_style_s():
+def _override_level(document: Document, identifier: str):
+    num_id = int(own_numbering(document, identifier).find(W + "numId").get(W + "val"))
+    return document.numbering.nums()[num_id].find(f"{W}lvlOverride")
+
+
+def test_restart_keeps_the_style_s_indent_where_the_level_s_differs():
+    # Round 24, W7: direct numbering takes the level's indent, so the restart's instance
+    # carries the level with the style's indent -- Word draws the item at the style's indent
+    # (measured; a startOverride alone put it at the level's).
     document = template(style_indent=720)
-    result = document.insert_markdown("1. one\n2. two\n")
+    result = document.insert_markdown("1. one\n2. two\n3. three\n")
     edit = document.restart_numbering(result.blocks[1])
-    assert len(edit.warnings) == 1 and "list level's indent (left 14.2 pt, hanging 14.2 pt)" in edit.warnings[0]
+    assert edit.warnings == []
+    override = _override_level(document, result.blocks[1])
+    assert override.find(f"{W}startOverride").get(W + "val") == "1"
+    level = override.find(W + "lvl")
+    assert level.find(f"{W}start").get(W + "val") == "1"
+    assert level.find(f"{W}pPr/{W}ind").attrib == {W + "left": "720", W + "hanging": "284"}
+    assert level.find(f"{W}lvlText").get(W + "val") == "%1." and level.find(f"{W}pStyle") is not None
+    assert labels(document, result.blocks) == ["1.", "1.", "2."]
+    paragraph = document.paragraph(result.blocks[1]).effective
+    assert (paragraph.indent_left, paragraph.hanging) == (36, 14.2)
+    assert problems(document) == []
+
+
+def test_a_markdown_restart_keeps_the_style_s_indent_and_its_start():
+    document = template(style_indent=720)
+    document.insert_markdown("1. earlier\n")
+    result = document.insert_markdown("4. four\n5. five\n\nBetween.\n\n1. again\n")
+    listed = items(document, result)
+    for identifier, start in ((listed[0], "4"), (listed[2], "1")):
+        override = _override_level(document, identifier)
+        assert override.find(f"{W}startOverride").get(W + "val") == start
+        # With a whole level in the override Word counts from the level's start (measured).
+        assert override.find(f"{W}lvl/{W}start").get(W + "val") == start
+        assert document.paragraph(identifier).effective.indent_left == 36
+    assert labels(document, listed) == ["4.", "5.", "1."]
+    assert document.to_markdown(f"{result.blocks[0]}..{result.blocks[-1]}", ids=False) == \
+        "4. four\n5. five\n\nBetween.\n\n1. again\n"
 
 
 def _direct_items(document: Document, ids: list[str]) -> None:

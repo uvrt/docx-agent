@@ -25,6 +25,7 @@ numbers ``1.``, ``a.``, ``i.`` in turn (ROADMAP.md, Phase E1, records how this w
 
 from __future__ import annotations
 
+import copy
 import hashlib
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -242,14 +243,17 @@ def paragraph_style_id(paragraph: Element) -> str | None:
     return found.get(_W + "val") if found is not None else None
 
 
-def indent_note(document: "Document", paragraph: Element, num_id: int, level: int) -> str | None:
+def indent_note(document: "Document", paragraph: Element | None, num_id: int, level: int, *,
+                style_ind: Element | None = None) -> str | None:
     """A note for a paragraph given direct numbering over a style that numbers it with
     another indent: direct numbering takes the list level's ``w:ind``, numbering from the
-    style the style's own (measured, round 23)."""
+    style the style's own (measured, round 23).  ``style_ind``: the style's indent, given
+    instead of the paragraph."""
     numbering = Numbering(document)
     lvl = numbering.level(num_id, level)
     level_ind = lvl.find(f"{_W}pPr/{_W}ind") if lvl is not None else None
-    style_ind = _style_indent(document, paragraph_style_id(paragraph))
+    if style_ind is None and paragraph is not None:
+        style_ind = _style_indent(document, paragraph_style_id(paragraph))
     if level_ind is None or style_ind is None:
         return None
 
@@ -474,6 +478,47 @@ def add_num(document: "Document", abstract_id: int, overrides: dict[int, int] | 
     return num_id
 
 
+def add_restart(document: "Document", abstract_id: int, num_id: int, level: int, start: int,
+                style_id: str | None) -> int:
+    """A new instance over ``abstract_id`` (the definition of ``num_id``, the style's
+    instance) that restarts ``level`` at ``start``, for
+    an item its style (``style_id``) numbers: Word's ``w:startOverride``; and where the
+    style's indent differs from the level's, the whole level in the override with the
+    style's indent in its ``w:pPr`` -- direct numbering takes the level's indent, so this is
+    what keeps the item at its style's (round 24, W7: Word draws it there, keeps the form
+    on saving, and the items after it count on from it; a level override without the
+    ``w:startOverride`` does not restart).  Returns the new numId."""
+    numbering = Numbering(document)
+    new_id = add_num(document, abstract_id, {level: start})
+    style_ind = _style_indent(document, style_id)
+    if style_ind is None or indent_note(document, None, num_id, level, style_ind=style_ind) is None:
+        return new_id
+    abstract = numbering.abstracts().get(numbering.canonical(abstract_id))
+    source = next((lvl for lvl in abstract.findall(_W + "lvl") if _int(lvl.get(_W + "ilvl")) == level),
+                  None) if abstract is not None else None
+    if source is None:
+        return new_id
+    copied = copy.deepcopy(source)
+    # The level's own start too: with a whole level in the override, Word counts from the
+    # level's w:start, not the w:startOverride beside it (measured).
+    first = copied.find(_W + "start")
+    if first is None:
+        first = make("w:start")
+        copied.insert(0, first)            # a level's first child (ECMA-376 17.9.6)
+    first.set(qn("w:val"), str(start))
+    properties = copied.find(_W + "pPr")
+    if properties is None:
+        properties = append_in_order(copied, make("w:pPr"))
+    old = properties.find(_W + "ind")
+    if old is not None:
+        remove(old)
+    append_in_order(properties, copy.deepcopy(style_ind))
+    node = Numbering(document).nums()[new_id]
+    override = next(o for o in node.findall(_W + "lvlOverride") if _int(o.get(_W + "ilvl")) == level)
+    override.append(copied)
+    return new_id
+
+
 def new_list(document: "Document", kind: str) -> int:
     """A new list of Word's own ``bullet`` or ``number`` kind: an abstract definition of its
     own and an instance over it.  Returns the numId."""
@@ -670,7 +715,9 @@ class ListOps:
 
         def change(part, entry, before):
             members = [entry] if found.from_style else following_members(self, part, entry, found.num_id)
-            num_id = add_num(self, found.abstract_id, {found.level: at})
+            num_id = add_restart(self, found.abstract_id, found.num_id, found.level, at,
+                                 paragraph_style_id(entry.element)) if found.from_style \
+                else add_num(self, found.abstract_id, {found.level: at})
             for member in members:
                 level = membership(self, member.element).level
                 set_numbering(member.element, num_id, level)

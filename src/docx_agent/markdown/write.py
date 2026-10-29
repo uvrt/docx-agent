@@ -752,7 +752,8 @@ class Writer:
             # over the style's definition starting there, on the first item alone -- the
             # items after it count on from it (measured).
             if (block.ordered and block.start != 1) or by_style[1] in counting:
-                num_id = _numbering.add_num(self.document, abstract, {by_style[1]: block.start})
+                num_id = _numbering.add_restart(self.document, abstract, by_style[0], by_style[1], block.start,
+                                                style)
                 self._numbered = True
             counting.add(by_style[1])
         out: list[Element] = []

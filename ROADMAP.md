@@ -989,6 +989,14 @@ doc.render_svg(pages=diff.changed)     # or render_png; ids on every paragraph g
   level-tied List Number 2, Word's own List Number 2, `numId` 0, a level tied to another
   style (no number), the restart form and what follows it, a style's indent against its
   level's (the style's applies without direct numbering, the level's with it).
+- **Round 24 (W2-W4, W6, W7):** a Markdown table with an empty header row has none (no
+  `w:tblHeader`, the first-row look off: Word draws that look from `w:tblLook`'s
+  `w:firstRow`, measured), `word_format_table` `look` and `cant_split`; check's
+  `keep_with_next_at_foot` skips a next block that starts a new page anyway and reports a
+  table split after rows kept with the next; `header_not_repeated` suggests a header row
+  only where the first row looks like one; style shading as Word writes it (fill, theme
+  colour with tint or shade); a restarted style-numbered item keeps its style's indent (the
+  level, with the style's indent and the start, in the restart's override: measured).
 - **Cost.** One full layout per document state, cached by the bytes' hash: `layout()` and
   `render_svg()` of the same state read one `docx2svg.convert_docx` (every page laid out
   and written as SVG; writing the SVG costs little beside the layout), tested by counting

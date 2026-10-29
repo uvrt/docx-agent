@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from ooxml_edit.tools import (REVIEW, Result, ToolError, array, integer, names_as, number, obj,
+from ooxml_edit.tools import (REVIEW, Result, ToolError, array, boolean, integer, names_as, number, obj,
                               string)
 
 from ..edit import provenance as _provenance
@@ -377,6 +377,10 @@ def _set_cell(document: Any, table: Any, row: int, col: int, text: str) -> list[
 
 # -- W24 word_format_table ---------------------------------------------------------------------
 
+#: ``look``'s names (Word's Table Design options) and :meth:`~docx_agent.Document.set_table`'s.
+LOOK_NAMES = {"header_row": "first_row", "first_column": "first_column", "banded_rows": "banded_rows",
+              "total_row": "last_row", "last_column": "last_column", "banded_columns": "banded_columns"}
+
 
 BORDER_STYLES = ["none", "single", "double", "thick", "dotted", "dashed"]
 BORDERS = string("Every border's style, inside ones too.", enum=BORDER_STYLES, optional=True)
@@ -402,14 +406,17 @@ _TABLE_SIDES = ("top", "bottom", "left", "right", "inside_h", "inside_v")
             "height": number("row: height.", minimum=1, maximum=1584, optional=True),
             "height_rule": string("row. Default at_least.", enum=["at_least", "exact"], optional=True),
             "header_rows": integer("table: rows repeated on each page.", minimum=0, maximum=500,
-                                   optional=True)},
+                                   optional=True),
+            "look": array(string(enum=list(LOOK_NAMES)), "table: style options on, the rest off.", optional=True),
+            "cant_split": boolean("row (table: all): never split across pages.", optional=True)},
            refs=('table',), group="word_objects", mutates=True)
 def word_format_table(call: Any, doc: str, table: str, scope: str, row: int | None = None,
                       column: int | None = None, style: str | None = None, width: float | None = None,
                       width_percent: float | None = None, width_of: str | None = None,
                       alignment: str | None = None, shading: str | None = None, borders: str | None = None,
                       vertical_alignment: str | None = None, height: float | None = None,
-                      height_rule: str = "at_least", header_rows: int | None = None) -> Result:
+                      height_rule: str = "at_least", header_rows: int | None = None,
+                      look: list[str] | None = None, cant_split: bool | None = None) -> Result:
     document = call.document
     table = resolve(call, table)
     view = document.table(table)
@@ -433,10 +440,15 @@ def word_format_table(call: Any, doc: str, table: str, scope: str, row: int | No
             values["shading"] = fill
         if borders:
             values["borders"] = sides
-        if not values:
+        if look is not None:
+            # Round 24, W2: the style options as Table Design names them, all six written.
+            values["look"] = {LOOK_NAMES[name]: name in look for name in LOOK_NAMES}
+        if cant_split is not None:
+            edits.extend(document.set_row(table, r, cant_split=cant_split) for r in range(len(view.rows)))
+        if not values and not edits:
             raise ToolError("invalid_arguments", "nothing to set for the table",
                             valid_options=["style", "width", "width_percent", "alignment", "shading", "borders",
-                                           "header_rows"])
+                                           "header_rows", "look", "cant_split"])
         if width_of == "body":
             # The columns shared again first, the cells' widths with them: an autofit
             # table is drawn at its cells' widths, which a table width alone leaves.
@@ -445,8 +457,14 @@ def word_format_table(call: Any, doc: str, table: str, scope: str, row: int | No
             grid = [twips(w) for w in document.table_properties(table)["columns"]]
             for column, new in enumerate(share(twips(values["width"]), grid)):
                 edits.append(document.set_column_width(table, column, new / 20))
-        edits.append(document.set_table(table, **values))
+        if values:
+            edits.append(document.set_table(table, **values))
         return outcome(edits, f"Formatted {table}", changed=[table])
+    if look is not None:
+        raise ToolError("invalid_arguments", "look is the table's: give scope table", field="look")
+    if cant_split is not None and scope not in ("row", "table"):
+        raise ToolError("invalid_arguments", "cant_split is a row's: give scope row (or table, for every row)",
+                        field="cant_split")
     cell_values: dict[str, Any] = {}
     if shading is not None:
         cell_values["shading"] = fill
@@ -456,10 +474,12 @@ def word_format_table(call: Any, doc: str, table: str, scope: str, row: int | No
         cell_values["vertical_alignment"] = vertical_alignment
     if scope == "row":
         index = need(row, "row")
-        if height is not None or header_rows is not None:
+        if height is not None or header_rows is not None or cant_split is not None:
             row_values: dict[str, Any] = {}
             if height is not None:
                 row_values.update(height=height, height_rule="exact" if height_rule == "exact" else "atLeast")
+            if cant_split is not None:
+                row_values["cant_split"] = cant_split
             edits.append(document.set_row(table, index, **row_values))
         positions = [(index, c) for c in range(view.column_count)]
     elif scope == "column":
@@ -484,7 +504,7 @@ def word_format_table(call: Any, doc: str, table: str, scope: str, row: int | No
             edits.append(document.format_cell(table, r, c, **cell_values))
     if not edits:
         raise ToolError("invalid_arguments", f"nothing to set for the {scope}",
-                        valid_options=["shading", "borders", "vertical_alignment", "width", "height"])
+                        valid_options=["shading", "borders", "vertical_alignment", "width", "height", "cant_split"])
     return outcome(edits, f"Formatted {scope} of {table}", changed=[table])
 
 

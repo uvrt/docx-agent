@@ -416,7 +416,15 @@ def _model_table(tokens, i: int, env: dict) -> m.Table:
             current.append(_model_inline(tokens[i + 1].children or [], env))
             i += 2
         i += 1
+    if rows and rows[0] and not any(_has_text(cell) for cell in rows[0]):
+        # An empty header row (``| | |``): a table with no header row (round 24, W2).
+        return m.Table([], rows[1:], aligns, headed=False)
     return m.Table(rows[0] if rows else [], rows[1:], aligns)
+
+
+def _has_text(inline: list) -> bool:
+    """Whether a cell's inline content says anything: text, or anything but text."""
+    return any(not isinstance(node, m.Text) or node.text.strip() for node in inline)
 
 
 def _model_inline(children, env: dict) -> list:
