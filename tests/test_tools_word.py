@@ -868,6 +868,23 @@ def test_check_is_sent_without_a_decks_parameters_and_still_refuses_them(box, se
     for name, value in (("spacing", 8), ("contrast", 4.5)):
         assert fails(box, session, "check", "invalid_arguments", doc=d, **{name: value}).message == (
             f"{name} is for decks; for a document use include")
+    include = sent["input_schema"]["properties"]["include"]
+    assert include["items"]["enum"] == ["validate", "reflow", "fields", "layout", "app"]
+    assert include["description"] == "Default: validate, reflow, fields."
+    assert fails(box, session, "check", "invalid_arguments", doc=d, include=["fit"]).field == "include"
+
+
+def test_find_replace_and_render_are_sent_without_a_decks_parameters(box, session):
+    """Round 23, V3: no slides, stories without a deck's layouts and masters; a call that
+    passes slides is answered as before."""
+    sent = {d["name"]: d["input_schema"]["properties"] for d in box.definitions("anthropic", defer=False)}
+    assert set(sent["find_text"]) == {"doc", "text", "regex", "range", "stories", "cursor"}
+    assert set(sent["replace_text"]) == {"doc", "find", "replace", "expect", "regex", "range", "stories"}
+    assert set(sent["render"]) == {"doc", "pages", "width", "sheet"}
+    assert sent["find_text"]["stories"]["enum"] == ["body", "all"]
+    d = open_doc(session)
+    refused = fails(box, session, "find_text", "invalid_arguments", doc=d, text="the", slides=["1"])
+    assert refused.field == "slides" and refused.message == "slides is for decks; for a document use range or stories"
 
 
 def test_charts_and_smartart(box, session):

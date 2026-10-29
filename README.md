@@ -69,10 +69,11 @@ a page's foot, rows split across pages and header rows that do not repeat, pictu
 tables past the margins, and the pages a reviewer cannot judge from the render -- as facts
 with block ids and pages; `docx_agent.layout_facts.layout_facts(doc.layout())` in the
 library.
-A Word toolbox is sent `check` with a document's parameters only (`pages`, `include`,
-`min_size`, `styles`): a deck's `slides`, `boxes`, `spacing` and `contrast` are left out of
-its definition (ooxml-edit's `Tool.kind_fields`), and a call that still passes one gets the
-refusal it always got (`slides` is read as `pages`, with a warning).
+A Word toolbox is sent the shared tools with a document's parameters only: `check` has
+`pages`, `include` (`validate`, `reflow`, `fields`, `layout`, `app`), `min_size` and
+`styles`, and `find_text`, `replace_text` and `render` have no `slides` (ooxml-edit's
+`Tool.kind_fields`). A call that still passes a deck's parameter gets the answer it always
+got (`render`'s and `check`'s `slides` read as `pages`, with a warning).
 
 Refs (`$name`) live in the tools' session, not the document. Outside a call the application
 reads them with `session.refs("d1")` (`{name: address}`, a copy) and finds the top-level

@@ -131,14 +131,16 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 #: (13,183 -> 13,194), none to the core (2,816); the guard rises to 13,195.  word_insert_markdown
 #: is strict: two enum values, no parameter, so the strict set is unchanged (6 tools, 24
 #: optional parameters; word_insert_markdown 8).
-#: Round 23, V3 (ooxml-edit 0.70.0, Tool.kind_fields): the shared check is sent without a
-#: deck's slides, boxes, spacing and contrast (406 -> 262): the core 2,816 -> 2,672 (about
-#: 3,955 counted by the proxy), every definition 13,194 -> 13,051.  The guard falls to
-#: 13,055.  check is not strict: the strict set is unchanged (6 tools, 24 optional parameters).
+#: Round 23, V3 (ooxml-edit 0.70.0, Tool.kind_fields and kind_values): the shared check,
+#: find_text, replace_text and render are sent without a deck's parameters (slides, boxes,
+#: spacing, contrast; stories' layouts and masters; include's fit, collisions, facts,
+#: design), check's and stories' descriptions for a document alone: the core 2,816 -> 2,471
+#: (about 3,658 counted by the proxy), every definition 13,194 -> 12,849.  The guard falls to
+#: 12,850.  replace_text is strict and loses slides: 6 tools, 23 optional parameters.
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 6500
-ALL_GUARD = 13055
+ALL_GUARD = 12850
 
 
 @pytest.fixture(scope="module")

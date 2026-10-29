@@ -7,17 +7,22 @@ snapshot commit; the development history before it is summarised here.
 
 ## 0.1.22 -- unreleased
 
-- **A Word toolbox's `check` has a document's parameters only** (production round 23, V3;
-  ooxml-edit 0.70.0, `Tool.kind_fields`): `doc`, `pages`, `include`, `min_size`, `styles`.
-  A deck's `slides`, `boxes`, `spacing` and `contrast` are no longer sent. `contrast` could
-  apply to Word text (its colour against shading or a page colour), but nothing here
+- **A Word toolbox is sent the shared tools with a document's parameters only**
+  (production round 23, V3; ooxml-edit 0.70.0, `Tool.kind_fields` and `kind_values`):
+  `check` without a deck's `slides`, `boxes`, `spacing` and `contrast`, its `include`
+  offering `validate`, `reflow`, `fields`, `layout` and `app` (not a deck's `fit`,
+  `collisions`, `facts`, `design`, which this handler refuses), its default described for a
+  document; `find_text`, `replace_text` and `render` without `slides`; `stories` offering
+  `body` and `all` (a deck's `layouts` and `masters` were read as the body). `contrast`
+  could apply to Word text (its colour against shading or a page colour), but nothing here
   measures it and the handler refuses it, so it is left out until it is measured. A call
-  that still passes one is answered as before: `boxes`, `spacing` and `contrast` are refused
-  with `<name> is for decks; for a document use include`, `slides` read as `pages` with a
-  warning. A toolbox with pptx-agent's tools too still sends all of them. `check` 406 -> 262
-  tokens offline; the core 2,816 -> 2,672, every definition 13,194 -> 13,051 (guard 13,055);
-  a reviewer's core 2,608 -> 2,464 (guard 2,465), all 7,560 -> 7,417 (guard 7,420).
-  `check` is not strict: the strict set is unchanged (6 tools, 24 optional parameters).
+  that still passes one is answered as before: `boxes`, `spacing` and `contrast` refused
+  with `<name> is for decks; for a document use include`, `slides` refused by find and
+  replace and read as `pages` (with a warning) by render and check. A toolbox with
+  pptx-agent's tools too still sends all of them. Offline: the core 2,816 -> 2,471, every
+  definition 13,194 -> 12,849 (guard 12,850); a reviewer's core 2,608 -> 2,324 (guard
+  2,325), all 7,560 -> 7,277 (guard 7,280). `replace_text` is strict and loses `slides`:
+  6 tools, 24 -> 23 optional parameters.
 - **`block_of(session, doc, id)` and `blocks_between(session, doc, a, b)`** (production
   round 23, V5): `docx_agent.tools.block_of` and `blocks_between` take the application's
   session and a document id outside a call -- each `$name` resolved by ooxml-edit 0.70.0's
