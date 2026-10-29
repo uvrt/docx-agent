@@ -44,6 +44,7 @@ in that paragraph's properties -- and the body's last is ``s:body`` (ROADMAP.md,
 from __future__ import annotations
 
 import copy
+import re
 from typing import TYPE_CHECKING
 
 from lxml import etree
@@ -344,6 +345,10 @@ class Section:
 
 
 # -- helpers ---------------------------------------------------------------------------------
+
+
+#: A section by its number, counting from 1 (``s:2``); a paraId is eight hex digits.
+_SECTION_NUMBER = re.compile(r"s:([1-9][0-9]{0,3})")
 
 
 def section_id(paragraph_id: str) -> str:
@@ -665,6 +670,12 @@ class SectionOps:
         return [Section(self, identifier) for identifier, _, _ in self._section_records()]
 
     def _canonical_section(self: "Document", identifier: str) -> str:
+        number = _SECTION_NUMBER.fullmatch(identifier)
+        if number is not None:
+            # s:<n>: the n-th section, counting from 1 (the last is s:body as well).
+            records = self._section_records()
+            n = int(number.group(1))
+            return records[n - 1][0] if n <= len(records) else identifier
         if identifier.startswith(("s:", "s@")) and identifier != "s:body":
             paragraph = "p" + identifier[1:]
             seen = set()
@@ -676,17 +687,20 @@ class SectionOps:
 
     def _section_record(self: "Document", identifier: str) -> tuple[str, Element, Element | None]:
         wanted = self._canonical_section(identifier)
-        for record in self._section_records():
+        records = self._section_records()
+        for record in records:
             if record[0] in (identifier, wanted):
                 return record
+        if _SECTION_NUMBER.fullmatch(identifier):
+            raise KeyError(f"no section {identifier!r}: the document has {len(records)} (s:1 to s:{len(records)})")
         raise KeyError(f"no section {identifier!r}")
 
     def section(self: "Document", identifier: str) -> Section:
-        """A section by its id (``s:<paraId>``, ``s:body``); a paragraph id names the
-        section the paragraph is in."""
+        """A section by its id (``s:<paraId>``, ``s:body``) or its number from 1 (``s:2``);
+        a paragraph id names the section the paragraph is in."""
         if identifier.startswith(("s:", "s@")):
             self._section_record(identifier)
-            return Section(self, identifier)
+            return Section(self, self._canonical_section(identifier))
         return self.section_of(identifier)
 
     def section_of(self: "Document", identifier: str) -> Section:

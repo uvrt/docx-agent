@@ -5,7 +5,9 @@
   and read back with ``to_markdown(ids=False)``, gives the same CommonMark AST after the
   round trip's normalisation (:func:`docx_agent.markdown.parse.roundtrip_ast`): in a blank
   document one example at a time, and in every fixture one after another at the end of
-  the body, each read over its own blocks.  :data:`EXCLUDED` lists the spec examples
+  the body, each read over its own blocks (where a style numbers the lists, an insertion's
+  first list may count on from the style's earlier items, as Word numbers them).
+  :data:`EXCLUDED` lists the spec examples
   outside the guarantee, each with its reason; in the blank document each must still fail
   (so the list stays exact).
 * **Styles.**  What is written names only styles the document defines (after the edit),
@@ -16,6 +18,8 @@
 """
 
 from __future__ import annotations
+
+import re
 
 import base64
 import json
@@ -187,11 +191,22 @@ def test_the_corpus_round_trips_in_every_fixture(path):
     failed = []
     for name, md, result in done:
         found = differences(roundtrip_ast(md), roundtrip_ast(_read_back(document, result, reader)))
+        found = [f for f in found if not _counted_on(document, result, f)]
         if found:
             failed.append((name, found[:2]))
     assert failed == []
     _check_styles(document, [result for _, _, result in done])
     assert set(check(Document.open(document.to_bytes()).package)) - problems == set()
+
+
+def _counted_on(document: Document, result, difference: str) -> bool:
+    """A list starting at 1 read back at another number, where the insertion's lists are
+    numbered by their style: the insertion's first list counts on from the style's items
+    inserted before it, as Word numbers them (round 23, V1)."""
+    if not re.search(r": expected 1, read \d+$", difference):
+        return False
+    return any((found := document.list_of(i)) is not None and found.from_style
+               for i in result.blocks if i.startswith("p:"))
 
 
 # -- styles ------------------------------------------------------------------------------------
@@ -286,7 +301,10 @@ def test_lists_nest_by_level_restart_and_start_where_markdown_says():
         levels.append(membership.level)
         nums.append(membership.num_id)
     assert levels == [0, 0, 1, 2, 0]
-    assert len(set(nums)) == 4  # one instance per Markdown list
+    # List Number numbers itself: "three" restarts its instance at 3 (its own instance, Word's
+    # restart), "four" is the style's; Word's List Bullet 2 and List Number 3 are lists of their
+    # own at level 0, so the nested lists have their own instances; "again" restarts.
+    assert len(set(nums)) == 5 and nums[1] == document.numbering._style_num(_styles_of(document, result)[1])
     root = numbering.root
     first = next(n for n in root.findall(W + "num") if n.get(W + "numId") == str(nums[0]))
     override = first.find(f"{W}lvlOverride/{W}startOverride")

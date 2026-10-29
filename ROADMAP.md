@@ -981,6 +981,14 @@ doc.render_svg(pages=diff.changed)     # or render_png; ids on every paragraph g
   `undo` no `scope`
   (ooxml-edit's `Tool.kind_fields`, `kind_values`); a call that still passes a deck's
   parameter is answered as before.
+- **Round 23 (V1, V2, V4, V6):** Markdown lists in a style that numbers itself take the
+  style's numbering (no `w:numPr`, no indent) and count on as Word counts them; `restart` and
+  `continue` write Word's forms for style-numbered items; a block-level content control is a
+  block to delete, move and copy; `s:<n>` names a section; `Style.outline_level`. Measured in
+  Word (made-up documents): continuation across paragraphs in another style, a template's
+  level-tied List Number 2, Word's own List Number 2, `numId` 0, a level tied to another
+  style (no number), the restart form and what follows it, a style's indent against its
+  level's (the style's applies without direct numbering, the level's with it).
 - **Cost.** One full layout per document state, cached by the bytes' hash: `layout()` and
   `render_svg()` of the same state read one `docx2svg.convert_docx` (every page laid out
   and written as SVG; writing the SVG costs little beside the layout), tested by counting

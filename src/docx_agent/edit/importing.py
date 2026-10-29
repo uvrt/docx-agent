@@ -1122,14 +1122,14 @@ def _source_blocks(source: "Document", ids) -> tuple[str, list[Element]]:
         if not isinstance(item, str):
             raise EditError("a block to copy is named by its id, or 'first..last'")
         first, sep, last = item.partition("..")
-        where, entry = source._resolve(first)
+        where, entry = source._resolve_block(first)
         if part is None:
             part = where
         elif where != part:
             raise EditError("the blocks copied are in one story")
         chosen = [entry.element]
         if sep:
-            other_part, other = source._resolve(last)
+            other_part, other = source._resolve_block(last)
             if other_part != part or other.element.getparent() is not entry.element.getparent():
                 raise EditError(f"{item!r}: a range copied is blocks of one container")
             siblings = [c for c in entry.element.getparent() if isinstance(c.tag, str) and c.tag in _BLOCKS]
@@ -1258,7 +1258,15 @@ class ImportOps:
             for old, new in zip(old_ids, new_ids):
                 if old and new:
                     copied[old] = new
-        top = [ids_[0] for ids_ in per_element if ids_ and ids_[0]]
+        top = []
+        for k, (element, ids_) in enumerate(zip(elements, per_element)):
+            if element.tag == W_SDT:
+                # A block-level control is a block of its own (round 23, V2).
+                top.append(self._block_id(place.part, element))
+                if k < len(originals):
+                    copied[source._block_id(source_part, originals[k])] = top[-1]
+            elif ids_ and ids_[0]:
+                top.append(ids_[0])
         return EditResult(top[0] if top else None, created=created, renamed=renames, removed=removed,
                           warnings=importer.warnings, blocks=top, copied=copied)
 

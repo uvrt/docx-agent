@@ -25,6 +25,7 @@ AGREEMENT = FIXTURES / "generated" / "pilot" / "agreement-summary.docx"
 CHARTS = FIXTURES / "generated" / "charts" / "charts.docx"
 SMARTART = FIXTURES / "generated" / "charts" / "smartart.docx"
 BRAND = FIXTURES / "generated" / "templates" / "brand.dotx"
+W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 CLOCK_AT = dt.datetime(2026, 10, 7, 9, 0, tzinfo=dt.timezone.utc)
 
 
@@ -409,6 +410,45 @@ def test_sections_break_and_page_setup_in_points(box, session):
     sections = ok(box, session, "word_sections", doc=d, action="list").data
     assert len(sections) == 2 and sections[1]["orientation"] == "landscape"
     assert sections[1]["margins"]["left"] == 54 and broke.data["section"] == sections[0]["id"]
+
+
+def test_read_a_section_by_its_number_or_s_body(box, session):
+    """Round 23, V4: word_read (and word_inspect, the same resolver) take s:<n>, counting
+    from 1, and s:body, the last section, as a span of that section's blocks."""
+    d = open_doc(session)
+    ok(box, session, "word_sections", doc=d, action="insert_break", after="p:3B212964", start="nextPage")
+    first = ok(box, session, "word_read", doc=d, range="s:1").data
+    second = ok(box, session, "word_read", doc=d, range="s:2").data
+    assert "p:3B212964" in first and "p:3B212964" not in second
+    assert ok(box, session, "word_read", doc=d, range="s:body").data == second
+    assert ok(box, session, "word_inspect", doc=d, target="s:2").data["blocks"]
+    error = fails(box, session, "word_read", "not_found", doc=d, range="s:3")
+    assert "has 2 (s:1 to s:2)" in error.message
+    ok(box, session, "word_sections", doc=d, action="set", section="s:2", orientation="landscape")
+    assert ok(box, session, "word_sections", doc=d, action="list").data[1]["orientation"] == "landscape"
+
+
+def test_s_body_reads_a_body_without_a_section_of_its_own(box, session):
+    blank = Document.new()
+    blank.insert_markdown("One.\n\nTwo.\n")
+    body = blank.package.tree(blank.package.document_part()).find(f"{W}body")
+    body.remove(body.find(f"{W}sectPr"))
+    blank.package.mark_dirty(blank.package.document_part())
+    d = session.open(blank.to_bytes(), "plain.docx")
+    assert "Two." in ok(box, session, "word_read", doc=d, range="s:body").data
+    assert "One." in ok(box, session, "word_read", doc=d, range="s:1").data
+
+
+def test_block_tools_take_a_block_level_control(box, session):
+    """Round 23, V2: word_delete, word_move and word_copy_from take a control's id."""
+    d = open_doc(session)
+    control = document(session).insert_control(None, "rich-text", after="p:3B212964", text="Held text").id
+    ok(box, session, "word_move", doc=d, blocks=control, after="p:4B50F4CD")
+    copy = ok(box, session, "word_copy_from", doc=d, source_doc=d, range=control, at="end")
+    assert copy.data["blocks"][0].startswith("cc:")
+    deleted = ok(box, session, "word_delete", doc=d, target=control)
+    assert control in deleted.removed
+    assert "Held text" in ok(box, session, "word_read", doc=d).data      # the copy is left
 
 
 def test_headers_and_footers_with_page_x_of_y(box, session):
