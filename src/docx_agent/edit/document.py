@@ -29,6 +29,7 @@ from . import ids as _ids
 from .errors import EditError
 from . import text as _text
 from .ids import PartIndex, ParagraphEntry, TableEntry
+from .styles import BUILTIN_HEADING, outline_value, style_outline_level
 from . import effective as _effective
 from . import inline as _inline
 from . import formatting as _formatting
@@ -133,6 +134,14 @@ class EditResult:
 
 
 # -- views -----------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ControlBlock:
+    """A block-level content control as a block (:meth:`Document._resolve_block`)."""
+
+    id: str
+    element: Element
 
 
 class Paragraph:
@@ -979,7 +988,9 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
         (:meth:`outline_level`), else ``None`` (body text, and every block that is not a
         paragraph).  ``section_break``: the paragraph ends a section (holds ``w:sectPr``).
         ``movable``: :meth:`move_blocks` takes it -- a paragraph or table, not a paragraph
-        ending a section."""
+        ending a section; a content control, with its content, unless locked (``w:lock``)
+        or holding a section break.  :meth:`delete_block` and :meth:`copy_blocks` take a
+        control's id as they take a table's."""
         part = self.package.document_part()
         index = self._index(part)
         levels = _OutlineLevels(self)
@@ -1004,7 +1015,13 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
                 item.update(id=entry.id if entry is not None else None, kind="table",
                             style=table_styles.get(style_id, style_id) if style_id else None, movable=True)
             elif node.tag == _W + "sdt":
-                item.update(id=self._block_id(part, node), kind="control")
+                identifier = self._block_id(part, node)
+                try:
+                    _control_movable(ControlBlock(identifier, node), "moving")
+                    movable = True
+                except EditError:
+                    movable = False
+                item.update(id=identifier, kind="control", movable=movable)
             else:
                 item.update(kind="custom_xml")
             out.append(item)
@@ -1077,6 +1094,23 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
             raise KeyError(f"no paragraph or table {identifier!r}")
         return found
 
+    def _resolve_block(self, identifier: str) -> tuple[str, "ParagraphEntry | TableEntry | ControlBlock"]:
+        """:meth:`_resolve`, and a block-level content control's id (``cc:``, ``cc@``): the
+        block tools take a control as a block, the control with its content."""
+        if not isinstance(identifier, str) or not identifier.startswith(("cc:", "cc@")):
+            return self._resolve(identifier)
+        from .annotations import control_level
+
+        try:
+            part, sdt = self._control(identifier)
+        except EditError:
+            raise KeyError(f"no content control {identifier!r}") from None
+        level = control_level(sdt)
+        if level != "block":
+            raise EditError(f"{identifier} is a content control in a {'line' if level == 'inline' else level}, "
+                            "not a block: remove_control (the content-control tool's remove) takes it out")
+        return part, ControlBlock(identifier, sdt)
+
     def paragraph(self, identifier: str) -> Paragraph:
         """A paragraph by id (``p:3B212964``, ``p@body/7``, an alias); ``KeyError`` if none.
         ``doc.paragraph("p:3B212964").set_text("New text.")``."""
@@ -1104,8 +1138,10 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
             return self.story(identifier)
         if identifier == "s:body" or identifier.startswith(("s:", "s@")):
             for section in self.sections():
-                if section.id == identifier or section.id == self._renamed_section(identifier):
+                if section.id in (identifier, self._renamed_section(identifier),
+                                  self._canonical_section(identifier)):
                     return section
+            self._section_record(identifier)            # its KeyError says what there is
             raise KeyError(f"no section {identifier!r}")
         if identifier.startswith("tr:") or "/tr:" in identifier:
             for story in self.stories:
@@ -1538,7 +1574,9 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
         return EditResult(new_id, created=[new_id], renamed=renames)
 
     def delete_block(self, identifier: str) -> EditResult:
-        """Delete a paragraph or a table.
+        """Delete a paragraph, a table or a block-level content control (``cc:``) with its
+        content (:meth:`remove_control` with ``keep_content=False``; refused for a control
+        locked against deletion or editing, ``w:lock``).
 
         Refused, before anything changes, where E0 cannot yet keep the document whole: a
         paragraph that ends a section (E4 joins sections), one holding a note or comment
@@ -1547,7 +1585,9 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
         end on.  A bookmark, comment, move or permission range that only starts or ends in a
         deleted paragraph keeps that end, moved to the next paragraph (or the previous one).
         """
-        part, entry = self._resolve(identifier)
+        part, entry = self._resolve_block(identifier)
+        if isinstance(entry, ControlBlock):
+            return self._delete_control_block(part, entry)
         element = entry.element
         old_id = entry.id
         if isinstance(entry, ParagraphEntry):
@@ -1586,6 +1626,24 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
             remove(element)
             self.package.mark_dirty(part)
         return EditResult(None, renamed=renames, removed=removed_ids)
+
+    def _delete_control_block(self, part: str, entry: "ControlBlock") -> EditResult:
+        """A block-level control deleted with its content, as a table is: refused for a lock,
+        a section break, a note or comment reference inside, or a container left with no
+        paragraph."""
+        _control_movable(entry, "deleting")
+        for tag in _REFERENCES:
+            if entry.element.find(".//" + tag) is not None:
+                raise EditError(f"{entry.id} holds a {tag.rpartition('}')[2]}; deleting it "
+                                "would orphan the note or comment")
+        _check_container_survives(entry.element)
+        index = self._index(part)
+        inside = {id(node) for node in entry.element.iter(W_P, W_TBL)}
+        nested = [e.id for e in [*index.paragraphs, *index.tables] if id(e.element) in inside]
+        result = self.remove_control(entry.id, keep_content=False)
+        if self._active_tracking() is None:
+            result.removed += [i for i in nested if i not in result.removed]
+        return result
 
     def _own_insertion(self, element: Element, tracking) -> bool:
         """Whether a block is wholly an insertion by the tracking author: a paragraph whose
@@ -1668,8 +1726,8 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
         and one that would leave a cell or story without a final paragraph."""
         if (after is None) == (before is None):
             raise EditError("give exactly one of after= or before=")
-        part, entry = self._resolve(identifier)
-        target_part, target = self._resolve(after if after is not None else before)  # type: ignore[arg-type]
+        part, entry = self._resolve_block(identifier)
+        target_part, target = self._resolve_block(after if after is not None else before)  # type: ignore[arg-type]
         if part != target_part:
             raise EditError("a block moves within its story; between stories or documents is E6's copy")
         element, anchor = entry.element, target.element
@@ -1686,8 +1744,15 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
             return EditResult(entry.id, changed=False)
         position = min(entry.index if isinstance(entry, ParagraphEntry) else self._block_position(part, element, False),
                        target.index if isinstance(target, ParagraphEntry) else self._block_position(part, anchor, False))
+        if isinstance(entry, ControlBlock):
+            _control_movable(entry, "moving")
         tracking = self._active_tracking()
         warnings: list[str] = []
+        if tracking is not None and isinstance(entry, ControlBlock):
+            # Word has no revision for a control: its move would be its content's alone.
+            warnings.append(f"{entry.id} is a content control: Word has no revision for a control, so it moved "
+                            "untracked")
+            tracking = None
         if tracking is not None and any(True for _ in element.iter(*_REFERENCES)):
             # A copy would repeat the note or comment reference: Word's move form needs both.
             warnings.append(f"{entry.id} holds a note or comment reference: moved untracked")
@@ -1766,9 +1831,8 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
         if any(target.element is e or any(a is e for a in target.element.iterancestors()) for e in elements):
             raise EditError(f"{after or before} is one of the blocks moved, or inside one")
         for element in elements:
-            if element.tag not in (W_P, W_TBL):
-                raise EditError(f"{self._block_id(part, element)} is a content control: move_blocks moves "
-                                "paragraphs and tables")
+            if element.tag not in (W_P, W_TBL, _W + "sdt"):
+                raise EditError("custom XML is not moved: move_blocks moves paragraphs, tables and content-control blocks")
             if element.tag == W_P and element.find(f"{W_PPR}/{W_SECTPR}") is not None:
                 raise EditError(f"{self._block_id(part, element)} ends a section; moving it would move the "
                                 "section break")
@@ -1798,10 +1862,10 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
         if isinstance(blocks, str):
             first, sep, last = blocks.partition("..")
             if not sep:
-                part, entry = self._resolve(first)
+                part, entry = self._resolve_block(first)
                 return [entry.element], part
-            part, start = self._resolve(first)
-            end_part, end = self._resolve(last)
+            part, start = self._resolve_block(first)
+            end_part, end = self._resolve_block(last)
             if end_part != part or start.element.getparent() is not end.element.getparent():
                 raise EditError(f"{blocks!r}: a range moved is blocks of one container")
             siblings = [c for c in start.element.getparent() if isinstance(c.tag, str) and c.tag in _MOVABLE]
@@ -1811,7 +1875,7 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
             return siblings[a:b + 1], part
         if not blocks:
             raise EditError("no blocks to move")
-        found = [self._resolve(identifier) for identifier in blocks]
+        found = [self._resolve_block(identifier) for identifier in blocks]
         parts = {part for part, _ in found}
         if len(parts) != 1:
             raise EditError("the blocks moved are of one story")
@@ -2260,31 +2324,14 @@ class _OutlineLevels:
         """The level a paragraph style gives (what ``\\o`` reads): a built-in heading's
         (``heading 1`` to ``heading 9``, by name) is its number, whatever its definition
         states; another style's is the ``w:outlineLvl`` its ``basedOn`` chain declares
-        first, a built-in heading in the chain counting as its number."""
-        if style_id in self._levels:
-            return self._levels[style_id]
-        level = None
-        current, seen = style_id, set()
-        while current and current not in seen and current in self.nodes:
-            seen.add(current)
-            node = self.nodes[current]
-            heading = _BUILTIN_HEADING.fullmatch(_style_name(node) or "")
-            if heading:
-                level = int(heading.group(1))
-                break
-            stated = node.find(f"{W_PPR}/{_W}outlineLvl")
-            if stated is not None:
-                level = _level(stated)
-                break
-            based = node.find(_W + "basedOn")
-            current = based.get(_W + "val") if based is not None else None
-        self._levels[style_id] = level
-        return level
+        first, a built-in heading in the chain counting as its number
+        (:attr:`~docx_agent.edit.styles.Style.outline_level`)."""
+        return style_outline_level(self.nodes, style_id, self._levels)
 
     def own(self, paragraph: Element) -> int | None:
         """The level the paragraph states itself; ``None`` where it states none or body text."""
         node = paragraph.find(f"{W_PPR}/{_W}outlineLvl")
-        return _level(node) if node is not None else None
+        return outline_value(node) if node is not None else None
 
     def from_style(self, paragraph: Element) -> int | None:
         return self.style(self.style_id(paragraph))
@@ -2295,7 +2342,7 @@ class _OutlineLevels:
         whatever its style gives); else its style's."""
         style_id = self.style_id(paragraph)
         node = self.nodes.get(style_id)
-        heading = _BUILTIN_HEADING.fullmatch(_style_name(node) or "") if node is not None else None
+        heading = BUILTIN_HEADING.fullmatch(_style_name(node) or "") if node is not None else None
         if heading:
             return int(heading.group(1))
         if paragraph.find(f"{W_PPR}/{_W}outlineLvl") is not None:
@@ -2303,22 +2350,10 @@ class _OutlineLevels:
         return self.style(style_id)
 
 
-#: A built-in heading style's name (``w:name``, any case): Word fixes its outline level.
-_BUILTIN_HEADING = re.compile(r"heading ([1-9])", re.IGNORECASE)
-
-
 def _style_name(node: Element) -> str | None:
     name = node.find(_W + "name")
     return name.get(_W + "val") if name is not None else None
 
-
-def _level(node: Element) -> int | None:
-    """``w:outlineLvl``'s value as a level 1-9; ``None`` for body text (9) or a bad value."""
-    try:
-        value = int(node.get(_W + "val") or "")
-    except ValueError:
-        return None
-    return value + 1 if 0 <= value <= 8 else None
 
 
 def _find(node: Element | None, path: str) -> Element | None:
@@ -2368,6 +2403,19 @@ def _fields_balanced(paragraph: Element) -> bool:
 
 _MARKERS = frozenset(_RANGE_PAIRS) | frozenset(_RANGE_ENDS)
 _BLOCK_TAGS = frozenset({W_P, W_TBL, _W + "sdt", _W + "customXml", _W + "altChunk"})
+
+
+def _control_movable(entry: ControlBlock, doing: str) -> None:
+    """Refuse to delete or move a block-level control that is locked (``w:lock``) or holds
+    a section break."""
+    found = entry.element.find(f"{_W}sdtPr/{_W}lock")
+    value = found.get(_W + "val") if found is not None else None
+    if value in ("sdtLocked", "sdtContentLocked"):
+        raise EditError(f"{entry.id} is locked against deletion (w:lock {value}): {doing} it is refused")
+    if value == "contentLocked":
+        raise EditError(f"{entry.id}'s content is locked (w:lock contentLocked): {doing} it is refused")
+    if entry.element.find(f".//{W_PPR}/{W_SECTPR}") is not None:
+        raise EditError(f"{entry.id} holds a section break; {doing} it would move or join sections")
 
 
 def _check_container_survives(element: Element) -> None:

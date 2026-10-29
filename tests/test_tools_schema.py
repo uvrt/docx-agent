@@ -131,10 +131,14 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 #: (13,183 -> 13,194), none to the core (2,816); the guard rises to 13,195.  word_insert_markdown
 #: is strict: two enum values, no parameter, so the strict set is unchanged (6 tools, 24
 #: optional parameters; word_insert_markdown 8).
+#: Round 23, V2 and V4: word_delete's ``target`` names a content control (``cc:``) as a block
+#: and word_read's ``range`` a section by its number (``s:2``): +10 to every definition
+#: (13,194 -> 13,204), +4 to the core (2,816 -> 2,820, word_read); the guard rises to 13,205.
+#: Descriptions only: the strict set is unchanged (6 tools, 24 optional parameters).
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 6500
-ALL_GUARD = 13195
+ALL_GUARD = 13205
 
 
 @pytest.fixture(scope="module")

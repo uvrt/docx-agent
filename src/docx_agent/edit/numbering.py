@@ -193,6 +193,100 @@ def _style_numbering(document: "Document", style_id: str | None) -> tuple[int | 
     return num_id, level
 
 
+def style_list(document: "Document", style_id: str | None) -> tuple[int, int] | None:
+    """``(numId, ilvl)`` a paragraph style numbers its paragraphs with, as Word numbers them, or
+    ``None`` when it does not.  The style's ``w:numPr`` is its own or the first its
+    ``basedOn`` chain gives (the default paragraph style's for ``None``); ``numId`` 0, an
+    instance the document lacks and one naming no definition number nothing.  A level tied
+    to another style (its ``w:pStyle`` names a style other than the one holding the
+    ``w:numPr``) numbers nothing either: Word draws no label for such a paragraph, while a
+    style inheriting the tied style's ``w:numPr`` through ``basedOn`` is numbered (measured,
+    round 23: ``feedback-round23/measurements-F.md``)."""
+    part = document.package.styles_part()
+    root = document.package.tree(part) if part else None
+    if root is None:
+        return None
+    styles = {s.get(_W + "styleId"): s for s in root.findall(_W + "style")}
+    if style_id is None:
+        style_id = next((s.get(_W + "styleId") for s in styles.values()
+                         if s.get(_W + "type") == "paragraph" and s.get(_W + "default") in ("1", "true")), None)
+    seen: set[str] = set()
+    num_id = level = holder = None
+    current = style_id
+    while current and current not in seen and current in styles:
+        seen.add(current)
+        node = styles[current]
+        numbering = node.find(f"{_W}pPr/{_W}numPr")
+        if numbering is not None:
+            if num_id is None and numbering.find(_W + "numId") is not None:
+                num_id = _int(numbering.find(_W + "numId").get(_W + "val"))
+                holder = current
+            if level is None and numbering.find(_W + "ilvl") is not None:
+                level = _int(numbering.find(_W + "ilvl").get(_W + "val"))
+        based = node.find(_W + "basedOn")
+        current = based.get(_W + "val") if based is not None else None
+    level = level if level is not None else 0
+    numbering_ = Numbering(document)
+    if not num_id or num_id not in numbering_.nums() or numbering_.abstract_of(num_id) not in numbering_.abstracts():
+        return None
+    lvl = numbering_.level(num_id, level)
+    tied = lvl.find(_W + "pStyle") if lvl is not None else None
+    if tied is not None and tied.get(_W + "val") and tied.get(_W + "val") != holder:
+        return None
+    return num_id, level
+
+
+def paragraph_style_id(paragraph: Element) -> str | None:
+    """The style a paragraph names (``None``: the default paragraph style)."""
+    found = paragraph.find(f"{_W}pPr/{_W}pStyle")
+    return found.get(_W + "val") if found is not None else None
+
+
+def indent_note(document: "Document", paragraph: Element, num_id: int, level: int) -> str | None:
+    """A note for a paragraph given direct numbering over a style that numbers it with
+    another indent: direct numbering takes the list level's ``w:ind``, numbering from the
+    style the style's own (measured, round 23)."""
+    numbering = Numbering(document)
+    lvl = numbering.level(num_id, level)
+    level_ind = lvl.find(f"{_W}pPr/{_W}ind") if lvl is not None else None
+    style_ind = _style_indent(document, paragraph_style_id(paragraph))
+    if level_ind is None or style_ind is None:
+        return None
+
+    def twips(node: Element, *names: str) -> int:
+        for name in names:
+            value = _int(node.get(_W + name))
+            if value is not None:
+                return value
+        return 0
+
+    def form(node: Element) -> tuple[int, int]:
+        return twips(node, "left", "start"), twips(node, "hanging") - twips(node, "firstLine")
+
+    if form(level_ind) == form(style_ind):
+        return None
+    left, hanging = form(level_ind)
+    return (f"direct numbering: the paragraph takes its list level's indent (left {left / 20:g} pt, "
+            f"hanging {hanging / 20:g} pt), not its style's")
+
+
+def _style_indent(document: "Document", style_id: str | None) -> Element | None:
+    part = document.package.styles_part()
+    root = document.package.tree(part) if part else None
+    if root is None:
+        return None
+    styles = {s.get(_W + "styleId"): s for s in root.findall(_W + "style")}
+    seen: set[str] = set()
+    while style_id and style_id not in seen and style_id in styles:
+        seen.add(style_id)
+        found = styles[style_id].find(f"{_W}pPr/{_W}ind")
+        if found is not None:
+            return found
+        based = styles[style_id].find(_W + "basedOn")
+        style_id = based.get(_W + "val") if based is not None else None
+    return None
+
+
 def membership(document: "Document", paragraph: Element) -> ListMembership | None:
     """The list a paragraph is in, or ``None``."""
     properties = paragraph.find(_W + "pPr")
@@ -560,7 +654,9 @@ class ListOps:
     def restart_numbering(self: "Document", identifier: str, at: int = 1) -> "EditResult":
         """Restart the list's numbering at this paragraph (from ``at``): a new instance over
         the same abstract definition with a ``w:startOverride``, as Word does, given to
-        this paragraph and the list's items after it."""
+        this paragraph and the list's items after it.  An item numbered by its style gets
+        it alone, as Word writes a restart there (measured, round 23): the items after it,
+        numbered by the style's instance over the same definition, count on from it."""
         from .document import EditError
 
         if not isinstance(at, int) or not 0 <= at <= 32767:
@@ -573,25 +669,39 @@ class ListOps:
             raise EditError(f"list instance {found.num_id} names no abstract definition")
 
         def change(part, entry, before):
-            members = following_members(self, part, entry, found.num_id)
+            members = [entry] if found.from_style else following_members(self, part, entry, found.num_id)
             num_id = add_num(self, found.abstract_id, {found.level: at})
             for member in members:
                 level = membership(self, member.element).level
                 set_numbering(member.element, num_id, level)
             return set()
 
-        return self._list_edit(identifier, change)
+        result = self._list_edit(identifier, change)
+        if found.from_style:
+            moved = self.list_of(result.id)
+            note = indent_note(self, self._paragraph_entry(result.id)[1].element, moved.num_id, moved.level) \
+                if moved is not None else None
+            if note is not None:
+                result.warnings.append(f"{result.id}: {note}")
+        return result
 
     def continue_numbering(self: "Document", identifier: str, from_id: str | None = None) -> "EditResult":
         """Continue the numbering of an earlier list (``from_id``'s; by default the nearest
         earlier list over the same abstract definition): this paragraph and the items of its
-        list after it join that list's instance."""
+        list after it join that list's instance.  An item with numbering of its own whose
+        style numbers it too also continues the nearest earlier list over the style's
+        definition; joining a list over the style's definition, an item whose style numbers
+        it at its level loses its own ``w:numPr`` and takes the style's numbering, indent
+        included (instances over one definition count on from each other)."""
         from .document import EditError
 
         part, entry = self._paragraph_entry(identifier)
         found = membership(self, entry.element)
         if found is None:
             raise EditError(f"{entry.id} is not in a list")
+        numbering = Numbering(self)
+        own_style = None if found.from_style else style_list(self, paragraph_style_id(entry.element))
+        style_abstract = numbering.canonical(numbering.abstract_of(own_style[0])) if own_style else None
         if from_id is not None:
             source = membership(self, self._paragraph_entry(from_id)[1].element)
             if source is None:
@@ -601,16 +711,33 @@ class ListOps:
             target = None
             for other in reversed(self._index(part).paragraphs[:entry.index]):
                 other_list = membership(self, other.element)
-                if (other_list is not None and other_list.num_id != found.num_id
-                        and other_list.abstract_id == found.abstract_id):
+                if other_list is None or other_list.num_id == found.num_id:
+                    continue
+                if other_list.abstract_id == found.abstract_id or (
+                        style_abstract is not None and numbering.canonical(other_list.abstract_id) == style_abstract):
                     target = other_list.num_id
                     break
+            if target is None and own_style is not None:
+                style_id = paragraph_style_id(entry.element)
+                style = next((s for s in self.styles if s.id == style_id), None) if style_id else \
+                    self.styles.default("paragraph")
+                name = (style.name or style.id) if style is not None else style_id
+                raise EditError(f"{entry.id} has direct numbering (list {found.num_id}) while its style {name!r} "
+                                "numbers itself, and no earlier paragraph is in a list over either definition: "
+                                "nothing to continue")
             if target is None:
                 raise EditError(f"no earlier list over the same definition as {entry.id}'s")
+        target_abstract = numbering.canonical(numbering.abstract_of(target))
 
         def change(part, entry, before):
             for member in following_members(self, part, entry, found.num_id):
-                set_numbering(member.element, target, membership(self, member.element).level)
+                level = membership(self, member.element).level
+                by_style = style_list(self, paragraph_style_id(member.element))
+                if by_style is not None and by_style[1] == level and \
+                        Numbering(self).canonical(Numbering(self).abstract_of(by_style[0])) == target_abstract:
+                    clear_numbering(member.element)
+                else:
+                    set_numbering(member.element, target, level)
             return set()
 
         return self._list_edit(identifier, change)

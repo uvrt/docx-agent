@@ -5,6 +5,44 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.21 -- unreleased
+
+- **Markdown lists in a style that numbers itself take its numbering** (production round 23,
+  V1). Where the style a list maps to carries `w:numPr` -- its own or through `basedOn` -- at
+  the list's level, `insert_markdown` writes no `w:numPr` and no indent: the style's
+  numbering and indent apply, and the items count on from the style's earlier items, across
+  calls and the paragraphs between, as Word numbers them (measured: 1, 2, a paragraph in
+  another style, 3). A template's List Number 2 tied to level 1 of List Number's definition
+  nests so; Word's own List Number 2, a list of its own at level 0, keeps direct numbering
+  at level 1, as does a style with `numId` 0 or one whose numbering level is tied
+  (`w:pStyle`) to another style (Word draws no number for it: measured). A list starting at
+  another number, or a later list of the same insertion, restarts on its first item alone,
+  Word's form. `word_lists` `restart` on an item its style numbers gives that item alone an
+  instance over the same definition with a `w:startOverride` (what Word writes; the items
+  after it count on from it), with a warning when the level's indent differs from the
+  style's; `continue` on items with direct numbering that their style numbers too drops
+  their `w:numPr`, or says exactly that when there is nothing earlier to continue. The
+  Markdown reader reads Word's restart form as one list. `numbering.style_list(document,
+  style_id)` is the rule.
+- **A block-level content control is a block** (V2): `delete_block`, `move_block`,
+  `move_blocks`, `copy_blocks` (and `at` positions, `word_delete`, `word_move`,
+  `word_copy_from`) take its `cc:` id and act on the control with its content, as on a
+  table. A control locked against deletion or editing (`w:lock`) is refused with the lock
+  named, as is one holding a section break; tracked, a move is untracked and a deletion
+  deletes the content as tracked text (Word has no revision for a control), with a warning.
+  `blocks()` marks such a control `movable`; a copy's `blocks` and `copied` name the new
+  control. An inline control is refused, with a pointer to `remove_control`.
+- **Sections by number** (V4): `s:<n>` (from 1) names a section wherever a section id is
+  taken -- `word_read` and `word_inspect` (the same resolver: the section's blocks),
+  `word_sections`, `word_headers_footers`, `block_of`; `s:body` reads the body of a document
+  with no body-level `w:sectPr` too. A number past the last says how many there are.
+  `word_read`'s `range` says so: core +4 tokens (2,816 -> 2,820), every definition +10 with
+  `word_delete`'s `cc:` (13,194 -> 13,204, guard 13,205); the strict set is unchanged.
+- **`Style.outline_level`** (V6): a paragraph style's outline level, 1-9, by the rule
+  `blocks()` uses for a paragraph that states none (built-in heading N is N; else
+  `w:outlineLvl` through `basedOn`), `None` for body text and other kinds; one function,
+  `styles.style_outline_level`, now serves both.
+
 ## 0.1.20 -- unreleased
 
 - **Markdown column alignment through styles** (production round 22, Q3): `insert_markdown`'s

@@ -135,7 +135,8 @@ def to_markdown(document: "Document", range: str | None = None, *, view: str = "
     """The document (or ``range`` of it) as Markdown.
 
     ``range``: ``None`` for the body; a story (``"body"``, ``"header1"``, ``"footnotes"``,
-    ``"comments"``); a section (``"s:<id>"``, ``"s:body"`` for the last); a block id
+    ``"comments"``); a section (``"s:<id>"``, ``"s:body"`` for the last, ``"s:2"`` the
+    second counting from 1): its blocks; a block id
     (``"p:3A1F09C2"``, ``"t:..."``, ``"cc:..."``, a paragraph inside a table names its
     table); or ``"<id>..<id>"``, the blocks from the first through the second.
     ``view``: ``final`` (accepted), ``original`` (rejected) or ``markup`` (CriticMarkup).
@@ -186,6 +187,9 @@ def select(reader: Reader, range: str | None) -> list[tuple[str, list, str]]:
     if range.startswith(("s:", "s@")):
         records = reader.story(body)
         sections = [k for k, r in enumerate(records) if isinstance(r, ParagraphRecord) and r.section is not None]
+        if not sections and range in ("s:body", "s:1") and not document.sections():
+            # A body without a w:sectPr is one section, Word's default page.
+            return [(body, records, "range")]
         wanted = document.get(range).id
         if wanted == "s:body":
             start = sections[-1] + 1 if sections else 0

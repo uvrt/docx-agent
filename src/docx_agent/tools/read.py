@@ -145,7 +145,7 @@ def _drawings(document: Any) -> list[Any]:
 
 @word_tool("word_read", "The document as Markdown with an id comment before each block. Paged: pass next_cursor back. view markup shows tracked changes, comments and fields in place.",
            {"doc": DOC,
-            "range": string("A block or span p:A..t:B. Default the whole body.", optional=True),
+            "range": string("A block, span p:A..t:B or section s:2. Default the whole body.", optional=True),
             "view": string("final: changes accepted; markup: changes, comments, fields in place. Default final.",
                            enum=["final", "markup", "original"], optional=True),
             "stories": string("all adds headers, footers, notes. Default body.",
