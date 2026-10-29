@@ -175,7 +175,7 @@ def inserted_range(place: str, where: str, text: str, renamed: dict[str, str]) -
            {"doc": DOC,
             "find": string("Text occurring once (in within, if given).", optional=True),
             "within": string("Block or span to search for find.", optional=True),
-            "target": string("Range, block, span p:A..t:B, picture d:, note fn:/en:.",
+            "target": string("Range, block (a control cc: too), span p:A..t:B, picture d:, note fn:/en:.",
                              optional=True),
             "collapse_space": boolean("Also delete the space the deletion would leave doubled. "
                                       "Default false.", optional=True)},
@@ -188,7 +188,7 @@ def word_delete(call: Any, doc: str, find: str | None = None, within: str | None
         text = found.text
         return outcome([found.delete(collapse_space=collapse_space)], f"Deleted {short(text, 60)!r}")
     target = resolve(call, target)
-    if "@" in target and not target.startswith("p@"):
+    if "@" in target and not target.startswith(("p@", "cc@")):
         return outcome([document.delete_text(target, collapse_space=collapse_space)], f"Deleted {target}")
     if target.startswith(("fn:", "en:")):
         return outcome([document.delete_note(target)], f"Deleted note {target}")

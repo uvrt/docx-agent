@@ -1135,6 +1135,9 @@ def _lists(reader: Reader, records: list, options: Options, before: list) -> lis
         level = record.level
         while stack and stack[-1][0] > level:
             stack.pop()
+        if stack and stack[-1][0] == level and stack[-1][1].ordered == ordered and stack[-1][2] != num_id \
+                and _counts_on(reader, stack[-1][2], record):
+            stack[-1] = (level, stack[-1][1], num_id)
         if stack and stack[-1][0] == level and (stack[-1][1].ordered != ordered or stack[-1][2] != num_id):
             # Another list at the same level: a sibling of the one ending.
             ended = stack.pop()[1]
@@ -1154,6 +1157,18 @@ def _lists(reader: Reader, records: list, options: Options, before: list) -> lis
         stack[-1][1].items.append(item)
         item += _after(reader, [record], options)
     return out
+
+
+def _counts_on(reader: Reader, previous: int | None, record: ParagraphRecord) -> bool:
+    """Whether an item numbered by its style continues the list before it, whose instance
+    differs but is over the same definition: Word's restart of a style's list gives the
+    restarted item alone an instance of its own, and the style's items after it count on
+    from it (measured, round 23)."""
+    found = record.membership
+    if previous is None or found is None or not found.from_style:
+        return False
+    numbering = reader.document.numbering
+    return numbering.canonical(numbering.abstract_of(previous)) == numbering.canonical(found.abstract_id)
 
 
 def _start(record: ParagraphRecord) -> int:

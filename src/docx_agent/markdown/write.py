@@ -13,13 +13,23 @@ the reader reads -- resolved in the document by ``w:name``:
   :mod:`docx_agent.edit.builtin_styles`), and the result says so.  The document's default
   paragraph style is written as Word writes it: no ``w:pStyle``.
 * **Lists.**  An item is a paragraph in the level's list style (List Bullet, List Bullet
-  2-5, List Number...) with its own ``w:numPr``: one list instance (``w:num``) per
-  Markdown list, at ``w:ilvl`` its depth, over an abstract definition made for the
-  insertion -- a copy of the document's own bullet (or numbered) definition when it has a
-  nine-level one, else Word's own (E1's) -- so that nesting is ``w:ilvl`` (as the reader
-  reads it) and the new lists never count on from, or disturb, the document's.  A numbered
-  list restarts at its start number with a ``w:startOverride`` on its instance, Word's
-  form, which docx2svg's measured counter honours (N.1-N.4).
+  2-5, List Number...).  Where that style numbers itself (a ``w:numPr`` of its own or
+  through ``basedOn``, :func:`~docx_agent.edit.numbering.style_list`) at the list's
+  level -- 0 at the top, ``w:ilvl`` 1 for a template's List Number 2 tied to level 1 of
+  List Number's definition -- the style's numbering applies, with its indent: no ``w:numPr`` and no indent are written, and the
+  insertion's first list at a level counts on from the style's earlier items, across
+  insertions and the paragraphs between, as Word numbers them (round 23, measured); a
+  numbered list starting at another number than 1, or a later list of the same insertion
+  at that level (Markdown's lists are separate), restarts at its start, Word's form -- its
+  first item alone gets an instance over the style's definition with a
+  ``w:startOverride``.  Otherwise each item has its own
+  ``w:numPr``: one list instance (``w:num``) per Markdown list, at ``w:ilvl`` its depth,
+  over an abstract definition made for the insertion -- a copy of the document's own
+  bullet (or numbered) definition when it has a nine-level one, else Word's own (E1's) --
+  so that nesting is ``w:ilvl`` (as the reader reads it) and the new lists never count on
+  from, or disturb, the document's; a numbered list restarts at its start number with a
+  ``w:startOverride`` on its instance, Word's form, which docx2svg's measured counter
+  honours (N.1-N.4).
 * **Inline.**  Emphasis, strong, inline code and links are character styles (Emphasis,
   Strong, HTML Code, Hyperlink: decided).  A run has one character style, so a run with
   several marks takes the first of code, link, strong, emphasis as its style and the rest
@@ -334,10 +344,10 @@ def _locate(document: "Document", at: str) -> _Place:
         return _Place(part, container, None, None, position=len(document._index(part).paragraphs))
     if kind == "replace":
         first, sep, last = rest.partition("..")
-        part, entry = document._resolve(first)
+        part, entry = document._resolve_block(first)
         elements = [entry.element]
         if sep:
-            other_part, other = document._resolve(last)
+            other_part, other = document._resolve_block(last)
             if other_part != part or other.element.getparent() is not entry.element.getparent():
                 raise EditError(f"{rest!r}: a range replaced is blocks of one container")
             siblings = [c for c in entry.element.getparent() if isinstance(c.tag, str) and c.tag in _BLOCKS]
@@ -348,7 +358,7 @@ def _locate(document: "Document", at: str) -> _Place:
         ids = [_id_of(document, part, e) for e in elements]
         return _Place(part, elements[0].getparent(), elements[0], ids[0], replaced=ids,
                       position=_position(document, part, elements[0], False))
-    part, entry = document._resolve(rest)
+    part, entry = document._resolve_block(rest)
     element = entry.element
     if kind == "after":
         return _Place(part, element.getparent(), _next_sibling(element), rest,
@@ -388,7 +398,9 @@ def _id_of(document: "Document", part: str, element: Element) -> str:
     for entry in document._index(part).tables:
         if entry.element is element:
             return entry.id
-    raise EditError("a block replaced must be a paragraph or a table")
+    if element.tag == _W + "sdt":
+        return document._block_id(part, element)
+    raise EditError("a block replaced must be a paragraph, a table or a content control")
 
 
 def _position(document: "Document", part: str, element: Element, after: bool) -> int:
@@ -562,6 +574,10 @@ class Writer:
         self.warnings: list[str] = []
         self._styles: dict[tuple, str | None] = {}
         self._abstracts: dict[str, int] = {}
+        #: A list instance was added over a style's own definition (a list's start).
+        self._numbered = False
+        #: Per definition a style numbers with: the levels this insertion's lists count at.
+        self._counting: dict[int | None, set[int]] = {}
         self._text_width: int | None = None
         #: Footnote label -> the w:footnote written for it.
         self._footnotes: dict[str, Element] = {}
@@ -714,15 +730,44 @@ class Writer:
         kind = "number" if block.ordered else "bullet"
         construct = "ordered_list" if block.ordered else "bullet_list"
         style = self.style(construct, depth + 1)
-        num_id = _numbering.add_num(self.document, self._abstract(kind),
-                                    {level: block.start} if block.ordered else None)
+        # A style that numbers itself at this depth's level numbers the items (round 23, V1);
+        # one numbering another level (Word's own List Number 2 is a list of its own, at
+        # level 0) would lose the nesting, which is the level (``w:ilvl``).
+        by_style = _numbering.style_list(self.document, style) if style is not None else None
+        if by_style is not None and by_style[1] != level:
+            by_style = None
+        num_id: int | None = None
+        counting: set[int] = set()
+        if by_style is None:
+            num_id = _numbering.add_num(self.document, self._abstract(kind),
+                                        {level: block.start} if block.ordered else None)
+        else:
+            numbering = _numbering.Numbering(self.document)
+            abstract = numbering.abstract_of(by_style[0])
+            counting = self._counting.setdefault(numbering.canonical(abstract), set())
+            # The insertion's first list at this level counts on from the style's earlier
+            # items, as Word numbers them; one starting at another number, or a later list
+            # of this insertion at this level (Markdown's lists are separate; a bullet list's
+            # instance keeps it apart for the reader), restarts: Word's form, an instance
+            # over the style's definition starting there, on the first item alone -- the
+            # items after it count on from it (measured).
+            if (block.ordered and block.start != 1) or by_style[1] in counting:
+                num_id = _numbering.add_num(self.document, abstract, {by_style[1]: block.start})
+                self._numbered = True
+            counting.add(by_style[1])
         out: list[Element] = []
         for item in block.items:
             first = item[0] if item else None
             rest = item[1:] if isinstance(first, m.Paragraph) else item
             inline = first.inline if isinstance(first, m.Paragraph) else []
             paragraph = self.paragraph(inline, style)
-            _numbering.set_numbering(paragraph, num_id, level)
+            if num_id is not None:
+                _numbering.set_numbering(paragraph, num_id, level if by_style is None else by_style[1])
+                if by_style is not None:
+                    num_id = None
+            if by_style is not None:
+                # An item restarts the deeper levels' counts (w:lvlRestart's default).
+                counting.difference_update({n for n in counting if n > by_style[1]})
             out.append(paragraph)
             for inner in rest:
                 if isinstance(inner, m.ListBlock):
@@ -1118,7 +1163,7 @@ class Writer:
         if self._footnote_part is not None:
             self.document.package.mark_dirty(self._footnote_part)
         numbering = _numbering.Numbering(self.document)
-        if self._abstracts and numbering.part is not None:
+        if (self._abstracts or self._numbered) and numbering.part is not None:
             self.document.package.mark_dirty(numbering.part)
 
 

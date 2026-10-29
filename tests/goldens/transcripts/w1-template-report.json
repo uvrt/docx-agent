@@ -300,7 +300,7 @@
    "expect": {
     "ok": true,
     "summary": "Saved annual-water-quality-report.docx for the application",
-    "data_sha": "6c4c4f74d6df728b",
+    "data_sha": "855eab7efcf2b75b",
     "data_keys": [
      "coverage",
      "coverage.blocks_laid_out",
@@ -322,6 +322,6 @@
  ],
  "output": {
   "name": "annual-water-quality-report.docx",
-  "sha256": "3d5a7094df0332c3adde2d4e169b15bbc07719735302c09de08d7c23f0c462b3"
+  "sha256": "b8fa31ea1a1440a9a6297df48d65fa071d7b7edb9db39ffc711d81c49cdf0cc4"
  }
 }

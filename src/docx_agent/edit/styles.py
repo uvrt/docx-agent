@@ -48,17 +48,67 @@ class Style:
     aliases: tuple[str, ...] = ()
     #: ``w:link``: the paired character (or paragraph) style.
     link: str | None = None
+    #: A paragraph style's outline level, 1-9, as Word reads it for a table of contents: a
+    #: built-in heading's number (``heading 1`` to ``heading 9``, by name), else the
+    #: ``w:outlineLvl`` (0-8) its ``basedOn`` chain declares first, a built-in heading in
+    #: the chain counting as its number; ``None`` for body text (``w:outlineLvl`` 9, or
+    #: none) and for other kinds of style.  :meth:`Document.blocks`' ``level`` of a
+    #: paragraph that states no level of its own.
+    outline_level: int | None = None
 
 
-def _style(node: Element) -> Style:
+#: A built-in heading style's name (``w:name``, any case): Word fixes its outline level.
+BUILTIN_HEADING = re.compile(r"heading ([1-9])", re.IGNORECASE)
+
+
+def outline_value(node: Element) -> int | None:
+    """``w:outlineLvl``'s value as a level 1-9; ``None`` for body text (9) or a bad value."""
+    try:
+        value = int(node.get(_W + "val") or "")
+    except ValueError:
+        return None
+    return value + 1 if 0 <= value <= 8 else None
+
+
+def style_outline_level(nodes: dict, style_id: str | None, cache: dict | None = None) -> int | None:
+    """The outline level a paragraph style gives (:attr:`Style.outline_level`); ``nodes``:
+    the ``w:style`` elements by id."""
+    if cache is not None and style_id in cache:
+        return cache[style_id]
+    level = None
+    current, seen = style_id, set()
+    while current and current not in seen and current in nodes:
+        seen.add(current)
+        node = nodes[current]
+        name = node.find(_W + "name")
+        heading = BUILTIN_HEADING.fullmatch((name.get(_W + "val") if name is not None else None) or "")
+        if heading:
+            level = int(heading.group(1))
+            break
+        stated = node.find(f"{_W}pPr/{_W}outlineLvl")
+        if stated is not None:
+            level = outline_value(stated)
+            break
+        based = node.find(_W + "basedOn")
+        current = based.get(_W + "val") if based is not None else None
+    if cache is not None:
+        cache[style_id] = level
+    return level
+
+
+def _style(node: Element, nodes: dict | None = None, cache: dict | None = None) -> Style:
     def value(tag: str) -> str | None:
         child = node.find(_W + tag)
         return child.get(_W + "val") if child is not None else None
 
     aliases = tuple(a.strip() for a in (value("aliases") or "").split(",") if a.strip())
     default = (node.get(_W + "default") or "0").lower() in ("1", "true", "on")
-    return Style(node.get(_W + "styleId") or "", value("name"), node.get(_W + "type") or "paragraph",
-                 value("basedOn"), default, aliases, value("link"))
+    kind = node.get(_W + "type") or "paragraph"
+    style_id = node.get(_W + "styleId") or ""
+    level = None
+    if kind == "paragraph":
+        level = style_outline_level(nodes if nodes is not None else {style_id: node}, style_id, cache)
+    return Style(style_id, value("name"), kind, value("basedOn"), default, aliases, value("link"), level)
 
 
 class Styles:
@@ -76,7 +126,10 @@ class Styles:
         return [] if root is None else root.findall(_W + "style")
 
     def __iter__(self):
-        return iter([_style(node) for node in self._nodes()])
+        nodes = self._nodes()
+        by_id = {node.get(_W + "styleId"): node for node in nodes}
+        cache: dict = {}
+        return iter([_style(node, by_id, cache) for node in nodes])
 
     def __len__(self) -> int:
         return len(self._nodes())
