@@ -5,6 +5,34 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.22 -- unreleased
+
+- **A Word toolbox is sent the shared tools with a document's parameters only**
+  (production round 23, V3; ooxml-edit 0.70.0, `Tool.kind_fields` and `kind_values`):
+  `check` without a deck's `slides`, `boxes`, `spacing` and `contrast`, its `include`
+  offering `validate`, `reflow`, `fields`, `layout` and `app` (not a deck's `fit`,
+  `collisions`, `facts`, `design`, which this handler refuses), its default described for a
+  document; `find_text`, `replace_text` and `render` without `slides`; `stories` offering
+  `body` and `all` (a deck's `layouts` and `masters` were read as the body); `undo` without
+  a deck's or workbook's `scope` (a document undoes document-wide, and still refuses it).
+  `contrast`
+  could apply to Word text (its colour against shading or a page colour), but nothing here
+  measures it and the handler refuses it, so it is left out until it is measured. A call
+  that still passes one is answered as before: `boxes`, `spacing` and `contrast` refused
+  with `<name> is for decks; for a document use include`, `slides` refused by find and
+  replace and read as `pages` (with a warning) by render and check. A toolbox with
+  pptx-agent's tools too still sends all of them. Offline, from 0.1.21: the core 2,820 ->
+  2,440, every definition 13,204 -> 12,824 (guard 12,825); a reviewer's core 2,612 -> 2,328
+  (guard 2,330), all 7,564 -> 7,281 (guard 7,285). `replace_text` is strict and loses `slides`:
+  6 tools, 24 -> 23 optional parameters.
+- **`block_of(session, doc, id)` and `blocks_between(session, doc, a, b)`** (production
+  round 23, V5): `docx_agent.tools.block_of` and `blocks_between` take the application's
+  session and a document id outside a call -- each `$name` resolved by ooxml-edit 0.70.0's
+  `Session.resolve_ref`, the document read under its lock -- beside a handler's
+  `(call, ...)` forms, one implementation for both. An unknown ref or document is
+  `not_found`; a document of another kind `invalid_arguments`. `session.refs(doc)` lists a
+  document's refs. Requires ooxml-edit 0.70.0.
+
 ## 0.1.21 -- unreleased
 
 - **Markdown lists in a style that numbers itself take its numbering** (production round 23,

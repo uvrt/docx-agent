@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "docx-agent"
-version = "0.1.21"
+version = "0.1.22"
 description = "An AI-editable Word layer: inspect, edit and re-render .docx documents losslessly"
 readme = "README.md"
 license = { text = "MIT" }
@@ -26,7 +26,7 @@ classifiers = [
   "Topic :: Text Processing :: Markup :: XML",
 ]
 # Why each dependency, and why at its version: CONTRIBUTING.md, "Dependencies".
-dependencies = ["lxml>=4.9", "ooxml-edit>=0.69.0", "ooxml-common>=0.34.0", "docx2svg>=0.8.0", "markdown-it-py>=3.0", "mdit-py-plugins>=0.4"]
+dependencies = ["lxml>=4.9", "ooxml-edit>=0.70.0", "ooxml-common>=0.34.0", "docx2svg>=0.8.0", "markdown-it-py>=3.0", "mdit-py-plugins>=0.4"]
 
 [project.optional-dependencies]
 # PNG output goes through docx2svg's rasteriser extra.

@@ -69,6 +69,17 @@ a page's foot, rows split across pages and header rows that do not repeat, pictu
 tables past the margins, and the pages a reviewer cannot judge from the render -- as facts
 with block ids and pages; `docx_agent.layout_facts.layout_facts(doc.layout())` in the
 library.
+A Word toolbox is sent the shared tools with a document's parameters only: `check` has
+`pages`, `include` (`validate`, `reflow`, `fields`, `layout`, `app`), `min_size` and
+`styles`, and `find_text`, `replace_text` and `render` have no `slides` (ooxml-edit's
+`Tool.kind_fields`), and `undo` no `scope`. A call that still passes a deck's parameter gets the answer it always
+got (`render`'s and `check`'s `slides` read as `pages`, with a warning).
+
+Refs (`$name`) live in the tools' session, not the document. Outside a call the application
+reads them with `session.refs("d1")` (`{name: address}`, a copy) and finds the top-level
+block holding one with `docx_agent.tools.block_of(session, "d1", "$intro")` or the blocks
+between two with `blocks_between(session, "d1", "$intro", "$closing")`; a handler passes
+its `call` instead (`block_of(call, "$intro")`).
 
 The user's regional settings -- the separator a decimal tab stop aligns on, a chart's
 decimal and thousands separators, the language of new chart text in a document that states

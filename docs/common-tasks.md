@@ -75,6 +75,7 @@ print(termination)                             # ['p:058B17C9', 'p:6A70E1A8']
 print([b["id"] for b in doc.blocks() if b["level"] == 1])   # every top-level block: id, kind, style, level...
 print(doc.block_of("c:76FCC91F"))              # the top-level block holding any id (a cell's paragraph, a note...)
 print(doc.blocks_between("c:76FCC91F", "c:22CB2567"))   # the top-level blocks from one id's through the other's
+# with the tools: block_of(session, "d1", "$intro") from docx_agent.tools resolves a ref first
 with doc.tracking(author="Claude"):            # tracked: Word's moves, accepted or rejected whole
     doc.move_blocks(termination, before="p:12972045")   # before "Pricing"; or after=, or "p:A..t:B"
 print([change.kind for change in doc.changes()])   # ['move']

@@ -972,7 +972,15 @@ doc.render_svg(pages=diff.changed)     # or render_png; ids on every paragraph g
   bookmark by its start, a field, a revision); `None` outside the body -- and
   `blocks_between(a, b)`, the inclusive span of top-level blocks through `_blocks_of`, the
   span tools' resolver. `$name` refs live in the tools' session: `docx_agent.tools.block_of`
-  and `blocks_between` take a handler's `call` and resolve them first.
+  and `blocks_between` take a handler's `call` and resolve them first. Round 23, V5: they also take
+  the application's `(session, doc, ...)` outside a call, resolving through ooxml-edit's
+  `Session.resolve_ref`; `session.refs(doc)` lists the refs.
+- **The shared tools without a deck's parameters (round 23, V3):** a Word toolbox's `check`
+  is sent `pages`, `include` (a document's facts only), `min_size` and `styles`;
+  `find_text`, `replace_text` and `render` no `slides`, `stories` only `body` and `all`,
+  `undo` no `scope`
+  (ooxml-edit's `Tool.kind_fields`, `kind_values`); a call that still passes a deck's
+  parameter is answered as before.
 - **Round 23 (V1, V2, V4, V6):** Markdown lists in a style that numbers itself take the
   style's numbering (no `w:numPr`, no indent) and count on as Word counts them; `restart` and
   `continue` write Word's forms for style-numbered items; a block-level content control is a

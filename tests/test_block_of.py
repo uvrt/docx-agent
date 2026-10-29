@@ -147,3 +147,33 @@ def test_a_revision_and_an_endnote_give_their_block(made):
     assert document.block_of(revision) == made["table"]
     endnote = document.insert_endnote(f"{made['closing']}@3", "An endnote.").id
     assert document.block_of(endnote) == made["closing"]
+
+
+def test_the_application_resolves_refs_outside_a_call(made):
+    """Round 23, V5: block_of(session, doc, id) and blocks_between(session, doc, a, b), the
+    same helpers as a handler's (call, ...) forms, resolve a ref with Session.resolve_ref."""
+    from ooxml_edit.tools import ToolError, Toolbox
+
+    from docx_agent.tools import FORMAT, GROUPS, TOOLS
+
+    with Toolbox(TOOLS, formats=[FORMAT], groups=GROUPS) as toolbox:
+        session = toolbox.session()
+        doc = session.open(made["doc"].to_bytes(), "made.docx")
+        result = toolbox.dispatch(session, "word_insert_text", {"doc": doc, "items": [
+            {"target": made["cell"], "text": " more", "ref": "cell_text"},
+            {"target": f"{made['body']}@0", "where": "before", "text": "So ", "ref": "opening"}]})
+        assert result.ok, result.summary
+        assert set(session.refs(doc)) == {"cell_text", "opening"}
+        assert block_of(session, doc, "$cell_text") == made["table"]
+        assert block_of(session, doc, made["box"]) == made["body"]         # an id as given
+        assert blocks_between(session, doc, "$opening", "$cell_text") == [made["body"], made["later"], made["table"]]
+        with pytest.raises(ToolError) as missing:
+            block_of(session, doc, "$nowhere")
+        assert missing.value.code == "not_found" and missing.value.valid_options == ["$cell_text", "$opening"]
+        with pytest.raises(ToolError) as closed:
+            block_of(session, "d9", "$opening")
+        assert closed.value.code == "not_found"
+        with pytest.raises(TypeError, match=r"\(session, doc, first, last\)"):
+            blocks_between(session, doc, "$opening")
+        toolbox.dispatch(session, "undo", {"doc": doc})                    # the refs go with it
+        assert session.refs(doc) == {}
