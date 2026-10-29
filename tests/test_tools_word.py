@@ -542,6 +542,35 @@ def test_tables_insert_edit_by_label_and_format(box, session):
     assert "Hosting" in error.valid_options
 
 
+def test_a_table_without_a_header_row_its_look_and_rows_kept_whole(box, session):
+    # Round 24, W2: an empty header row is none -- no tblHeader, the style's first-row
+    # look off (Word draws that look from w:tblLook's firstRow, not from tblHeader: measured).
+    d = open_doc(session)
+    made = ok(box, session, "word_insert_markdown", doc=d, at="after:p:3B212964",
+              markdown="| | |\n|---|---|\n| Term | Twelve months |\n| Notice | Thirty days |\n")
+    table = made.created[0]
+    properties = document(session).table_properties(table)
+    assert properties["look"]["first_row"] is False and properties["header_rows"] == 0
+    assert len(document(session).table(table).rows) == 2
+    assert "|  |  |\n| --- | --- |\n| Term | Twelve months |" in document(session).to_markdown(table, ids=False)
+    # The look switched back on (and the rest as given), rows kept on one page.
+    ok(box, session, "word_format_table", doc=d, table=table, scope="table", look=["header_row", "banded_rows"])
+    look = document(session).table_properties(table)["look"]
+    assert look == {"first_row": True, "last_row": False, "first_column": False, "last_column": False,
+                    "banded_rows": True, "banded_columns": False}
+    ok(box, session, "word_format_table", doc=d, table=table, scope="row", row=1, cant_split=True)
+    split = [document(session).row_properties(table, r)["cant_split"] for r in range(2)]
+    assert split == [False, True]
+    ok(box, session, "word_format_table", doc=d, table=table, scope="table", cant_split=True)
+    assert all(document(session).row_properties(table, r)["cant_split"] for r in range(2))
+    ok(box, session, "word_format_table", doc=d, table=table, scope="table", look=[])
+    assert not any(document(session).table_properties(table)["look"].values())
+    fails(box, session, "word_format_table", "invalid_arguments", doc=d, table=table, scope="row", row=0,
+          look=["header_row"])
+    fails(box, session, "word_format_table", "invalid_arguments", doc=d, table=table, scope="cell", row=0,
+          column=0, cant_split=True)
+
+
 def test_picture_from_a_blob_floating_and_drawings(box, session):
     d = open_doc(session)
     image = session.add_blob(png(80, 40), "logo.png")
@@ -594,6 +623,16 @@ def test_styles_add_modify_describe_remove(box, session):
     described = ok(box, session, "word_styles", doc=d, action="describe", name="Note Body").data
     assert described["declared"]["size"] == 9 and described["declared"]["italic"] is True
     ok(box, session, "word_styles", doc=d, action="modify", name="Note Body", size=10)
+    # Round 24, W6: shading -- a fill, a theme colour lighter or darker; on a character style too.
+    ok(box, session, "word_styles", doc=d, action="modify", name="Note Body", shading="accent1 lighter 80%")
+    assert ok(box, session, "word_styles", doc=d, action="describe",
+              name="Note Body").data["declared"]["shading"] == "accent1 lighter 80%"
+    ok(box, session, "word_styles", doc=d, action="add", name="Flag", kind="character", shading="FFD966")
+    assert ok(box, session, "word_styles", doc=d, action="describe",
+              name="Flag").data["declared"]["shading"] == "FFD966"
+    ok(box, session, "word_styles", doc=d, action="modify", name="Flag", shading="none")
+    assert "shading" not in ok(box, session, "word_styles", doc=d, action="describe", name="Flag").data["declared"]
+    fails(box, session, "word_styles", "refused", doc=d, action="modify", name="Flag", shading="teal-ish")
     ok(box, session, "word_format", doc=d, targets=["p:3B212964"], paragraph_style="Note Body")
     fails(box, session, "word_styles", "refused", doc=d, action="remove", name="Note Body")
     ok(box, session, "word_styles", doc=d, action="remove", name="Note Body", replacement="Normal")

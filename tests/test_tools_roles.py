@@ -46,8 +46,9 @@ REVIEW_CORE_GUARD = 2330
 #: (review, resolve and accept, the largest); P6 (word_drawings' ``color``) 7,519; round 21, T7
 #: (word_design_facts' ``declared_styles`` and ``cursor``) 7,560; round 23, V4 (word_read's
 #: ``s:2``; word_delete is not a reviewer's) 7,564; V3 (the shared tools without a deck's
-#: parameters) 7,281.
-REVIEW_ALL_GUARD = 7285
+#: parameters) 7,281; round 24, W6 (word_styles' ``shading``; its list and describe are a
+#: reviewer's) 7,310.
+REVIEW_ALL_GUARD = 7315
 
 REVIEW_CORE = {"save_document", "describe", "find_text", "render", "check", "open_document",
                "batch", "word_read", "word_comments", "word_changes"}

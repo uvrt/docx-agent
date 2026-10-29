@@ -46,6 +46,7 @@ from ..edit import text as _text
 from ..edit.annotations import control_kind, drawing_kind
 from ..edit.document import table_alt_text
 from ..edit.numbering import membership
+from ..edit.table_format import read_look
 from ..oxml.xml import Element
 from . import model as m
 from .stylemap import DEFAULT, StyleMap
@@ -1246,6 +1247,10 @@ def _gfm(reader: Reader, table: TableRecord, options: Options) -> m.Table | None
                 if isinstance(record, ParagraphRecord):
                     found.add(_effective.paragraph(reader.document, record.elements[-1]).alignment)
         aligns.append(found.pop() if len(found) == 1 and found <= {"center", "right"} else None)
+    if not table.header_rows and not read_look(table.element.find(f"{_W}tblPr/{_W}tblLook"))["first_row"]:
+        # No header row: neither repeated nor drawn as one (its look off) -- written with an
+        # empty header row, which the writer reads back as none (round 24, W2).
+        return m.Table([], rows, aligns, headed=False)
     return m.Table(rows[0], rows[1:], aligns)
 
 

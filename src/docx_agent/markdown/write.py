@@ -224,6 +224,17 @@ def _insert(document, place, blocks, notes, options, pictures, style_map, tracki
         if place.replaced and tracking is None:
             for identifier in place.replaced:
                 removed += document.delete_block(identifier).removed
+        # Nor a table beside one already there (round 24): a separator between.
+        if elements and elements[0].tag == W_TBL and _previous_sibling_block(elements[0]) is not None \
+                and _previous_sibling_block(elements[0]).tag == W_TBL:
+            separator = writer.separator()
+            elements[0].addprevious(separator)
+            elements.insert(0, separator)
+        if elements and elements[-1].tag == W_TBL and _next_block(elements[-1]) is not None \
+                and _next_block(elements[-1]).tag == W_TBL:
+            separator = writer.separator()
+            elements[-1].addnext(separator)
+            elements.append(separator)
         if elements and _is_last(elements[-1]) and elements[-1].tag == W_TBL:
             # A container ends in a paragraph (a cell must; Word gives the body one).
             trailing = writer.paragraph([], None)
@@ -681,8 +692,17 @@ class Writer:
     def blocks(self, blocks: list) -> list[Element]:
         out: list[Element] = []
         for block in blocks:
-            out += self.block(block)
+            made = self.block(block)
+            if made and out and made[0].tag == W_TBL and out[-1].tag == W_TBL:
+                out.append(self.separator())
+            out += made
         return out
+
+    def separator(self) -> Element:
+        """An empty paragraph between two tables, in the body's paragraph style: Word joins
+        tables with nothing between them into one (measured, round 24), and keeps a
+        paragraph between two tables as ``insert_table`` writes it."""
+        return self.paragraph([], self.body_style())
 
     def block(self, block) -> list[Element]:
         if isinstance(block, m.Paragraph):
@@ -752,7 +772,8 @@ class Writer:
             # over the style's definition starting there, on the first item alone -- the
             # items after it count on from it (measured).
             if (block.ordered and block.start != 1) or by_style[1] in counting:
-                num_id = _numbering.add_num(self.document, abstract, {by_style[1]: block.start})
+                num_id = _numbering.add_restart(self.document, abstract, by_style[0], by_style[1], block.start,
+                                                style)
                 self._numbered = True
             counting.add(by_style[1])
         out: list[Element] = []
@@ -1254,3 +1275,10 @@ def _new_notes_part(document: "Document", kind: str) -> str:
 
 
 __all__ = ["HTML_MODES", "PLACES", "insert_markdown"]
+
+
+def _previous_sibling_block(node: Element) -> Element | None:
+    sibling = node.getprevious()
+    while sibling is not None and not (isinstance(sibling.tag, str) and sibling.tag in _BLOCKS):
+        sibling = sibling.getprevious()
+    return sibling

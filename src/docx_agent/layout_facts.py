@@ -48,15 +48,25 @@ takes its targets as one list with the values for all, so it is ``calls``, not `
     run is a spacer too, measured there.
 ``keep_with_next_at_foot``
     ``{"para", "style", "page", "next", "next_page"}``: a keep-with-next paragraph drawn
-    last on its page, its next block on a later page.
+    last on its page, its next block on a later page -- unless that block starts a new page
+    anyway (round 24, W3): a page break before it (its style's or its own), a page break
+    at its start or at the end of the paragraph, or a section break that starts a new
+    page.  ``{"table", "row", "page", "next_row", "next_page"}``: a table split after a
+    row (from 0) whose paragraphs all keep with the next, the next row on a later page --
+    Word keeps such rows with the next on one page while they fit.
 ``split_rows``
     ``{"table", "row", "pages"}``: a row (from 0) whose content is drawn on two pages.  No
     Word tool sets a row's "allow row to break across pages" yet: no fix.
 ``header_not_repeated``
     ``{"table", "pages", "header_rows"}``: a table on more than one page whose first row is
-    not drawn again on each later page; ``fix`` marks one header row (``word_format_table``
-    ``header_rows: 1``) where the table marks none, ``not_repeated_on`` the pages where a
-    marked header is not drawn.
+    not drawn again on each later page; ``not_repeated_on`` the pages where a marked header
+    is not drawn.  Where the table marks none (round 24, W4): ``header_look`` says why its
+    first row looks like a header -- ``first_row_look`` (the table style's first-row
+    formatting is on), ``bold`` (all its text bold, the second row's not), ``shading`` (a
+    fill of its own in every cell, unlike the second row's) -- and ``fix`` marks one header
+    row (``word_format_table`` ``header_rows: 1``); a first row that looks like the rest is
+    no header: a two-column table (labels and values) is left out, another table gets the
+    call as ``fix_if_header``, to make only if its first row is one.
 ``past_margins``
     ``{"drawing" | "table", "page", "past": {"left"|"right"|"top"|"bottom": pt}}``: a
     picture or other drawing, or a table, drawn past the page's margins by more than half a
@@ -84,6 +94,8 @@ from fractions import Fraction
 from typing import TYPE_CHECKING, Any, Iterable
 
 from docx2svg.paths import resolve_path
+from docx2svg.table import resolve_table, table_style_id
+from docx2svg.resolve.cascade import style_chain
 
 from collections.abc import Mapping
 
@@ -544,11 +556,67 @@ class _Facts:
             element = self.top_level[k][1]
             if not _effective.paragraph(self.document, element).keep_with_next:
                 continue
+            if self._new_page_after(k):
+                continue                          # the next block starts a page anyway
             entries.append({"para": self.top_level[k][2], "style": self.style_of(element), "page": number,
                             "next": self.top_level[k + 1][2], "next_page": following[0]})
+        entries += self._kept_rows()
         return entries
 
-    def tables(self) -> tuple[list[dict], list[dict]]:
+    def _new_page_after(self, k: int) -> bool:
+        """Whether the top-level block after block ``k`` (a paragraph) starts a new page
+        whatever keeps it: a page break before it (style or direct), a page break run at
+        its start or at the end of paragraph ``k``, or a section break after ``k`` whose
+        next section starts on a new page (``w:type`` nextPage, oddPage, evenPage, or none:
+        nextPage is the default)."""
+        element = self.top_level[k][1]
+        kind, following, _ = self.top_level[k + 1]
+        if kind == "p" and (_effective.paragraph(self.document, following).page_break_before
+                            or _page_break_at(following, start=True)):
+            return True
+        if _page_break_at(element, start=False):
+            return True
+        own = element.find(f"{_W}pPr/{_W}sectPr")
+        if own is not None:
+            body = self.document.package.tree(self.main).find(_W + "body")
+            sections = list(body.iter(_W + "sectPr")) if body is not None else []
+            at = next((n for n, node in enumerate(sections) if node is own), None)
+            section = sections[at + 1] if at is not None and at + 1 < len(sections) else None
+            kind_node = section.find(_W + "type") if section is not None else None
+            start = kind_node.get(_W + "val") if kind_node is not None else "nextPage"
+            return start in ("nextPage", "oddPage", "evenPage")
+        return False
+
+    def _kept_rows(self) -> list[dict]:
+        """Tables split after a row whose paragraphs all keep with the next."""
+        rows, _ = self._drawn_rows()
+        tree = self.document.package.tree(self.main)
+        entries = []
+        for table, drawn_rows in rows.items():
+            element = resolve_path(tree, table)
+            if element is None:
+                continue
+            own = element.findall(_W + "tr")
+            header_rows = _header_rows(element)
+            identifier = _block_id(self.document, self.main, table) or table
+            for row, drawn in sorted(drawn_rows.items()):
+                after = drawn_rows.get(row + 1)
+                if row < header_rows or after is None or row >= len(own):
+                    continue
+                page, next_page = max(drawn), min(after)
+                if next_page <= page or not self.shown([page]):
+                    continue
+                paragraphs = list(own[row].iter(_W + "p"))
+                if not paragraphs or not all(_effective.paragraph(self.document, paragraph).keep_with_next
+                                             for paragraph in paragraphs):
+                    continue
+                entries.append({"table": identifier, "row": row, "page": page, "next_row": row + 1,
+                                "next_page": next_page})
+        return entries
+
+    def _drawn_rows(self) -> tuple[dict[str, dict[int, dict[int, set]]], dict[str, set]]:
+        """The body's tables as drawn: ``{table path: {row: {page: lines}}}`` and
+        ``{table path: pages}`` (its rules too)."""
         rows: dict[str, dict[int, dict[int, set]]] = {}
         table_pages: dict[str, set] = {}
         for number, page in enumerate(self.layout.pages, start=1):
@@ -563,6 +631,10 @@ class _Facts:
                 match = _ROW.match(rule.path or "")
                 if match:
                     table_pages.setdefault(match.group(1), set()).add(number)
+        return rows, table_pages
+
+    def tables(self) -> tuple[list[dict], list[dict]]:
+        rows, table_pages = self._drawn_rows()
         split, unrepeated = [], []
         tree = self.document.package.tree(self.main)
         for table, pages in table_pages.items():
@@ -582,14 +654,56 @@ class _Facts:
                 continue
             head = rows.get(table, {}).get(0, {})
             missing = [p for p in ordered[1:] if p not in head]
-            if header_rows == 0:
-                unrepeated.append({"table": identifier, "pages": ordered, "header_rows": 0,
-                                   "fix": {"tool": "word_format_table",
-                                           "calls": [{"table": identifier, "scope": "table", "header_rows": 1}]}})
+            if header_rows == 0 and element is not None:
+                fix = {"tool": "word_format_table",
+                       "calls": [{"table": identifier, "scope": "table", "header_rows": 1}]}
+                looks = self._header_look(table, element)
+                if looks:
+                    unrepeated.append({"table": identifier, "pages": ordered, "header_rows": 0,
+                                       "header_look": looks, "fix": fix})
+                elif _columns(element) != 2:
+                    unrepeated.append({"table": identifier, "pages": ordered, "header_rows": 0,
+                                       "header_look": [], "fix_if_header": fix})
             elif missing:
                 unrepeated.append({"table": identifier, "pages": ordered, "header_rows": header_rows,
                                    "not_repeated_on": missing})
         return split, unrepeated
+
+    def _header_look(self, path: str, element) -> list[str]:
+        """Why a table's first row looks like a header, drawn unlike its second row:
+        ``first_row_look`` (the style's first-row formatting applies to it), ``bold``,
+        ``shading``; empty for a first row drawn like the rest (round 24, W4)."""
+        own = element.findall(_W + "tr")
+        if len(own) < 2:
+            return []
+        reasons = []
+        table = _model_table(_effective.model(self.document).model.body, path)
+        if table is not None and table.conditions and any("firstRow" in c for c in table.conditions[0]):
+            sheet = _effective.model(self.document).model
+            chain = style_chain(sheet.styles, table_style_id(sheet, table), "table")
+            if any("firstRow" in style.conditional for style in chain):
+                reasons.append("first_row_look")
+        bold = [self._all_bold(row) for row in own[:2]]
+        if bold[0] and not bold[1]:
+            reasons.append("bold")
+        if table is not None and len(table.rows) > 1:
+            resolved = resolve_table(_effective.model(self.document).model, table)
+            fills = [[_fill(cell.properties.get("shd")) for cell in row.cells] for row in resolved.rows[:2]]
+            if fills[0] and all(fills[0]) and fills[0] != fills[1]:
+                reasons.append("shading")
+        return reasons
+
+    def _all_bold(self, row) -> bool | None:
+        """Whether every run of text in a row is drawn bold (``None``: no text)."""
+        found = None
+        for paragraph in row.iter(_W + "p"):
+            for run in paragraph.iter(_W + "r"):
+                if not _text.run_text(paragraph, run).strip():
+                    continue
+                if not _effective.run(self.document, paragraph, run).bold:
+                    return False
+                found = True
+        return found
 
     def past_margins(self) -> list[dict]:
         document = self.document
@@ -743,6 +857,40 @@ def _paragraph_values(mine, styled):
     yield "indent_first", first(mine), first(styled)
     yield "keep_with_next", mine.keep_with_next, styled.keep_with_next
     yield "page_break_before", mine.page_break_before, styled.page_break_before
+
+
+def _page_break_at(paragraph, *, start: bool) -> bool:
+    """Whether a paragraph's first (``start``) or last content is a page break run."""
+    content = [node for node in paragraph.iter(_W + "t", _W + "br", _W + "tab", _W + "drawing")
+               if node.tag != _W + "t" or (node.text or "").strip()]
+    if not content:
+        return False
+    node = content[0] if start else content[-1]
+    return node.tag == _W + "br" and node.get(_W + "type") == "page"
+
+
+def _columns(table) -> int:
+    """A table's grid columns (its widest row's cells where it has no grid)."""
+    grid = table.findall(f"{_W}tblGrid/{_W}gridCol")
+    return len(grid) or max((len(row.findall(_W + "tc")) for row in table.findall(_W + "tr")), default=0)
+
+
+def _model_table(blocks, path: str):
+    """docx2svg's table at ``path`` among ``blocks`` (the body's, nested blocks searched too)."""
+    for block in blocks or ():
+        if getattr(block, "path", None) == path and hasattr(block, "conditions"):
+            return block
+        found = _model_table(getattr(block, "blocks", None), path)
+        if found is not None:
+            return found
+    return None
+
+
+def _fill(shading) -> str | None:
+    if not shading or shading[0] == "nil":
+        return None
+    fill = shading[2]
+    return None if fill in (None, "auto") else fill.upper()
 
 
 def _header_rows(table) -> int:

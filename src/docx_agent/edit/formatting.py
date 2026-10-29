@@ -21,6 +21,16 @@ Run properties (keyword: value):
 * ``highlight`` -- an ``ST_HighlightColor`` name (``yellow``...);
 * ``vertical_align`` -- ``superscript``, ``subscript`` or ``baseline``.
 
+Shading (a style's: :func:`shading_attributes`, round 24, W6) -- ``RRGGBB``, a theme colour
+(``accent1``), a theme colour lighter or darker (``"accent1 lighter 80%"``,
+``"accent2 darker 25%"``, Word's colour-picker words), a mapping ``{"fill": "RRGGBB"}`` or
+``{"theme_color": "accent1", "tint": 0.2}`` (``tint`` / ``shade``: the share of the colour
+kept, Word's ``w:themeFillTint`` / ``w:themeFillShade`` over 255), or ``None`` (none).
+Written as Word writes it on saving a style (measured: ``feedback-round24/measurements-I.md``):
+``w:shd w:val="clear" w:color="auto"``, ``w:fill`` the colour drawn -- for a theme colour the
+theme's, its tint or shade applied as Word applies it -- and ``w:themeFill`` with
+``w:themeFillTint`` or ``w:themeFillShade``, which Word draws from.
+
 Paragraph properties: ``alignment`` (``left``, ``center``, ``right``, ``justify``,
 ``distribute``), ``indent_left``, ``indent_right``, ``first_line``, ``hanging`` (points;
 a first-line indent and a hanging one exclude each other), ``space_before``,
@@ -118,6 +128,82 @@ KEPT_RUN = frozenset(_W + name for name in (
 #: record and the table-style and HTML bookkeeping Word maintains.
 KEPT_PARAGRAPH = frozenset(_W + name for name in (
     "pStyle", "numPr", "sectPr", "pPrChange", "cnfStyle", "divId", "framePr", "rPr"))
+
+
+#: A shading named in words: ``accent1``, ``accent1 lighter 80%``, ``text1 darker 25%``.
+_SHADING_WORDS = re.compile(r"^\s*(.+?)(?:\s+(lighter|darker)\s+(\d{1,2}(?:\.\d+)?)\s*%)?\s*$", re.I)
+
+
+def shading_attributes(value: object, theme_color: Callable[[str], str | None] | None = None,
+                       ) -> dict[str, str | None] | None:
+    """The ``w:shd`` attributes for a shading value (the module's forms), ``None`` for
+    ``None``; :class:`FormattingError` for anything else.  ``theme_color`` gives a theme
+    colour's value (the document's), for ``w:fill``."""
+    if value is None:
+        return None
+    name, tint, shade = None, None, None
+    if isinstance(value, dict):
+        unknown = set(value) - {"fill", "theme_color", "tint", "shade"}
+        if unknown or ("fill" in value) == ("theme_color" in value) or ("tint" in value and "shade" in value):
+            raise FormattingError("shading is {fill: RRGGBB} or {theme_color, and tint or shade}")
+        if "fill" in value:
+            value = value["fill"]
+        else:
+            name = theme_color_name(value["theme_color"])
+            if name is None:
+                raise FormattingError(f"theme_color is one of {', '.join(sorted(THEME_COLORS))}")
+            for key in ("tint", "shade"):
+                if key in value:
+                    share = value[key]
+                    if not _number(share, 0, 1):
+                        raise FormattingError(f"{key} is the share of the colour kept, 0 to 1")
+                    byte = f"{int(round(share * 255)):02X}"
+                    tint, shade = (byte, None) if key == "tint" else (None, byte)
+    if name is None:
+        if isinstance(value, str) and _HEX.fullmatch(value.strip()):
+            return {"w:val": "clear", "w:color": "auto", "w:fill": value.strip().upper(),
+                    "w:themeFill": None, "w:themeFillTint": None, "w:themeFillShade": None}
+        words = _SHADING_WORDS.match(value) if isinstance(value, str) else None
+        name = theme_color_name(words.group(1)) if words else None
+        if name is None:
+            raise FormattingError("shading is RRGGBB, a theme colour (accent1), 'accent1 lighter 80%', "
+                                  "'accent1 darker 25%', or none")
+        if words.group(2):
+            percent = float(words.group(3))
+            if not 0 < percent < 100:
+                raise FormattingError("lighter and darker are percentages above 0 and below 100")
+            byte = f"{int(round((100 - percent) / 100 * 255)):02X}"
+            tint, shade = (byte, None) if words.group(2).lower() == "lighter" else (None, byte)
+    base = theme_color(name) if theme_color else None
+    if base is not None:
+        from ooxml_common.themetint import word_theme_tint
+
+        fill = word_theme_tint(base, tint, shade) or base
+    else:
+        fill = "auto"
+    return {"w:val": "clear", "w:color": "auto", "w:fill": fill, "w:themeFill": name,
+            "w:themeFillTint": tint, "w:themeFillShade": shade}
+
+
+def read_shading(properties: Element | None) -> str | None:
+    """A ``w:pPr``'s or ``w:rPr``'s shading in :func:`shading_attributes`' words: ``RRGGBB``,
+    or a theme colour with ``lighter`` / ``darker`` and a percentage; ``None`` for none."""
+    node = properties.find(_W + "shd") if properties is not None else None
+    if node is None:
+        return None
+    name = node.get(_W + "themeFill")
+    if name:
+        for attribute, word in (("themeFillTint", "lighter"), ("themeFillShade", "darker")):
+            byte = node.get(_W + attribute)
+            if byte:
+                try:
+                    percent = round(100 - int(byte, 16) / 255 * 100)
+                except ValueError:
+                    continue
+                return f"{name} {word} {percent}%" if percent else name
+        return name
+    fill = node.get(_W + "fill")
+    return None if fill in (None, "auto") and node.get(_W + "val") in (None, "clear", "nil") else fill
 
 
 # -- validation ------------------------------------------------------------------------------

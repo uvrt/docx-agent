@@ -760,3 +760,48 @@ def test_a_paragraph_of_only_a_break_is_not_an_html_block():
     assert [type(b) for b in blocks] == [m.Paragraph, m.Paragraph]
     assert [len(b.inline) for b in blocks] == [1, 2]
     assert all(isinstance(item, m.Break) for b in blocks for item in b.inline)
+
+
+# -- round 24: tables back to back -------------------------------------------------------------
+
+_TABLES = "| | |\n|---|---|\n| a | b |\n\n| H | I |\n|---|---|\n| c | d |\n"
+
+
+def _body_kinds(document: Document) -> list[str]:
+    body = document.package.tree(document.package.document_part()).find(f"{W}body")
+    out = []
+    for child in body:
+        if child.tag == W + "tbl":
+            out.append("table")
+        elif child.tag == W + "p":
+            style = child.find(f"{W}pPr/{W}pStyle")
+            texts = "".join(t.text or "" for t in child.iter(W + "t"))
+            out.append(f"p:{style.get(W + 'val') if style is not None else ''}:{texts}")
+    return out
+
+
+def test_tables_back_to_back_are_kept_apart_by_a_paragraph():
+    # Word joins tables with nothing between them into one (measured, round 24): an empty
+    # paragraph in the body's paragraph style keeps them apart, as insert_table does.
+    document = Document.new()
+    document.insert_markdown(_TABLES)
+    assert _body_kinds(document)[1:] == ["table", "p::", "table", "p::"]
+    mapped = Document.new()
+    mapped.insert_markdown(_TABLES, style_map={"paragraph": "Quote"})
+    assert _body_kinds(mapped)[1:] == ["table", "p:Quote:", "table", "p::"]
+    # The separator is no Markdown of its own: both readings round-trip to one separator.
+    assert document.to_markdown(ids=False) == "|  |  |\n| --- | --- |\n| a | b |\n\n| H | I |\n| --- | --- |\n| c | d |\n"
+    for ids in (False, True):
+        again = Document.new()
+        again.insert_markdown(document.to_markdown(ids=ids))
+        assert _body_kinds(again) == _body_kinds(document), ids
+
+
+def test_a_table_inserted_beside_a_table_gets_a_separator():
+    document = Document.new()
+    made = document.insert_markdown("| A | B |\n|---|---|\n| a | b |\n")
+    table = [b for b in made.blocks if b.startswith("t:")][0]
+    document.insert_markdown("| C | D |\n|---|---|\n| c | d |\n", at=f"after:{table}")
+    assert _body_kinds(document)[1:] == ["table", "p::", "table", "p::"]
+    document.insert_markdown("| E | F |\n|---|---|\n| e | f |\n", at=f"before:{table}")
+    assert _body_kinds(document)[1:] == ["table", "p::", "table", "p::", "table", "p::"]

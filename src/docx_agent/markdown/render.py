@@ -136,7 +136,9 @@ def _table(block: m.Table) -> list[str]:
         return "| " + " | ".join(_inline(cell, line_start=False, table=True) for cell in cells) + " |"
 
     delimiter = {None: "---", "left": ":---", "center": ":---:", "right": "---:"}
-    lines = [row(block.header), "| " + " | ".join(delimiter[a] for a in block.aligns) + " |"]
+    # No header row: an empty one, which the parser reads back as none (round 24, W2).
+    header = block.header if block.headed else [[] for _ in block.aligns]
+    lines = [row(header), "| " + " | ".join(delimiter[a] for a in block.aligns) + " |"]
     lines += [row(cells) for cells in block.rows]
     return lines
 

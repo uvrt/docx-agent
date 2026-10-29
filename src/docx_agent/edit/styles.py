@@ -24,6 +24,9 @@ from ..oxml.xml import Element, append_in_order, make, qn, remove
 from . import formatting as _formatting
 from .errors import EditError
 
+#: ``modify``'s shading when the call does not give one (``None`` removes it).
+_NOT_GIVEN = object()
+
 if TYPE_CHECKING:  # pragma: no cover
     from .document import Document, EditResult
 
@@ -219,7 +222,9 @@ class Styles:
             next_style: str | None = None, **formatting) -> "EditResult":
         """A new style named ``name`` (refused if the name is taken), based on ``based_on``
         (a name), with run formatting (and, for a paragraph style, paragraph formatting)
-        as :mod:`docx_agent.edit.formatting` takes it.  Its id is the name without spaces
+        as :mod:`docx_agent.edit.formatting` takes it, and ``shading`` (its forms there: a
+        fill, a theme colour lighter or darker) -- a paragraph style's behind its
+        paragraphs, a character style's behind its text.  Its id is the name without spaces
         or punctuation, numbered if taken."""
         from .document import EditError, EditResult
 
@@ -233,16 +238,19 @@ class Styles:
             self.resolve(based_on, kind)
         if next_style is not None:
             self.resolve(next_style, "paragraph")
+        formatting = dict(formatting)
+        shading = formatting.pop("shading", None)
         run_values = {k: v for k, v in formatting.items() if k in _formatting.RUN_PROPERTIES}
         paragraph_values = {k: v for k, v in formatting.items() if k not in _formatting.RUN_PROPERTIES}
+        document = self._document
         try:
             _formatting.check_run(run_values)
             if paragraph_values and kind != "paragraph":
                 raise _formatting.FormattingError("a character style has no paragraph formatting")
             _formatting.check_paragraph(paragraph_values)
+            shd = _formatting.shading_attributes(shading, document._theme_color)
         except _formatting.FormattingError as error:
             raise EditError(str(error)) from None
-        document = self._document
         with document._edit():
             base = self._ensure(based_on, kind) if based_on is not None else None
             following = self._ensure(next_style, "paragraph") if next_style is not None else None
@@ -259,30 +267,41 @@ class Styles:
             append_in_order(node, make("w:qFormat"))
             _formatting.write_paragraph(node, paragraph_values)
             _formatting.write_run(node, run_values, document._theme_color)
+            if shd is not None:
+                _write_shading(node, kind, shd)
             self._append(node)
         return EditResult(f"style:{style_id}", created=[f"style:{style_id}"])
 
     def modify(self, name: str, kind: str | None = None, **formatting) -> "EditResult":
-        """Change a style's run and paragraph formatting (``None`` removes a value)."""
+        """Change a style's run and paragraph formatting and its ``shading`` (``None``
+        removes a value)."""
         from .document import EditError, EditResult
 
         style = self.find(name, kind)
         if style is None:
             raise EditError(f"the document has no style {name!r}")
+        formatting = dict(formatting)
+        shading = formatting.pop("shading", _NOT_GIVEN)
         run_values = {k: v for k, v in formatting.items() if k in _formatting.RUN_PROPERTIES}
         paragraph_values = {k: v for k, v in formatting.items() if k not in _formatting.RUN_PROPERTIES}
+        document = self._document
         try:
             _formatting.check_run(run_values)
             _formatting.check_paragraph(paragraph_values)
+            shd = None if shading is _NOT_GIVEN else _formatting.shading_attributes(shading, document._theme_color)
         except _formatting.FormattingError as error:
             raise EditError(str(error)) from None
         if paragraph_values and style.kind not in ("paragraph", "table"):
             raise EditError(f"{name!r} is a {style.kind} style: it has no paragraph formatting")
-        document = self._document
+        if shading is not _NOT_GIVEN and style.kind not in ("paragraph", "character"):
+            raise EditError(f"{name!r} is a {style.kind} style: shade its tables with word_format_table, "
+                            "or a paragraph or character style")
         with document._edit():
             node = self._node(style.id)
             _formatting.write_paragraph(node, paragraph_values)
             _formatting.write_run(node, run_values, document._theme_color)
+            if shading is not _NOT_GIVEN:
+                _write_shading(node, style.kind, shd)
             for tag in ("w:pPr", "w:rPr"):
                 child = node.find(qn(tag))
                 if child is not None and not len(child):
@@ -434,3 +453,16 @@ class Styles:
 
     def __repr__(self) -> str:
         return f"<Styles {len(self)}>"
+
+
+def _write_shading(node: Element, kind: str, attributes: dict | None) -> None:
+    """A style's shading: a paragraph style's in its ``w:pPr``, a character style's in its
+    ``w:rPr`` (Word draws both: measured, round 24, W6); ``None`` removes it.  A pattern's
+    colour (``w:color``'s theme attributes) goes with the old shading: the new one is clear."""
+    owner = _formatting.properties_of(node, "w:pPr" if kind == "paragraph" else "w:rPr",
+                                      create=attributes is not None)
+    if owner is None:
+        return
+    if attributes is not None:
+        attributes = {**attributes, "w:themeColor": None, "w:themeTint": None, "w:themeShade": None}
+    _formatting._set_child(owner, "w:shd", attributes)

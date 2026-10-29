@@ -37,19 +37,23 @@ def p(text: str = "", rpr: str = "", ppr: str = "", runs: str | None = None) -> 
             f'{f"<w:pPr>{ppr}</w:pPr>" if ppr else ""}{runs}</w:p>')
 
 
-def table(rows: list[list[str]], *, width: int = 9000, header: bool = False, indent: int | None = None) -> str:
-    """A bordered table of ``rows`` of cell texts; ``header``: its first row repeats."""
+def table(rows: list[list[str]], *, width: int = 9000, header: bool = False, indent: int | None = None,
+          ppr: str = "", first_rpr: str = "", first_tcpr: str = "", style: str = "") -> str:
+    """A bordered table of ``rows`` of cell texts; ``header``: its first row repeats; ``ppr``
+    every cell paragraph's properties; ``first_rpr`` / ``first_tcpr`` the first row's run and
+    cell properties; ``style`` a table style and look (``w:tblStyle``, ``w:tblLook``)."""
     cols = len(rows[0])
     grid = f'<w:gridCol w:w="{width // cols}"/>' * cols
     borders = "".join(f'<w:{side} w:val="single" w:sz="4" w:space="0" w:color="000000"/>'
                       for side in ("top", "left", "bottom", "right", "insideH", "insideV"))
     indented = f'<w:tblInd w:w="{indent}" w:type="dxa"/>' if indent is not None else ""
-    out = (f'<w:tbl><w:tblPr><w:tblW w:w="{width}" w:type="dxa"/>{indented}<w:tblBorders>{borders}'
+    out = (f'<w:tbl><w:tblPr>{style}<w:tblW w:w="{width}" w:type="dxa"/>{indented}<w:tblBorders>{borders}'
            f'</w:tblBorders><w:tblLayout w:type="fixed"/></w:tblPr><w:tblGrid>{grid}</w:tblGrid>')
     for k, row in enumerate(rows):
         properties = "<w:trPr><w:tblHeader/></w:trPr>" if header and k == 0 else ""
-        cells = "".join(f'<w:tc><w:tcPr><w:tcW w:w="{width // cols}" w:type="dxa"/></w:tcPr>{p(text)}</w:tc>'
-                        for text in row)
+        rpr, tcpr = (first_rpr, first_tcpr) if k == 0 else ("", "")
+        cells = "".join(f'<w:tc><w:tcPr><w:tcW w:w="{width // cols}" w:type="dxa"/>{tcpr}</w:tcPr>'
+                        f'{p(text, rpr=rpr, ppr=ppr)}</w:tc>' for text in row)
         out += f'<w:tr w14:paraId="{next(_ids):08X}" w14:textId="77777777">{properties}{cells}</w:tr>'
     return out + "</w:tbl>"
 
@@ -192,18 +196,46 @@ def test_empty_paragraphs_used_as_space_and_the_space_kept_without_them(box, ses
 # -- keep with next ---------------------------------------------------------------------------
 
 
-def test_a_keep_with_next_paragraph_left_at_its_pages_foot(box, session):
-    # Word keeps the heading on page 1: the paragraph it keeps with starts a page of its own.
+#: A paragraph style that starts a page (round 24, W3: the case production met).
+NEW_PAGE_STYLE = ('<w:style w:type="paragraph" w:customStyle="1" w:styleId="PartTitle"><w:name w:val="Part title"/>'
+                  '<w:basedOn w:val="Normal"/><w:pPr><w:pageBreakBefore/></w:pPr></w:style>')
+
+
+def with_style(data: bytes, style: str) -> bytes:
+    source = zipfile.ZipFile(io.BytesIO(data))
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as archive:
+        for name in source.namelist():
+            part = source.read(name)
+            if name == "word/styles.xml":
+                part = part.replace(b"</w:styles>", style.encode() + b"</w:styles>")
+            archive.writestr(name, part)
+    return out.getvalue()
+
+
+@pytest.mark.parametrize("case", ["style", "direct", "break_run", "break_run_before", "section"])
+def test_a_keep_with_next_paragraph_before_a_new_page_is_no_fact(box, session, case):
+    # Round 24, W3: the next block starts a page whatever keeps it, so nothing is kept from it
+    # (0.1.22 reported these).
     heading = p("Heading kept with the next", ppr="<w:keepNext/>")
-    forced = p("On a page of its own", ppr="<w:pageBreakBefore/>")
-    d = session.open(docx(p(FILLER) + heading + forced + p(FILLER)), "kept.docx")
+    following = {
+        "style": p("On a page of its own", ppr='<w:pStyle w:val="PartTitle"/>'),
+        "direct": p("On a page of its own", ppr="<w:pageBreakBefore/>"),
+        "break_run": p(runs='<w:r><w:br w:type="page"/><w:t>On a page of its own</w:t></w:r>'),
+        "break_run_before": p("On a page of its own"),
+        "section": p("On a page of its own"),
+    }[case]
+    if case == "break_run_before":
+        heading = p(runs='<w:r><w:t>Heading kept with the next</w:t><w:br w:type="page"/></w:r>', ppr="<w:keepNext/>")
+    if case == "section":
+        heading = p("Heading kept with the next", ppr='<w:keepNext/><w:sectPr><w:pgSz w:w="11906" w:h="16838"/>'
+                    '<w:pgMar w:top="1417" w:right="1417" w:bottom="1417" w:left="1417" w:header="708" '
+                    'w:footer="708" w:gutter="0"/></w:sectPr>')
+    d = session.open(with_style(docx(p(FILLER) + heading + following + p(FILLER)), NEW_PAGE_STYLE), "kept.docx")
+    layout = session.entry(d).document.layout()
     ids = [paragraph.id for paragraph in session.entry(d).document.paragraphs()]
-    [entry] = facts(box, session, d)["keep_with_next_at_foot"]
-    assert entry == {"para": ids[1], "style": "Normal", "page": 1, "next": ids[2], "next_page": 2}
-    # A plain paragraph before the break is no fact.
-    plain = session.open(docx(p(FILLER) + p("Not kept") + p("On a page of its own", ppr="<w:pageBreakBefore/>")),
-                         "plain.docx")
-    assert facts(box, session, plain)["keep_with_next_at_foot"] == []
+    assert layout.where(ids[2])[0].page > layout.where(ids[1])[-1].page    # a new page indeed
+    assert facts(box, session, d)["keep_with_next_at_foot"] == []
 
 
 def test_a_chain_of_keep_with_next_paragraphs_longer_than_a_page(box, session):
@@ -217,10 +249,24 @@ def test_a_chain_of_keep_with_next_paragraphs_longer_than_a_page(box, session):
 # -- tables -----------------------------------------------------------------------------------
 
 
+def test_a_table_split_after_rows_kept_with_the_next(box, session):
+    # Round 24, W3: every paragraph of every row keeps with the next, and the table is
+    # longer than a page, so it splits somewhere: after a row Word would keep with the next.
+    kept = table([[f"Kept {r}", "value", "more"] for r in range(70)], ppr="<w:keepNext/>")
+    plain = table([[f"Item {r}", "value", "more"] for r in range(70)])
+    d = session.open(docx(p("Tables") + kept + p("Between", ppr="<w:pageBreakBefore/>") + plain + p("End")),
+                     "kept-rows.docx")
+    first, second = [t.id for t in session.entry(d).document.tables()]
+    entries = [e for e in facts(box, session, d)["keep_with_next_at_foot"] if "table" in e]
+    assert entries and {e["table"] for e in entries} == {first}       # the plain table is no fact
+    for entry in entries:
+        assert entry["next_row"] == entry["row"] + 1 and entry["next_page"] == entry["page"] + 1
+
+
 def test_a_split_row_and_header_rows_that_do_not_repeat(box, session):
     tall = table([["Head", "Head"]] + [[f"Row {r}", (FILLER + " ") * 40 if r == 3 else "short"] for r in range(8)],
                  header=True)
-    plain = table([[f"Item {r}", "plain"] for r in range(80)])
+    plain = table([[f"Item {r}", "plain", "more"] for r in range(80)], first_rpr="<w:b/>")
     d = session.open(docx(p("Tables") + tall + p("Between") + plain + p("End")), "rows.docx")
     document = session.entry(d).document
     first, second = [t.id for t in document.tables()]
@@ -231,8 +277,44 @@ def test_a_split_row_and_header_rows_that_do_not_repeat(box, session):
     assert all(e["row"] != 0 for e in layout["split_rows"])
     [unrepeated] = layout["header_not_repeated"]
     assert unrepeated["table"] == second and unrepeated["header_rows"] == 0 and len(unrepeated["pages"]) >= 2
+    assert unrepeated["header_look"] == ["bold"]
     call(box, session, d, unrepeated["fix"])
     assert facts(box, session, d)["header_not_repeated"] == []
+
+
+#: A table style whose first-row formatting is bold on a fill.
+HEAD_STYLE = ('<w:style w:type="table" w:customStyle="1" w:styleId="HeadGrid"><w:name w:val="Head Grid"/>'
+              '<w:tblStylePr w:type="firstRow"><w:rPr><w:b/></w:rPr><w:tcPr><w:shd w:val="clear" w:color="auto" '
+              'w:fill="DDEEFF"/></w:tcPr></w:tblStylePr></w:style>')
+LOOK_ON = '<w:tblStyle w:val="HeadGrid"/><w:tblLook w:val="04A0" w:firstRow="1" w:lastRow="0" w:firstColumn="1" ' \
+          'w:lastColumn="0" w:noHBand="0" w:noVBand="1"/>'
+LOOK_OFF = LOOK_ON.replace('w:val="04A0" w:firstRow="1"', 'w:val="0480" w:firstRow="0"')
+
+
+@pytest.mark.parametrize("columns, keyword, expected", [
+    (2, {}, None),                                                     # labels and values: no header
+    (3, {}, "fix_if_header"),                                          # perhaps: said so
+    (2, {"first_rpr": "<w:b/>"}, ["bold"]),
+    (2, {"first_tcpr": '<w:shd w:val="clear" w:color="auto" w:fill="E0E0E0"/>'}, ["shading"]),
+    (2, {"style": LOOK_ON}, ["first_row_look", "bold", "shading"]),
+    (2, {"style": LOOK_OFF}, None),                                    # the style's look switched off
+])
+def test_a_header_row_is_suggested_only_where_the_first_row_looks_like_one(box, session, columns, keyword,
+                                                                           expected):
+    # Round 24, W4: a two-column table whose first row is drawn like the rest is labels and
+    # values -- no header to repeat; another such table gets the call only as conditional.
+    rows = [[f"Label {r}", "value", "more"][:columns] for r in range(80)]
+    d = session.open(with_style(docx(p("Table") + table(rows, **keyword) + p("End")), HEAD_STYLE), "look.docx")
+    found = facts(box, session, d)["header_not_repeated"]
+    if expected is None:
+        assert found == []
+    elif expected == "fix_if_header":
+        [entry] = found
+        assert entry["header_look"] == [] and "fix" not in entry
+        assert entry["fix_if_header"]["calls"] == [{"table": entry["table"], "scope": "table", "header_rows": 1}]
+    else:
+        [entry] = found
+        assert entry["header_look"] == expected and entry["fix"]["calls"][0]["header_rows"] == 1
 
 
 # -- margins ----------------------------------------------------------------------------------

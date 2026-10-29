@@ -142,10 +142,16 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 #: document alone: the core 2,820 -> 2,440 (about 3,612 counted by the proxy), every
 #: definition 13,204 -> 12,824.  The guard falls to 12,825.  replace_text is strict and loses
 #: slides: 6 tools, 23 optional parameters.
+#: Round 24: word_format_table's ``look`` (the style options on, Table Design's names: W2)
+#: and ``cant_split`` (a row's, or every row's) +83, word_styles' ``shading`` (W6) +30, and
+#: word_insert_markdown's description (an empty header row is no header row, W2) +8 to every
+#: definition (12,824 -> 12,944), none to the core (2,440).  The guard rises to 12,945.
+#: word_insert_markdown is strict: its description only, so the strict set is unchanged (6
+#: tools, 23 optional parameters); the other two are not strict.
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 6500
-ALL_GUARD = 12825
+ALL_GUARD = 12945
 
 
 @pytest.fixture(scope="module")

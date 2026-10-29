@@ -5,6 +5,59 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.23 -- unreleased
+
+- **A table without a header row** (production round 24, W2). Measured in Word: a table
+  style's first-row formatting follows `w:tblLook`'s `w:firstRow` (the attribute where it is
+  written, else its bit in `w:val`, and on for a table with no `w:tblLook`), never a row's
+  `w:tblHeader`, which only repeats the row; Word's "Header Row" off writes `w:val` 0480 with
+  `w:firstRow="0"`. Markdown whose header row is empty (`| | |`) is a table with no header
+  row: no `w:tblHeader`, the first-row look off, every row a body row; the reader writes such
+  a table back with an empty header row, so it round-trips. `word_format_table` takes `look`,
+  the style options on by Table Design's names (`header_row`, `first_column`,
+  `banded_rows`, `total_row`, `last_column`, `banded_columns`; the rest off), and
+  `cant_split` on a row (`scope: "row"`) or every row (`scope: "table"`).
+  `table_properties()["look"]` of a table with no `w:tblLook` is the default look (header
+  row, first column, banded rows), as Word and docx2svg draw it, no longer all off.
+- **Tables back to back stay two tables.** Markdown with two tables in a row wrote them
+  adjacent, and Word joins adjacent tables into one (measured: the second's rows drew as rows
+  of the first, its own look gone). An empty paragraph in the body's paragraph style (the
+  mapped `paragraph` style, else the default) now goes between them, as `insert_table` keeps
+  one -- also where an inserted table would touch a table already there. Measured: Word
+  keeps the tables apart, each with its own look; docx2svg draws them alike. The separator
+  reads back as nothing (an `empty` id comment with ids), so the Markdown round-trips to one
+  separator, not two.
+- **check's `keep_with_next_at_foot`** (W3): a keep-with-next paragraph whose next block
+  starts a new page anyway -- a page break before it (its style's or its own), a page break
+  at its start or at the end of the paragraph, a section break that starts a new page -- is
+  no longer reported; a table split after a row whose paragraphs all keep with the next is
+  (`{"table", "row", "page", "next_row", "next_page"}`): Word keeps such rows with the next.
+  Read from docx2svg's layout, as the rest.
+- **check's `header_not_repeated`** (W4): `fix` (`header_rows: 1`) only where the first row
+  looks like a header -- the table style's first-row formatting applies to it, or all its
+  text is bold, or each of its cells has a fill, unlike the second row -- named in
+  `header_look`. A two-column table whose first row looks like the rest (labels and values)
+  is not reported; another such table gets the call as `fix_if_header`.
+- **Shading on styles** (W6): `styles.add(..., shading=...)` and `styles.modify`, and
+  `word_styles` `add`/`modify` `shading`: `RRGGBB`, a theme colour, `"accent1 lighter
+  80%"` / `"accent2 darker 25%"` (or `{"theme_color", "tint" | "shade"}`), `none` to remove;
+  a paragraph style's behind its paragraphs (`w:pPr`), a character style's behind its text
+  (`w:rPr`). Written as Word writes it (measured: Word's own theme shading on a style, and
+  what Word saves): `w:shd w:val="clear" w:color="auto"`, `w:fill` the colour drawn and
+  `w:themeFill` with `w:themeFillTint` or `w:themeFillShade`. `describe` reports it.
+- **A restarted style-numbered item keeps its style's indent** (W7). Direct numbering takes
+  the list level's indent, so where the style's differs, the restart's instance carries the
+  whole level with the style's indent and the restart number as its start beside the
+  `w:startOverride` (measured: Word draws the item at the style's indent, keeps the form on
+  saving, and the items after it count on from it; with a level in the override Word counts
+  from the level's start, and a level without the `w:startOverride` does not restart).
+  `word_lists` `restart` and Markdown lists that restart (a list starting at 4, a later list
+  of one insertion) alike; the warning about the level's indent is gone with the cause.
+  docx2svg draws every form as Word does.
+- Tool definitions, offline: every definition 12,824 -> 12,944 (guard 12,945), the core
+  unchanged (2,440); a reviewer's all 7,281 -> 7,310 (guard 7,315). The strict set is
+  unchanged: 6 tools, 23 optional parameters.
+
 ## 0.1.22 -- unreleased
 
 - **A Word toolbox is sent the shared tools with a document's parameters only**

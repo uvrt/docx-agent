@@ -233,7 +233,7 @@ def images_from(call: Any):
     return image
 
 
-@word_tool("word_insert_markdown", "Write Markdown as blocks in the document's styles: headings, lists, tables, links, footnotes, images ![alt](b1). Returns the new blocks' ids.",
+@word_tool("word_insert_markdown", "Write Markdown as blocks in the document's styles: headings, lists, tables (empty header row: none), links, footnotes, images ![alt](b1). Returns the new blocks' ids.",
            {"doc": DOC,
             "markdown": string("Markdown.", optional=True),
             "blob": string("Or a Markdown blob handle.", optional=True),
