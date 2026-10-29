@@ -882,9 +882,12 @@ def test_find_replace_and_render_are_sent_without_a_decks_parameters(box, sessio
     assert set(sent["replace_text"]) == {"doc", "find", "replace", "expect", "regex", "range", "stories"}
     assert set(sent["render"]) == {"doc", "pages", "width", "sheet"}
     assert sent["find_text"]["stories"]["enum"] == ["body", "all"]
+    assert "scope" not in sent["undo"] and "clean" in sent["save_document"]
     d = open_doc(session)
     refused = fails(box, session, "find_text", "invalid_arguments", doc=d, text="the", slides=["1"])
     assert refused.field == "slides" and refused.message == "slides is for decks; for a document use range or stories"
+    scoped = fails(box, session, "undo", "invalid_arguments", doc=d, scope="1")   # a document undoes document-wide
+    assert "undoes document-wide" in scoped.message
 
 
 def test_charts_and_smartart(box, session):

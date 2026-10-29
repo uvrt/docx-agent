@@ -72,7 +72,7 @@ library.
 A Word toolbox is sent the shared tools with a document's parameters only: `check` has
 `pages`, `include` (`validate`, `reflow`, `fields`, `layout`, `app`), `min_size` and
 `styles`, and `find_text`, `replace_text` and `render` have no `slides` (ooxml-edit's
-`Tool.kind_fields`). A call that still passes a deck's parameter gets the answer it always
+`Tool.kind_fields`), and `undo` no `scope`. A call that still passes a deck's parameter gets the answer it always
 got (`render`'s and `check`'s `slides` read as `pages`, with a warning).
 
 Refs (`$name`) live in the tools' session, not the document. Outside a call the application

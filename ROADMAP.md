@@ -977,7 +977,8 @@ doc.render_svg(pages=diff.changed)     # or render_png; ids on every paragraph g
   `Session.resolve_ref`; `session.refs(doc)` lists the refs.
 - **The shared tools without a deck's parameters (round 23, V3):** a Word toolbox's `check`
   is sent `pages`, `include` (a document's facts only), `min_size` and `styles`;
-  `find_text`, `replace_text` and `render` no `slides`, `stories` only `body` and `all`
+  `find_text`, `replace_text` and `render` no `slides`, `stories` only `body` and `all`,
+  `undo` no `scope`
   (ooxml-edit's `Tool.kind_fields`, `kind_values`); a call that still passes a deck's
   parameter is answered as before.
 - **Cost.** One full layout per document state, cached by the bytes' hash: `layout()` and

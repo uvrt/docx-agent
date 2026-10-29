@@ -135,12 +135,14 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 #: find_text, replace_text and render are sent without a deck's parameters (slides, boxes,
 #: spacing, contrast; stories' layouts and masters; include's fit, collisions, facts,
 #: design), check's and stories' descriptions for a document alone: the core 2,816 -> 2,471
-#: (about 3,658 counted by the proxy), every definition 13,194 -> 12,849.  The guard falls to
-#: 12,850.  replace_text is strict and loses slides: 6 tools, 23 optional parameters.
+#: (about 3,658 counted by the proxy), every definition 13,194 -> 12,849; undo without a
+#: deck's or workbook's scope, the core 2,436 (about 3,606), every definition 12,814.  The
+#: guard falls to 12,815.  replace_text is strict and loses slides: 6 tools, 23 optional
+#: parameters.
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 6500
-ALL_GUARD = 12850
+ALL_GUARD = 12815
 
 
 @pytest.fixture(scope="module")

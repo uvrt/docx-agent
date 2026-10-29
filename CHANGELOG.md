@@ -13,14 +13,16 @@ snapshot commit; the development history before it is summarised here.
   offering `validate`, `reflow`, `fields`, `layout` and `app` (not a deck's `fit`,
   `collisions`, `facts`, `design`, which this handler refuses), its default described for a
   document; `find_text`, `replace_text` and `render` without `slides`; `stories` offering
-  `body` and `all` (a deck's `layouts` and `masters` were read as the body). `contrast`
+  `body` and `all` (a deck's `layouts` and `masters` were read as the body); `undo` without
+  a deck's or workbook's `scope` (a document undoes document-wide, and still refuses it).
+  `contrast`
   could apply to Word text (its colour against shading or a page colour), but nothing here
   measures it and the handler refuses it, so it is left out until it is measured. A call
   that still passes one is answered as before: `boxes`, `spacing` and `contrast` refused
   with `<name> is for decks; for a document use include`, `slides` refused by find and
   replace and read as `pages` (with a warning) by render and check. A toolbox with
-  pptx-agent's tools too still sends all of them. Offline: the core 2,816 -> 2,471, every
-  definition 13,194 -> 12,849 (guard 12,850); a reviewer's core 2,608 -> 2,324 (guard
+  pptx-agent's tools too still sends all of them. Offline: the core 2,816 -> 2,436, every
+  definition 13,194 -> 12,814 (guard 12,815); a reviewer's core 2,608 -> 2,324 (guard
   2,325), all 7,560 -> 7,277 (guard 7,280). `replace_text` is strict and loses `slides`:
   6 tools, 24 -> 23 optional parameters.
 - **`block_of(session, doc, id)` and `blocks_between(session, doc, a, b)`** (production
