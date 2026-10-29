@@ -19,6 +19,14 @@ snapshot commit; the development history before it is summarised here.
   `cant_split` on a row (`scope: "row"`) or every row (`scope: "table"`).
   `table_properties()["look"]` of a table with no `w:tblLook` is the default look (header
   row, first column, banded rows), as Word and docx2svg draw it, no longer all off.
+- **Tables back to back stay two tables.** Markdown with two tables in a row wrote them
+  adjacent, and Word joins adjacent tables into one (measured: the second's rows drew as rows
+  of the first, its own look gone). An empty paragraph in the body's paragraph style (the
+  mapped `paragraph` style, else the default) now goes between them, as `insert_table` keeps
+  one -- also where an inserted table would touch a table already there. Measured: Word
+  keeps the tables apart, each with its own look; docx2svg draws them alike. The separator
+  reads back as nothing (an `empty` id comment with ids), so the Markdown round-trips to one
+  separator, not two.
 - **check's `keep_with_next_at_foot`** (W3): a keep-with-next paragraph whose next block
   starts a new page anyway -- a page break before it (its style's or its own), a page break
   at its start or at the end of the paragraph, a section break that starts a new page -- is
