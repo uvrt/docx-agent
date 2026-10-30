@@ -364,7 +364,8 @@ def word_links(call: Any, doc: str, action: str, target: str | None = None, find
     where = (find_range(call, find, None) if one_of({"target": target, "find": find}, "target", "find") == "find"
              else text_range(document, resolve(call, target)))
     if action == "add_bookmark":
-        return outcome([document.add_bookmark(where, need(bookmark, "bookmark"))], f"Bookmarked as {bookmark}")
+        edit = document.add_bookmark(where, need(bookmark, "bookmark"))
+        return outcome([edit], f"Bookmarked as {bookmark}" if edit.changed else f"No change: {edit.warnings[0]}")
     if (url is None) == (bookmark is None):
         raise ToolError("invalid_arguments", "give exactly one of url, bookmark", valid_options=["url", "bookmark"])
     return outcome([document.add_hyperlink(where, url, anchor=bookmark)], "Made a hyperlink")

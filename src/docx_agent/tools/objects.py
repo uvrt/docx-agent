@@ -455,6 +455,12 @@ def word_format_table(call: Any, doc: str, table: str, scope: str, row: int | No
             # Round 25, W2: the rows' keeps as Word reads them (Document.set_keep_together);
             # W5: with keep_with_next, the last row's too.
             edits.append(document.set_keep_together(table, keep_together, with_next=bool(keep_with_next)))
+            if keep_with_next is False and not edits[-1].changed \
+                    and not document.table_properties(table)["keep_together"]:
+                # Round 27: not kept together, both off -- a last row keeping alone is released.
+                released = document.set_table_keep_with_next(table, False)
+                if released.changed:
+                    edits[-1] = released
         elif keep_with_next is not None:
             edits.append(document.set_table_keep_with_next(table, keep_with_next))
         if not values and not edits:

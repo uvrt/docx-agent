@@ -491,13 +491,24 @@ class TableFormatOps:
         last row that keeps alone takes only itself to the next page with that block, the
         rest of the table left behind (measured, W5) -- keep it together first.  Off, a table
         whose last row does not keep (kept together or not) is as asked: no change, said in
-        ``warnings`` (round 27, W7)."""
+        ``warnings`` (round 27, W7); on a table not kept together whose last row keeps alone,
+        that row is released (its direct keep removed, or a direct release where its styles
+        keep it), said in ``warnings``."""
         from .document import EditError, EditResult
 
         part, entry = self._table_entry(table)
-        if not on and not kept_with_next(row_keeps(self, entry.element)):
-            return EditResult(entry.id, changed=False,
-                              warnings=[f"{entry.id}'s last row did not keep with the next"])
+        if not on:
+            rows = row_keeps(self, entry.element)
+            if not kept_with_next(rows):
+                return EditResult(entry.id, changed=False,
+                                  warnings=[f"{entry.id}'s last row did not keep with the next"])
+            if not kept_together(rows):
+                # Round 27: the last row keeps alone -- released, as asked; said so.
+                lead, keeps, styled, declared = rows[-1]
+                result = self._write_keeps(part, entry, [(lead, None if styled is False else False)])
+                result.warnings.append(f"{result.id} was not kept together: its last row's keep with the next "
+                                       "is released")
+                return result
         rows = self._keep_rows(entry)
         if not kept_together(rows):
             raise EditError(f"{entry.id} is not kept together: keep_with_next keeps a table kept together with the "

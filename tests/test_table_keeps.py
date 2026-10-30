@@ -239,6 +239,26 @@ def test_turning_off_a_keep_the_table_does_not_have_changes_nothing(box, session
     assert result.summary.startswith("Formatted") and result.warnings == [f"{named[three]} was not kept together"]
 
 
+@pytest.mark.parametrize("arguments", [{"keep_with_next": False},
+                                       {"keep_together": False, "keep_with_next": False}])
+def test_keep_with_next_false_releases_a_last_row_keeping_alone(box, session, arguments):
+    """Round 27: a table not kept together whose last row keeps with the next on its own --
+    keep_with_next false releases that row, and the warning says what was released."""
+    d = session.open(docx(p("Before") + grid(3) + p("After")), "alone.docx")
+    document = session.entry(d).document
+    table = document.tables()[0].id
+    last = document.table(table).cell(2, 0).paragraphs[0].id
+    ok(box, session, "word_format", doc=d, targets=[last], keep_with_next=True)
+    table = document.tables()[0].id
+    assert _keeps(document, table) == [None, None, True]
+    result = ok(box, session, "word_format_table", doc=d, table=table, scope="table", **arguments)
+    table = document.tables()[0].id
+    assert _keeps(document, table) == [None, None, None]
+    assert result.summary.startswith("Formatted") and result.changed
+    named = document._table_entry(table)[1].id
+    assert result.warnings == [f"{named} was not kept together: its last row's keep with the next is released"]
+
+
 def test_a_label_style_table_keeps_its_warning_with_keep_together_false(box, session):
     """A table its rows' style keeps together is kept: keep_together false (nothing direct to
     remove) says it is still kept by the style (round 25), not that it was not kept."""

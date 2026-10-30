@@ -95,3 +95,20 @@ def test_word_drawings_inline_and_float_what_is_so_already(box, session):
     assert result.summary == f"No change to {picture}" and result.warnings == [f"{picture} floats already"]
     result = ok(box, session, "word_drawings", doc=d, action="float", target=picture, wrap="square")
     assert result.changed == [picture] and document.drawing(picture).wrapping["wrap"] == "square"
+
+
+def test_a_bookmark_already_there_changes_nothing(box, session):
+    """Round 27: the same name over exactly the same text is as asked; elsewhere refused."""
+    d = session.open(docx(p("Alpha beta gamma") + p("Delta")), "marks.docx")
+    document = session.entry(d).document
+    first, second = [x.id for x in document.paragraphs()]
+    ok(box, session, "word_links", doc=d, action="add_bookmark", target=f"{first}@6:10", bookmark="Mark")
+    first = document.paragraphs()[0].id
+    before = document.to_bytes()
+    result = ok(box, session, "word_links", doc=d, action="add_bookmark", target=f"{first}@6:10", bookmark="mark")
+    assert result.warnings == ["bm:Mark marks this text already"] and result.touched == []
+    assert result.summary == "No change: bm:Mark marks this text already" and document.to_bytes() == before
+    for target in (f"{first}@0:5", f"{second}@0:5"):
+        refused = box.dispatch(session, "word_links", {"doc": d, "action": "add_bookmark", "target": target,
+                                                       "bookmark": "Mark"})
+        assert not refused.ok and "already has a bookmark" in refused.error.message
