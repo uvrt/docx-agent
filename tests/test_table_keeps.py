@@ -200,12 +200,72 @@ def test_keep_together_refuses_what_it_cannot_do(box, session):
     d = session.open(docx(p("Before") + grid(1) + p("Between") + grid(3) + p("After")), "refuse.docx")
     one, three = [t.id for t in session.entry(d).document.tables()]
     for arguments, field in (({"table": one, "scope": "table", "keep_together": True}, None),
-                             ({"table": three, "scope": "table", "keep_together": False}, None),
                              ({"table": three, "scope": "row", "row": 0, "keep_together": True}, "keep_together")):
         refused = box.dispatch(session, "word_format_table", {"doc": d, **arguments})
         assert not refused.ok, arguments
         if field:
             assert refused.error.field == field
+
+
+def test_turning_off_a_keep_the_table_does_not_have_changes_nothing(box, session):
+    """Round 27, W7: keep_together false on a table not kept together (one row, too), and
+    keep_with_next false where the last row does not keep, are as asked: no change, the
+    warning saying so.  keep_with_next true without keep_together stays refused."""
+    d = session.open(docx(p("Before") + grid(1) + p("Between") + grid(3) + p("Mid") + grid(3) + p("After")),
+                     "off.docx")
+    document = session.entry(d).document
+    one, three, kept = [t.id for t in document.tables()]
+    ok(box, session, "word_format_table", doc=d, table=kept, scope="table", keep_together=True)
+    kept = document.tables()[2].id
+    before = document.to_bytes()
+    named = {t: document._table_entry(t)[1].id for t in (one, three, kept)}    # t:<id>, as said
+    for table, arguments, said in (
+            (three, {"keep_together": False}, " was not kept together"),
+            (one, {"keep_together": False}, " was not kept together"),
+            (three, {"keep_with_next": False}, "'s last row did not keep with the next"),
+            (one, {"keep_with_next": False}, "'s last row did not keep with the next"),
+            (three, {"keep_together": False, "keep_with_next": False}, " was not kept together"),
+            (kept, {"keep_with_next": False}, "'s last row did not keep with the next")):
+        result = ok(box, session, "word_format_table", doc=d, table=table, scope="table", **arguments)
+        assert result.summary == f"No change to {table}" and result.changed == [], arguments
+        assert result.warnings == [named[table] + said] and result.touched == [], arguments
+    assert document.to_bytes() == before
+    refused = box.dispatch(session, "word_format_table", {"doc": d, "table": three, "scope": "table",
+                                                          "keep_with_next": True})
+    assert not refused.ok and "keep_together true" in refused.error.message
+    # With another property, the call formats that and still says what it left.
+    result = ok(box, session, "word_format_table", doc=d, table=three, scope="table", keep_together=False,
+                alignment="center")
+    assert result.summary.startswith("Formatted") and result.warnings == [f"{named[three]} was not kept together"]
+
+
+@pytest.mark.parametrize("arguments", [{"keep_with_next": False},
+                                       {"keep_together": False, "keep_with_next": False}])
+def test_keep_with_next_false_releases_a_last_row_keeping_alone(box, session, arguments):
+    """Round 27: a table not kept together whose last row keeps with the next on its own --
+    keep_with_next false releases that row, and the warning says what was released."""
+    d = session.open(docx(p("Before") + grid(3) + p("After")), "alone.docx")
+    document = session.entry(d).document
+    table = document.tables()[0].id
+    last = document.table(table).cell(2, 0).paragraphs[0].id
+    ok(box, session, "word_format", doc=d, targets=[last], keep_with_next=True)
+    table = document.tables()[0].id
+    assert _keeps(document, table) == [None, None, True]
+    result = ok(box, session, "word_format_table", doc=d, table=table, scope="table", **arguments)
+    table = document.tables()[0].id
+    assert _keeps(document, table) == [None, None, None]
+    assert result.summary.startswith("Formatted") and result.changed
+    named = document._table_entry(table)[1].id
+    assert result.warnings == [f"{named} was not kept together: its last row's keep with the next is released"]
+
+
+def test_a_label_style_table_keeps_its_warning_with_keep_together_false(box, session):
+    """A table its rows' style keeps together is kept: keep_together false (nothing direct to
+    remove) says it is still kept by the style (round 25), not that it was not kept."""
+    d = session.open(with_style(docx(p("Before") + grid(3, LABEL) + p("After")), LABEL_STYLE), "label.docx")
+    table = session.entry(d).document.tables()[0].id
+    result = ok(box, session, "word_format_table", doc=d, table=table, scope="table", keep_together=False)
+    assert len(result.warnings) == 1 and "still kept together by its rows' styles" in result.warnings[0]
 
 
 def test_a_table_kept_together_does_not_take_the_next_block_along(box, session):

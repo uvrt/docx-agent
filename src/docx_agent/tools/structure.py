@@ -171,15 +171,23 @@ def word_headers_footers(call: Any, doc: str, section: str, which: str, action: 
     document = call.document
     section = resolve(call, section)
     footer = which == "footer"
-    if action == "remove":
-        edit = document.remove_footer(section, type) if footer else document.remove_header(section, type)
-        return outcome([edit], f"Removed the {type} {which} of {section}")
-    if action == "link":
-        return outcome([document.link_to_previous(section, type, footer=footer)],
+    if action in ("remove", "link"):
+        edit = document.link_to_previous(section, type, footer=footer)
+        if not edit.changed:
+            # Round 27: no own header (footer) to remove or link is as asked; said so.
+            note = f"{section} had no {type} {which} of its own: no change"
+            result = outcome([edit], note)
+            result.warnings.append(note)
+            return result
+        return outcome([edit], f"Removed the {type} {which} of {section}" if action == "remove" else
                        f"Linked the {type} {which} of {section} to the previous section's")
     if action == "unlink":
         edit = document.unlink_from_previous(section, type, footer=footer)
-        return outcome([edit], f"Unlinked: {edit.id}", data={"story": edit.id})
+        result = outcome([edit], f"Unlinked: {edit.id}", data={"story": edit.id})
+        if not edit.changed:
+            result.summary = f"{section} had its own {type} {which} already ({edit.id}): no change"
+            result.warnings.append(result.summary)
+        return result
     text = (text or "").replace("\r\n", "\n")
     lines = text.split("\n")
     own = document.section(section).stories()[which][type]
@@ -356,7 +364,8 @@ def word_links(call: Any, doc: str, action: str, target: str | None = None, find
     where = (find_range(call, find, None) if one_of({"target": target, "find": find}, "target", "find") == "find"
              else text_range(document, resolve(call, target)))
     if action == "add_bookmark":
-        return outcome([document.add_bookmark(where, need(bookmark, "bookmark"))], f"Bookmarked as {bookmark}")
+        edit = document.add_bookmark(where, need(bookmark, "bookmark"))
+        return outcome([edit], f"Bookmarked as {bookmark}" if edit.changed else f"No change: {edit.warnings[0]}")
     if (url is None) == (bookmark is None):
         raise ToolError("invalid_arguments", "give exactly one of url, bookmark", valid_options=["url", "bookmark"])
     return outcome([document.add_hyperlink(where, url, anchor=bookmark)], "Made a hyperlink")

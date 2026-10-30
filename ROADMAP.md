@@ -1018,6 +1018,14 @@ doc.render_svg(pages=diff.changed)     # or render_png; ids on every paragraph g
   style; never a pair matching neither), not by position: unpaired lines are
   `missing_paragraph` / `extra_paragraph` with the cell's `paragraphs` count, no fix; equal
   counts keep position unless the alignment crosses a pair matching by text.
+- **Round 27 (W7):** asking for what is so already succeeds with no change and a warning:
+  `keep_together: false` on a table not kept together, `keep_with_next: false` where the last
+  row does not keep, `word_lists` `remove` of a paragraph in no list (a span's items still
+  removed), `word_drawings` `inline` / `float` of a drawing that is so, and
+  `word_headers_footers` `remove` / `link` / `unlink` where there is nothing to do, and a
+  bookmark added under its own name over the same text. `keep_with_next: false` releases a
+  last row keeping alone on a table not kept together. Refusals that guard against a
+  mistake stay.
 - **Cost.** One full layout per document state, cached by the bytes' hash: `layout()` and
   `render_svg()` of the same state read one `docx2svg.convert_docx` (every page laid out
   and written as SVG; writing the SVG costs little beside the layout), tested by counting

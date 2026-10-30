@@ -5,6 +5,34 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.28 -- unreleased
+
+- **Asking for what is so already succeeds** (production round 27, W7). `word_format_table`
+  `keep_together: false` on a table not kept together (one row, too) and `keep_with_next:
+  false` where the last row does not keep were refused; now they change nothing, the summary
+  is `No change to <table>`, `changed` is empty and a warning says why (`t:X was not kept
+  together`, `t:X's last row did not keep with the next`); with another property in the call,
+  that is set and the warning stays. A table its rows' style keeps together keeps its round-25
+  warning; `keep_with_next: true` without `keep_together` stays refused. The library's
+  `set_keep_together(..., False)` and `set_table_keep_with_next(..., False)` return the same
+  unchanged `EditResult` with the warning instead of raising `EditError`. On a table not
+  kept together whose last row keeps with the next on its own, `keep_with_next: false` (with
+  or without `keep_together: false`) releases that row, the warning saying so (`t:X was not
+  kept together: its last row's keep with the next is released`).
+- **The same for the like refusals elsewhere.** `remove_from_list` on a paragraph in no list
+  (`word_lists` `remove`): no change and a warning, where `EditError` stopped the whole call
+  at the first such paragraph; the tool now takes the items in a span out of their lists and
+  names the others in one warning. `inline_drawing` on a drawing in the line and
+  `float_drawing` on a floating one (`word_drawings` `inline`, `float`): no change and a
+  warning; floating one with settings sets those (as `set_drawing`), where it stands.
+  `word_headers_footers` `remove` or `link` where the section has no such header or footer
+  of its own, and `unlink` where it has one, changed nothing already but said `Removed...`;
+  now the summary and a warning say no change. `add_bookmark` (`word_links`) under a name
+  already marking exactly that text: no change and a warning (`bm:X marks this text
+  already`); the name elsewhere stays refused. Refusals that guard against a mistake stay
+  (a wrong target kind, a missing name, a one-row table kept together, a level or restart for
+  a paragraph in no list, an inline shape). Tool definitions unchanged.
+
 ## 0.1.27 -- unreleased
 
 - **`word_compare_blocks` pairs a cell's paragraphs by an alignment** (production round 26,

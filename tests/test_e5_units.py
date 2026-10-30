@@ -106,11 +106,32 @@ def test_drawing_settings_are_checked_first():
     with pytest.raises(EditError):
         document.float_drawing(picture, x=3, x_align="left")
     with pytest.raises(EditError):
-        document.inline_drawing(picture)
-    with pytest.raises(EditError):
         document.insert_shape(f"{document.paragraphs()[0].id}@0", "notAShape")
     document.float_drawing(picture)
     assert document.drawing(picture).wrapping["wrap"] == "front"
+
+
+def test_float_or_inline_what_is_so_already_changes_nothing():
+    """Round 27: inline an inline drawing, float a floating one -- as asked, no change and a
+    warning; floating one with settings sets those (set_drawing), its place kept."""
+    document = Document.open(e5_probe.drawings_document())
+    picture = document.pictures()[0].id
+    before = document.to_bytes()
+    result = document.inline_drawing(picture)
+    assert not result.changed and result.warnings == [f"{picture} is inline already"]
+    assert document.to_bytes() == before
+    document.float_drawing(picture, x=20, y=10)
+    placed = document.drawing(picture).position
+    floated = document.to_bytes()
+    result = document.float_drawing(picture)
+    assert not result.changed and result.warnings == [f"{picture} floats already"]
+    assert document.to_bytes() == floated
+    result = document.float_drawing(picture, wrap="square")
+    assert result.changed and result.warnings[0].startswith(f"{picture} floats already")
+    assert document.drawing(picture).wrapping["wrap"] == "square"
+    assert document.drawing(picture).position == placed
+    with pytest.raises(EditError):
+        document.float_drawing(picture, wrap="sideways")      # checked as before
 
 
 # -- content controls --------------------------------------------------------------------------

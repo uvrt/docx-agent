@@ -455,6 +455,12 @@ def word_format_table(call: Any, doc: str, table: str, scope: str, row: int | No
             # Round 25, W2: the rows' keeps as Word reads them (Document.set_keep_together);
             # W5: with keep_with_next, the last row's too.
             edits.append(document.set_keep_together(table, keep_together, with_next=bool(keep_with_next)))
+            if keep_with_next is False and not edits[-1].changed \
+                    and not document.table_properties(table)["keep_together"]:
+                # Round 27: not kept together, both off -- a last row keeping alone is released.
+                released = document.set_table_keep_with_next(table, False)
+                if released.changed:
+                    edits[-1] = released
         elif keep_with_next is not None:
             edits.append(document.set_table_keep_with_next(table, keep_with_next))
         if not values and not edits:
@@ -472,6 +478,10 @@ def word_format_table(call: Any, doc: str, table: str, scope: str, row: int | No
         if values:
             edits.append(document.set_table(table, **values))
         result = outcome(edits, f"Formatted {table}", changed=[table])
+        if not values and not any(edit.changed for edit in edits):
+            # Round 27, W7: asked for what the table already is (keep_together false on a
+            # table not kept together): as asked, the warnings say why nothing changed.
+            result.summary, result.changed = f"No change to {table}", []
         if keep_together:
             taller = _taller_than_page(document, result.renamed.get(table, table))
             if taller is not None:
@@ -738,6 +748,8 @@ def drawings_tool(catalogue: Any = None) -> Any:
                 raise ToolError("invalid_arguments", "set needs something to set",
                                 valid_options=["wrap", "z_order", "x", "y", "alt_text"])
             return outcome(edits, f"Set {target}", changed=[target])
+        if not edit.changed:        # round 27: float a floating drawing, inline an inline one
+            return outcome([edit], f"No change to {target}")
         return outcome([edit], f"{action}: {target}", changed=[target])
 
     return word_drawings

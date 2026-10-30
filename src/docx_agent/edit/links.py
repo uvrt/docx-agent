@@ -551,12 +551,18 @@ class LinkOps:
     # -- bookmarks ---------------------------------------------------------------------------
 
     def add_bookmark(self: "Document", where: TextRange, name: str) -> "EditResult":
-        """Bookmark a range (an empty one marks a place) under ``name``."""
+        """Bookmark a range (an empty one marks a place) under ``name``.  A bookmark of that
+        name marking exactly this range already is as asked: no change, said in ``warnings``
+        (round 27); one elsewhere is refused."""
         from .document import EditError, EditResult
 
         check_name(name)
         markers = self._bookmark_markers()
-        if any(existing.casefold() == name.casefold() for existing in markers):
+        existing = next((known for known in markers if known.casefold() == name.casefold()), None)
+        if existing is not None:
+            if where.view == "current" and self._same_range(self._bookmark_range(existing), where):
+                return EditResult(f"bm:{existing}", changed=False,
+                                  warnings=[f"bm:{existing} marks this text already"])
             raise EditError(f"the document already has a bookmark {name!r}")
         if where.view != "current":
             raise EditError("edits take the current view")
@@ -581,6 +587,17 @@ class LinkOps:
             parent.insert(position, start)
             self.package.mark_dirty(part)
         return EditResult(f"bm:{name}", created=[f"bm:{name}"], renamed=renames)
+
+    @staticmethod
+    def _same_range(one: TextRange, other: TextRange) -> bool:
+        """Whether two ranges of the current view span the same text: the same paragraphs
+        (by element, so an id renamed since does not matter) and offsets."""
+        try:
+            a, b = one._entries()[1], other._entries()[1]
+        except (KeyError, ValueError):     # a range that no longer resolves is not this one
+            return False
+        return (a[0].element is b[0].element and a[-1].element is b[-1].element
+                and (one.start, one.end) == (other.start, other.end))
 
     def rename_bookmark(self: "Document", name: str, new: str) -> "EditResult":
         """Rename a bookmark, and every internal hyperlink and ``REF``/``PAGEREF``/``NOTEREF``

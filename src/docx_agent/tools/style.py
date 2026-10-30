@@ -46,12 +46,18 @@ def word_lists(call: Any, doc: str, targets: list[str], action: str, kind: str =
     document = call.document
     paragraphs = [p for address in resolve(call, targets) for p in paragraphs_of(document, address)]
     edits = []
+    listless = []
     for k, paragraph in enumerate(paragraphs):
         identifier = paragraph.id
         if action == "add":
             edits.append(document.add_to_list(identifier, kind, level=level or 0))
         elif action == "remove":
-            edits.append(document.remove_from_list(identifier))
+            # Round 27: a paragraph in no list is as asked; one note names them all.
+            edit = document.remove_from_list(identifier)
+            if edit.changed:
+                edits.append(edit)
+            else:
+                listless.append(edit.id)
         elif action == "level":
             edits.append(document.set_list_level(identifier, need(level, "level")))
         elif action == "restart":
@@ -69,7 +75,11 @@ def word_lists(call: Any, doc: str, targets: list[str], action: str, kind: str =
         membership = document.list_of(paragraph.id)
         lists.append({"id": paragraph.id, "list": None if membership is None else
                       {"kind": membership.kind, "level": membership.level, "num_id": membership.num_id}})
-    return outcome(edits, f"{action}: {len(paragraphs)} paragraph(s)", data=lists[:50])
+    result = outcome(edits, f"{action}: {len(paragraphs)} paragraph(s)", data=lists[:50])
+    if listless:
+        named = ", ".join(listless[:10]) + (f" and {len(listless) - 10} more" if len(listless) > 10 else "")
+        result.warnings.append(f"{len(listless)} paragraph(s) were not in a list, left as they were: {named}")
+    return result
 
 
 # -- W21 word_styles ---------------------------------------------------------------------------
