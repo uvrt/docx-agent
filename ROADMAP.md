@@ -538,7 +538,7 @@ id, then a built-in latent style, whose definition is written as Word writes it 
 `run.style` for character styles; `Styles.add/modify` for new or changed styles.
 **Direct formatting second:** `run.bold`, `italic`, `underline`, `strike`, `size`, `font`,
 `color` (theme colours kept as `w:themeColor`), `highlight`, `paragraph.alignment`,
-`indent`, `spacing`, `keep_with_next`, `page_break_before`, and `clear_direct_formatting()`,
+`indent`, `spacing`, `keep_with_next`, `keep_together` (`word_format`'s `keep_lines`), `page_break_before`, and `clear_direct_formatting()`,
 which is how an agent turns a mess back into a styled document. Reads distinguish *declared*
 (`run.bold` → `None` when inherited) from *effective* (`run.effective.bold`, from docx2svg).
 
@@ -1005,7 +1005,8 @@ doc.render_svg(pages=diff.changed)     # or render_png; ids on every paragraph g
   table longer than a page starts a page and breaks where full); `past_margins` measures a
   table's lines to their last character (Word lets only spaces hang past a cell's edge,
   measured); the render workers share one font scan (the first to start scans, the others
-  take it and read only what changed).
+  take it and read only what changed); `word_format` `keep_lines` (W4: Word's "Keep lines
+  together"), cleared by `clear` and reported by check's `direct_formatting`.
 - **Cost.** One full layout per document state, cached by the bytes' hash: `layout()` and
   `render_svg()` of the same state read one `docx2svg.convert_docx` (every page laid out
   and written as SVG; writing the SVG costs little beside the layout), tested by counting

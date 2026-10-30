@@ -347,6 +347,7 @@ PARAGRAPH_FIELDS = {
     "indent_first": number("First line; negative hangs.", minimum=-1584,
                            maximum=1584, optional=True),
     "keep_with_next": boolean("Keep with next.", optional=True),
+    "keep_lines": boolean("Keep lines together.", optional=True),
     "page_break_before": boolean("Page break before.", optional=True),
 }
 
@@ -355,6 +356,10 @@ PARAGRAPH_FIELDS = {
 #: as pptx-agent's ``ppt_format_text`` reads it): ``space_before`` and ``space_after``.
 #: ``word_format`` has no other top or bottom, so the meaning is the one.
 SPACING_ALIASES = {"top": "space_before", "bottom": "space_after"}
+
+#: word_format's names the Python API spells otherwise: ``keep_lines`` (Word's "Keep lines
+#: together", ``w:keepLines``; round 25, W4) is :meth:`Paragraph.format`'s ``keep_together``.
+_API_NAMES = {"keep_lines": "keep_together"}
 
 
 def known_style(document: Any, name: str, kind: str, field: str) -> None:
@@ -369,7 +374,7 @@ def known_style(document: Any, name: str, kind: str, field: str) -> None:
 
 def split_formatting(values: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
     run = {k: values[k] for k in RUN_FIELDS if k in values}
-    paragraph = {k: values[k] for k in PARAGRAPH_FIELDS if k in values and k != "indent_first"}
+    paragraph = {_API_NAMES.get(k, k): values[k] for k in PARAGRAPH_FIELDS if k in values and k != "indent_first"}
     if "indent_first" in values:
         first = values["indent_first"]
         if first >= 0:
@@ -393,7 +398,8 @@ def split_formatting(values: dict[str, Any]) -> tuple[dict[str, Any], dict[str, 
             # Round 16, F8: what check's direct_formatting fix clears -- only these.
             "clear": array(string(enum=[*RUN_FIELDS, *PARAGRAPH_FIELDS]),
                            "Direct properties to remove, back to the style's.", optional=True)},
-           refs=('targets[]',), group="word_style", mutates=True, aliases=SPACING_ALIASES)
+           refs=('targets[]',), group="word_style", mutates=True,
+           aliases={**SPACING_ALIASES, **{api: name for name, api in _API_NAMES.items()}})
 def word_format(call: Any, doc: str, targets: list[str], paragraph_style: str | None = None,
                 character_style: str | None = None, clear_direct: bool = False,
                 clear: list[str] | None = None, **values: Any) -> Result:
@@ -409,7 +415,7 @@ def word_format(call: Any, doc: str, targets: list[str], paragraph_style: str | 
         elif name in RUN_FIELDS:
             run[name] = None
         else:
-            paragraph[name] = None
+            paragraph[_API_NAMES.get(name, name)] = None
     if not (run or paragraph or paragraph_style or character_style or clear_direct):
         raise ToolError("invalid_arguments", "say what to set: a style, a run or a paragraph property",
                         valid_options=["paragraph_style", "character_style", *RUN_FIELDS, *PARAGRAPH_FIELDS,

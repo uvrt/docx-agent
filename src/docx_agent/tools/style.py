@@ -105,10 +105,11 @@ def describe_style(document: Any, style: Any) -> dict[str, Any]:
                 declared[name] = value
         if style.kind == "paragraph":
             for name in ("alignment", "space_before", "space_after", "line_spacing", "indent_left",
-                         "indent_right", "first_line", "hanging", "keep_with_next", "page_break_before"):
+                         "indent_right", "first_line", "hanging", "keep_with_next", "keep_together",
+                         "page_break_before"):
                 value = read_paragraph(paragraph, name)
                 if value is not None:
-                    declared[name] = value
+                    declared["keep_lines" if name == "keep_together" else name] = value
         shading = read_shading(paragraph if style.kind == "paragraph" else run)
         if shading is not None:
             declared["shading"] = shading
