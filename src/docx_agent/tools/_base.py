@@ -379,6 +379,28 @@ def wrap(handler: Callable[..., Any], *, mutates: bool, track: bool = True) -> C
 # -- arguments ---------------------------------------------------------------------------------
 
 
+#: A paragraph's properties the Python API names otherwise than the tools: ``keep_together``
+#: (``Paragraph.keep_together``, ``w:keepLines``) is ``keep_lines`` to a model, as
+#: ``word_format`` names it -- a table's ``keep_together`` (``word_format_table``, check's
+#: fact) is another thing (round 25, W4).
+TOOL_NAMES = {"keep_together": "keep_lines"}
+
+
+def tool_names(data: Any, within: str) -> Any:
+    """``data`` with the Python API's paragraph names (:data:`TOOL_NAMES`) as the tools say
+    them, in every object under a key ``within`` (``effective``, ``look``) at any depth."""
+    if isinstance(data, list):
+        return [tool_names(item, within) for item in data]
+    if not isinstance(data, dict):
+        return data
+    out = {}
+    for key, value in data.items():
+        if key == within and isinstance(value, dict):
+            value = {TOOL_NAMES.get(k, k): v for k, v in value.items()}
+        out[key] = tool_names(value, within)
+    return out
+
+
 def need(value: Any, name: str, why: str = "") -> Any:
     if value is None:
         raise ToolError("invalid_arguments", f"{name} is required{why}", field=name)

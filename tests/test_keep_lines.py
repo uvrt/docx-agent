@@ -1,7 +1,8 @@
 """Round 25, W4: ``word_format`` ``keep_lines`` -- Word's "Keep lines together"
 (``w:keepLines``; the Python API's ``keep_together``) -- set, turned off and cleared, and
 reported by check's ``direct_formatting`` as ``keep_with_next`` is, its fix clearing it; the
-styles' describe and word_compare_blocks name it too.  A paragraph that keeps its lines
+styles' describe, word_compare_blocks, word_inspect and word_design_facts name it so too (a
+table's ``keep_together`` is word_format_table's, another thing).  A paragraph that keeps its lines
 together and does not fit at a page's foot moves whole: docx2svg's rule, which Word for Mac
 16.106 drew the same in a made-up probe (CHANGELOG, round 25, W4).  Made-up documents only.
 """
@@ -48,7 +49,10 @@ def test_keep_lines_is_set_turned_off_and_cleared(box, session):
     assert node is not None and node.get(_W + "val") is None
     assert session.entry(d).document.paragraphs()[0].effective.keep_together
     inspected = ok(box, session, "word_inspect", doc=d, target=target).data["blocks"][0]
-    assert inspected["effective"]["keep_together"] is True
+    assert inspected["effective"]["keep_lines"] is True and "keep_together" not in inspected["effective"]
+    # The Python API keeps its name.
+    state = session.entry(d).document.state(target)
+    assert state["blocks"][0]["effective"]["keep_together"] is True
 
     ok(box, session, "word_format", doc=d, targets=[target], keep_lines=False)
     assert not session.entry(d).document.paragraphs()[0].effective.keep_together
@@ -58,7 +62,7 @@ def test_keep_lines_is_set_turned_off_and_cleared(box, session):
     # The Python API's name is read as word_format's, and the call says so.
     result = ok(box, session, "word_format", doc=d, targets=[target], keep_together=True)
     assert _element(session, d).find(f"{_W}pPr/{_W}keepLines") is not None
-    assert any("keep_lines" in note for note in result.warnings)
+    assert result.warnings[0] == "keep_together read as keep_lines"
 
     refused = box.dispatch(session, "word_format", {"doc": d, "targets": [target], "keep_lines": True,
                                                     "clear": ["keep_lines"]})
@@ -101,6 +105,11 @@ def test_styles_describe_and_compare_blocks_name_keep_lines(box, session):
     d = session.open(with_whole(), "styles.docx")
     declared = ok(box, session, "word_styles", doc=d, action="describe", name="Whole").data["declared"]
     assert declared["keep_lines"] is True and "keep_together" not in declared
+    facts_ = ok(box, session, "word_design_facts", doc=d, include=["declared_styles"]).data
+    [whole] = [s for s in facts_["declared_styles"] if s["name"] == "Whole"]
+    assert whole["look"]["keep_lines"] is True and "keep_together" not in whole["look"]
+    python = session.entry(d).document.design_facts(["declared_styles"])["declared_styles"]
+    assert [s for s in python if s["name"] == "Whole"][0]["look"]["keep_together"] is True
 
     document = Document.new()
     made = document.insert_markdown("Sample text.\n\nCopied text.", at="end")

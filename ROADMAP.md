@@ -1006,7 +1006,9 @@ doc.render_svg(pages=diff.changed)     # or render_png; ids on every paragraph g
   table's lines to their last character (Word lets only spaces hang past a cell's edge,
   measured); the render workers share one font scan (the first to start scans, the others
   take it and read only what changed); `word_format` `keep_lines` (W4: Word's "Keep lines
-  together"), cleared by `clear` and reported by check's `direct_formatting`.
+  together"), cleared by `clear` and reported by check's `direct_formatting`; every tool
+  says `keep_lines` for a paragraph (`word_inspect`, `word_design_facts`), the Python API
+  `keep_together`.
 - **Cost.** One full layout per document state, cached by the bytes' hash: `layout()` and
   `render_svg()` of the same state read one `docx2svg.convert_docx` (every page laid out
   and written as SVG; writing the SVG costs little beside the layout), tested by counting

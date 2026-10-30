@@ -12,7 +12,7 @@ from ooxml_edit.tools import REVIEW, Result, ToolError, array, boolean, integer,
 from ..edit.design import ALL_KINDS, CAPS, KINDS
 from ..edit.formatting import RUN_PROPERTIES, read_paragraph, read_run, read_shading
 from ..edit.styles import StyleError
-from ._base import need, outcome, resolve, word_tool
+from ._base import need, outcome, resolve, tool_names, word_tool
 from .text import PARAGRAPH_FIELDS, RUN_FIELDS, paragraphs_of, split_formatting  # noqa: F401
 
 DOC = string("Document id.")
@@ -232,6 +232,7 @@ def word_design_facts(call: Any, doc: str, include: list[str] | None = None, cur
         end = start + len(kept)
         next_cursor = f"c{end}" if end < total else None
         counts.append(f"declared styles {start + 1}-{end} of {total}" if kept else f"no declared styles of {total}")
+    data = tool_names(data, "look")             # a paragraph's keep_lines, as word_format says it
     left = data.get("omitted")
     return Result(summary="Design facts: " + ", ".join(counts) + (
         "; " + ", ".join(f"{n} more {k.replace('_', ' ')}" for k, n in left.items()) + " left out (include fewer kinds)"

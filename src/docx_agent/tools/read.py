@@ -10,7 +10,7 @@ from typing import Any
 from ooxml_edit.tools import Result, ToolError, boolean, page_text, string
 
 from ..markdown.read import _TYPED_NUMBER
-from ._base import resolve, short, word_tool
+from ._base import resolve, short, tool_names, word_tool
 
 DOC = string("Document id.")
 CURSOR = string("next_cursor of the previous page.", optional=True)
@@ -188,7 +188,7 @@ def word_read(call: Any, doc: str, range: str | None = None, view: str = "final"
            refs=('target',), group="word_text")
 def word_inspect(call: Any, doc: str, target: str, layout: bool = False) -> Result:
     state = call.document.state(resolve(call, target), layout=layout)
-    data = {key: state[key] for key in ("styles", "blocks", "notes", "comments", "revisions")
+    data = {key: tool_names(state[key], "effective") for key in ("styles", "blocks", "notes", "comments", "revisions")
             if state.get(key)}
     return Result(summary=f"Inspected {target}", data=data)
 

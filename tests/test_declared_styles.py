@@ -89,6 +89,7 @@ def test_the_tool_pages_declared_styles_by_size():
     from ooxml_edit.tools import Toolbox
 
     from docx_agent.tools import FORMAT, GROUPS, TOOLS
+    from docx_agent.tools._base import tool_names
 
     path = ROOT / "tests" / "fixtures" / "wordto" / "sample-10pages.docx"
     every = Document.open(path.read_bytes()).design_facts(["declared_styles"])["declared_styles"]
@@ -109,5 +110,5 @@ def test_the_tool_pages_declared_styles_by_size():
             cursor = result.next_cursor
             if cursor is None:
                 break
-    assert seen == every and pages > 1
+    assert seen == tool_names(every, "look") and pages > 1     # keep_lines, as the tools say it
     assert result.summary.endswith(f"of {len(every)}")

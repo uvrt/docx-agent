@@ -72,13 +72,13 @@
    "expect": {
     "ok": true,
     "summary": "Inspected p:77B9C794",
-    "data_sha": "26b7b3e889a2300d",
+    "data_sha": "3ff2b298716a29a2",
     "data_keys": [
      "blocks",
      "styles",
      "styles.Normal"
     ],
-    "data_sha_core": "26b7b3e889a2300d"
+    "data_sha_core": "3ff2b298716a29a2"
    }
   },
   {
@@ -90,13 +90,13 @@
    "expect": {
     "ok": true,
     "summary": "Inspected p:4B50F4CD",
-    "data_sha": "4a4f37c68f4cb36e",
+    "data_sha": "dbde7a886f0d491a",
     "data_keys": [
      "blocks",
      "styles",
      "styles.Normal"
     ],
-    "data_sha_core": "4a4f37c68f4cb36e"
+    "data_sha_core": "dbde7a886f0d491a"
    }
   },
   {

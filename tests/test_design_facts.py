@@ -14,6 +14,7 @@ from lxml import etree
 
 from docx_agent import Document
 from docx_agent.edit.design import KINDS
+from docx_agent.tools._base import tool_names
 
 #: A table style of this test's own: borders top, bottom and between rows; a dark header
 #: row with white bold text, a light first column in bold, light odd row bands; 10 pt text.
@@ -212,7 +213,9 @@ def test_word_design_facts(box, doc):
     result = box.dispatch(session, "word_design_facts", {"doc": d1})
     assert result.ok, result.error and result.error.to_json()
     assert result.summary == "Design facts: 9 styles, 1 table styles, 2 sections, 1 patterns"
-    assert result.data == doc.design_facts()
+    # The Python API's paragraph keep_together is keep_lines to a model (round 25, W4).
+    assert result.data == tool_names(doc.design_facts(), "look")
+    assert '"keep_together"' not in json.dumps(result.data) and '"keep_lines"' in json.dumps(result.data)
     only = box.dispatch(session, "word_design_facts", {"doc": d1, "include": ["table_styles"]})
     assert list(only.data) == ["table_styles"]
     refused = box.dispatch(session, "word_design_facts", {"doc": d1, "include": ["palette"]})

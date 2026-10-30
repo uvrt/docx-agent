@@ -12,8 +12,11 @@ snapshot commit; the development history before it is summarised here.
   also reads as `keep_lines`, saying so) sets it on or off, and `clear: ["keep_lines"]`
   takes it back to the style's. check's `direct_formatting` reports a direct `w:keepLines`
   that differs from the styles' as `keep_lines`, as it does `keep_with_next`, and its fix
-  clears it; `word_styles` describe and `word_compare_blocks` name it too; `word_inspect`'s
-  `effective` already said `keep_together`. docx2svg already paginates by it (a paragraph so
+  clears it; `word_styles` describe and `word_compare_blocks` name it too. The tools say
+  `keep_lines` for a paragraph everywhere, since a table's `keep_together` (`word_format_table`,
+  check's fact) is another thing: `word_inspect`'s `effective` and `word_design_facts`' looks
+  said `keep_together` and now say `keep_lines` (mapped at the tool layer; the Python API,
+  `Document.state()`, `design_facts()` and `Paragraph.keep_together`, keeps its names). docx2svg already paginates by it (a paragraph so
   kept that does not fit at a page's foot moves whole); a made-up probe in Word for Mac
   16.106 drew all 7 cases as docx2svg does (`feedback-round25/probe-L/keep.py`): at a
   page's foot a paragraph splits, kept it moves whole, a style's keep released directly
