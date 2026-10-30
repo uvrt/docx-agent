@@ -464,7 +464,12 @@ def word_format_table(call: Any, doc: str, table: str, scope: str, row: int | No
                 edits.append(document.set_column_width(table, column, new / 20))
         if values:
             edits.append(document.set_table(table, **values))
-        return outcome(edits, f"Formatted {table}", changed=[table])
+        result = outcome(edits, f"Formatted {table}", changed=[table])
+        if keep_together:
+            taller = _taller_than_page(document, result.renamed.get(table, table))
+            if taller is not None:
+                result.warnings.append(taller)
+        return result
     if look is not None:
         raise ToolError("invalid_arguments", "look is the table's: give scope table", field="look")
     if keep_together is not None:
@@ -514,6 +519,33 @@ def word_format_table(call: Any, doc: str, table: str, scope: str, row: int | No
         raise ToolError("invalid_arguments", f"nothing to set for the {scope}",
                         valid_options=["shading", "borders", "vertical_alignment", "width", "height", "cant_split"])
     return outcome(edits, f"Formatted {scope} of {table}", changed=[table])
+
+
+#: keep_together on a table taller than a page (round 25): Word does keep it, so does the tool.
+TALLER_THAN_PAGE = "taller than a page: Word starts it on a new page and breaks it where the page is full"
+
+
+def _taller_than_page(document: Any, table: str) -> str | None:
+    """The warning for a table kept together that is taller than a page, or ``None``.
+    Decided from the document's layout after the edit (the one ``check`` and ``render``
+    read, :meth:`~docx_agent.Document.layout`): a table kept together goes to the next page
+    whole where it fits on one, so one still drawn on more than one page is taller than the
+    page's text height (header rows drawn again count with it).  Where the document cannot
+    be laid out, or the layout stops before the table, that is not known, and the warning
+    says so instead."""
+    try:
+        placements = document.layout().where(table)
+    except Exception:  # noqa: BLE001 -- no layout: said, not guessed
+        placements = None
+    if isinstance(placements, list) and placements and not any(p.story == "body" for p in placements):
+        return None                         # a header's or a note's table: no page to break
+    if not isinstance(placements, list) or not placements:
+        return (f"{table} is kept together, but the document could not be laid out to it: whether it is "
+                "taller than a page is not known (if it is, Word starts it on a new page and breaks it where "
+                "the page is full)")
+    if len({placement.page for placement in placements if placement.story == "body"}) > 1:
+        return f"{table} is {TALLER_THAN_PAGE}"
+    return None
 
 
 def _body_width(document: Any, table: str, percent: float, alignment: str | None) -> dict[str, Any]:

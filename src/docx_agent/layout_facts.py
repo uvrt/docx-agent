@@ -61,7 +61,9 @@ takes its targets as one list with the values for all, so it is ``calls``, not `
     ``{"table", "pages", "direct"}``: a table its rows keep on one page -- every row but
     the last keeps with the next, the last does not, as ``word_format_table``
     ``keep_together`` leaves it -- with ``direct`` the paragraphs (the first of each row's
-    first cell) whose keep or release is direct formatting.  Those keeps and releases are
+    first cell) whose keep or release is direct formatting; ``taller_than_page``: drawn on
+    more than one page (Word starts it on a new page and breaks it where the page is full),
+    said here once, not as ``keep_with_next_at_foot`` entries.  Those keeps and releases are
     the table's, not ``direct_formatting``: not listed there, and no ``fix`` clears them
     (``keep_together: false`` does).
 ``split_rows``
@@ -192,6 +194,10 @@ class _Facts:
         #: rows' deciding paragraphs, whose keep is the table's.
         self.kept_tables = self._kept_tables()
         self.kept_leads = {id(row[0]) for _, _, rows in self.kept_tables for row in rows}
+        #: Those drawn on more than one page: taller than a page (a table kept together goes
+        #: on whole where it fits on one), reported once, as ``taller_than_page``.
+        self.taller_kept = {identifier for identifier, _, _ in self.kept_tables
+                            if len(self._table_pages(identifier)) > 1}
 
     # -- helpers ---------------------------------------------------------------------------
 
@@ -605,7 +611,10 @@ class _Facts:
                     found = self.document._index(part).entry_for(lead)
                     if found is not None:
                         direct.append(found.id)
-            entries.append({"table": identifier, "pages": pages, "direct": direct})
+            entry = {"table": identifier, "pages": pages, "direct": direct}
+            if identifier in self.taller_kept:
+                entry["taller_than_page"] = True
+            entries.append(entry)
         return entries
 
     def _new_page_after(self, k: int) -> bool:
@@ -654,8 +663,8 @@ class _Facts:
                 page, next_page = max(drawn), min(after)
                 if next_page <= page or not self.shown([page]):
                     continue
-                if not row_keeps_with_next(state, found.rows[row]):
-                    continue
+                if identifier in self.taller_kept or not row_keeps_with_next(state, found.rows[row]):
+                    continue                  # (a kept-together table taller than a page: said once)
                 entries.append({"table": identifier, "row": row, "page": page, "next_row": row + 1,
                                 "next_page": next_page})
         return entries

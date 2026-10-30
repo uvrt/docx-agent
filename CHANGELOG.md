@@ -27,6 +27,12 @@ snapshot commit; the development history before it is summarised here.
   (`{"table", "pages", "direct"}`), the keeps and the release are not `direct_formatting`
   and no fix clears them; `table_properties()["keep_together"]`, and `describe`'s tables
   say `keep_together: true`. `Document.set_keep_together(table, on)`. One row: refused.
+  A table kept together that is taller than a page is still kept so (Word starts it on a
+  new page and breaks it where that is full): the result warns "taller than a page", decided
+  from the layout after the edit (a kept-together table still drawn on more than one page;
+  where the document cannot be laid out to it, the warning says that is not known), and
+  check marks its `keep_together` entry `taller_than_page: true` instead of listing a
+  `keep_with_next_at_foot` split after each kept row of it.
 - **`past_margins` to the last character** (W3). A table's lines are measured from their
   first to their last character that is not a space: a table as wide as the column with no
   cell margins reported its lines' last spaces (0.8-1 pt past the edge). Measured in Word

@@ -224,6 +224,29 @@ def test_a_table_kept_together_does_not_take_the_next_block_along(box, session):
     assert len(facts(box, session, d)["keep_together"]) == 2
 
 
+def test_a_table_kept_together_taller_than_a_page_is_warned_of_and_reported_once(box, session):
+    """Word keeps it together all the same -- it starts a new page and breaks where that is
+    full -- so the tool does it and warns; check says ``taller_than_page`` on the table's
+    ``keep_together`` and no split after a kept row of it.  A table not kept together that
+    splits after kept rows is reported as before; a short table kept together is not warned of."""
+    body = (p("Before") + grid(70, LABEL) + p("Between", ppr="<w:pageBreakBefore/>") + grid(70, LABEL, label="Other")
+            + p("Then", ppr="<w:pageBreakBefore/>") + grid(4) + p("End"))
+    d = session.open(with_style(docx(body), LABEL_STYLE), "tall.docx")
+    document = session.entry(d).document
+    made = ok(box, session, "word_format_table", doc=d, table=document.tables()[0].id, scope="table",
+              keep_together=True)
+    tall, other, short = [t.id for t in document.tables()]
+    assert made.warnings == [f"{tall} is taller than a page: Word starts it on a new page and breaks it where "
+                             "the page is full"]
+    assert ok(box, session, "word_format_table", doc=d, table=short, scope="table", keep_together=True).warnings == []
+    tall, other, short = [t.id for t in document.tables()]
+    layout = facts(box, session, d)
+    kept = {e["table"]: e for e in layout["keep_together"]}
+    assert kept[tall]["taller_than_page"] is True and "taller_than_page" not in kept[short]
+    split = {e["table"] for e in layout["keep_with_next_at_foot"] if "table" in e}
+    assert split == {other}
+
+
 # -- W3: past the margins, to the last character -----------------------------------------------
 
 
