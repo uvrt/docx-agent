@@ -191,3 +191,113 @@ def test_table_style_and_borders_are_fixed_where_the_tool_writes_them(box):
     assert _apply(box, session, d, data) == 3
     assert _ok(box, session, "word_compare_blocks", doc=d, blocks=[copy],
                reference={"block": reference}).data["same"] == [copy]
+
+
+# -- round 26, W6: a cell's paragraphs paired by an alignment -------------------------------------
+
+
+def _two_paragraph_cell() -> tuple[Document, str, str]:
+    """A made-up sample whose notes cell holds a heading-styled label line and a body line,
+    and a copy of it in the same document: ``(document, sample, copy)``."""
+    document = Document.new()
+    document.insert_markdown("| Item | Notes |\n| --- | --- |\n| Item one | Body text here |", at="end")
+    sample = document.tables()[0].id
+    document.table(sample).cell(1, 1).paragraphs[0].insert_before("Section label", style="Heading 2")
+    copy = document.copy_blocks(document, sample, at="end").blocks[0]
+    assert document.compare_blocks([copy], sample)["same"] == [copy]
+    return document, sample, copy
+
+
+def _notes(document: Document, table: str) -> list:
+    return document.table(table).cell(1, 1).paragraphs
+
+
+def test_a_cell_missing_its_label_line_is_never_restyled_as_the_label(box):
+    document, sample, copy = _two_paragraph_cell()
+    label, body = _notes(document, copy)
+    label.delete()
+    body.set_text("Filled in by hand")
+    document.format_paragraph(body.id, bold=True)
+    data = document.compare_blocks([copy], sample)
+    found = _differences(data)
+    # By position the body line would pair with the label and be given its style.
+    assert "paragraph_style" not in found, data["differences"]
+    assert set(found) == {"paragraphs", "missing_paragraph", "bold"}
+    assert (found["paragraphs"]["value"], found["paragraphs"]["reference"], found["paragraphs"]["fix"]) == (1, 2, None)
+    assert found["paragraphs"]["cells"] == [f"{copy}/c1,1"]
+    assert found["missing_paragraph"]["cells"] == [f"{copy}/c1,1"] and found["missing_paragraph"]["fix"] is None
+    assert found["missing_paragraph"]["reference"] == {"paragraph_style": "heading 2", "text": "Section label",
+                                                       "index": 0}
+    # The body line pairs with the sample's body line (by style): its direct formatting is compared.
+    assert found["bold"]["paragraphs"] == [body.id]
+    assert found["bold"]["fix"] == {"tool": "word_format", "calls": [{"targets": [body.id], "clear": ["bold"]}]}
+    # Through the tool: the fixes leave only what no tool fixes.
+    session = box.session()
+    d = session.open(document.to_bytes(), "cells.docx")
+    data = _ok(box, session, "word_compare_blocks", doc=d, blocks=[copy], reference={"block": sample}).data
+    assert _apply(box, session, d, data) == 1
+    again = _ok(box, session, "word_compare_blocks", doc=d, blocks=[copy], reference={"block": sample}).data
+    assert [e["property"] for e in again["differences"]] == ["paragraphs", "missing_paragraph"]
+
+
+def test_a_cell_with_a_line_the_sample_has_not_reports_it_as_extra():
+    document, copy_of_sample, sample = _two_paragraph_cell()   # the two-line cell is the copy now
+    label, body = _notes(document, sample)
+    label.delete()
+    data = document.compare_blocks([copy_of_sample], sample)
+    found = _differences(data)
+    assert set(found) == {"paragraphs", "extra_paragraph"}, data["differences"]
+    assert (found["paragraphs"]["value"], found["paragraphs"]["reference"]) == (2, 1)
+    extra = found["extra_paragraph"]
+    assert extra["paragraphs"] == [_notes(document, copy_of_sample)[0].id]
+    assert extra["value"] == {"paragraph_style": "heading 2", "text": "Section label"}
+    assert extra["reference"] is None and extra["fix"] is None
+
+
+def test_reordered_lines_are_missing_and_extra_not_restyled():
+    document, sample, copy = _two_paragraph_cell()
+    label, body = _notes(document, copy)
+    label.move(after=body.id)
+    data = document.compare_blocks([copy], sample)
+    found = _differences(data)
+    # Equal counts, but the texts say the pairs are crossed: no style fixes, no count.
+    assert set(found) == {"missing_paragraph", "extra_paragraph"}, data["differences"]
+    missing = found["missing_paragraph"]["reference"]
+    assert found["extra_paragraph"]["value"] == {k: v for k, v in missing.items() if k != "index"}
+    assert all(d["fix"] is None for d in data["differences"])
+
+
+def test_equal_counts_keep_pairing_by_position():
+    document, sample, copy = _two_paragraph_cell()
+    label, body = _notes(document, copy)
+    # Filled with other text and the label restyled: still compared line by line.
+    label.set_text("Another label")
+    body.set_text("Other text entirely")
+    document.set_paragraph_style(label.id, "Heading 3")
+    found = _differences(document.compare_blocks([copy], sample))
+    assert set(found) == {"paragraph_style"}
+    assert found["paragraph_style"]["paragraphs"] == [label.id]
+    assert found["paragraph_style"]["fix"]["calls"] == [{"targets": [label.id], "paragraph_style": "heading 2"}]
+
+
+def test_a_label_matching_by_text_is_restyled_and_like_lines_repeat_their_pattern():
+    document, sample, copy = _two_paragraph_cell()
+    label, body = _notes(document, copy)
+    # The label's text a little edited and restyled, the body line gone: the label still
+    # pairs by its text, so its style is fixed; the body line is missing.
+    body.delete()
+    label.set_text("Section labels")
+    document.set_paragraph_style(label.id, "Heading 3")
+    found = _differences(document.compare_blocks([copy], sample))
+    assert set(found) == {"paragraphs", "missing_paragraph", "paragraph_style"}
+    assert found["missing_paragraph"]["reference"]["text"] == "Body text here"
+    assert found["paragraph_style"]["fix"]["calls"] == [{"targets": [label.id], "paragraph_style": "heading 2"}]
+    # A sample line is the pattern for more lines like it after it: a cell filled with
+    # three body lines under its label is as the sample.
+    document, sample, copy = _two_paragraph_cell()
+    _, body = _notes(document, copy)
+    body.insert_after("A second body line")
+    _notes(document, copy)[2].insert_after("A third body line")
+    assert len(_notes(document, copy)) == 4
+    data = document.compare_blocks([copy], sample)
+    assert data["same"] == [copy], data["differences"]
