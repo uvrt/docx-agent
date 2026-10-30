@@ -53,6 +53,17 @@ How to use them:
   `keep_together: true` (scope table) keeps every row but the last with the next and
   releases the last, as Word reads row keeps; `check` reports it as the table's
   `keep_together`, not as direct formatting. Longer than a page, it starts a page and breaks.
+  With `keep_with_next: true` as well, the last row keeps too: the table stays with the
+  block after it (a table and the box after it move to the next page together). The
+  paragraph between two tables must keep with the next as well (`word_format`), or the
+  second table can still start a page alone: the call's warning names it. A label style
+  that keeps every row's first paragraph is the same thing: `check` reports such a table
+  with `with_next`. Chains of these longer than a page break where Word breaks them, and
+  `keep_with_next_at_foot` says where.
+- **`check`'s `layout.settings`** holds what the document is set to do (the tables kept
+  together), not facts to act on: a summary counts none of it. A table kept together that
+  is taller than a page is said there and, once, in `keep_with_next_at_foot`
+  (`taller_than_page`), which is worth a look.
 - **Markdown columns aligned `:-:` or `-:`** are direct alignment that `check` reports unless
   `style_map` names `table_cell_center` / `table_cell_right` styles; the warning names the role.
 - **A layout fact is only as good as the page it is on.** `layout.uncertain` names the

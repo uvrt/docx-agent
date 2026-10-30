@@ -5,6 +5,34 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.26 -- unreleased
+
+- **A table kept together and with the next block** (production round 25, W5).
+  `word_format_table` `keep_with_next: true` with `keep_together: true` (scope `table`) keeps
+  the last row with the next as well -- `w:keepNext` on its deciding paragraph, directly only
+  where its styles do not keep it -- so a table and the box after it go to the next page
+  together. On a table already kept together, `keep_with_next` alone keeps or releases the
+  last row; on a table not kept together it is refused (a last row that keeps alone takes
+  only itself to the next page with the block after it, the rest left behind: measured),
+  as is `keep_together: false` with `keep_with_next: true`. `keep_together: false` removes
+  the last row's keep with the others. A paragraph between that does not keep with the
+  next lets the second table start a page alone (measured): the call warns and names it.
+  `table_properties` gains `keep_with_next`; `describe` says `keep_with_next: true` beside
+  `keep_together: true`. A table kept together is now one whose every row but the last
+  keeps, the last too or not -- so a label style that keeps every row is reported as kept
+  together `with_next` (it is, in Word), and `keep_together: false` on it warns that the
+  style still keeps the rows.
+- **check's `layout.settings`** (W5): the tables kept together moved from
+  `layout.keep_together` to `layout.settings.keep_together` -- what the document is set to
+  do, not facts to act on; a summary counts none of it. Entries gain `with_next: true`. A
+  table kept together taller than a page keeps `taller_than_page` there and is also listed
+  once in `keep_with_next_at_foot` (its first split, `taller_than_page: true`), so it stays
+  among the facts to look at. `keep_with_next_at_foot` also reports a table whose last row
+  keeps with the next, drawn last on its page with the next block on a later page (a chain
+  of keeps longer than a page, broken there: `{"table", "row", "page", "next", "next_page"}`).
+  Measured in Word for Mac 16.106 (`feedback-round25/probe-M/w5.py`, 37 cases): docx2svg
+  places every one as Word does.
+
 ## 0.1.25 -- unreleased
 
 - **Keep lines together** (production round 25, W4). `word_format` `keep_lines` (Word's
