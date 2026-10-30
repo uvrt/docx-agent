@@ -5,6 +5,25 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.27 -- unreleased
+
+- **`word_compare_blocks` pairs a cell's paragraphs by an alignment** (production round 26,
+  W6). A cell's paragraph *k* was compared with the sample cell's paragraph *k* (or its
+  last), so a copy whose cell lacked the sample's label line had its body line restyled as
+  the label. Now the cell's paragraphs and the sample cell's are aligned in order by style
+  and text (case and white space ignored): pairs whose texts are the same or 0.8 alike
+  (`TEXT_SIMILARITY`, difflib's ratio) first, then pairs of the same style; two paragraphs
+  matching neither way never pair. A sample paragraph left unpaired is a
+  `missing_paragraph` (the cell; `reference` its `paragraph_style`, the start of its `text`,
+  its `index`), a copy paragraph left unpaired an `extra_paragraph` (the paragraph; `value`
+  its style and text), and where the counts differ the cell's `paragraphs` differ (`value`
+  the copy's count, `reference` the sample's); none has a fix. A copy paragraph after a
+  paired one, in that pair's sample style, repeats it (a sample line is the pattern for like
+  lines after it, as the last body row is for more rows). Equal counts pair by position as
+  before unless the alignment crosses a pair matching by text (reordered lines: missing and
+  extra, no style fix). So a style fix rests on matching text, or on position where the
+  counts are equal. Tool definitions unchanged.
+
 ## 0.1.26 -- unreleased
 
 - **A table kept together and with the next block** (production round 25, W5).
