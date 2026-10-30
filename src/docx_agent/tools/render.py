@@ -156,14 +156,169 @@ class PageRenderer(RendererBase):
         """What a worker's first layout and raster would pay for once (per process): docx2svg's
         imports and its scan of the font folders (:func:`docx2svg.warm`, for the folders
         ``OOXML_FONT_DIRS`` names), and the rasteriser's own load of the system's fonts: one
-        line of text."""
+        line of text.
+
+        The font folders are scanned once for all the workers (round 25, R1): the first
+        worker to start scans them (:func:`docx2svg.scan_fonts`) and saves the scan where
+        the others take it (:func:`shared_scan`), each handing it to its ``warm(scan=...)``,
+        which reads only the files changed or added since -- so a changed font folder is
+        still seen -- and saves the scan again when it read any."""
         import docx2svg
         from docx2svg.png import svg_to_png
 
-        docx2svg.warm()
+        held = shared_scan()
+        found = docx2svg.warm(scan=held)
+        if held is not None and found != held:
+            _save_scan(found)
 
         svg_to_png('<svg xmlns="http://www.w3.org/2000/svg" width="64" height="16">'
                    '<text x="0" y="12" font-family="sans-serif" font-size="10">Aa</text></svg>')
+
+
+def _scan_place() -> "str | None":
+    """Where the workers keep their font scan: a file in a folder of this user's own in
+    the temporary folder (made ``0700``; on POSIX one another user owns, or anyone else
+    may write to, is not used), named for the docx2svg version and the font folders
+    ``OOXML_FONT_DIRS`` adds; ``None`` where there is no such place."""
+    import hashlib
+    import os
+    import stat
+    import sys
+    import tempfile
+
+    import docx2svg
+
+    try:
+        if sys.platform == "win32":  # the temporary folder is the user's own
+            folder = os.path.join(tempfile.gettempdir(), "docx-agent")
+            os.makedirs(folder, exist_ok=True)
+        else:
+            folder = os.path.join(tempfile.gettempdir(), f"docx-agent-{os.getuid()}")
+            os.makedirs(folder, mode=0o700, exist_ok=True)
+            found = os.lstat(folder)
+            if (not stat.S_ISDIR(found.st_mode) or found.st_uid != os.getuid()
+                    or found.st_mode & 0o077):
+                return None
+    except OSError:
+        return None
+    key = hashlib.sha256("\0".join((docx2svg.__version__, sys.platform,
+                                    os.environ.get("OOXML_FONT_DIRS", ""))).encode()).hexdigest()[:16]
+    return os.path.join(folder, f"font-scan-{key}.pickle")
+
+
+def shared_scan() -> Any:
+    """The font scan this machine's render workers share (:class:`docx2svg.fonts.FontScan`):
+    the saved one, or -- for the first worker -- a scan made now and saved (the others
+    starting at the same time wait for it rather than read the folders too: a lock on a
+    file beside it).  ``None`` where there is no place to keep it (each worker scans, as
+    before)."""
+    import docx2svg
+
+    place = _scan_place()
+    if place is None:
+        return None
+    held = _read_scan(place)
+    if held is None:
+        with _locked(place + ".lock"):
+            held = _read_scan(place)
+            if held is None:
+                held = docx2svg.scan_fonts()
+                _save_scan(held, place)
+    return held
+
+
+def _read_scan(place: str) -> Any:
+    """The scan saved at ``place``, or ``None`` (none, unreadable, not a scan)."""
+    import pickle
+
+    from docx2svg.fonts import FontScan
+
+    try:
+        with open(place, "rb") as handle:
+            found = pickle.load(handle)
+    except Exception:  # noqa: BLE001 -- a missing, cut short or foreign file: scan afresh
+        return None
+    return found if isinstance(found, FontScan) else None
+
+
+def _save_scan(scan: Any, place: "str | None" = None) -> None:
+    """Save ``scan`` at ``place`` (:func:`_scan_place`), whole or not at all: written
+    beside it and moved over it."""
+    import os
+    import pickle
+    import tempfile
+
+    place = place if place is not None else _scan_place()
+    if place is None:
+        return
+    try:
+        handle, written = tempfile.mkstemp(dir=os.path.dirname(place), suffix=".part")
+        with os.fdopen(handle, "wb") as out:
+            pickle.dump(scan, out, protocol=pickle.HIGHEST_PROTOCOL)
+        os.replace(written, place)
+    except OSError:
+        pass
+
+
+#: How many times Windows' ten-second lock is tried for (ten minutes) before going on
+#: without it.
+_LOCK_TRIES = 60
+
+
+class _locked:
+    """An exclusive lock on ``path`` while the block runs (``flock``, ``msvcrt.locking`` on
+    Windows), released with the process if it dies; where it cannot be taken, none."""
+
+    def __init__(self, path: str) -> None:
+        self.path = path
+        self.handle: Any = None
+
+    def __enter__(self) -> "_locked":
+        import sys
+
+        try:
+            self.handle = open(self.path, "a+b")
+            if sys.platform == "win32":
+                import msvcrt
+
+                self.handle.seek(0)
+                for _ in range(_LOCK_TRIES):
+                    try:
+                        msvcrt.locking(self.handle.fileno(), msvcrt.LK_LOCK, 1)
+                        break
+                    except OSError:  # LK_LOCK gives up after ten seconds: wait on
+                        continue
+                else:
+                    raise OSError("the font scan's lock stayed taken")
+            else:
+                import fcntl
+
+                fcntl.flock(self.handle.fileno(), fcntl.LOCK_EX)
+        except OSError:
+            if self.handle is not None:
+                self.handle.close()
+            self.handle = None
+        return self
+
+    def __exit__(self, *exc: Any) -> None:
+        if self.handle is None:
+            return
+        import sys
+
+        try:
+            if sys.platform == "win32":
+                import msvcrt
+
+                self.handle.seek(0)
+                msvcrt.locking(self.handle.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(self.handle.fileno(), fcntl.LOCK_UN)
+        except OSError:
+            pass
+        finally:
+            self.handle.close()
 
 
 #: The layouts this process made or read last, by a digest of their pickle (``laid_out``):

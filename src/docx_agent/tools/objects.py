@@ -408,7 +408,8 @@ _TABLE_SIDES = ("top", "bottom", "left", "right", "inside_h", "inside_v")
             "header_rows": integer("table: rows repeated on each page.", minimum=0, maximum=500,
                                    optional=True),
             "look": array(string(enum=list(LOOK_NAMES)), "table: style options on, the rest off.", optional=True),
-            "cant_split": boolean("row (table: all): never split across pages.", optional=True)},
+            "cant_split": boolean("row (table: all): never split across pages.", optional=True),
+            "keep_together": boolean("table: on one page; rows keep with next, last row not.", optional=True)},
            refs=('table',), group="word_objects", mutates=True)
 def word_format_table(call: Any, doc: str, table: str, scope: str, row: int | None = None,
                       column: int | None = None, style: str | None = None, width: float | None = None,
@@ -416,7 +417,8 @@ def word_format_table(call: Any, doc: str, table: str, scope: str, row: int | No
                       alignment: str | None = None, shading: str | None = None, borders: str | None = None,
                       vertical_alignment: str | None = None, height: float | None = None,
                       height_rule: str = "at_least", header_rows: int | None = None,
-                      look: list[str] | None = None, cant_split: bool | None = None) -> Result:
+                      look: list[str] | None = None, cant_split: bool | None = None,
+                      keep_together: bool | None = None) -> Result:
     document = call.document
     table = resolve(call, table)
     view = document.table(table)
@@ -445,10 +447,13 @@ def word_format_table(call: Any, doc: str, table: str, scope: str, row: int | No
             values["look"] = {LOOK_NAMES[name]: name in look for name in LOOK_NAMES}
         if cant_split is not None:
             edits.extend(document.set_row(table, r, cant_split=cant_split) for r in range(len(view.rows)))
+        if keep_together is not None:
+            # Round 25, W2: the rows' keeps as Word reads them (Document.set_keep_together).
+            edits.append(document.set_keep_together(table, keep_together))
         if not values and not edits:
             raise ToolError("invalid_arguments", "nothing to set for the table",
                             valid_options=["style", "width", "width_percent", "alignment", "shading", "borders",
-                                           "header_rows", "look", "cant_split"])
+                                           "header_rows", "look", "cant_split", "keep_together"])
         if width_of == "body":
             # The columns shared again first, the cells' widths with them: an autofit
             # table is drawn at its cells' widths, which a table width alone leaves.
@@ -462,6 +467,9 @@ def word_format_table(call: Any, doc: str, table: str, scope: str, row: int | No
         return outcome(edits, f"Formatted {table}", changed=[table])
     if look is not None:
         raise ToolError("invalid_arguments", "look is the table's: give scope table", field="look")
+    if keep_together is not None:
+        raise ToolError("invalid_arguments", "keep_together is the table's: give scope table (cant_split keeps a "
+                        "row on one page)", field="keep_together")
     if cant_split is not None and scope not in ("row", "table"):
         raise ToolError("invalid_arguments", "cant_split is a row's: give scope row (or table, for every row)",
                         field="cant_split")

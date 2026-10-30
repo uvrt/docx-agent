@@ -52,8 +52,18 @@ takes its targets as one list with the values for all, so it is ``calls``, not `
     anyway (round 24, W3): a page break before it (its style's or its own), a page break
     at its start or at the end of the paragraph, or a section break that starts a new
     page.  ``{"table", "row", "page", "next_row", "next_page"}``: a table split after a
-    row (from 0) whose paragraphs all keep with the next, the next row on a later page --
-    Word keeps such rows with the next on one page while they fit.
+    row (from 0) that keeps with the next, the next row on a later page -- Word keeps such
+    rows with the next on one page while they fit.  A row keeps with the next when the
+    first paragraph of its first cell does (round 25, W1: docx2svg's rule,
+    :func:`docx2svg.table.row_keeps_with_next`; a nested table first in that cell: its
+    first paragraph) -- the other cells' paragraphs do not count.
+``keep_together`` (round 25, W2)
+    ``{"table", "pages", "direct"}``: a table its rows keep on one page -- every row but
+    the last keeps with the next, the last does not, as ``word_format_table``
+    ``keep_together`` leaves it -- with ``direct`` the paragraphs (the first of each row's
+    first cell) whose keep or release is direct formatting.  Those keeps and releases are
+    the table's, not ``direct_formatting``: not listed there, and no ``fix`` clears them
+    (``keep_together: false`` does).
 ``split_rows``
     ``{"table", "row", "pages"}``: a row (from 0) whose content is drawn on two pages.  No
     Word tool sets a row's "allow row to break across pages" yet: no fix.
@@ -94,7 +104,7 @@ from fractions import Fraction
 from typing import TYPE_CHECKING, Any, Iterable
 
 from docx2svg.paths import resolve_path
-from docx2svg.table import resolve_table, table_style_id
+from docx2svg.table import resolve_table, row_keeps_with_next, table_style_id
 from docx2svg.resolve.cascade import style_chain
 
 from collections.abc import Mapping
@@ -177,6 +187,11 @@ class _Facts:
                 if key is not None:
                     self.placed.setdefault(layout._canon(key), []).append((number, line))
         self.top_level = self._top_level()
+        #: The tables kept together (``keep_together``): ``[(table id, part, rows)]``
+        #: (:func:`docx_agent.edit.table_format.row_keeps`), and the ``id()`` of each of their
+        #: rows' deciding paragraphs, whose keep is the table's.
+        self.kept_tables = self._kept_tables()
+        self.kept_leads = {id(row[0]) for _, _, rows in self.kept_tables for row in rows}
 
     # -- helpers ---------------------------------------------------------------------------
 
@@ -249,6 +264,7 @@ class _Facts:
                      if self.shown({p for i in e["ids"] for p in self.pages_of(i)})],
                     "empty_paragraphs", out)
         self.capped(self.keep_with_next(), "keep_with_next_at_foot", out)
+        self.capped(self.keep_together(), "keep_together", out)
         split, unrepeated = self.tables()
         self.capped(split, "split_rows", out)
         self.capped(unrepeated, "header_not_repeated", out)
@@ -359,7 +375,7 @@ class _Facts:
             mine = _effective.paragraph(document, element)
             styled = _effective.paragraph(document, element, direct=False)
             for name, value, base in _paragraph_values(mine, styled):
-                if value != base:
+                if value != base and not (name == "keep_with_next" and id(element) in self.kept_leads):
                     props[name], style_has[name] = value, base
         walked = _text.walk(element)
         counts: dict[int, tuple[Any, str]] = {}
@@ -563,6 +579,35 @@ class _Facts:
         entries += self._kept_rows()
         return entries
 
+    def _kept_tables(self) -> list[tuple[str, Any, list]]:
+        from .edit.table_format import kept_together, row_keeps
+
+        out = []
+        for part in self.document._parts():
+            index = self.document._index(part)
+            if index.story == "comments":
+                continue
+            for table in index.tables:
+                rows = row_keeps(self.document, table.element)
+                if kept_together(rows):
+                    out.append((table.id, part, rows))
+        return out
+
+    def keep_together(self) -> list[dict]:
+        entries = []
+        for identifier, part, rows in self.kept_tables:
+            pages = self._table_pages(identifier)
+            if pages and not self.shown(pages):
+                continue
+            direct = []
+            for lead, _, styled, declared in rows:
+                if declared is not None and declared != styled:
+                    found = self.document._index(part).entry_for(lead)
+                    if found is not None:
+                        direct.append(found.id)
+            entries.append({"table": identifier, "pages": pages, "direct": direct})
+        return entries
+
     def _new_page_after(self, k: int) -> bool:
         """Whether the top-level block after block ``k`` (a paragraph) starts a new page
         whatever keeps it: a page break before it (style or direct), a page break run at
@@ -588,27 +633,28 @@ class _Facts:
         return False
 
     def _kept_rows(self) -> list[dict]:
-        """Tables split after a row whose paragraphs all keep with the next."""
+        """Tables split after a row that keeps with the next (docx2svg's rule, the one its
+        layout paginates by: :func:`docx2svg.table.row_keeps_with_next`)."""
         rows, _ = self._drawn_rows()
         tree = self.document.package.tree(self.main)
+        state = _effective.model(self.document).model
         entries = []
         for table, drawn_rows in rows.items():
             element = resolve_path(tree, table)
-            if element is None:
+            found = _model_table(state.body, table)
+            if element is None or found is None:
                 continue
             own = element.findall(_W + "tr")
             header_rows = _header_rows(element)
             identifier = _block_id(self.document, self.main, table) or table
             for row, drawn in sorted(drawn_rows.items()):
                 after = drawn_rows.get(row + 1)
-                if row < header_rows or after is None or row >= len(own):
+                if row < header_rows or after is None or row >= len(own) or row >= len(found.rows):
                     continue
                 page, next_page = max(drawn), min(after)
                 if next_page <= page or not self.shown([page]):
                     continue
-                paragraphs = list(own[row].iter(_W + "p"))
-                if not paragraphs or not all(_effective.paragraph(self.document, paragraph).keep_with_next
-                                             for paragraph in paragraphs):
+                if not row_keeps_with_next(state, found.rows[row]):
                     continue
                 entries.append({"table": identifier, "row": row, "page": page, "next_row": row + 1,
                                 "next_page": next_page})
@@ -742,9 +788,9 @@ class _Facts:
                     extent[0], extent[1] = min(extent[0], rule.x), max(extent[1], rule.x + rule.width)
             for line in page.lines:
                 match = _ROW.match(line.path) if line.story is None else None
-                if match and line.spans:
-                    low = min(span.xs[0] for span in line.spans if span.xs)
-                    high = max(span.end for span in line.spans)
+                ink = _ink(line.spans) if match else None
+                if ink is not None:
+                    low, high = ink
                     extent = extents.setdefault(match.group(1), [low, high])
                     extent[0], extent[1] = min(extent[0], low), max(extent[1], high)
             for table, (low, high) in extents.items():
@@ -835,6 +881,24 @@ def _kind(line) -> str:
     if story == "body":
         return "table" if "/w:tc[" in line.path else "body"
     return {"footnotes": "footnote", "endnotes": "endnote"}.get(story, story)
+
+
+def _ink(spans) -> tuple | None:
+    """``(left, right)`` device px of a line's text from its first character that is not
+    white space to the end of its last (``None`` for a line of none): a line's spaces are
+    not drawn, and Word lets those that end a line run past the cell's edge (round 25, W3:
+    a table as wide as the column with no cell margins reported its lines' last spaces as
+    past the margin, its text inside).  A character's end is the next one's pen, or the
+    span's end after its last (docx2svg's :class:`~docx2svg.layout.Span`)."""
+    low = high = None
+    for span in spans:
+        for k, char in enumerate(span.chars):
+            if char.isspace() or k >= len(span.xs):
+                continue
+            start, end = span.xs[k], span.xs[k + 1] if k + 1 < len(span.xs) else span.end
+            low = min(start, end) if low is None else min(low, start, end)
+            high = max(start, end) if high is None else max(high, start, end)
+    return None if low is None else (low, high)
 
 
 def _paragraph_values(mine, styled):

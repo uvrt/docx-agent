@@ -23,6 +23,12 @@ What Word writes, and docx-agent with it (lengths in points here, twips in the f
   row ``w:cantSplit`` and, where it states no height, an at-least height of 1134 (2 cm),
   and the cell's paragraphs indents of 113 left and right.
 * **A column's width**: its ``w:gridCol`` and its cells' ``w:tcW``.
+* **A table kept together** (round 25, W2; Word has no table setting for it): every row
+  but the last keeps with the next -- ``w:keepNext`` on the paragraph Word decides a row's
+  keep by, the first of its first cell (:func:`docx2svg.table.lead_paragraph`), only where
+  its styles do not keep it already -- and the last row does not, so the table does not
+  chain into what follows: ``w:keepNext w:val="0"`` there only where its style keeps it
+  (:meth:`TableFormatOps.set_keep_together`).
 * **A floating table**: ``w:tblpPr`` (``leftFromText``, ``rightFromText``,
   ``topFromText``, ``bottomFromText``, ``vertAnchor``, ``horzAnchor``, ``tblpX``/``tblpY``
   -- Word writes a positive offset **a twip more** than it was given: 100 pt is 2001 -- or
@@ -391,7 +397,9 @@ class TableFormatOps:
         """What a table states itself (``None`` where it states nothing): ``style`` (its
         name), ``width``, ``layout``, ``alignment``, ``indent``, ``look``, ``borders``,
         ``shading``, ``cell_margins``, ``floating``, ``header_rows``, ``columns`` (the
-        grid's widths) -- lengths in points, a width in percent as ``"n%"``."""
+        grid's widths) -- lengths in points, a width in percent as ``"n%"`` -- and
+        ``keep_together``: whether its rows keep it on one page (:meth:`set_keep_together`;
+        by their effective keeps, styles' too)."""
         _, entry = self._table_entry(table)
         element = entry.element
         props = element.find(_W + "tblPr")
@@ -425,7 +433,59 @@ class TableFormatOps:
             "floating": _read_floating(find("tblpPr"), find("tblOverlap")),
             "header_rows": header,
             "columns": [points(w) for w in grid_widths(element)],
+            "keep_together": kept_together(row_keeps(self, element)),
         }
+
+    def set_keep_together(self: "Document", table: str, on: bool) -> "EditResult":
+        """Keep a table on one page with its rows' keeps, as Word reads them (round 25, W2):
+        the first paragraph of each row's first cell (a nested table's first there) keeps
+        with the next in every row but the last -- set directly only where its styles do
+        not keep it, a direct release of a style's keep removed -- and the last row's does
+        not, so the table goes on to the next page whole where it does not fit and does not
+        take the block after it along (a direct ``w:val="0"`` only where its style keeps
+        it, else its direct keep removed).  A table taller than a page breaks where it is
+        full, as Word breaks it (measured: ``feedback-round25/measurements-J.md``).
+
+        Off (``on`` false) removes what this writes, and only that, recognised by the
+        pattern it leaves: on a table whose rows keep exactly so (every row but the last,
+        :func:`kept_together`), each row's deciding paragraph's direct ``w:keepNext`` that
+        differs from its styles' -- a keep where they give none, a release where they keep.
+        A direct keep its styles give anyway, the rows' other paragraphs and every other
+        property stay.  :class:`EditError` for a one-row table (nothing to keep together;
+        ``cant_split`` keeps a row on one page) and, off, for a table not kept so."""
+        from . import formatting as _formatting
+        from .document import EditError, EditResult
+
+        part, entry = self._table_entry(table)
+        rows = row_keeps(self, entry.element)
+        if len(rows) < 2:
+            raise EditError(f"{entry.id} has one row: nothing to keep together (cant_split keeps a row on one page)")
+        if any(row[0] is None for row in rows):
+            raise EditError(f"{entry.id} has a row with no paragraph to keep it by")
+        changes: list[tuple[Element, bool | None]] = []
+        if on:
+            for k, (lead, keeps, styled, declared) in enumerate(rows):
+                want = k < len(rows) - 1
+                if keeps == want:
+                    continue
+                changes.append((lead, None if styled == want else want))
+        else:
+            if not kept_together(rows):
+                raise EditError(f"{entry.id} is not kept together: not every row but the last keeps with the next")
+            for k, (lead, keeps, styled, declared) in enumerate(rows):
+                if declared is not None and declared != styled:
+                    changes.append((lead, None))
+        if not changes:
+            return EditResult(entry.id, changed=False)
+        index = self._index(part)
+        entries = [found for found in (index.entry_for(lead) for lead, _ in changes) if found is not None]
+        with self._edit():
+            renames = self._prepare(part, entries)
+            with self._track_properties([part]):
+                for lead, value in changes:
+                    _formatting.write_paragraph(lead, {"keep_with_next": value})
+            self.package.mark_dirty(part)
+        return EditResult(renames.get(entry.id, entry.id), renamed=renames)
 
     def row_properties(self: "Document", table: str, row: int) -> dict:
         """What a row states itself: its height and rule, header repeat, can't-split..."""
@@ -1102,6 +1162,33 @@ def _floating(spec: dict) -> tuple[Element, Element | None]:
         node.set(_W + "tblpY", _offset(spec.get("y", 0.05)))
     overlap = make("w:tblOverlap", **{"w:val": "never"}) if spec.get("overlap") is False else None
     return node, overlap
+
+
+def row_keeps(document: "Document", table: Element) -> list[tuple]:
+    """Per row of ``table`` (a ``w:tbl``): ``(paragraph, keeps, styled, declared)`` -- the
+    paragraph Word decides the row's keep with the next by
+    (:func:`docx_agent.edit.effective.row_leads`; ``None`` for a row with none), whether
+    it keeps with the next, whether its styles alone would, and its direct ``w:keepNext``
+    (``True``, ``False``, ``None`` for none)."""
+    from . import effective as _effective
+    from .formatting import read_paragraph
+
+    out = []
+    for lead in _effective.row_leads(document, table):
+        if lead is None:
+            out.append((None, False, False, None))
+            continue
+        out.append((lead, _effective.paragraph(document, lead).keep_with_next,
+                    _effective.paragraph(document, lead, direct=False).keep_with_next,
+                    read_paragraph(lead.find(_W + "pPr"), "keep_with_next")))
+    return out
+
+
+def kept_together(rows: list[tuple]) -> bool:
+    """Whether :func:`row_keeps`' rows keep the table together: at least two rows, every
+    one but the last keeping with the next, the last not."""
+    return (len(rows) >= 2 and all(row[0] is not None for row in rows)
+            and all(row[1] for row in rows[:-1]) and not rows[-1][1])
 
 
 def _read_floating(node: Element | None, overlap: Element | None) -> dict | None:

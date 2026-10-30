@@ -5,6 +5,41 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.24 -- unreleased
+
+- **check's kept rows by Word's rule** (production round 25, W1). `keep_with_next_at_foot`'s
+  table entries asked every paragraph of a row to keep with the next; Word keeps a row by
+  the first paragraph of its first cell (a nested table first in that cell: its first
+  paragraph), measured in round 24. The fact now asks docx2svg's rule
+  (`docx2svg.table.row_keeps_with_next`), the one its layout paginates by, so a table whose
+  first column alone keeps (a label style) and runs longer than a page is reported.
+- **A table kept together** (W2). `word_format_table` `keep_together: true` (scope `table`)
+  keeps every row but the last with the next -- `w:keepNext` on each row's deciding
+  paragraph, only where its styles do not keep it (a direct release of a style's keep is
+  removed) -- and releases the last row (`w:keepNext w:val="0"` only where its style keeps
+  it), so the table goes to the next page whole and does not take the block after it along.
+  `false` removes what it writes and only that, recognised by the rows' keeps -- on a table so
+  kept, each deciding paragraph's direct keep that differs from its styles'. Measured in
+  Word (11 cases, all as docx2svg draws them): a table that does not fit moves whole; a
+  table whose label rows chained it to a heading and the next table now stays and the next
+  one moves; a table longer than a page starts the next page and breaks where it is full
+  (with or without a header row). check reports such a table as `keep_together`
+  (`{"table", "pages", "direct"}`), the keeps and the release are not `direct_formatting`
+  and no fix clears them; `table_properties()["keep_together"]`, and `describe`'s tables
+  say `keep_together: true`. `Document.set_keep_together(table, on)`. One row: refused.
+- **`past_margins` to the last character** (W3). A table's lines are measured from their
+  first to their last character that is not a space: a table as wide as the column with no
+  cell margins reported its lines' last spaces (0.8-1 pt past the edge). Measured in Word
+  (`feedback-round25/measurements-J.md`, 20 characters at 9 widths each): only spaces hang
+  past a cell's edge; punctuation, quotes, dashes and brackets need their whole advance
+  inside, as docx2svg breaks them (180 of 180 as Word).
+- **The render workers share one font scan** (R1). The first worker to start scans the font
+  folders (`docx2svg.scan_fonts`, each file opened once) and saves the scan in a folder of
+  the user's own in the temporary folder; the workers starting with it wait for it (a file
+  lock) and every later worker takes it to `docx2svg.warm(scan=...)`, which reads only the
+  files changed or added since (and saves the scan again), so a changed font folder is
+  still seen. Renders are the same bytes with and without it. Needs docx2svg 0.11.1.
+
 ## 0.1.23 -- unreleased
 
 - **A table without a header row** (production round 24, W2). Measured in Word: a table
