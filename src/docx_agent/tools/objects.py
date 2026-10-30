@@ -472,6 +472,10 @@ def word_format_table(call: Any, doc: str, table: str, scope: str, row: int | No
         if values:
             edits.append(document.set_table(table, **values))
         result = outcome(edits, f"Formatted {table}", changed=[table])
+        if not values and not any(edit.changed for edit in edits):
+            # Round 27, W7: asked for what the table already is (keep_together false on a
+            # table not kept together): as asked, the warnings say why nothing changed.
+            result.summary, result.changed = f"No change to {table}", []
         if keep_together:
             taller = _taller_than_page(document, result.renamed.get(table, table))
             if taller is not None:
@@ -738,6 +742,8 @@ def drawings_tool(catalogue: Any = None) -> Any:
                 raise ToolError("invalid_arguments", "set needs something to set",
                                 valid_options=["wrap", "z_order", "x", "y", "alt_text"])
             return outcome(edits, f"Set {target}", changed=[target])
+        if not edit.changed:        # round 27: float a floating drawing, inline an inline one
+            return outcome([edit], f"No change to {target}")
         return outcome([edit], f"{action}: {target}", changed=[target])
 
     return word_drawings

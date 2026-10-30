@@ -462,9 +462,13 @@ class TableFormatOps:
         ``w:keepNext`` that differs from its styles' -- a keep where they give none, a
         release where they keep.  A direct keep its styles give anyway, the rows' other
         paragraphs and every other property stay.  :class:`EditError` for a one-row table
-        (nothing to keep together; ``cant_split`` keeps a row on one page) and, off, for a
-        table not kept so."""
+        (nothing to keep together; ``cant_split`` keeps a row on one page).  Off, a table not
+        kept so (one row, too) is as asked: no change, said in ``warnings`` (round 27, W7)."""
+        from .document import EditResult
+
         part, entry = self._table_entry(table)
+        if not on and not kept_together(row_keeps(self, entry.element)):
+            return EditResult(entry.id, changed=False, warnings=[f"{entry.id} was not kept together"])
         rows = self._keep_rows(entry)
         changes: list[tuple[Element, bool | None]] = []
         if on:
@@ -474,10 +478,6 @@ class TableFormatOps:
                     continue
                 changes.append((lead, None if styled == want else want))
         else:
-            if not kept_together(rows):
-                from .document import EditError
-
-                raise EditError(f"{entry.id} is not kept together: not every row but the last keeps with the next")
             for k, (lead, keeps, styled, declared) in enumerate(rows):
                 if declared is not None and declared != styled:
                     changes.append((lead, None))
@@ -489,10 +489,15 @@ class TableFormatOps:
         released -- directly only where its styles differ, else its direct ``w:keepNext``
         removed.  The other rows stay.  :class:`EditError` for a table not kept together: a
         last row that keeps alone takes only itself to the next page with that block, the
-        rest of the table left behind (measured, W5) -- keep it together first."""
-        from .document import EditError
+        rest of the table left behind (measured, W5) -- keep it together first.  Off, a table
+        whose last row does not keep (kept together or not) is as asked: no change, said in
+        ``warnings`` (round 27, W7)."""
+        from .document import EditError, EditResult
 
         part, entry = self._table_entry(table)
+        if not on and not kept_with_next(row_keeps(self, entry.element)):
+            return EditResult(entry.id, changed=False,
+                              warnings=[f"{entry.id}'s last row did not keep with the next"])
         rows = self._keep_rows(entry)
         if not kept_together(rows):
             raise EditError(f"{entry.id} is not kept together: keep_with_next keeps a table kept together with the "

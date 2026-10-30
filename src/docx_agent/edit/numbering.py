@@ -791,13 +791,14 @@ class ListOps:
 
     def remove_from_list(self: "Document", identifier: str) -> "EditResult":
         """Take a paragraph out of its list: its own ``w:numPr`` removed, or -- where its
-        style puts it in a list -- ``numId`` 0, as Word writes it."""
-        from .document import EditError
+        style puts it in a list -- ``numId`` 0, as Word writes it.  A paragraph in no list
+        is as asked: no change, said in ``warnings`` (round 27)."""
+        from .document import EditResult
 
         part, entry = self._paragraph_entry(identifier)
         found = membership(self, entry.element)
         if found is None:
-            raise EditError(f"{entry.id} is not in a list")
+            return EditResult(entry.id, changed=False, warnings=[f"{entry.id} was not in a list"])
 
         def change(part, entry, before):
             clear_numbering(entry.element)

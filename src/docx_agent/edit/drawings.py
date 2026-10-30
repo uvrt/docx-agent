@@ -237,12 +237,19 @@ class DrawingOps:
         """Make an inline drawing float, as Word's ``convert to shape`` does: in front of
         the text, against the column and the paragraph where it stood (0, 0 here: where
         the layout put it is not the file's), a step above every other drawing; then
-        ``values`` as :meth:`set_drawing` takes them.  Word does not track it."""
-        from .document import EditError, EditResult
+        ``values`` as :meth:`set_drawing` takes them.  Word does not track it.  A drawing
+        that floats already is as asked (round 27): it stays where it is, ``values`` set
+        as :meth:`set_drawing` sets them, and ``warnings`` say so."""
+        from .document import EditResult
 
         part, frame = self._frame(identifier)
         if frame.tag != _WP + "inline":
-            raise EditError(f"{identifier} floats already")
+            note = f"{identifier} floats already"
+            if not values:
+                return EditResult(identifier, changed=False, warnings=[note])
+            result = self.set_drawing(identifier, **values)
+            result.warnings.insert(0, f"{note}: it stays where it is, with the settings given")
+            return result
         self._check_drawing_values(values)
         tracking = self._active_tracking()
         with self._edit():
@@ -284,12 +291,13 @@ class DrawingOps:
 
     def inline_drawing(self: "Document", identifier: str) -> "EditResult":
         """Put a floating drawing in the line again, as Word's ``convert to inline shape``
-        does: ``wp:inline``, every distance 0, its ids kept.  Word does not track it."""
+        does: ``wp:inline``, every distance 0, its ids kept.  Word does not track it.  A
+        drawing in the line already is as asked: no change, said in ``warnings`` (round 27)."""
         from .document import EditError, EditResult
 
         part, frame = self._frame(identifier)
         if frame.tag != _WP + "anchor":
-            raise EditError(f"{identifier} is inline already")
+            return EditResult(identifier, changed=False, warnings=[f"{identifier} is inline already"])
         if alternate_content(frame) is not None:
             raise EditError(f"{identifier} is a shape or text box: Word puts only pictures in the line")
         tracking = self._active_tracking()
