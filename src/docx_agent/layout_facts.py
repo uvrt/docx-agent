@@ -56,16 +56,24 @@ takes its targets as one list with the values for all, so it is ``calls``, not `
     rows with the next on one page while they fit.  A row keeps with the next when the
     first paragraph of its first cell does (round 25, W1: docx2svg's rule,
     :func:`docx2svg.table.row_keeps_with_next`; a nested table first in that cell: its
-    first paragraph) -- the other cells' paragraphs do not count.
-``keep_together`` (round 25, W2)
-    ``{"table", "pages", "direct"}``: a table its rows keep on one page -- every row but
-    the last keeps with the next, the last does not, as ``word_format_table``
+    first paragraph) -- the other cells' paragraphs do not count.  ``taller_than_page``
+    (round 25, W5): the one split of a table kept together that is taller than a page (its
+    others not listed).  ``{"table", "row", "page", "next", "next_page"}`` (W5): a table
+    whose last row keeps with the next, drawn last on its page, the block after it on a
+    later page -- a chain of keeps longer than a page, broken there.
+``settings`` (round 25, W5)
+    What the document is set to do, not facts to act on: a summary counts none of it.
+    ``keep_together`` (W2): ``{"table", "pages", "direct"}``, a table its rows keep on one
+    page -- every row but the last keeps with the next, as ``word_format_table``
     ``keep_together`` leaves it -- with ``direct`` the paragraphs (the first of each row's
-    first cell) whose keep or release is direct formatting; ``taller_than_page``: drawn on
-    more than one page (Word starts it on a new page and breaks it where the page is full),
-    said here once, not as ``keep_with_next_at_foot`` entries.  Those keeps and releases are
-    the table's, not ``direct_formatting``: not listed there, and no ``fix`` clears them
-    (``keep_together: false`` does).
+    first cell) whose keep or release is direct formatting; ``with_next`` (W5): its last
+    row keeps with the next too, so the table stays with the block after it
+    (``keep_with_next``; a label style that keeps every row does the same);
+    ``taller_than_page``: drawn on more than one page (Word starts it on a new page and
+    breaks it where the page is full) -- also one ``keep_with_next_at_foot`` entry, its
+    first split, marked ``taller_than_page``, so it stays among the facts to look at.  Those
+    keeps and releases are the table's, not ``direct_formatting``: not listed there, and no
+    ``fix`` clears them (``keep_together: false`` does).
 ``split_rows``
     ``{"table", "row", "pages"}``: a row (from 0) whose content is drawn on two pages.  No
     Word tool sets a row's "allow row to break across pages" yet: no fix.
@@ -270,7 +278,10 @@ class _Facts:
                      if self.shown({p for i in e["ids"] for p in self.pages_of(i)})],
                     "empty_paragraphs", out)
         self.capped(self.keep_with_next(), "keep_with_next_at_foot", out)
-        self.capped(self.keep_together(), "keep_together", out)
+        # Round 25, W5: what the document is set to do, not facts to act on.
+        settings: dict[str, Any] = {}
+        self.capped(self.keep_together(), "keep_together", settings)
+        out["settings"] = settings
         split, unrepeated = self.tables()
         self.capped(split, "split_rows", out)
         self.capped(unrepeated, "header_not_repeated", out)
@@ -563,12 +574,19 @@ class _Facts:
         for number, lines in enumerate(self.layout._lines, start=1):
             if not self.shown([number]):
                 continue
-            body = [(line.top, key) for key, line in lines if key is not None and _in_body(line)]
+            body = [(line.top, key, line) for key, line in lines if key is not None and _in_body(line)]
             if not body:
                 continue
-            last = self.layout._canon(max(body, key=lambda b: b[0])[1])
+            _, key, line = max(body, key=lambda b: b[0])
+            last = self.layout._canon(key)
             k = position.get(last)
-            if k is None or k + 1 >= len(self.top_level) or self.top_level[k][0] != "p":
+            if k is None:
+                # Round 25, W5: a table's last row last on the page, kept with the next block.
+                entry = self._table_end_at_foot(line, number, position)
+                if entry is not None:
+                    entries.append(entry)
+                continue
+            if k + 1 >= len(self.top_level) or self.top_level[k][0] != "p":
                 continue
             if max(self.pages_of(last)) != number:
                 continue                          # it goes on over the page
@@ -584,6 +602,35 @@ class _Facts:
                             "next": self.top_level[k + 1][2], "next_page": following[0]})
         entries += self._kept_rows()
         return entries
+
+    def _table_end_at_foot(self, line, number: int, position: dict) -> dict | None:
+        """``{"table", "row", "page", "next", "next_page"}`` where ``line`` (the last on page
+        ``number``) is in the last row of a top-level table whose last row keeps with the
+        next (round 25, W5: kept together and with the next, or a label style's chain) and
+        the block after the table starts on a later page, not a new page anyway: a chain of
+        keeps longer than a page, broken there (Word breaks it so, measured)."""
+        from .edit.table_format import row_keeps
+
+        match = _ROW.match(line.path) if line.story is None else None
+        if match is None:
+            return None
+        identifier = _block_id(self.document, self.main, match.group(1))
+        k = position.get(self.layout._canon(identifier)) if identifier is not None else None
+        if k is None or k + 1 >= len(self.top_level) or self.top_level[k][0] != "t":
+            return None
+        element = self.top_level[k][1]
+        rows = row_keeps(self.document, element)
+        row = int(match.group(2)) - 1
+        if row != len(rows) - 1 or rows[-1][0] is None or not rows[-1][1]:
+            return None
+        pages = self._table_pages(identifier)
+        if not pages or pages[-1] != number:
+            return None
+        following = self.first_line(*self.top_level[k + 1])
+        if following is None or following[0] <= number or self._new_page_after(k):
+            return None
+        return {"table": identifier, "row": row, "page": number, "next": self.top_level[k + 1][2],
+                "next_page": following[0]}
 
     def _kept_tables(self) -> list[tuple[str, Any, list]]:
         from .edit.table_format import kept_together, row_keeps
@@ -612,6 +659,8 @@ class _Facts:
                     if found is not None:
                         direct.append(found.id)
             entry = {"table": identifier, "pages": pages, "direct": direct}
+            if rows[-1][1]:
+                entry["with_next"] = True          # round 25, W5: the last row keeps too
             if identifier in self.taller_kept:
                 entry["taller_than_page"] = True
             entries.append(entry)
@@ -656,6 +705,7 @@ class _Facts:
             own = element.findall(_W + "tr")
             header_rows = _header_rows(element)
             identifier = _block_id(self.document, self.main, table) or table
+            taller = identifier in self.taller_kept
             for row, drawn in sorted(drawn_rows.items()):
                 after = drawn_rows.get(row + 1)
                 if row < header_rows or after is None or row >= len(own) or row >= len(found.rows):
@@ -663,10 +713,16 @@ class _Facts:
                 page, next_page = max(drawn), min(after)
                 if next_page <= page or not self.shown([page]):
                     continue
-                if identifier in self.taller_kept or not row_keeps_with_next(state, found.rows[row]):
-                    continue                  # (a kept-together table taller than a page: said once)
-                entries.append({"table": identifier, "row": row, "page": page, "next_row": row + 1,
-                                "next_page": next_page})
+                if not row_keeps_with_next(state, found.rows[row]):
+                    continue
+                entry = {"table": identifier, "row": row, "page": page, "next_row": row + 1, "next_page": next_page}
+                if taller:
+                    # A table kept together taller than a page: its first split, said once
+                    # (round 25, W5: kept here, among what to look at).
+                    entry["taller_than_page"] = True
+                entries.append(entry)
+                if taller:
+                    break
         return entries
 
     def _drawn_rows(self) -> tuple[dict[str, dict[int, dict[int, set]]], dict[str, set]]:
