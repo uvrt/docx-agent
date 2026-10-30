@@ -152,10 +152,15 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 #: rows' keeps) +30 to every definition (12,944 -> 12,974), none to the core (2,440).  The
 #: guard rises to 12,975.  word_format_table is not strict: the strict set is unchanged (6
 #: tools, 23 optional parameters).
+#: Round 25, W4: word_format's ``keep_lines`` (Word's "Keep lines together") and its place in
+#: ``clear``'s enum +23 to every definition (12,974 -> 12,997), none to the core (2,440).  The
+#: guard rises to 13,000.  word_format is not strict (deferred, in word_style): the strict set
+#: is unchanged (6 tools, 23 optional parameters).  ``keep_together``, the Python API's name,
+#: is read as ``keep_lines`` (an alias: no definition).
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 6500
-ALL_GUARD = 12975
+ALL_GUARD = 13000
 
 
 @pytest.fixture(scope="module")

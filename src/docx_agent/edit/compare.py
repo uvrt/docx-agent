@@ -22,7 +22,7 @@ intended is the caller's to decide.
 * per paragraph in a cell, and for a paragraph block: ``paragraph_style`` (by name, so
   another document's styles compare) and its direct formatting, in ``word_format``'s names
   -- ``alignment``, ``space_before``, ``space_after``, ``line_spacing``, ``indent_left``,
-  ``indent_right``, ``indent_first``, ``keep_with_next``, ``page_break_before`` (what its
+  ``indent_right``, ``indent_first``, ``keep_with_next``, ``keep_lines``, ``page_break_before`` (what its
   ``w:pPr`` states) and ``bold``, ``italic``, ``underline``, ``strike``, ``size``,
   ``font``, ``color``, ``highlight`` (what its runs state, the value most of its text has;
   ``None`` where nothing is stated, the style's then).
@@ -71,8 +71,8 @@ WIDTH_TOLERANCE = 0.5
 PROPERTIES = ("kind", "header_rows", "columns", "rows", "merges", "widths", "width", "table_style",
               "table_alignment", "table_shading", "table_borders", "shading", "borders", "vertical_alignment",
               "paragraph_style", "alignment", "space_before", "space_after", "line_spacing",
-              "indent_left", "indent_right", "indent_first", "keep_with_next", "page_break_before",
-              "bold", "italic", "underline", "strike", "size", "font", "color", "highlight")
+              "indent_left", "indent_right", "indent_first", "keep_with_next", "keep_lines",
+              "page_break_before", "bold", "italic", "underline", "strike", "size", "font", "color", "highlight")
 
 #: A paragraph's direct properties: word_format's name -> the w:pPr child and attributes
 #: that state it (no attributes: the element itself).
@@ -85,6 +85,7 @@ _PARAGRAPH = {
     "indent_right": ("ind", ("right", "end")),
     "indent_first": ("ind", ("firstLine", "hanging", "firstLineChars", "hangingChars")),
     "keep_with_next": ("keepNext", ()),
+    "keep_lines": ("keepLines", ()),
     "page_break_before": ("pageBreakBefore", ()),
 }
 #: A run's direct properties: word_format's name -> the w:rPr children that state it.
@@ -526,7 +527,7 @@ def _paragraph_value(effective, name: str):
             return None
         return (round(effective.line_spacing, 2) if effective.line_rule == "auto"
                 else f"{effective.line_rule} {round(effective.line_spacing, 2):g}pt")
-    value = getattr(effective, name)
+    value = getattr(effective, "keep_together" if name == "keep_lines" else name)
     return round(value, 2) if isinstance(value, float) else value
 
 

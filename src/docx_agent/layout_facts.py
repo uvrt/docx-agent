@@ -137,7 +137,7 @@ _RUN_DECLARES = {
     "bold": ("b", "bCs"), "italic": ("i", "iCs"), "underline": ("u",), "strike": ("strike",),
     "size": ("sz", "szCs"), "font": ("rFonts",), "color": ("color",), "highlight": ("highlight",),
 }
-_PARAGRAPH_DECLARES = ("jc", "spacing", "ind", "keepNext", "pageBreakBefore")
+_PARAGRAPH_DECLARES = ("jc", "spacing", "ind", "keepNext", "keepLines", "pageBreakBefore")
 
 #: A note that is not one: the separator lines Word writes in every notes part, their
 #: paragraphs with Word's own direct spacing (round 21, T4: not content, not looked at).
@@ -929,6 +929,7 @@ def _paragraph_values(mine, styled):
     yield "indent_right", mine.indent_right, styled.indent_right
     yield "indent_first", first(mine), first(styled)
     yield "keep_with_next", mine.keep_with_next, styled.keep_with_next
+    yield "keep_lines", mine.keep_together, styled.keep_together        # round 25, W4
     yield "page_break_before", mine.page_break_before, styled.page_break_before
 
 
