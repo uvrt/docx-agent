@@ -23,6 +23,7 @@ from docx2svg.parse.document import parse_package
 from docx2svg.parse.properties import read_paragraph_properties, read_run_properties
 from docx2svg.paths import path_part, resolve_path
 from docx2svg.resolve import character_format, resolve_paragraph, resolve_run
+from docx2svg.table import lead_paragraph
 
 from ..oxml.xml import Element
 
@@ -101,6 +102,9 @@ class _Model:
         data = document.to_bytes()
         self.model = parse_package(data)
         self.paragraphs: dict[int, _model.Paragraph] = {}
+        #: Our element of each of docx2svg's paragraphs, by its ``id()``.
+        self.elements: dict[int, Element] = {}
+        self._tables: dict[int, _model.Table] | None = None
         self._held: list[Element] = []
         package = document.package
         parts = _Parts(document)
@@ -122,6 +126,28 @@ class _Model:
         if element is not None and element.tag == _W + "p":
             self._held.append(element)  # one proxy per element while the map lives: stable id()s
             self.paragraphs.setdefault(id(element), paragraph)
+            self.elements.setdefault(id(paragraph), element)
+
+    def table(self, element: Element) -> _model.Table | None:
+        """docx2svg's table of our ``w:tbl`` (nested ones too), or ``None``."""
+        if self._tables is None:
+            self._tables = {}
+            parts = _Parts(self.document)
+            places = [(self.model.body, self.document.package.document_part())]
+            places += [(blocks, self.model.story_parts.get(relationship))
+                       for relationship, blocks in self.model.stories.items()]
+            for notes in (self.model.footnotes, self.model.endnotes):
+                places += [(blocks, None) for blocks in notes.values()]
+            for blocks, part in places:
+                for table in _all_tables(blocks):
+                    owner = part if part is not None else path_part(parts, table.path)
+                    if owner is None or not table.path:
+                        continue
+                    found = resolve_path(self.document.package.tree(owner), table.path)
+                    if found is not None and found.tag == _W + "tbl":
+                        self._held.append(found)
+                        self._tables.setdefault(id(found), table)
+        return self._tables.get(id(element))
 
     def paragraph(self, element: Element) -> _model.Paragraph:
         found = self.paragraphs.get(id(element))
@@ -157,6 +183,28 @@ def _paragraphs(blocks):
             for row in block.rows:
                 for cell in row:
                     yield from _paragraphs(cell)
+
+
+def _all_tables(blocks):
+    for block in blocks or ():
+        if isinstance(block, _model.Table):
+            yield block
+            for row in block.rows:
+                for cell in row:
+                    yield from _all_tables(cell)
+
+
+def row_leads(document: "Document", table: Element) -> list[Element | None]:
+    """Per row of ``table`` (a ``w:tbl``), the paragraph whose keep-with-next keeps the row
+    with the next -- the first of its first cell, a nested table's first there -- as
+    docx2svg lays rows out by (:func:`docx2svg.table.lead_paragraph`); ``None`` for a row
+    with none.  Empty for a table docx2svg does not read."""
+    state = model(document)
+    found = state.table(table)
+    if found is None:
+        return []
+    leads = (lead_paragraph(row) for row in found.rows)
+    return [state.elements.get(id(lead)) if lead is not None else None for lead in leads]
 
 
 def _table_style(element: Element) -> str | None:

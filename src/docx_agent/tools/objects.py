@@ -408,7 +408,8 @@ _TABLE_SIDES = ("top", "bottom", "left", "right", "inside_h", "inside_v")
             "header_rows": integer("table: rows repeated on each page.", minimum=0, maximum=500,
                                    optional=True),
             "look": array(string(enum=list(LOOK_NAMES)), "table: style options on, the rest off.", optional=True),
-            "cant_split": boolean("row (table: all): never split across pages.", optional=True)},
+            "cant_split": boolean("row (table: all): never split across pages.", optional=True),
+            "keep_together": boolean("table: on one page; rows keep with next, last row not.", optional=True)},
            refs=('table',), group="word_objects", mutates=True)
 def word_format_table(call: Any, doc: str, table: str, scope: str, row: int | None = None,
                       column: int | None = None, style: str | None = None, width: float | None = None,
@@ -416,7 +417,8 @@ def word_format_table(call: Any, doc: str, table: str, scope: str, row: int | No
                       alignment: str | None = None, shading: str | None = None, borders: str | None = None,
                       vertical_alignment: str | None = None, height: float | None = None,
                       height_rule: str = "at_least", header_rows: int | None = None,
-                      look: list[str] | None = None, cant_split: bool | None = None) -> Result:
+                      look: list[str] | None = None, cant_split: bool | None = None,
+                      keep_together: bool | None = None) -> Result:
     document = call.document
     table = resolve(call, table)
     view = document.table(table)
@@ -445,10 +447,13 @@ def word_format_table(call: Any, doc: str, table: str, scope: str, row: int | No
             values["look"] = {LOOK_NAMES[name]: name in look for name in LOOK_NAMES}
         if cant_split is not None:
             edits.extend(document.set_row(table, r, cant_split=cant_split) for r in range(len(view.rows)))
+        if keep_together is not None:
+            # Round 25, W2: the rows' keeps as Word reads them (Document.set_keep_together).
+            edits.append(document.set_keep_together(table, keep_together))
         if not values and not edits:
             raise ToolError("invalid_arguments", "nothing to set for the table",
                             valid_options=["style", "width", "width_percent", "alignment", "shading", "borders",
-                                           "header_rows", "look", "cant_split"])
+                                           "header_rows", "look", "cant_split", "keep_together"])
         if width_of == "body":
             # The columns shared again first, the cells' widths with them: an autofit
             # table is drawn at its cells' widths, which a table width alone leaves.
@@ -459,9 +464,17 @@ def word_format_table(call: Any, doc: str, table: str, scope: str, row: int | No
                 edits.append(document.set_column_width(table, column, new / 20))
         if values:
             edits.append(document.set_table(table, **values))
-        return outcome(edits, f"Formatted {table}", changed=[table])
+        result = outcome(edits, f"Formatted {table}", changed=[table])
+        if keep_together:
+            taller = _taller_than_page(document, result.renamed.get(table, table))
+            if taller is not None:
+                result.warnings.append(taller)
+        return result
     if look is not None:
         raise ToolError("invalid_arguments", "look is the table's: give scope table", field="look")
+    if keep_together is not None:
+        raise ToolError("invalid_arguments", "keep_together is the table's: give scope table (cant_split keeps a "
+                        "row on one page)", field="keep_together")
     if cant_split is not None and scope not in ("row", "table"):
         raise ToolError("invalid_arguments", "cant_split is a row's: give scope row (or table, for every row)",
                         field="cant_split")
@@ -506,6 +519,33 @@ def word_format_table(call: Any, doc: str, table: str, scope: str, row: int | No
         raise ToolError("invalid_arguments", f"nothing to set for the {scope}",
                         valid_options=["shading", "borders", "vertical_alignment", "width", "height", "cant_split"])
     return outcome(edits, f"Formatted {scope} of {table}", changed=[table])
+
+
+#: keep_together on a table taller than a page (round 25): Word does keep it, so does the tool.
+TALLER_THAN_PAGE = "taller than a page: Word starts it on a new page and breaks it where the page is full"
+
+
+def _taller_than_page(document: Any, table: str) -> str | None:
+    """The warning for a table kept together that is taller than a page, or ``None``.
+    Decided from the document's layout after the edit (the one ``check`` and ``render``
+    read, :meth:`~docx_agent.Document.layout`): a table kept together goes to the next page
+    whole where it fits on one, so one still drawn on more than one page is taller than the
+    page's text height (header rows drawn again count with it).  Where the document cannot
+    be laid out, or the layout stops before the table, that is not known, and the warning
+    says so instead."""
+    try:
+        placements = document.layout().where(table)
+    except Exception:  # noqa: BLE001 -- no layout: said, not guessed
+        placements = None
+    if isinstance(placements, list) and placements and not any(p.story == "body" for p in placements):
+        return None                         # a header's or a note's table: no page to break
+    if not isinstance(placements, list) or not placements:
+        return (f"{table} is kept together, but the document could not be laid out to it: whether it is "
+                "taller than a page is not known (if it is, Word starts it on a new page and breaks it where "
+                "the page is full)")
+    if len({placement.page for placement in placements if placement.story == "body"}) > 1:
+        return f"{table} is {TALLER_THAN_PAGE}"
+    return None
 
 
 def _body_width(document: Any, table: str, percent: float, alignment: str | None) -> dict[str, Any]:

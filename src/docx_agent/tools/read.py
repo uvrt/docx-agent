@@ -100,8 +100,9 @@ def word_describe(call: Any, doc: str) -> Result:
         "fields": dict(fields),
         "tables": [{"id": t.id, "rows": len(t.rows), "columns": t.column_count,
                     "first_row": short(" | ".join(_cell_text(t, 0, k) for k in range(t.column_count)), 80),
-                    **{key: short(value, 80) for key, value in t.alt_text.items()}}
-                   for t in document.tables()][:30],
+                    **{key: short(value, 80) for key, value in t.alt_text.items()},
+                    **({"keep_together": True} if _kept_together(document, t) else {})}
+                   for t in document.tables()[:30]],
         "drawings": [{"id": d.id, "kind": drawing_kind(d), **({"alt_text": short(d.alt_text, 60)} if d.alt_text else {})}
                      for d in _drawings(document)][:30],
         "notes": dict(Counter(n.kind for n in document.notes())),
@@ -117,6 +118,14 @@ def word_describe(call: Any, doc: str) -> Result:
     if len(data["headings"]) == 80:
         data["headings_note"] = "the first 80 headings; word_read a range for the rest"
     return Result(summary=f"Described {entry.name}", data=data)
+
+
+def _kept_together(document: Any, table: Any) -> bool:
+    """Whether a table's rows keep it on one page (round 25, W2: word_format_table
+    ``keep_together``), said only where they do."""
+    from ..edit.table_format import kept_together, row_keeps
+
+    return len(table.rows) > 1 and kept_together(row_keeps(document, document._table_entry(table.id)[1].element))
 
 
 def _cell_text(table: Any, row: int, column: int) -> str:
