@@ -30,7 +30,30 @@ intended is the caller's to decide.
 **Corresponding parts.**  Rows by the reference's structure: the reference's header rows one
 to one, then body row *i* to the reference's body row *i*, or its last body row when the
 copy has more (a sample with one body row is the pattern for all of them).  Cells by grid
-column; a cell's paragraph *k* to the reference cell's paragraph *k*, or its last.
+column.  A cell's paragraphs by an alignment (round 26, W6), never by position alone where
+the counts differ:
+
+* each paragraph is read as its style (by name) and its text, normalised (case and runs of
+  white space ignored).  Two paragraphs *match by text* when their texts are the same or
+  :data:`TEXT_SIMILARITY` alike (``difflib``'s ratio), *by style* when their styles are;
+* the alignment keeps the cells' order (no crossing pairs) and pairs as many paragraphs
+  matching by text as it can, then as many more matching by style; where two alignments
+  tie, the earlier paragraphs pair.  A pair that matches neither way is never made;
+* a copy paragraph left over after a paired one and in that pair's reference paragraph's
+  style repeats it: compared with it, as a body row past the sample's last (a sample
+  paragraph is the pattern for like paragraphs after it);
+* a reference paragraph left unpaired is a ``missing_paragraph`` (the cell; ``reference``
+  its ``paragraph_style``, the start of its ``text`` and its ``index`` in the cell), a copy
+  paragraph left unpaired an ``extra_paragraph`` (the paragraph; ``value`` its style and
+  text); where either is and the counts differ, the cell's ``paragraphs`` differ (``value``
+  the copy's count, ``reference`` the sample's).  None of them has a fix;
+* where the counts are equal, the paragraphs pair by position, as before, unless the
+  alignment pairs a paragraph matching by text with one at another position: then the
+  alignment's pairs are taken.
+
+So a style fix rests on a pair matching by text, or on position where the counts are equal;
+a pair matching by style alone, or a repeat, has the reference's style already and is
+compared for its direct formatting.
 
 **Fixes** are the calls (each one call's arguments but ``doc``) that give the block the
 reference's value, in the order listed: ``word_format_table`` (``header_rows``, a column's
@@ -53,6 +76,7 @@ at 96 dpi); a column dragged by hand moves by more.
 from __future__ import annotations
 
 from collections import Counter
+from difflib import SequenceMatcher
 from typing import TYPE_CHECKING, Any
 
 from . import effective as _effective
@@ -67,10 +91,17 @@ _W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 #: Two widths, points, equal within this (the module's "Width tolerance").
 WIDTH_TOLERANCE = 0.5
 
+#: Two paragraphs' normalised texts at least this alike (``difflib.SequenceMatcher``'s
+#: ratio) match by text: a word or two edited in a sentence still matches, another
+#: sentence does not (the module's "Corresponding parts").
+TEXT_SIMILARITY = 0.8
+#: The characters of a paragraph's text a missing or extra paragraph names.
+TEXT_START = 40
+
 #: Every property compared, in the order reported.
 PROPERTIES = ("kind", "header_rows", "columns", "rows", "merges", "widths", "width", "table_style",
               "table_alignment", "table_shading", "table_borders", "shading", "borders", "vertical_alignment",
-              "paragraph_style", "alignment", "space_before", "space_after", "line_spacing",
+              "paragraphs", "missing_paragraph", "extra_paragraph", "paragraph_style", "alignment", "space_before", "space_after", "line_spacing",
               "indent_left", "indent_right", "indent_first", "keep_with_next", "keep_lines",
               "page_break_before", "bold", "italic", "underline", "strike", "size", "font", "color", "highlight")
 
@@ -368,6 +399,8 @@ def _merge_calls(table: str, r: int, line: dict, reference: dict) -> list[dict] 
 def _cells(block: _Block, source: _Block, out: list, grid: list, reference_grid: list, mapping: list) -> None:
     """Each cell's shading, borders and vertical alignment, and its paragraphs."""
     differences: dict[tuple, list[tuple[int, int]]] = {}
+    counts: dict[tuple[int, int], list[tuple[int, int]]] = {}
+    lost: list[dict] = []
     pairs: list[tuple] = []
     for r, line in enumerate(grid):
         reference_line = reference_grid[mapping[r]]
@@ -389,15 +422,34 @@ def _cells(block: _Block, source: _Block, out: list, grid: list, reference_grid:
                         differences.setdefault((name, _key(value), _key(reference)), []).append((r, place))
             paragraphs = cell.findall(_W + "p")
             reference_paragraphs = match.findall(_W + "p")
-            if reference_paragraphs:
-                pairs += [(p, reference_paragraphs[min(k, len(reference_paragraphs) - 1)])
-                          for k, p in enumerate(paragraphs)]
+            if not reference_paragraphs:
+                continue
+            found, missing, extra = _align(block.document, paragraphs, source.document, reference_paragraphs)
+            pairs += found
+            for k in missing:
+                reference_paragraph = reference_paragraphs[k]
+                lost.append({"property": "missing_paragraph", "cells": [f"{block.id}/c{r},{column}"],
+                             "value": None,
+                             "reference": {**_described(source.document, reference_paragraph), "index": k},
+                             "fix": None})
+            for k in extra:
+                identifier = block.paragraph_id(paragraphs[k])
+                if identifier is not None:
+                    lost.append({"property": "extra_paragraph", "paragraphs": [identifier],
+                                 "value": _described(block.document, paragraphs[k]), "reference": None,
+                                 "fix": None})
+            if (missing or extra) and len(paragraphs) != len(reference_paragraphs):
+                counts.setdefault((len(paragraphs), len(reference_paragraphs)), []).append((r, column))
     columns = {c for line in grid for c in line}
     for (name, value, reference), cells in differences.items():
         value, reference = _unkey(value), _unkey(reference)
         out.append({"property": name, "cells": _cell_refs(block.id, cells, grid, columns),
                     "value": value, "reference": reference,
                     "fix": _cell_fix(block, name, reference, cells, grid)})
+    for (value, reference), cells in counts.items():
+        out.append({"property": "paragraphs", "cells": _cell_refs(block.id, cells, grid, columns),
+                    "value": value, "reference": reference, "fix": None})
+    out += lost
     out += _paragraphs(block, source.document, pairs)
 
 
@@ -472,6 +524,74 @@ def _cell_fix(block: _Block, name: str, reference, cells: list[tuple[int, int]],
     return {"tool": "word_format_table", "calls": calls}
 
 
+# -- a cell's paragraphs paired (round 26, W6) --------------------------------------------------
+
+
+def _signature(document: "Document", paragraph) -> tuple[str | None, str]:
+    """A paragraph's style name and its text, case and white space normalised."""
+    return _paragraph_style(document, paragraph), " ".join(_text.paragraph_text(paragraph).split()).casefold()
+
+
+def _described(document: "Document", paragraph) -> dict[str, Any]:
+    """A missing or extra paragraph as reported: its style and the start of its text."""
+    text = " ".join(_text.paragraph_text(paragraph).split())
+    if len(text) > TEXT_START:
+        text = text[:TEXT_START].rstrip() + "\u2026"
+    return {"paragraph_style": _paragraph_style(document, paragraph), "text": text}
+
+
+def _by_text(a: str, b: str) -> bool:
+    if a == b:
+        return True
+    if not a or not b:
+        return False
+    return SequenceMatcher(None, a, b, autojunk=False).ratio() >= TEXT_SIMILARITY
+
+
+def _align(document: "Document", paragraphs: list, reference_document: "Document",
+           reference_paragraphs: list) -> tuple[list[tuple], list[int], list[int]]:
+    """A cell's paragraphs paired with its reference cell's (the module's "Corresponding
+    parts"): ``(pairs, missing, extra)`` -- the ``(paragraph, reference)`` pairs to compare,
+    the indexes of the reference's paragraphs left unpaired and of the copy's."""
+    m, n = len(paragraphs), len(reference_paragraphs)
+    if m == n == 1:
+        return [(paragraphs[0], reference_paragraphs[0])], [], []
+    mine = [_signature(document, p) for p in paragraphs]
+    theirs = [_signature(reference_document, p) for p in reference_paragraphs]
+    text = [[_by_text(mine[i][1], theirs[j][1]) for j in range(n)] for i in range(m)]
+    # A pair matching by text outweighs any number matching by style alone.
+    weight = m + n + 1
+    score = [[weight * text[i][j] + (mine[i][0] == theirs[j][0]) for j in range(n)] for i in range(m)]
+    best = [[0] * (n + 1) for _ in range(m + 1)]        # best[i][j]: the suffixes from i and j
+    for i in range(m - 1, -1, -1):
+        for j in range(n - 1, -1, -1):
+            best[i][j] = max(best[i + 1][j], best[i][j + 1],
+                             score[i][j] + best[i + 1][j + 1] if score[i][j] else 0)
+    aligned: dict[int, int] = {}
+    i = j = 0
+    while i < m and j < n:
+        if score[i][j] and best[i][j] == score[i][j] + best[i + 1][j + 1]:
+            aligned[i] = j
+            i, j = i + 1, j + 1
+        elif best[i][j] == best[i][j + 1]:
+            j += 1
+        else:
+            i += 1
+    if m == n and not any(i != j and text[i][j] for i, j in aligned.items()):
+        return list(zip(paragraphs, reference_paragraphs)), [], []
+    paired = dict(aligned)
+    previous = None
+    for i in range(m):
+        if i in aligned:
+            previous = aligned[i]
+        elif previous is not None and mine[i][0] == theirs[previous][0]:
+            paired[i] = previous                            # a repeat of the pattern
+    pairs = [(paragraphs[i], reference_paragraphs[j]) for i, j in sorted(paired.items())]
+    missing = sorted(set(range(n)) - set(aligned.values()))
+    extra = [i for i in range(m) if i not in paired]
+    return pairs, missing, extra
+
+
 # -- paragraphs --------------------------------------------------------------------------------
 
 
@@ -498,11 +618,16 @@ def _paragraphs(block: _Block, reference_document: "Document", pairs: list[tuple
     return out
 
 
-def _paragraph_values(document: "Document", paragraph) -> dict[str, Any]:
+def _paragraph_style(document: "Document", paragraph) -> str | None:
+    """The paragraph's style, by name: the one it states, else the default."""
     properties = paragraph.find(_W + "pPr")
     style = properties.find(_W + "pStyle") if properties is not None else None
-    values: dict[str, Any] = {"paragraph_style": _style_name(document, style.get(_W + "val") if style is not None
-                                                             else _default_style(document))}
+    return _style_name(document, style.get(_W + "val") if style is not None else _default_style(document))
+
+
+def _paragraph_values(document: "Document", paragraph) -> dict[str, Any]:
+    properties = paragraph.find(_W + "pPr")
+    values: dict[str, Any] = {"paragraph_style": _paragraph_style(document, paragraph)}
     declared = {name for name, (tag, attributes) in _PARAGRAPH.items()
                 if properties is not None and (node := properties.find(_W + tag)) is not None
                 and (not attributes or any(node.get(_W + a) is not None for a in attributes))}
@@ -590,4 +715,4 @@ def _paragraph_fix(document: "Document", name: str, reference, paragraphs: list[
     return {"tool": "word_format", "calls": [call]}
 
 
-__all__ = ["PROPERTIES", "WIDTH_TOLERANCE", "compare_blocks"]
+__all__ = ["PROPERTIES", "TEXT_SIMILARITY", "WIDTH_TOLERANCE", "compare_blocks"]

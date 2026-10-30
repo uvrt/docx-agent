@@ -1013,6 +1013,11 @@ doc.render_svg(pages=diff.changed)     # or render_png; ids on every paragraph g
   `layout.settings` (not facts to act on), with `with_next`, a taller-than-page one also once
   in `keep_with_next_at_foot`, which also reports a chain of keeps broken after a table's last
   row; measured in Word (37 cases, docx2svg the same).
+- **Round 26 (W6):** `word_compare_blocks` pairs a cell's paragraphs with the sample cell's
+  by an order-keeping alignment over style and normalised text (matching text first, then
+  style; never a pair matching neither), not by position: unpaired lines are
+  `missing_paragraph` / `extra_paragraph` with the cell's `paragraphs` count, no fix; equal
+  counts keep position unless the alignment crosses a pair matching by text.
 - **Cost.** One full layout per document state, cached by the bytes' hash: `layout()` and
   `render_svg()` of the same state read one `docx2svg.convert_docx` (every page laid out
   and written as SVG; writing the SVG costs little beside the layout), tested by counting
