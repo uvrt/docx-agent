@@ -409,7 +409,8 @@ _TABLE_SIDES = ("top", "bottom", "left", "right", "inside_h", "inside_v")
                                    optional=True),
             "look": array(string(enum=list(LOOK_NAMES)), "table: style options on, the rest off.", optional=True),
             "cant_split": boolean("row (table: all): never split across pages.", optional=True),
-            "keep_together": boolean("table: on one page; rows keep with next, last row not.", optional=True)},
+            "keep_together": boolean("table: on one page; rows keep with next, last row not.", optional=True),
+            "keep_with_next": boolean("table kept together: last row keeps with next block too.", optional=True)},
            refs=('table',), group="word_objects", mutates=True)
 def word_format_table(call: Any, doc: str, table: str, scope: str, row: int | None = None,
                       column: int | None = None, style: str | None = None, width: float | None = None,
@@ -418,7 +419,7 @@ def word_format_table(call: Any, doc: str, table: str, scope: str, row: int | No
                       vertical_alignment: str | None = None, height: float | None = None,
                       height_rule: str = "at_least", header_rows: int | None = None,
                       look: list[str] | None = None, cant_split: bool | None = None,
-                      keep_together: bool | None = None) -> Result:
+                      keep_together: bool | None = None, keep_with_next: bool | None = None) -> Result:
     document = call.document
     table = resolve(call, table)
     view = document.table(table)
@@ -447,13 +448,19 @@ def word_format_table(call: Any, doc: str, table: str, scope: str, row: int | No
             values["look"] = {LOOK_NAMES[name]: name in look for name in LOOK_NAMES}
         if cant_split is not None:
             edits.extend(document.set_row(table, r, cant_split=cant_split) for r in range(len(view.rows)))
+        if keep_together is False and keep_with_next:
+            raise ToolError("invalid_arguments", "keep_with_next keeps a table kept together with the next block: "
+                            "give keep_together true with it, or leave keep_with_next out", field="keep_with_next")
         if keep_together is not None:
-            # Round 25, W2: the rows' keeps as Word reads them (Document.set_keep_together).
-            edits.append(document.set_keep_together(table, keep_together))
+            # Round 25, W2: the rows' keeps as Word reads them (Document.set_keep_together);
+            # W5: with keep_with_next, the last row's too.
+            edits.append(document.set_keep_together(table, keep_together, with_next=bool(keep_with_next)))
+        elif keep_with_next is not None:
+            edits.append(document.set_table_keep_with_next(table, keep_with_next))
         if not values and not edits:
             raise ToolError("invalid_arguments", "nothing to set for the table",
                             valid_options=["style", "width", "width_percent", "alignment", "shading", "borders",
-                                           "header_rows", "look", "cant_split", "keep_together"])
+                                           "header_rows", "look", "cant_split", "keep_together", "keep_with_next"])
         if width_of == "body":
             # The columns shared again first, the cells' widths with them: an autofit
             # table is drawn at its cells' widths, which a table width alone leaves.
@@ -469,12 +476,24 @@ def word_format_table(call: Any, doc: str, table: str, scope: str, row: int | No
             taller = _taller_than_page(document, result.renamed.get(table, table))
             if taller is not None:
                 result.warnings.append(taller)
+        if keep_with_next:
+            loose = _loose_paragraph_after(document, result.renamed.get(table, table))
+            if loose is not None:
+                result.warnings.append(loose)
+        elif keep_together is False and document.table_properties(result.renamed.get(table, table))["keep_together"]:
+            # Round 25, W5: what keeps the rows now is their styles' (a label style's keep).
+            kept = document._table_entry(result.renamed.get(table, table))[1].id
+            result.warnings.append(f"{kept} is still kept together by its rows' styles (they keep with the next); "
+                                   "keep_together false removes only the direct keeps")
         return result
     if look is not None:
         raise ToolError("invalid_arguments", "look is the table's: give scope table", field="look")
     if keep_together is not None:
         raise ToolError("invalid_arguments", "keep_together is the table's: give scope table (cant_split keeps a "
                         "row on one page)", field="keep_together")
+    if keep_with_next is not None:
+        raise ToolError("invalid_arguments", "keep_with_next is the table's: give scope table (word_format keeps "
+                        "a paragraph with the next)", field="keep_with_next")
     if cant_split is not None and scope not in ("row", "table"):
         raise ToolError("invalid_arguments", "cant_split is a row's: give scope row (or table, for every row)",
                         field="cant_split")
@@ -546,6 +565,36 @@ def _taller_than_page(document: Any, table: str) -> str | None:
     if len({placement.page for placement in placements if placement.story == "body"}) > 1:
         return f"{table} is {TALLER_THAN_PAGE}"
     return None
+
+
+def _loose_paragraph_after(document: Any, table: str) -> str | None:
+    """The warning for a table kept with the next whose next block is a paragraph that does
+    not keep with the next, a table after it (round 25, W5): Word keeps the table with that
+    paragraph, but the table after it can still start the next page alone (measured,
+    ``feedback-round25/measurements-J.md``) -- that paragraph keeps the chain going."""
+    from ..edit import effective as _effective
+
+    part, entry = document._table_entry(table)
+    blocks = []
+    node = entry.element.getnext()
+    while node is not None and len(blocks) < 2:
+        if node.tag in (_W_P, _W_TBL):
+            blocks.append(node)
+        node = node.getnext()
+    if len(blocks) < 2 or blocks[0].tag != _W_P or blocks[1].tag != _W_TBL:
+        return None
+    if _effective.paragraph(document, blocks[0]).keep_with_next:
+        return None
+    index = document._index(part)
+    paragraph, after = index.entry_for(blocks[0]), index.entry_for(blocks[1])
+    if paragraph is None or after is None:
+        return None
+    return (f"{paragraph.id}, between {entry.id} and {after.id}, does not keep with the next: {after.id} can still "
+            f"start a page without {entry.id}; word_format keep_with_next true on {paragraph.id} keeps them together")
+
+
+_W_P = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}p"
+_W_TBL = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tbl"
 
 
 def _body_width(document: Any, table: str, percent: float, alignment: str | None) -> dict[str, Any]:

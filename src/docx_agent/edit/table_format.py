@@ -28,7 +28,9 @@ What Word writes, and docx-agent with it (lengths in points here, twips in the f
   keep by, the first of its first cell (:func:`docx2svg.table.lead_paragraph`), only where
   its styles do not keep it already -- and the last row does not, so the table does not
   chain into what follows: ``w:keepNext w:val="0"`` there only where its style keeps it
-  (:meth:`TableFormatOps.set_keep_together`).
+  (:meth:`TableFormatOps.set_keep_together`).  **Kept with the next** as well (round 25,
+  W5): the last row keeps too -- every row does -- so the table stays with the block after
+  it (:meth:`TableFormatOps.set_table_keep_with_next`).
 * **A floating table**: ``w:tblpPr`` (``leftFromText``, ``rightFromText``,
   ``topFromText``, ``bottomFromText``, ``vertAnchor``, ``horzAnchor``, ``tblpX``/``tblpY``
   -- Word writes a positive offset **a twip more** than it was given: 100 pt is 2001 -- or
@@ -399,7 +401,8 @@ class TableFormatOps:
         ``shading``, ``cell_margins``, ``floating``, ``header_rows``, ``columns`` (the
         grid's widths) -- lengths in points, a width in percent as ``"n%"`` -- and
         ``keep_together``: whether its rows keep it on one page (:meth:`set_keep_together`;
-        by their effective keeps, styles' too)."""
+        by their effective keeps, styles' too), and ``keep_with_next``: whether its last row
+        keeps with the block after it (round 25, W5)."""
         _, entry = self._table_entry(table)
         element = entry.element
         props = element.find(_W + "tblPr")
@@ -418,6 +421,7 @@ class TableFormatOps:
             if row.find(f"{_W}trPr/{_W}tblHeader") is None:
                 break
             header += 1
+        keeps = row_keeps(self, element)
         return {
             "style": style_name,
             "width": read_width(find("tblW")),
@@ -433,10 +437,11 @@ class TableFormatOps:
             "floating": _read_floating(find("tblpPr"), find("tblOverlap")),
             "header_rows": header,
             "columns": [points(w) for w in grid_widths(element)],
-            "keep_together": kept_together(row_keeps(self, element)),
+            "keep_together": kept_together(keeps),
+            "keep_with_next": kept_with_next(keeps),
         }
 
-    def set_keep_together(self: "Document", table: str, on: bool) -> "EditResult":
+    def set_keep_together(self: "Document", table: str, on: bool, *, with_next: bool = False) -> "EditResult":
         """Keep a table on one page with its rows' keeps, as Word reads them (round 25, W2):
         the first paragraph of each row's first cell (a nested table's first there) keeps
         with the next in every row but the last -- set directly only where its styles do
@@ -446,35 +451,74 @@ class TableFormatOps:
         it, else its direct keep removed).  A table taller than a page breaks where it is
         full, as Word breaks it (measured: ``feedback-round25/measurements-J.md``).
 
-        Off (``on`` false) removes what this writes, and only that, recognised by the
-        pattern it leaves: on a table whose rows keep exactly so (every row but the last,
-        :func:`kept_together`), each row's deciding paragraph's direct ``w:keepNext`` that
-        differs from its styles' -- a keep where they give none, a release where they keep.
-        A direct keep its styles give anyway, the rows' other paragraphs and every other
-        property stay.  :class:`EditError` for a one-row table (nothing to keep together;
-        ``cant_split`` keeps a row on one page) and, off, for a table not kept so."""
-        from . import formatting as _formatting
-        from .document import EditError, EditResult
+        ``with_next`` (round 25, W5): the last row keeps with the next as well -- directly
+        only where its styles do not keep it -- so the table, whole, stays on the page of
+        the block after it (a table and the box after it move together; measured:
+        ``feedback-round25/measurements-J.md``, W5).
 
+        Off (``on`` false) removes what this writes, and only that, recognised by the
+        pattern it leaves: on a table whose rows keep so (every row but the last,
+        :func:`kept_together`; the last too or not), each row's deciding paragraph's direct
+        ``w:keepNext`` that differs from its styles' -- a keep where they give none, a
+        release where they keep.  A direct keep its styles give anyway, the rows' other
+        paragraphs and every other property stay.  :class:`EditError` for a one-row table
+        (nothing to keep together; ``cant_split`` keeps a row on one page) and, off, for a
+        table not kept so."""
         part, entry = self._table_entry(table)
-        rows = row_keeps(self, entry.element)
-        if len(rows) < 2:
-            raise EditError(f"{entry.id} has one row: nothing to keep together (cant_split keeps a row on one page)")
-        if any(row[0] is None for row in rows):
-            raise EditError(f"{entry.id} has a row with no paragraph to keep it by")
+        rows = self._keep_rows(entry)
         changes: list[tuple[Element, bool | None]] = []
         if on:
             for k, (lead, keeps, styled, declared) in enumerate(rows):
-                want = k < len(rows) - 1
+                want = with_next or k < len(rows) - 1
                 if keeps == want:
                     continue
                 changes.append((lead, None if styled == want else want))
         else:
             if not kept_together(rows):
+                from .document import EditError
+
                 raise EditError(f"{entry.id} is not kept together: not every row but the last keeps with the next")
             for k, (lead, keeps, styled, declared) in enumerate(rows):
                 if declared is not None and declared != styled:
                     changes.append((lead, None))
+        return self._write_keeps(part, entry, changes)
+
+    def set_table_keep_with_next(self: "Document", table: str, on: bool) -> "EditResult":
+        """Whether a table kept together (:meth:`set_keep_together`) also keeps with the block
+        after it (round 25, W5): its last row's deciding paragraph keeps with the next, or is
+        released -- directly only where its styles differ, else its direct ``w:keepNext``
+        removed.  The other rows stay.  :class:`EditError` for a table not kept together: a
+        last row that keeps alone takes only itself to the next page with that block, the
+        rest of the table left behind (measured, W5) -- keep it together first."""
+        from .document import EditError
+
+        part, entry = self._table_entry(table)
+        rows = self._keep_rows(entry)
+        if not kept_together(rows):
+            raise EditError(f"{entry.id} is not kept together: keep_with_next keeps a table kept together with the "
+                            "next block (its last row alone would go without the rest); give keep_together true")
+        lead, keeps, styled, declared = rows[-1]
+        changes: list[tuple[Element, bool | None]] = []
+        if keeps != on:
+            changes.append((lead, None if styled == on else on))
+        return self._write_keeps(part, entry, changes)
+
+    def _keep_rows(self: "Document", entry) -> list[tuple]:
+        """:func:`row_keeps` of a table to keep together; :class:`EditError` where it cannot be."""
+        from .document import EditError
+
+        rows = row_keeps(self, entry.element)
+        if len(rows) < 2:
+            raise EditError(f"{entry.id} has one row: nothing to keep together (cant_split keeps a row on one page)")
+        if any(row[0] is None for row in rows):
+            raise EditError(f"{entry.id} has a row with no paragraph to keep it by")
+        return rows
+
+    def _write_keeps(self: "Document", part, entry, changes: list[tuple[Element, bool | None]]) -> "EditResult":
+        """Each ``(paragraph, value)``'s direct ``w:keepNext`` written (``None``: removed)."""
+        from . import formatting as _formatting
+        from .document import EditResult
+
         if not changes:
             return EditResult(entry.id, changed=False)
         index = self._index(part)
@@ -1186,9 +1230,17 @@ def row_keeps(document: "Document", table: Element) -> list[tuple]:
 
 def kept_together(rows: list[tuple]) -> bool:
     """Whether :func:`row_keeps`' rows keep the table together: at least two rows, every
-    one but the last keeping with the next, the last not."""
+    one but the last keeping with the next.  Whether the last does too is
+    :func:`kept_with_next` (round 25, W5): the table kept together and with the block
+    after it -- every row keeping, a label style's too, is that."""
     return (len(rows) >= 2 and all(row[0] is not None for row in rows)
-            and all(row[1] for row in rows[:-1]) and not rows[-1][1])
+            and all(row[1] for row in rows[:-1]))
+
+
+def kept_with_next(rows: list[tuple]) -> bool:
+    """Whether :func:`row_keeps`' last row keeps with the next: the table's end stays on
+    the page of the block after it (Word moves the row there with it)."""
+    return bool(rows) and rows[-1][0] is not None and bool(rows[-1][1])
 
 
 def _read_floating(node: Element | None, overlap: Element | None) -> dict | None:
