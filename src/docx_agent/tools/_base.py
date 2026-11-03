@@ -115,6 +115,12 @@ def resolve(call: Any, value: Any) -> Any:
     did so for a tool's declared targets; this covers the rest)."""
     if isinstance(value, list):
         return [resolve(call, item) for item in value]
+    if isinstance(value, str) and ".." in value and "$" in value:
+        # A span's ends, either a ref: $intro..$outro, p:A..$end, $start.. (the dispatcher
+        # resolved a leading one).
+        first, _, last = value.partition("..")
+        return "..".join(call.resolve_ref(end.strip()) if end.strip().startswith("$") else end
+                         for end in (first, last))
     if isinstance(value, str) and value.startswith("$"):
         return call.resolve_ref(value)
     return value
