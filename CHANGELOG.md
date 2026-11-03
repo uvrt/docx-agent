@@ -5,6 +5,40 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.29 -- unreleased
+
+- **A batch of Word ops costs about the same per op at any document size** (production
+  round 28, W8: 31 tables, 124 `word_format_table` / `word_edit_table` ops took 122 s, three
+  ops in four not run). Measured on made-up 23- and 24-page reports with 12 and 31 tables
+  (`feedback-round28/timings-R.md`): what each op repeated over the whole document is done
+  once per batch, or only for what it reads:
+  - `word_format_table` `keep_together: true` lays the document out for its warning (a table
+    taller than a page) once the document is as the call leaves it -- in a batch after the
+    last op, one layout for the batch, where each op laid it out (ooxml-edit 0.73.0's
+    `Call.defer`). The warning keeps its place among the batch's warnings. **Behaviour
+    change, by decision:** in a batch it describes the document after the batch, not after
+    that op -- the two differ only where a later op of the batch changes that table's height
+    or place, and the state after the batch is the one the caller goes on with. A call alone
+    is as before.
+  - `word_edit_table` returns its table as Markdown from the table read alone
+    (`Reader.block`): the blocks before it only have their list items counted (a list item
+    in a cell numbers on from the body's list as before), the blocks after it are not read.
+    `Document.to_markdown(<table or cell id>)` the same.
+  - The effective formatting (`paragraph.effective`, the Markdown reader's emphasis, a
+    table's row keeps) finds docx2svg's paragraph of the one asked by its path, checked by
+    docx2svg's own `resolve_path`, instead of resolving every paragraph's path after every
+    edit (work that grew with the square of the document); a paragraph not found so maps
+    them all, as before.
+  - The id index, the drawings without ids, the ids in use and the section breaks are found
+    by lxml's walk or XPath, in C, not by a Python walk over every element.
+  Every result, warning and byte is the one before: a golden-style test runs a mixed batch
+  and each of its ops alone with all of this off and on, and the walks are compared with
+  the old ones on every fixture.
+- **A batch past its deadline says what was not run** (ooxml-edit 0.73.0): how many ops,
+  the first and last, and a batch size that would have fitted at the rate the ops ran
+  (`data.not_run`), in the summary too.
+- Requires ooxml-edit 0.73.0.
+
 ## 0.1.28 -- unreleased
 
 - **Asking for what is so already succeeds** (production round 27, W7). `word_format_table`
