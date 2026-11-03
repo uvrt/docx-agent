@@ -184,11 +184,10 @@ class AddressOps:
     # -- spans -------------------------------------------------------------------------------
 
     def _span_elements(self: "Document", first: str | None, last: str | None,
-                       movable: tuple[str, ...], either_order: bool = False) -> tuple[list[Element], str]:
+                       movable: tuple[str, ...]) -> tuple[list[Element], str]:
         """The blocks of the span ``first..last`` (either end ``None``: open), in order: both
-        ends of one container, the first not after the last (``either_order``: a last
-        before the first is read the other way round, as ``insert_markdown``'s ``replace:``
-        always has)."""
+        ends of one container, the first not after the last (a reversed span is refused,
+        by every tool alike)."""
         given = f"{first or ''}..{last or ''}"
         ends = []
         for end in (first, last):
@@ -209,8 +208,6 @@ class AddressOps:
             a, b = siblings.index(anchor.element), len(siblings) - 1
         else:
             a, b = 0, siblings.index(anchor.element)
-        if b < a and either_order:
-            a, b = b, a
         if b < a:
             from .errors import EditError
 

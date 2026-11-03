@@ -21,6 +21,7 @@ import re
 from typing import TYPE_CHECKING
 
 from ..edit.addresses import SPAN_SYNTAX, AddressError, inside_table, is_text_range, span_ends
+from ..edit.errors import EditError
 from . import model
 from .parse import differences, model_ast, parse_ast
 from .read import (Marker, Options, ParagraphRecord, Reader, TableRecord, build, note_definitions,
@@ -195,7 +196,7 @@ def select(reader: Reader, range: str | None) -> list[tuple[str, list, str]]:
         a = _position(document, records, first) if first else 0
         b = _position(document, records, last) if last else len(records) - 1
         if b < a:
-            a, b = b, a
+            raise EditError(f"{range!r} ends before it starts")
         return [(part, records[a:b + 1], "range")]
     if is_text_range(range):
         found = document.range(range)

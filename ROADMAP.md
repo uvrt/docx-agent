@@ -1059,12 +1059,12 @@ doc.render_svg(pages=diff.changed)     # or render_png; ids on every paragraph g
   every place"): a cell id, row, section, bookmark and open span (`p:A..`, `..t:B`) wherever
   they make sense, refs at both ends of a span, refusals naming the ids that would do, a
   malformed span refused with the syntax; `word_inspect` on a cell inspects the cell.
-  `word_set_text` `split_paragraphs` (`Document.set_text_paragraphs`): each `\n` starts a
-  paragraph after the target, in its paragraph properties without a section break or
-  revision record and its last run's formatting (Enter at the end of a paragraph, as
-  `insert_paragraph` and `word_edit_table`'s lines write it); `\v` stays a line break; a
-  cell's lines are its paragraphs; a repeat changes nothing; a section's last paragraph is
-  refused.
+  A `\n` in `word_set_text`'s text (refused before; no parameter) starts a paragraph
+  after the target (`Document.set_text_paragraphs`), in its paragraph properties without a
+  section break or revision record and its last run's formatting (Enter at the end of a
+  paragraph, as `insert_paragraph` and `word_edit_table`'s lines write it); `\v` stays a
+  line break; a cell's lines are its paragraphs; a repeat changes nothing; a section's last
+  paragraph is refused. A reversed span is refused by every tool alike.
 - **Cost.** One full layout per document state, cached by the bytes' hash: `layout()` and
   `render_svg()` of the same state read one `docx2svg.convert_docx` (every page laid out
   and written as SVG; writing the SVG costs little beside the layout), tested by counting

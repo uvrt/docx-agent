@@ -1460,8 +1460,9 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
             raise EditError(f"{identifier} is not a paragraph")
         element = entry.element
         if element.find(f"{W_PPR}/{W_SECTPR}") is not None:
-            raise EditError(f"{entry.id} ends a section: paragraphs split after it would start the next "
-                            "section; write its text without \\n and insert the others before it")
+            raise EditError(f"{entry.id} ends a section: paragraphs split after it at \\n would start the "
+                            "next section; give it one line and insert the others before it "
+                            "(word_insert_markdown at before:)")
         if self._already_lines(element, lines):
             return EditResult(entry.id, changed=False)
         with self.batch():

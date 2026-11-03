@@ -23,29 +23,34 @@ snapshot commit; the development history before it is summarised here.
   section). **Open spans:** `p:A..` runs from `p:A` to the end of its container (the body,
   or the cell it is in), `..t:B` from the start; refs at either end (`$a..$b`, `$a..`). A
   malformed span (`p:A...p:B`, `..`, three ends) is refused with the syntax, never as an empty
-  id; a cell, row, span, section, bookmark or text range where one block is wanted, and a
+  id; a cell, row, span, section, bookmark, story or text range where one block is wanted, and a
   paragraph in a table given as a table, is `invalid_arguments` with the ids that would do in
   `valid_options`. Library: `AddressError` (a `KeyError`), `Document.range` takes a
   paragraph, cell, bookmark, hyperlink or run id, `section_of` any id in the body, `get` a
-  bookmark's plain name. Calls that worked do what they did; refusals that change: a cell,
+  bookmark's plain name. Calls that worked do what they did (but a reversed span, below); refusals that change: a cell,
   row, span, section, bookmark or text range where a paragraph or table is wanted was
   `not_found` ("no paragraph or table ..."), now `invalid_arguments` naming what it is.
-- **`word_set_text` `split_paragraphs`** (W10): each `\n` starts a new paragraph after the
-  target (`Document.set_text_paragraphs`), `\v` stays a line break. The first line rewrites
-  the target as before (its formatting kept); each new paragraph takes the target's
+- **`word_set_text` writes each `\n` as a paragraph** (W10). A `\n` in the text, refused
+  before, now starts a new paragraph after the target (`Document.set_text_paragraphs`);
+  `\v` stays a line break. No parameter: what was refused now works. The first line
+  rewrites the target as before (its formatting kept); each new paragraph takes the target's
   paragraph properties -- style, alignment, spacing, indents, keeps, list membership --
   without a section break or a revision record, and its last text run's formatting, as
-  Enter at the end of the paragraph and `insert_paragraph` after it do. A cell target's lines
-  become the cell's paragraphs (its others go, as `word_edit_table` `set_cells` writes
-  them). With `items`, each target is split on its own. A repeat changes nothing; a
-  paragraph that ends a section is refused (the new paragraphs would start the next one).
-  Without the option a `\n` is refused naming it (`invalid_arguments` on `text` or
-  `items[k].text`; it was `unit`). Tracked like any insertion; one undo step.
-- **Tool definitions.** `split_paragraphs` (+39) and `word_read`'s `range` description (+4)
-  add 44 to the core (2,440 -> 2,484 estimated, about 3,676 counted by the proxy) and 57 to
-  every definition with `word_inspect`'s `target` (13,028 -> 13,085). The strict set holds
-  24 optional parameters now, Claude's limit (word_set_text 3 -> 4; `split_paragraphs` last,
-  after `items`).
+  Enter at the end of the paragraph and `insert_paragraph` after it do. A cell target whose
+  text has a `\n` gets the lines as its paragraphs (its others go, as `word_edit_table`
+  `set_cells` writes them); without one, its first paragraph is rewritten as before. With
+  `items`, each target is split on its own. A repeat changes nothing; a paragraph that ends
+  a section is refused (the new paragraphs would start the next one). Tracked like any
+  insertion; one undo step.
+- **A reversed span is refused everywhere alike.** `word_read`'s `range` and
+  `word_insert_markdown`'s `replace:` read `p:B..p:A` (its last end before its first) the
+  other way round; now they refuse it as `word_delete` and `word_move` do (`'p:B..p:A' ends
+  before it starts`).
+- **Tool definitions.** `word_set_text`'s `text` says a `\n` starts a paragraph (+14) and
+  `word_read`'s `range` names a cell and an open span (+4): the core 2,440 -> 2,458
+  estimated (about 3,638 counted by the proxy); every definition, with `word_inspect`'s
+  `target` (+12), 13,028 -> 13,059. The strict set is unchanged: 6 tools, 23 optional
+  parameters.
 
 ## 0.1.28 -- unreleased
 

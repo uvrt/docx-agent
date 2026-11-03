@@ -360,7 +360,7 @@ def _locate(document: "Document", at: str) -> _Place:
             part, entry = document._resolve_block(rest)
             elements = [entry.element]
         else:
-            elements, part = document._span_elements(*ends, movable=_BLOCKS, either_order=True)
+            elements, part = document._span_elements(*ends, movable=_BLOCKS)
         ids = [_id_of(document, part, e) for e in elements]
         return _Place(part, elements[0].getparent(), elements[0], ids[0], replaced=ids,
                       position=_position(document, part, elements[0], False))

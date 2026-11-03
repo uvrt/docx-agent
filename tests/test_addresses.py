@@ -1,5 +1,5 @@
-"""One reading of every address (round 28, W9) and word_set_text's ``split_paragraphs``
-(W10).  W9: a cell id, a row, a section, a bookmark and a span -- closed, open (``p:A..``
+"""One reading of every address (round 28, W9) and word_set_text's paragraph split
+(W10, ``\\n`` in the text).  W9: a cell id, a row, a section, a bookmark and a span -- closed, open (``p:A..``
 to the end of its container, ``..p:B`` from the start) or with refs at its ends -- are read
 the same by every tool that takes a place; a form a parameter cannot take is refused with
 the ids that would do, a malformed span with the syntax and never as an empty id.  W10:
@@ -253,16 +253,16 @@ def test_the_library_reads_the_same_forms():
         document.move_blocks(f"{ids['Alpha']}..{table.cell(1, 1).paragraphs[0].id}", after=ids["Delta"])
 
 
-# -- W10: split_paragraphs -----------------------------------------------------------------
+# -- W10: a newline splits -----------------------------------------------------------------
 
 
-def test_split_paragraphs_writes_each_line_as_a_paragraph_in_the_targets_properties(box, session):
+def test_a_newline_split_writes_each_line_as_a_paragraph_in_the_targets_properties(box, session):
     doc, document, ids = opened(session, made())
     document.format_paragraph(ids["Bravo"], alignment="center", space_after=3)
     document.paragraph(ids["Bravo"]).format(bold=True)
     style = document.paragraph(ids["Bravo"]).style
     result = ok(box, session, "word_set_text", doc=doc, target=ids["Bravo"],
-                text="First line.\nSecond\vwith a break.\n\nFourth.", split_paragraphs=True)
+                text="First line.\nSecond\vwith a break.\n\nFourth.")
     texts = [p.text for p in document.paragraphs()]
     at = texts.index("First line.")
     assert texts[at:at + 4] == ["First line.", "Second\vwith a break.", "", "Fourth."]
@@ -274,60 +274,77 @@ def test_split_paragraphs_writes_each_line_as_a_paragraph_in_the_targets_propert
         assert paragraph.effective.alignment == "center" and paragraph.effective.space_after == 3
     assert made_[0].runs[0].effective.bold      # the last run's formatting, as Enter continues it
     again = ok(box, session, "word_set_text", doc=doc, target=ids["Bravo"],
-               text="First line.\nSecond\vwith a break.\n\nFourth.", split_paragraphs=True)
+               text="First line.\nSecond\vwith a break.\n\nFourth.")
     assert again.created == [] and again.changed == []
     assert [p.text for p in document.paragraphs()] == texts
 
 
-def test_without_split_paragraphs_a_newline_is_refused_naming_the_option(box, session):
-    doc, _, ids = opened(session, made())
-    error = refused(box, session, "word_set_text", "invalid_arguments", doc=doc, target=ids["Alpha"],
-                    text="One\nTwo")
-    assert "split_paragraphs" in error.message and error.field == "text"
-    error = refused(box, session, "word_set_text", "invalid_arguments", doc=doc,
-                    items=[{"target": ids["Alpha"], "text": "One"}, {"target": ids["Bravo"], "text": "A\nB"}])
-    assert error.field == "items[1].text"
+def test_without_a_newline_a_cell_target_rewrites_its_first_paragraph_as_before(box, session):
+    doc, document, _ = opened(session, made())
+    table = document.tables()[0]
+    ok(box, session, "word_set_text", doc=doc, target=f"{table.id}/c1,1", text="R1\nR2")
+    ok(box, session, "word_set_text", doc=doc, target=f"{table.id}/c1,1", text="Only\vbroken")
+    assert [p.text for p in table.cell(1, 1).paragraphs] == ["Only\vbroken", "R2"]
 
 
-def test_split_paragraphs_applies_per_target_and_writes_a_cells_paragraphs(box, session):
+def test_a_newline_split_applies_per_target_and_writes_a_cells_paragraphs(box, session):
     doc, document, ids = opened(session, made())
     table = document.tables()[0]
-    result = ok(box, session, "word_set_text", doc=doc, split_paragraphs=True,
-                items=[{"target": ids["Alpha"], "text": "A1\nA2"},
+    result = ok(box, session, "word_set_text", doc=doc,                 items=[{"target": ids["Alpha"], "text": "A1\nA2"},
                        {"target": f"{table.id}/c1,1", "text": "R1\nR2"},
                        {"target": ids["Delta"], "text": "One line only"}])
     texts = [p.text for p in document.paragraphs()]
     assert texts[texts.index("A1") + 1] == "A2"
     assert [p.text for p in table.cell(1, 1).paragraphs] == ["R1", "R2"]
     assert "One line only" in texts and len(result.created) == 2
-    again = ok(box, session, "word_set_text", doc=doc, split_paragraphs=True,
-               items=[{"target": f"{table.id}/c1,1", "text": "R1\nR2"}])
+    again = ok(box, session, "word_set_text", doc=doc,                items=[{"target": f"{table.id}/c1,1", "text": "R1\nR2"}])
     assert again.created == [] and again.changed == []
 
 
-def test_split_paragraphs_is_tracked_and_undone_as_one_call(box, session):
+def test_a_newline_split_is_tracked_and_undone_as_one_call(box, session):
     doc, document, ids = opened(session, made())
     texts = [p.text for p in document.paragraphs()]
     ok(box, session, "word_set_tracking", doc=doc, on=True, author="Reviewer")
-    ok(box, session, "word_set_text", doc=doc, target=ids["Charlie"], text="Charlie words here.\nAdded.",
-       split_paragraphs=True)
+    ok(box, session, "word_set_text", doc=doc, target=ids["Charlie"], text="Charlie words here.\nAdded.")
     assert "insertion" in {r.kind for r in document.revisions()}
     assert "Added." in [p.text for p in document.paragraphs()]
     ok(box, session, "undo", doc=doc)
     assert [p.text for p in document.paragraphs()] == texts and not document.revisions()
 
 
-def test_split_paragraphs_refuses_a_paragraph_that_ends_a_section():
+def test_a_newline_split_refuses_a_paragraph_that_ends_a_section():
     document = Document.open(made(section_after="Bravo"))
     ending = "p" + document.sections()[0].id[1:]          # s:<paraId>: the paragraph holding the break
     with pytest.raises(EditError, match="ends a section"):
         document.set_text_paragraphs(ending, "One\nTwo")
 
 
-def test_split_paragraphs_is_word_set_texts_last_parameter_and_keeps_the_strict_set_within_24(box):
+def test_a_newline_costs_no_parameter_and_the_strict_set_stays_at_23(box):
     definitions = box.definitions("anthropic", defer=False)
     set_text = next(d for d in definitions if d["name"] == "word_set_text")
-    assert set_text.get("strict") and list(set_text["input_schema"]["properties"])[-1] == "split_paragraphs"
+    assert set_text.get("strict") and list(set_text["input_schema"]["properties"]) == ["doc", "target", "text", "items"]
     tools = {t.name: t for t in TOOLS}
-    optional = sum(len(tools[d["name"]].optional_parameters()) for d in definitions if d.get("strict"))
-    assert optional <= 24
+    assert sum(len(tools[d["name"]].optional_parameters()) for d in definitions if d.get("strict")) == 23
+
+
+def test_a_reversed_span_is_refused_alike_everywhere(box, session):
+    doc, _, ids = opened(session, made())
+    reversed_ = f"{ids['Charlie']}..{ids['Alpha']}"
+    for tool, arguments in (("word_read", {"range": reversed_}), ("word_delete", {"target": reversed_}),
+                            ("word_insert_markdown", {"markdown": "New.", "at": f"replace:{reversed_}"}),
+                            ("word_move", {"blocks": reversed_, "after": ids["Delta"]})):
+        error = refused(box, session, tool, "refused", doc=doc, **arguments)
+        assert error.message == f"{reversed_!r} ends before it starts", (tool, error.message)
+
+
+def test_a_bookmark_or_story_where_a_block_is_wanted_gets_the_hint(box, session):
+    doc, _, ids = opened(session, made(bookmark="Charlie"))
+    for anchor in ("Spot", "bm:Spot"):
+        error = refused(box, session, "word_move", "invalid_arguments", doc=doc, blocks=ids["Delta"], after=anchor)
+        assert "is a bookmark" in error.message and error.valid_options == [ids["Charlie"]]
+    error = refused(box, session, "word_edit_table", "invalid_arguments", doc=doc, table="Spot",
+                    action="insert_row")
+    assert "is a bookmark" in error.message
+    error = refused(box, session, "word_insert_markdown", "invalid_arguments", doc=doc, markdown="New.",
+                    at="after:body")
+    assert "is a story" in error.message

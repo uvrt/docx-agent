@@ -62,46 +62,43 @@ def _cell_paragraphs(table: Table, row: int, column: int) -> list[Paragraph]:
 
 
 SET_ITEM = obj({"target": string("Paragraph, or table cell t:X/c<row>,<col>."),
-                "text": string("The whole new text, plain.")})
+                "text": string("The whole new text, plain; \\n starts a paragraph.")})
 
 
 @word_tool("word_set_text", "Rewrite whole paragraphs, keeping the formatting; tracked, only changed words become revisions. For words within a paragraph, replace_text.",
            {"doc": DOC,
             "target": string("Paragraph, or table cell t:X/c<row>,<col>.", optional=True),
-            "text": string("The whole new text, plain.", optional=True),
-            "items": array(SET_ITEM, "Or several paragraphs.", optional=True),
-            "split_paragraphs": boolean("Each \\n starts a paragraph in the target's style; \\v a line break. "
-                                        "Default false.", optional=True)},
+            "text": string("The whole new text, plain; \\n starts a paragraph.", optional=True),
+            "items": array(SET_ITEM, "Or several paragraphs.", optional=True)},
            refs=('target', 'items[].target'), group="core", mutates=True,
            facts=("text", "items[].text"))
 def word_set_text(call: Any, doc: str, target: str | None = None, text: str | None = None,
-                  items: list[dict] | None = None, split_paragraphs: bool = False) -> Result:
+                  items: list[dict] | None = None) -> Result:
+    """Round 28, W10: a ``\\n`` in the text (refused before) splits it into paragraphs, the
+    later ones after the target in its style (``Document.set_text_paragraphs``); ``\\v`` is
+    a line break inside one."""
     one_of({"target": target, "items": items}, "target", "items")
     if items == []:         # a trimmed batch's leftover: nothing to do, said, not refused
         return Result.nothing_given("written")
     work = items if items is not None else [{"target": target, "text": need(text, "text")}]
     edits = []
-    for k, item in enumerate(work):
-        field = "text" if items is None else f"items[{k}].text"
-        if not split_paragraphs and ("\n" in item["text"] or "\r" in item["text"]):
-            raise ToolError("invalid_arguments", f"{field} holds \\n: give split_paragraphs true to write "
-                            "each line as a paragraph, or \\v for a line break inside one", field=field)
-        edits.extend(_set_one(call, resolve(call, item["target"]), item["text"], split_paragraphs))
+    for item in work:
+        edits.extend(_set_one(call, resolve(call, item["target"]), item["text"]))
     made = sum(len(edit.created) for edit in edits)
-    return outcome(edits, f"Set the text of {len(work)} {'target' if split_paragraphs else 'paragraph'}(s)"
-                   + (f", {made} new paragraph(s)" if made else ""))
+    return outcome(edits, f"Set the text of {len(work)} paragraph(s)" + (f", {made} new after them" if made else ""))
 
 
-def _set_one(call: Any, address: str, text: str, split: bool) -> list[Any]:
-    """One target's text: a paragraph's, or a cell's first paragraph's; split, every line a
-    paragraph -- after the paragraph, or as the cell's paragraphs (the cell's others go, as
-    word_edit_table's set_cells writes a cell's lines)."""
+def _set_one(call: Any, address: str, text: str) -> list[Any]:
+    """One target's text: a paragraph's, or a cell's first paragraph's; with ``\\n``, every
+    line a paragraph -- after the paragraph, or as the cell's paragraphs (the cell's others
+    go, as word_edit_table's set_cells writes a cell's lines)."""
     from .objects import _set_cell
 
     document = call.document
     if span_ends(address) is not None:
         raise ToolError("invalid_arguments", f"{address} is a span: word_set_text writes one paragraph or "
                         "cell per target; give items, one per paragraph", field="target")
+    split = "\n" in text or "\r" in text
     found = document.get(address)
     if isinstance(found, Cell) and split:
         lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
