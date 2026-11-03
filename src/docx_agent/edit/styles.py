@@ -272,14 +272,30 @@ class Styles:
             self._append(node)
         return EditResult(f"style:{style_id}", created=[f"style:{style_id}"])
 
-    def modify(self, name: str, kind: str | None = None, **formatting) -> "EditResult":
+    def modify(self, name: str, kind: str | None = None, *, numbering=_NOT_GIVEN,
+               **formatting) -> "EditResult":
         """Change a style's run and paragraph formatting and its ``shading`` (``None``
-        removes a value)."""
+        removes a value).
+
+        ``numbering={"list": <numId, or a style in that list>, "level": n}`` links a
+        paragraph style to a level of a list, as Word's "Link level to style" does (measured,
+        round 29): the level names the style, the style numbers its paragraphs at that level
+        (its ``w:numPr``) with the level's indent (its own ``w:ind`` goes), and the style that
+        held the level before is unlinked -- its ``w:numPr`` and ``w:ind`` go, so its
+        paragraphs are no longer numbered (a warning says how many).  ``numbering=None``
+        unlinks the style.  Chapter, section, subsection styles linked to levels 0, 1, 2 of
+        one list number 1, 1.1, 1.1.1 as Word does::
+
+            doc.styles.modify("Chapter title", numbering={"list": 3, "level": 0})
+            doc.styles.modify("Section title", numbering={"list": "Chapter title", "level": 1})"""
         from .document import EditError, EditResult
 
         style = self.find(name, kind)
         if style is None:
             raise EditError(f"the document has no style {name!r}")
+        if numbering is not _NOT_GIVEN and style.kind != "paragraph":
+            raise EditError(f"{name!r} is a {style.kind} style: only a paragraph style is linked to a list level")
+        link = None if numbering is _NOT_GIVEN or numbering is None else self._list_level(numbering)
         formatting = dict(formatting)
         shading = formatting.pop("shading", _NOT_GIVEN)
         run_values = {k: v for k, v in formatting.items() if k in _formatting.RUN_PROPERTIES}
@@ -302,12 +318,69 @@ class Styles:
             _formatting.write_run(node, run_values, document._theme_color)
             if shading is not _NOT_GIVEN:
                 _write_shading(node, style.kind, shd)
+            warnings: list[str] = []
+            if link is not None:
+                from .numbering import link_style_level
+
+                for holder in link_style_level(document, style.id, *link):
+                    held = self._style_of(holder)
+                    uses = len(self._content_references(holder))
+                    warnings.append(f"{held} held level {link[1]} of list {link[0]} before: unlinked, "
+                                    f"its {uses} paragraph(s) are no longer numbered")
+            elif numbering is None:
+                from .numbering import unlink_style
+
+                unlink_style(document, style.id)
             for tag in ("w:pPr", "w:rPr"):
                 child = node.find(qn(tag))
                 if child is not None and not len(child):
                     remove(child)
             document.package.mark_dirty(document.package.styles_part())
-        return EditResult(f"style:{style.id}")
+        return EditResult(f"style:{style.id}", warnings=warnings)
+
+    def _style_of(self, style_id: str) -> str:
+        """A style's name, quoted, for a message (its id when it has none)."""
+        node = self._node(style_id)
+        found = node.find(_W + "name") if node is not None else None
+        return repr(found.get(_W + "val") if found is not None else style_id)
+
+    def _list_level(self, numbering) -> tuple[int, int]:
+        """``modify``'s ``numbering`` as ``(numId, level)``, checked: ``list`` a ``w:num`` the
+        document has (a number, or digits) or a paragraph style in a list; ``level`` 0-8."""
+        from .document import EditError
+        from .numbering import LEVELS, Numbering, defined_levels, list_style
+
+        if not isinstance(numbering, dict) or set(numbering) - {"list", "level"} or "list" not in numbering:
+            raise EditError('numbering is {"list": <a list\'s number or a style in it>, "level": 0-8}, '
+                            "or None to unlink")
+        level = numbering.get("level", 0)
+        if isinstance(level, bool) or not isinstance(level, int) or not 0 <= level < LEVELS:
+            raise EditError(f"numbering level is 0 to {LEVELS - 1} (the first level is 0), not {level!r}")
+        given = numbering["list"]
+        nums = Numbering(self._document).nums()
+        num_id = None
+        if isinstance(given, int) and not isinstance(given, bool):
+            num_id = given
+        elif isinstance(given, str) and given.strip().isdigit() and int(given) in nums:
+            num_id = int(given)
+        elif isinstance(given, str):
+            other = self.find(given, "paragraph")
+            if other is None:
+                raise StyleError(f"the document has no paragraph style {given!r} (numbering list: a list's "
+                                 "number or a style in it)")
+            num_id = list_style(self._document, other.id)
+            if num_id is None:
+                raise EditError(f"{other.name!r} is in no list: give a list's number, or a style in one")
+        else:
+            raise EditError(f"numbering list is a list's number or a style in it, not {given!r}")
+        if num_id not in nums:
+            raise EditError(f"the document has no list {num_id}: its lists are "
+                            + (", ".join(map(str, sorted(nums))) or "none"))
+        levels = defined_levels(self._document, num_id)
+        if level not in levels:
+            raise EditError(f"list {num_id} has no level {level}: its levels are "
+                            + (", ".join(map(str, levels)) or "none"))
+        return num_id, level
 
     # -- removing ---------------------------------------------------------------------------
 

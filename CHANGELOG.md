@@ -5,8 +5,34 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
-## Unreleased
+## 0.1.32 -- unreleased
 
+- **A paragraph style linked to a list level** (production round 29, W12), as Word's "Link
+  level to style" does it (measured in Word: `feedback-round29/measurements-W.md`).
+  `Styles.modify(name, numbering={"list": <numId, or a style in that list>, "level": n})`,
+  and `word_styles` `modify` with `numbering` (`{"list": "3" | "Chapter title", "level":
+  1}`): the level names the style (`w:pStyle`, the definition's and an instance's override
+  of it), the style numbers its paragraphs at that level (its `w:numPr`) with the level's
+  indent (its own `w:ind` goes), and the style that held the level before is unlinked -- its
+  `w:numPr` and `w:ind` go, so its paragraphs are no longer numbered, which a warning says
+  with their count; a style linked to another level of the list moves. `numbering=None`
+  (`{"list": "none"}` in the tool) unlinks the style: no level names it, and its
+  `w:numPr` (and, where a level was linked, its `w:ind`) goes. A list or level the
+  document lacks, a style in no list and a style not of paragraphs are refused before
+  anything changes. Formatting and numbering in one call are one undo step. docx2svg draws
+  the numbers as Word does (1, 1.1, 1.2, 2, 2.1, 2.1.1). +84 to every definition, none to
+  the core; word_styles is not strict (the strict set: 6 tools, 23 optional parameters).
+- **`check`'s `numbering_skips_level`** (W12, in `layout`): paragraphs numbered at a list
+  level whose label shows a level above that no paragraph is numbered at -- a section
+  style's `1.1` with no chapter before it (Word counts the unused level from its start:
+  1.1, 1.2) -- with the style, the level and the unused levels (from 0), the label, the
+  number the first one shows (where every level above is unused), how many and the first
+  one's id. Read from the document, so listed where the layout failed too.
+- **A row-limit refusal with no smaller range to offer** (W11): `word_edit_table`'s and
+  `word_insert_markdown`'s refusal of a source with more rows than a table takes (or has
+  room for) passed `valid_options=None` when the source could not take a row range (one
+  row by key, a selection) and failed as `internal`; it is the refusal (`limit`, or
+  `refused` for an existing table's room) with its advice and no options.
 - Tests only (production round 29, C1; ooxml-edit 0.75.0): the shared edit_chart's `blanks`
   and `null` for a blank point in its values add 49 offline tokens to every definition, and
   nothing to the core, which does not load edit_chart. The token guards in `tests/` rise

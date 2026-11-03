@@ -19,7 +19,7 @@ from ooxml_edit.tools.render import png_size
 from ..edit.document import Document
 from ..edit.properties import refreshed_app
 from ..layout import font_dirs_of, lay_out_unlocked, locale_of
-from ..layout_facts import CAP, empty_paragraphs, layout_facts
+from ..layout_facts import CAP, empty_paragraphs, layout_facts, numbering_skips_level
 from .render import RENDERER
 from ._base import outcome, page, reflow_json, remember, resolve, short, validate_delta, wrap
 
@@ -464,10 +464,12 @@ def check(call: Any, doc: str, slides: list | None = None, pages: list[int] | No
             report["reflow"] = reflow
         if "layout" in wanted:
             # Measured on the layout reflow reports and render draws: never a second one.
-            # Where the layout failed, the one fact read from the document alone (round 18, Q4).
+            # Where the layout failed, the facts read from the document alone (round 18, Q4;
+            # round 29, W12).
             report["layout"] = (layout_facts(layout, pages=pages, min_size=min_size, styles=styles)
                                 if layout is not None else
-                                {"error": reflow["error"], "empty_paragraphs": empty_paragraphs(document)[:CAP]})
+                                {"error": reflow["error"], "empty_paragraphs": empty_paragraphs(document)[:CAP],
+                                 "numbering_skips_level": numbering_skips_level(document)[:CAP]})
     if "fields" in wanted:
         report["fields"] = _field_facts(document)
     if "app" in wanted:

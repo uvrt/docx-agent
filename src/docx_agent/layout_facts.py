@@ -61,6 +61,12 @@ takes its targets as one list with the values for all, so it is ``calls``, not `
     others not listed).  ``{"table", "row", "page", "next", "next_page"}`` (W5): a table
     whose last row keeps with the next, drawn last on its page, the block after it on a
     later page -- a chain of keeps longer than a page, broken there.
+``numbering_skips_level`` (round 29, W12)
+    ``{"style", "level", "list", "unused_levels", "label", "shows", "paragraphs", "first"}``:
+    paragraphs numbered at a list level whose label shows a level above that no paragraph
+    is numbered at -- a section heading's ``1.1`` with no chapter heading before it.  Read
+    from the document, so listed where the layout failed too; :func:`numbering_skips_level`
+    has the rule.  ``word_styles`` ``numbering`` links a style to the level above.
 ``settings`` (round 25, W5)
     What the document is set to do, not facts to act on: a summary counts none of it.
     ``keep_together`` (W2): ``{"table", "pages", "direct"}``, a table its rows keep on one
@@ -278,6 +284,8 @@ class _Facts:
                      if self.shown({p for i in e["ids"] for p in self.pages_of(i)})],
                     "empty_paragraphs", out)
         self.capped(self.keep_with_next(), "keep_with_next_at_foot", out)
+        self.capped([e for e in numbering_skips_level(self.document) if self.shown(self.pages_of(e["first"]))],
+                    "numbering_skips_level", out)
         # Round 25, W5: what the document is set to do, not facts to act on.
         settings: dict[str, Any] = {}
         self.capped(self.keep_together(), "keep_together", settings)
@@ -1186,3 +1194,94 @@ def _empty_runs(document: "Document", index, at: str, sequence: list) -> list[di
                         "fix": {"tool": "word_delete", "calls": calls}})
     return entries
 
+
+
+#: A level's number in a label: ``%1`` is level 0's.
+_LEVEL_REF = re.compile(r"%([1-9])")
+
+
+def numbering_skips_level(document: "Document") -> list[dict[str, Any]]:
+    """``check``'s ``numbering_skips_level`` (round 29, W12): paragraphs numbered at a list
+    level whose label shows a level above it that no paragraph of the document is numbered
+    at -- a section style's ``1.1`` with no chapter before it (Word counts the level never
+    used from its start: ``1.1``, ``1.2``; measured, ``feedback-round29/measurements-W.md``).
+
+    ``{"style", "level", "list", "unused_levels", "label", "shows", "paragraphs", "first"}``
+    per list, level and paragraph style, in document order: ``level`` and ``unused_levels``
+    from 0, as ``word_lists`` and ``word_styles``' ``numbering`` take them; ``list`` the
+    ``numId`` the first one is numbered with (the levels used are counted over every list
+    of its definition, which count on from each other); ``label`` the level's ``lvlText``;
+    ``shows`` the first one's number where every level above it the label shows is unused
+    and every level shown decimal; ``first`` its id.  A label that shows only its own level (``a)``, a bullet) never skips one.  The
+    main story's paragraphs, a table's too; a paragraph whose style's level is tied to
+    another style is numbered by none (Word draws no number) and is left out."""
+    from .edit.numbering import Numbering, definition_of, membership, paragraph_style_id, style_list
+
+    numbering = Numbering(document)
+    if numbering.root is None:
+        return []
+    index = document._index(document.package.document_part())
+    styles = {s.id: s.name or s.id for s in document.styles}
+    default = document.styles.default("paragraph")
+    used: dict[int, set[int]] = {}                       # id(definition) -> levels used
+    groups: dict[tuple, dict[str, Any]] = {}
+    for entry in index.paragraphs:
+        found = membership(document, entry.element)
+        if found is None:
+            continue
+        style_id = paragraph_style_id(entry.element)
+        if found.from_style and style_list(document, style_id) is None:
+            continue
+        definition = definition_of(document, found.num_id)
+        if definition is None:
+            continue
+        used.setdefault(id(definition), set()).add(found.level)
+        name = styles.get(style_id, style_id) if style_id else (default.name if default is not None else None)
+        key = (id(definition), found.level, name)
+        if key in groups:
+            groups[key]["paragraphs"] += 1
+        else:
+            groups[key] = {"style": name, "level": found.level, "list": found.num_id,
+                           "label": found.text, "paragraphs": 1, "first": entry.id}
+    out = []
+    for (definition, level, _), group in groups.items():
+        shown = sorted({int(n) - 1 for n in _LEVEL_REF.findall(group["label"] or "")})
+        unused = [k for k in shown if k < level and k not in used[definition]]
+        if not unused:
+            continue
+        group["unused_levels"] = unused
+        # Where every level above is unused, each shows its start (measured: 1.1, 1.2).
+        shows = _first_label(numbering, group["list"], group["label"], shown) \
+            if all(k in unused for k in shown if k < level) else None
+        if shows is not None:
+            group["shows"] = shows
+        out.append({k: group[k] for k in ("style", "level", "list", "unused_levels", "label", "shows",
+                                          "paragraphs", "first") if k in group})
+    return out
+
+
+def _first_label(numbering, num_id: int, label: str, shown: list[int]) -> str | None:
+    """A label as its level's first paragraph shows it with the levels above it never
+    used: each level shown at its start (its instance's ``w:startOverride``, else its
+    ``w:start``, else 0); ``None`` unless every level shown is decimal."""
+    num = numbering.nums().get(num_id)
+    starts: dict[int, str] = {}
+    for level in shown:
+        lvl = numbering.level(num_id, level)
+        fmt = lvl.find(_W + "numFmt") if lvl is not None else None
+        if lvl is None or (fmt.get(_W + "val") if fmt is not None else "decimal") != "decimal":
+            return None
+        start = _int(lvl.find(_W + "start"), 0)
+        for override in num.findall(_W + "lvlOverride") if num is not None else ():
+            given = override.find(_W + "startOverride")
+            if _int_of(override.get(_W + "ilvl")) == level and given is not None:
+                start = _int_of(given.get(_W + "val")) or 0
+        starts[level] = str(start)
+    return _LEVEL_REF.sub(lambda m: starts[int(m.group(1)) - 1], label)
+
+
+def _int_of(value: str | None) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None

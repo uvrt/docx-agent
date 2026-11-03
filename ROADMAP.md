@@ -1076,6 +1076,13 @@ doc.render_svg(pages=diff.changed)     # or render_png; ids on every paragraph g
   paragraph, as `insert_paragraph` and `word_edit_table`'s lines write it); `\v` stays a
   line break; a cell's lines are its paragraphs; a repeat changes nothing; a section's last
   paragraph is refused. A reversed span is refused by every tool alike.
+- **Round 29 (W11, W12):** a row-limit refusal with no row range to offer is the refusal,
+  not `internal`. A paragraph style is linked to a list level as Word's "Link level to
+  style" links it (`Styles.modify(numbering=...)`, `word_styles` `numbering`; measured: the
+  level names the style, the style gets `w:numPr` and loses its `w:ind`, the style that held
+  the level loses both; `None` unlinks), and `check`'s `numbering_skips_level` names a
+  style numbered at a level whose label shows a level above that nothing uses (`1.1` with
+  no chapter: Word counts the unused level from its start).
 - **Cost.** One full layout per document state, cached by the bytes' hash: `layout()` and
   `render_svg()` of the same state read one `docx2svg.convert_docx` (every page laid out
   and written as SVG; writing the SVG costs little beside the layout), tested by counting

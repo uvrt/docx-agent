@@ -172,10 +172,15 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 #: 13,108), none to the core (2,458): edit_chart is deferred.  The guard rises to 13,110.
 #: edit_chart is never sent strict (47 optional parameters): the strict set is unchanged
 #: (6 tools, 23 optional parameters).
+#: Round 29, W12: word_styles' ``numbering`` (Word's "Link level to style": a list's number
+#: or a style in it, and a level; ``none`` unlinks) +84 to every definition (13,108 ->
+#: 13,192), none to the core (2,458).  The guard rises to 13,195.  word_styles is not
+#: strict (deferred, in word_style): the strict set is unchanged (6 tools, 23 optional
+#: parameters).
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 6500
-ALL_GUARD = 13110
+ALL_GUARD = 13195
 
 
 @pytest.fixture(scope="module")

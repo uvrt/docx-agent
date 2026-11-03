@@ -49,8 +49,9 @@ REVIEW_CORE_GUARD = 2335
 #: parameters) 7,281; round 24, W6 (word_styles' ``shading``; its list and describe are a
 #: reviewer's) 7,310; round 28, W9 (word_read's ``range`` and word_inspect's ``target``
 #: name a cell and an open span) 7,327; round 29, C1 (edit_chart's ``blanks`` and ``null``
-#: in its values, ooxml-edit 0.75.0) 7,376.
-REVIEW_ALL_GUARD = 7380
+#: in its values, ooxml-edit 0.75.0) 7,376; W12 (word_styles' ``numbering``, +84, as
+#: ``shading``: its list and describe are a reviewer's) 7,460.
+REVIEW_ALL_GUARD = 7465
 
 REVIEW_CORE = {"save_document", "describe", "find_text", "render", "check", "open_document",
                "batch", "word_read", "word_comments", "word_changes"}

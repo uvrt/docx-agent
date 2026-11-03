@@ -605,6 +605,152 @@ def copy_abstract(document: "Document", abstract_id: int) -> int:
     return new_id
 
 
+# -- a paragraph style linked to a list level (round 29, W12) ---------------------------------
+
+
+def _styles_by_id(document: "Document") -> dict[str, Element]:
+    part = document.package.styles_part()
+    root = document.package.tree(part) if part else None
+    return {} if root is None else {s.get(_W + "styleId"): s for s in root.findall(_W + "style")}
+
+
+def definition_of(document: "Document", num_id: int) -> Element | None:
+    """The ``w:abstractNum`` whose levels ``num_id`` numbers with: its definition (the first
+    with its ``w:nsid``), or, for a definition that only names a list style
+    (``w:numStyleLink``), the definition that style's list has."""
+    numbering = Numbering(document)
+    seen: set[int] = set()
+    while num_id not in seen:
+        seen.add(num_id)
+        abstract = numbering.abstracts().get(numbering.canonical(numbering.abstract_of(num_id)))
+        if abstract is None:
+            return None
+        link = abstract.find(_W + "numStyleLink")
+        linked = numbering._style_num(link.get(_W + "val")) if link is not None else None
+        if not linked:
+            return abstract
+        num_id = linked
+    return None
+
+
+def _definition_levels(document: "Document", definition: Element) -> list[tuple[int | None, Element]]:
+    """``(ilvl, w:lvl)`` of a definition, and of every level override of an instance over it."""
+    out = [(_int(lvl.get(_W + "ilvl")), lvl) for lvl in definition.findall(_W + "lvl")]
+    for num_id, num in Numbering(document).nums().items():
+        if definition_of(document, num_id) is not definition:
+            continue
+        for override in num.findall(_W + "lvlOverride"):
+            lvl = override.find(_W + "lvl")
+            if lvl is not None:
+                out.append((_int(override.get(_W + "ilvl")), lvl))
+    return out
+
+
+def defined_levels(document: "Document", num_id: int) -> list[int]:
+    """The levels (0-8) the definition ``num_id`` numbers with defines; none without one."""
+    definition = definition_of(document, num_id)
+    return [] if definition is None else sorted(
+        {i for i in (_int(lvl.get(_W + "ilvl")) for lvl in definition.findall(_W + "lvl")) if i is not None})
+
+
+def list_style(document: "Document", style_id: str) -> int | None:
+    """The ``numId`` a paragraph style's own ``w:numPr`` (or its ``basedOn`` chain's) names:
+    the list the style is in, linked to a level or not."""
+    num_id, _ = _style_numbering(document, style_id)
+    return num_id or None
+
+
+def _drop_style_numbering(node: Element, indent: bool) -> bool:
+    """Take a style's own ``w:numPr`` out of its ``w:pPr`` -- and its ``w:ind`` with ``indent``,
+    as Word's "Link level to style" does to the style that held a level (measured, round 29:
+    ``feedback-round29/measurements-W.md``).  Whether anything changed."""
+    properties = node.find(_W + "pPr")
+    if properties is None:
+        return False
+    changed = False
+    for tag in ("numPr",) + (("ind",) if indent else ()):
+        child = properties.find(_W + tag)
+        if child is not None:
+            remove(child)
+            changed = True
+    if not len(properties):
+        remove(properties)
+    return changed
+
+
+def link_style_level(document: "Document", style_id: str, num_id: int, level: int) -> list[str]:
+    """Link a paragraph style to a level of a list, as Word's "Link level to style" does
+    (measured, round 29): the level (the definition's, and an instance's override of it)
+    names the style (``w:pStyle``); the style's ``w:pPr`` gets ``w:numPr`` (``w:ilvl``,
+    ``w:numId``) and loses its own ``w:ind`` (the level's indent applies); a style that held
+    the level before loses its ``w:numPr`` and its ``w:ind`` (its paragraphs are no longer
+    numbered); a level the style held before stops naming it.  Inside an edit; ``ValueError``
+    when the list has no such level.  Returns the ids of the styles unlinked."""
+    definition = definition_of(document, num_id)
+    if definition is None or level not in defined_levels(document, num_id):
+        raise ValueError(f"list {num_id} has no level {level}")
+    levels = _definition_levels(document, definition)
+    styles = _styles_by_id(document)
+    unlinked: list[str] = []
+    for ilvl, lvl in levels:
+        tied = lvl.find(_W + "pStyle")
+        holder = tied.get(_W + "val") if tied is not None else None
+        if ilvl == level and holder != style_id:
+            if holder and holder not in unlinked:
+                unlinked.append(holder)
+            if tied is None:
+                tied = append_in_order(lvl, make("w:pStyle"))
+            tied.set(qn("w:val"), style_id)
+        elif ilvl != level and holder == style_id:
+            remove(tied)                         # a style numbers at one level
+    for holder in unlinked:
+        node = styles.get(holder)
+        own = node.find(f"{_W}pPr/{_W}numPr/{_W}numId") if node is not None else None
+        theirs = _int(own.get(_W + "val")) if own is not None else None
+        # Only a numPr in this list: a style numbered in another keeps its own.
+        if node is not None and (own is None or theirs is not None and definition_of(document, theirs) is definition):
+            _drop_style_numbering(node, indent=True)
+    node = styles[style_id]
+    properties = node.find(_W + "pPr")
+    if properties is None:
+        properties = append_in_order(node, make("w:pPr"))
+    old = properties.find(_W + "numPr")
+    if old is not None:
+        remove(old)
+    numbering = append_in_order(properties, make("w:numPr"))
+    if level:
+        numbering.append(make("w:ilvl", **{"w:val": str(level)}))
+    numbering.append(make("w:numId", **{"w:val": str(num_id)}))
+    indent = properties.find(_W + "ind")
+    if indent is not None:
+        remove(indent)
+    document.package.mark_dirty(Numbering(document).part)
+    document.package.mark_dirty(document.package.styles_part())
+    return unlinked
+
+
+def unlink_style(document: "Document", style_id: str) -> bool:
+    """Unlink a paragraph style from the list level it is linked to, as Word's "Link level
+    to style" set to none does (measured, round 29): no level names it any more, and the
+    style loses its ``w:numPr`` -- and, where a level was linked to it, its ``w:ind``.
+    Inside an edit.  Whether anything changed."""
+    numbering = Numbering(document)
+    linked = False
+    for definition in numbering.abstracts().values():
+        for _, lvl in _definition_levels(document, definition):
+            tied = lvl.find(_W + "pStyle")
+            if tied is not None and tied.get(_W + "val") == style_id:
+                remove(tied)
+                linked = True
+    node = _styles_by_id(document).get(style_id)
+    changed = _drop_style_numbering(node, indent=linked) if node is not None else False
+    if linked:
+        document.package.mark_dirty(numbering.part)
+    if changed:
+        document.package.mark_dirty(document.package.styles_part())
+    return linked or changed
+
+
 def following_members(document: "Document", part: str, entry: ParagraphEntry, num_id: int) -> list[ParagraphEntry]:
     """The paragraph and those after it in its story that are in the same instance."""
     out = []
