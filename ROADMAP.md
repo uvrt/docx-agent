@@ -1026,6 +1026,17 @@ doc.render_svg(pages=diff.changed)     # or render_png; ids on every paragraph g
   bookmark added under its own name over the same text. `keep_with_next: false` releases a
   last row keeping alone on a table not kept together. Refusals that guard against a
   mistake stay.
+- **Round 28 (W8):** a batch's ops cost about the same at any document size. What each op
+  repeated over the whole document is done once per batch, or only for what it reads:
+  `keep_together`'s layout (the table taller than a page) after the batch's last op, one
+  layout for the batch (ooxml-edit's `Call.defer`); `word_edit_table`'s table read alone
+  as Markdown, the list items before it counted, not the body read; the effective
+  formatting's paragraphs found as asked, not every path resolved after every edit; the id
+  index, drawings without ids, ids in use and section breaks found by lxml's walk or XPath.
+  Results, warnings and bytes are the ones before (a golden-style test with all of it off
+  and on); a `keep_together` warning in a batch is of the document after the batch. Still
+  per op and growing with the document: docx2svg's parse for effective formatting
+  (`word_edit_table`, `keep_together`), the undo snapshot's serialisation.
 - **Cost.** One full layout per document state, cached by the bytes' hash: `layout()` and
   `render_svg()` of the same state read one `docx2svg.convert_docx` (every page laid out
   and written as SVG; writing the SVG costs little beside the layout), tested by counting

@@ -36,6 +36,7 @@ document writes the same bytes, and undoing and redoing it writes them again.
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import re
 from dataclasses import dataclass, field
@@ -67,6 +68,7 @@ PARA_ID_LIMIT = 0x80000000
 _HEX = re.compile(r"[0-9A-Fa-f]{1,8}")
 
 
+@functools.lru_cache(maxsize=65536)
 def valid_long_hex(raw: str | None) -> bool:
     return raw is not None and _HEX.fullmatch(raw) is not None and 0 < int(raw, 16) < PARA_ID_LIMIT
 
@@ -74,22 +76,19 @@ def valid_long_hex(raw: str | None) -> bool:
 def live_elements(root: Element, tags: frozenset[str]) -> list[Element]:
     """Elements with one of ``tags`` in document order, skipping ``mc:Fallback`` subtrees: a
     fallback repeats its choice's content (paraIds included, which the specification allows)
-    and is not what Word shows."""
-    out: list[Element] = []
-    stack = [iter(root)]
-    while stack:
-        for node in stack[-1]:
-            tag = node.tag
-            if not isinstance(tag, str) or tag == MC_FALLBACK:
-                continue
-            if tag in tags:
-                out.append(node)
-            if len(node):
-                stack.append(iter(node))
-                break
-        else:
-            stack.pop()
-    return out
+    and is not what Word shows.
+
+    lxml's own walk (``iter``) finds them, in C: every index of a part is rebuilt after
+    every edit, so this is the walk each edit of a batch repeats over the whole document
+    (round 28, W8) -- the elements under a fallback are taken out after, when there is one."""
+    if not tags:
+        return []
+    found = [node for node in root.iter(*tags) if node is not root]
+    fallbacks = [node for node in root.iter(MC_FALLBACK) if node is not root]
+    if not fallbacks:
+        return found
+    hidden = {node for fallback in fallbacks for node in fallback.iter(*tags)}
+    return [node for node in found if node not in hidden]
 
 
 @dataclass
@@ -204,12 +203,21 @@ def used_long_hex(roots: list[Element]) -> set[int]:
     ``roots``."""
     used: set[int] = set()
     for root in roots:
-        for node in root.iter(W_P, W_TR, WP_INLINE, WP_ANCHOR):
-            for name in (PARA_ID, TEXT_ID, ANCHOR_ID, EDIT_ID):
-                raw = node.get(name)
-                if raw is not None and _HEX.fullmatch(raw):
-                    used.add(int(raw, 16))
+        # The values read by XPath, in C (round 28, W8: read before every edit that renews
+        # a textId, over the whole document).
+        for raw in _USED(root):
+            if _HEX.fullmatch(raw):
+                used.add(int(raw, 16))
     return used
+
+
+#: The ids :func:`used_long_hex` reads: the four attributes, on a paragraph, a row or a
+#: drawing (the root among them).
+_USED = etree.XPath(" | ".join(
+    f"descendant-or-self::{element}/@{attribute}"
+    for element in ("w:p", "w:tr", "wp:inline", "wp:anchor")
+    for attribute in ("w14:paraId", "w14:textId", "wp14:anchorId", "wp14:editId")),
+    namespaces={"w": _W[1:-1], "wp": _WP[1:-1], "w14": W14, "wp14": WP14})
 
 
 def drawings_needing_ids(root: Element) -> list[Element]:

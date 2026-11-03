@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING
 from docx2svg import model as _model
 from docx2svg.parse.document import parse_package
 from docx2svg.parse.properties import read_paragraph_properties, read_run_properties
-from docx2svg.paths import path_part, resolve_path
+from docx2svg.paths import path_part, resolve_path, row_level
 from docx2svg.resolve import character_format, resolve_paragraph, resolve_run
 from docx2svg.table import lead_paragraph
 
@@ -95,29 +95,59 @@ class EffectiveParagraph:
 
 
 class _Model:
-    """docx2svg's parse of one document state, with its paragraphs by our elements."""
+    """docx2svg's parse of one document state, with its paragraphs by our elements.
+
+    The paragraphs are found as they are asked for (round 28, W8): one asked is looked up
+    by the path docx2svg writes for it (:func:`_path_of`), and taken only where docx2svg
+    resolves that path to it (:func:`~docx2svg.paths.resolve_path`); a paragraph that
+    cannot be found so maps every paragraph, as each was before.  Mapping them all resolved
+    every path from the part's root, each step listing its siblings: work that grew with
+    the square of the document, done again after every edit."""
 
     def __init__(self, document: "Document") -> None:
         self.document = document
         data = document.to_bytes()
         self.model = parse_package(data)
-        self.paragraphs: dict[int, _model.Paragraph] = {}
-        #: Our element of each of docx2svg's paragraphs, by its ``id()``.
-        self.elements: dict[int, Element] = {}
+        self._paragraphs: dict[int, _model.Paragraph] = {}
+        self._elements: dict[int, Element] = {}
         self._tables: dict[int, _model.Table] | None = None
         self._held: list[Element] = []
-        package = document.package
-        parts = _Parts(document)
+        self._mapped = False
+        self._by_path: dict[tuple[str, str], _model.Paragraph] | None = None
+
+    @property
+    def paragraphs(self) -> dict[int, _model.Paragraph]:
+        """docx2svg's paragraph of each of our ``w:p`` it draws, by the element's ``id()``."""
+        self._map_all()
+        return self._paragraphs
+
+    @property
+    def elements(self) -> dict[int, Element]:
+        """Our element of each of docx2svg's paragraphs, by its ``id()``."""
+        self._map_all()
+        return self._elements
+
+    def _each(self):
+        """``(paragraph, part)`` for every paragraph docx2svg read, in the order mapped."""
+        package = self.document.package
         for block in _paragraphs(self.model.body):
-            self._map(block, package.document_part())
+            yield block, package.document_part()
         for relationship, blocks in self.model.stories.items():
             part = self.model.story_parts.get(relationship)
             for block in _paragraphs(blocks):
-                self._map(block, part)
+                yield block, part
+        parts = _Parts(self.document)
         for notes in (self.model.footnotes, self.model.endnotes):
             for blocks in notes.values():
                 for block in _paragraphs(blocks):
-                    self._map(block, path_part(parts, block.path))
+                    yield block, path_part(parts, block.path)
+
+    def _map_all(self) -> None:
+        if self._mapped:
+            return
+        self._mapped = True
+        for block, part in self._each():
+            self._map(block, part)
 
     def _map(self, paragraph: _model.Paragraph, part: str | None) -> None:
         if part is None or not paragraph.path:
@@ -125,8 +155,32 @@ class _Model:
         element = resolve_path(self.document.package.tree(part), paragraph.path)
         if element is not None and element.tag == _W + "p":
             self._held.append(element)  # one proxy per element while the map lives: stable id()s
-            self.paragraphs.setdefault(id(element), paragraph)
-            self.elements.setdefault(id(paragraph), element)
+            self._paragraphs.setdefault(id(element), paragraph)
+            self._elements.setdefault(id(paragraph), element)
+
+    def _found(self, element: Element) -> _model.Paragraph | None:
+        """docx2svg's paragraph of ``element``, as :attr:`paragraphs` maps it."""
+        if self._mapped:
+            return self._paragraphs.get(id(element))
+        if id(element) in self._paragraphs:
+            return self._paragraphs[id(element)]
+        where = _path_of(self.document, element)
+        if where is not None:
+            if self._by_path is None:
+                self._by_path = {}
+                for block, part in self._each():
+                    if part is not None and block.path:
+                        self._by_path.setdefault((part, block.path), block)
+            found = self._by_path.get(where)
+            if found is not None and resolve_path(self.document.package.tree(where[0]), found.path) is element:
+                self._held.append(element)
+                self._paragraphs[id(element)] = found
+                self._elements.setdefault(id(found), element)
+                return found
+        self._paragraphs.clear()
+        self._elements.clear()
+        self._map_all()
+        return self._paragraphs.get(id(element))
 
     def table(self, element: Element) -> _model.Table | None:
         """docx2svg's table of our ``w:tbl`` (nested ones too), or ``None``."""
@@ -150,7 +204,7 @@ class _Model:
         return self._tables.get(id(element))
 
     def paragraph(self, element: Element) -> _model.Paragraph:
-        found = self.paragraphs.get(id(element))
+        found = self._found(element)
         if found is not None and not found.joins:
             return found
         # Not drawn on its own (joined across a deleted mark, in a text box): read it here.
@@ -164,6 +218,56 @@ class _Model:
                 run_properties=_model.RunProperties(declared=read_run_properties(mark))),
             table_style_id=_table_style(element),
             table_conditions=found.table_conditions if found is not None else ())
+
+
+#: The steps :func:`_path_of` writes: an element named so, in a parent named so.
+_STEPS = {"p": ("body", "tc", "hdr", "ftr"), "tbl": ("body", "tc"), "tr": ("tbl",), "tc": ("tr",)}
+
+
+def _path_of(document: "Document", element: Element) -> tuple[str, str] | None:
+    """``(part, path)``: the path docx2svg writes for a paragraph in a body, a header or a
+    footer, in tables there too (``w:body/w:tbl[2]/w:tr[1]/w:tc[3]/w:p[1]``: each step the
+    k-th child of its local name, a table's rows and a row's cells counted as docx2svg
+    counts them, :func:`~docx2svg.paths.row_level`); ``None`` for one anywhere else (a
+    content control, a text box, a note), whose paragraph is found by mapping them all."""
+    steps: list[str] = []
+    node = element
+    while True:
+        parent = node.getparent()
+        name = _local(node.tag)
+        if parent is None:
+            if name in ("hdr", "ftr"):
+                steps.append(f"w:{name}")
+                break
+            return None
+        outer = _local(parent.tag)
+        if name == "body" and outer == "document" and parent.getparent() is None:
+            steps.append("w:body")
+            node = parent
+            break
+        if outer not in _STEPS.get(name, ()) or not node.tag.startswith(_W) or not parent.tag.startswith(_W):
+            return None
+        if name in ("tr", "tc"):
+            siblings = list(row_level(parent, name))
+        else:
+            siblings = [child for child in parent if child.tag == node.tag]
+        if any(isinstance(child.tag, str) and child.tag != node.tag and _local(child.tag) == name
+               for child in parent):
+            return None             # the same local name in another namespace: docx2svg counts it
+        place = next((k for k, child in enumerate(siblings) if child is node), None)
+        if place is None:
+            return None
+        steps.append(f"w:{name}[{place + 1}]")
+        node = parent
+    root = node if node.getparent() is None else node.getparent()
+    part = next((p for p in document._parts() if document.package.tree(p) is root), None)
+    if part is None:
+        return None
+    return part, "/".join(reversed(steps))
+
+
+def _local(tag) -> str:
+    return tag.rpartition("}")[2] if isinstance(tag, str) else ""
 
 
 class _Parts:
@@ -204,7 +308,14 @@ def row_leads(document: "Document", table: Element) -> list[Element | None]:
     if found is None:
         return []
     leads = (lead_paragraph(row) for row in found.rows)
-    return [state.elements.get(id(lead)) if lead is not None else None for lead in leads]
+    root = table.getroottree().getroot()
+    return [_drawn(root, lead) for lead in leads]
+
+
+def _drawn(root: Element, paragraph: _model.Paragraph | None) -> Element | None:
+    """Our ``w:p`` of docx2svg's ``paragraph`` in the part ``root`` is the root of."""
+    found = resolve_path(root, paragraph.path) if paragraph is not None and paragraph.path else None
+    return found if found is not None and found.tag == _W + "p" else None
 
 
 def _table_style(element: Element) -> str | None:
