@@ -726,7 +726,7 @@ class SectionOps:
         if found is None or found[0] != part:
             raise KeyError(f"{identifier} is not in the body")
         records = self._section_records()
-        at = self._paragraph_place(part, entry.element)
+        at = self._paragraph_place(part, found[1])
         if at is not None:
             # By the paragraphs' places (round 28, W8): a block's place is its first
             # paragraph's, and a section's paragraph is never inside a table.
