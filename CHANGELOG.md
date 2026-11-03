@@ -33,6 +33,13 @@ snapshot commit; the development history before it is summarised here.
   room for) passed `valid_options=None` when the source could not take a row range (one
   row by key, a selection) and failed as `internal`; it is the refusal (`limit`, or
   `refused` for an existing table's room) with its advice and no options.
+- Tests only (production round 29, C1; ooxml-edit 0.75.0): the shared edit_chart's `blanks`
+  and `null` for a blank point in its values add 49 offline tokens to every definition, and
+  nothing to the core, which does not load edit_chart. The token guards in `tests/` rise
+  with it. edit_chart is never sent strict, so the strict set is unchanged (23 optional
+  parameters). `read` now always says `blanks` (how the chart draws blank points), so
+  w3-figures-update's two chart reads were re-recorded with `tools/refresh_goldens.py w3
+  --new-keys blanks`: the data less `blanks` hashes as before.
 
 ## 0.1.31 -- unreleased
 
