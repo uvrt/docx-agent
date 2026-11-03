@@ -334,6 +334,26 @@ def test_a_source_too_big_is_refused_never_cut(toolbox, session):
     assert len(session.entry("d1").document.tables()) == tables + 1
 
 
+def test_too_many_rows_from_a_source_without_a_row_range_is_refused_not_internal():
+    # A source a row range cannot follow (a toy's selection, q:rows[all]) offers no smaller
+    # one: the refusal keeps its advice and has no options, never an internal error.
+    many = Dataset(("n",), [(i,) for i in range(4100)])
+    pile = DocumentFormat(kind="pile", open=lambda data: Grid({}),
+                          detect=lambda data, name: False,
+                          datasets={"q:": lambda document, address: many})
+    with Toolbox(TOOLS, formats=[FORMAT, pile], groups=GROUPS, workers=0) as box:
+        session = box.session(clock=CLOCK)
+        session.open(_new_document(), "report.docx")
+        session.adopt(Grid({}), "pile", "rows.pile")
+        error = failed(box.dispatch(session, "word_insert_markdown",
+                                    {"doc": "d1", "at": "end", "from": "q:rows[all]"}), "limit")
+        assert "4,101 rows with the header" in error.message
+        assert "filter the source or split it" in error.message
+        assert "place fewer" not in error.message
+        assert error.field == "from" and error.valid_options == []
+        assert session.entry("d1").document.tables() == []
+
+
 def test_a_value_a_cell_cannot_take_is_refused_naming_it():
     @tool("ds_odd", "A dataset with a value that is not finite.", {}, documents=())
     def ds_odd(call):
@@ -421,6 +441,18 @@ def test_set_cells_from_a_source_too_big_for_the_table_is_refused(toolbox, sessi
                         action="insert_row", header=[]), "invalid_arguments")
     assert error.field == "header"
     assert texts(session, table)[0] == ["old", "old"]
+
+
+def test_set_cells_from_one_keyed_row_with_no_room_offers_no_row_range(toolbox, session):
+    # One row by key (t:checks/Alpha) is no source a row range can follow, and a table with
+    # room for its header only leaves none to take: refused with the advice, not internal.
+    table = _table(toolbox, session, 1, 2)
+    error = failed(edit(toolbox, session, table, **{"from": "t:checks/Alpha",
+                                                    "from_columns": ["check", "note"]}),
+                   "refused")
+    assert "2 rows with the header" in error.message and "insert_row first" in error.message
+    assert "place fewer" not in error.message and error.valid_options == []
+    assert texts(session, table) == [["old", "old"]]
 
 
 def test_set_cells_from_a_source_over_a_merged_cell_is_refused(toolbox, session):
