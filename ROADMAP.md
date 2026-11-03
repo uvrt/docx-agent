@@ -497,6 +497,35 @@ as a stamp either way: current Word removes it on open.
 | Content control | `cc:<w:sdtPr/w:id>` | Word writes random ids; tags are not unique | |
 | Revision | `rev:<w:id>` | for the session: Word renumbers them on save (measured, 42 → 0) | E3 |
 
+### One resolver for every place (round 28, W9)
+
+Every parameter that takes a place reads it through one resolver
+(`docx_agent/edit/addresses.py`), so a form one tool takes the others take, or refuse in
+the same words. The forms: a block (`p:`, `t:`, `cc:`), a row (`tr:`, `t:X/r1`), a cell
+(`t:X/c1,1`), a section (`s:<paraId>`, `s:2`, `s:body`), a bookmark (`bm:Name` or the
+plain name), a story (`body`, `header1`), a text range (`p:A@4:11`, `p:A@5`,
+`p:A@3..p:B@8`) and a span of blocks, `p:A..t:B`, its ends in one container. **An open
+span** reads to the container's end: `p:A..` runs from `p:A` to the last block of its
+container (the end of the body, for a body block; of the cell, for a cell's paragraph),
+`..t:B` from the container's first block through `t:B`; either end may be a `$name` ref
+(`$intro..$outro`, `$intro..`). A malformed span (`p:A...p:B`, `..`, three ends, a text
+position at one end and a block at the other) is refused with the syntax, never as an
+empty id. What each kind of parameter does with them:
+
+| Parameter kind | Tools | Takes |
+| --- | --- | --- |
+| A scope: the paragraphs it holds | `word_read` `range`, `word_inspect` `target`, `find_text`/`replace_text` `range`, every `within`, `word_format`/`word_lists` `targets`, `word_changes` `within` | every form (`word_read` and `word_inspect`: a cell is its own blocks -- `word_inspect` adds the cell's id, table, place and properties -- a row its table with that row) |
+| Text | `word_insert_text`/`word_comments`/`word_links` `target`; the `at` of `word_fields`, `word_notes`, `word_drawings` and the content-control tool | a range or position; a paragraph (its text), a cell (its paragraphs' text), a bookmark, hyperlink or run (`Document.range`) |
+| A block or span of blocks | `word_delete` `target`, `word_move` `blocks`, `word_insert_markdown` `replace:` | blocks, closed and open spans |
+| One block (an anchor) | `after`, `before`, `after:`/`before:`, `word_compare_blocks` | one block |
+| A section | `word_sections`/`word_headers_footers` `section` | a section, or any id in the body: the section of the block holding it (`section_of`) |
+| A table | `word_edit_table`/`word_format_table` `table` | a table |
+
+A form a parameter cannot take is refused (`invalid_arguments`) with the ids that would do
+in `valid_options`: a cell where one block is wanted names its table and its paragraphs, a
+row its table, a span its ends, a text range or bookmark its paragraph, a paragraph in a
+table (as `table`) the table.
+
 ### Text ranges and anchors
 
 A paragraph's **text** is defined once and used everywhere (ranges, find, Markdown):
@@ -1026,6 +1055,16 @@ doc.render_svg(pages=diff.changed)     # or render_png; ids on every paragraph g
   bookmark added under its own name over the same text. `keep_with_next: false` releases a
   last row keeping alone on a table not kept together. Refusals that guard against a
   mistake stay.
+- **Round 28 (W9, W10):** one resolver for every place ("Addressing", "One resolver for
+  every place"): a cell id, row, section, bookmark and open span (`p:A..`, `..t:B`) wherever
+  they make sense, refs at both ends of a span, refusals naming the ids that would do, a
+  malformed span refused with the syntax; `word_inspect` on a cell inspects the cell.
+  `word_set_text` `split_paragraphs` (`Document.set_text_paragraphs`): each `\n` starts a
+  paragraph after the target, in its paragraph properties without a section break or
+  revision record and its last run's formatting (Enter at the end of a paragraph, as
+  `insert_paragraph` and `word_edit_table`'s lines write it); `\v` stays a line break; a
+  cell's lines are its paragraphs; a repeat changes nothing; a section's last paragraph is
+  refused.
 - **Cost.** One full layout per document state, cached by the bytes' hash: `layout()` and
   `render_svg()` of the same state read one `docx2svg.convert_docx` (every page laid out
   and written as SVG; writing the SVG costs little beside the layout), tested by counting
