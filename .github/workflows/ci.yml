@@ -83,7 +83,7 @@ jobs:
       # the tests that read docx2svg's checkout (its probe observations and tools) skip
       # where it is not next to this one.  The default run, not --run-slow, as locally.
       - name: Test
-        run: python -m pytest -q -n auto
+        run: python -m pytest -q -n auto --durations=60
 
   build:
     runs-on: ubuntu-latest
