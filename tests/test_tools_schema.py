@@ -167,10 +167,15 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 #: counted by the proxy) and to every definition; word_inspect's ``target`` (the same
 #: forms, a section) +12 more there (13,028 -> 13,059).  The guard rises to 13,060.  The
 #: strict set is unchanged (6 tools, 23 optional parameters).
+#: Round 29, C1 (ooxml-edit 0.75.0): edit_chart's ``blanks`` (how blank points draw) and
+#: ``null`` for a blank in its values' descriptions +49 to every definition (13,059 ->
+#: 13,108), none to the core (2,458): edit_chart is deferred.  The guard rises to 13,110.
+#: edit_chart is never sent strict (47 optional parameters): the strict set is unchanged
+#: (6 tools, 23 optional parameters).
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 6500
-ALL_GUARD = 13060
+ALL_GUARD = 13110
 
 
 @pytest.fixture(scope="module")
