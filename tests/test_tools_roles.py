@@ -48,8 +48,9 @@ REVIEW_CORE_GUARD = 2335
 #: ``s:2``; word_delete is not a reviewer's) 7,564; V3 (the shared tools without a deck's
 #: parameters) 7,281; round 24, W6 (word_styles' ``shading``; its list and describe are a
 #: reviewer's) 7,310; round 28, W9 (word_read's ``range`` and word_inspect's ``target``
-#: name a cell and an open span) 7,327.
-REVIEW_ALL_GUARD = 7330
+#: name a cell and an open span) 7,327; round 29, W12 (word_styles' ``numbering``, +84, as
+#: ``shading``: its list and describe are a reviewer's) 7,411.
+REVIEW_ALL_GUARD = 7415
 
 REVIEW_CORE = {"save_document", "describe", "find_text", "render", "check", "open_document",
                "batch", "word_read", "word_comments", "word_changes"}

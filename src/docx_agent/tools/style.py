@@ -11,6 +11,7 @@ from ooxml_edit.tools import REVIEW, Result, ToolError, array, boolean, integer,
 
 from ..edit.design import ALL_KINDS, CAPS, KINDS
 from ..edit.formatting import RUN_PROPERTIES, read_paragraph, read_run, read_shading
+from ..edit.errors import EditError
 from ..edit.styles import StyleError
 from ._base import need, outcome, resolve, tool_names, word_tool
 from .text import PARAGRAPH_FIELDS, RUN_FIELDS, paragraphs_of, split_formatting  # noqa: F401
@@ -138,12 +139,16 @@ def describe_style(document: Any, style: Any) -> dict[str, Any]:
             "next_style": string("add: style of the next paragraph.", optional=True),
             "replacement": string("remove: style its users get instead.", optional=True),
             "in_use_only": boolean("list: only styles in use.", optional=True),
+            # Round 29, W12: Word's "Link level to style".
+            "numbering": obj({"list": string("A list's number, a style in it, or none to unlink."),
+                              "level": integer("From 0. Default 0.", minimum=0, maximum=8, optional=True)},
+                             "modify: link to a list level.", optional=True),
             **STYLE_FIELDS},
            group="word_style", mutates=True, track=False,
            action_roles={"list": REVIEW, "describe": REVIEW})
 def word_styles(call: Any, doc: str, action: str, name: str | None = None, kind: str | None = None,
                 based_on: str | None = None, next_style: str | None = None, replacement: str | None = None,
-                in_use_only: bool = False, **values: Any) -> Result:
+                in_use_only: bool = False, numbering: dict | None = None, **values: Any) -> Result:
     document = call.document
     styles = document.styles
     try:
@@ -159,6 +164,8 @@ def word_styles(call: Any, doc: str, action: str, name: str | None = None, kind:
         if action == "purge_unused":
             return outcome([styles.purge_unused()], "Purged unused styles")
         name = need(name, "name")
+        if numbering is not None and action != "modify":
+            raise ToolError("invalid_arguments", f"numbering is modify's: {action} takes none", field="numbering")
         if action == "describe":
             return Result(summary=f"Style {name}", data=describe_style(document, styles.get(name, kind)))
         if action == "remove":
@@ -170,9 +177,32 @@ def word_styles(call: Any, doc: str, action: str, name: str | None = None, kind:
         if action == "add":
             edit = styles.add(name, kind or "paragraph", based_on=based_on, next_style=next_style, **formatting)
             return outcome([edit], f"Added style {name}")
+        if numbering is not None:
+            given = numbering["list"].strip()
+            unlink = given.lower() == "none"
+            if unlink and "level" in numbering:
+                raise ToolError("invalid_arguments", 'list "none" unlinks: give no level with it',
+                                field="numbering.level")
+            formatting["numbering"] = None if unlink else {
+                "list": int(given) if given.isdigit() else given, "level": numbering.get("level", 0)}
         if not formatting:
-            raise ToolError("invalid_arguments", "modify needs formatting to set",
-                            valid_options=list(STYLE_FIELDS))
+            raise ToolError("invalid_arguments", "modify needs formatting to set, or numbering",
+                            valid_options=[*STYLE_FIELDS, "numbering"])
+        if numbering is not None:
+            if styles.get(name, kind).kind != "paragraph":     # the style first, by its name
+                raise ToolError("invalid_arguments", f"{name!r} is a {styles.get(name, kind).kind} style: "
+                                "only a paragraph style is linked to a list level", field="name")
+            if formatting["numbering"] is not None:
+                try:                                     # the list and level, named by their field
+                    styles._list_level(formatting["numbering"])
+                except EditError as error:
+                    raise ToolError("not_found" if isinstance(error, StyleError) else "invalid_arguments",
+                                    str(error), field="numbering.list" if isinstance(error, StyleError)
+                                    or "level" not in str(error) else "numbering.level") from None
+            edit = styles.modify(name, kind, **formatting)
+            what = "unlinked from its list level" if formatting["numbering"] is None else \
+                f"linked to level {formatting['numbering']['level']} of list {numbering['list'].strip()}"
+            return outcome([edit], f"Modified style {name}: {what}")
         return outcome([styles.modify(name, kind, **formatting)], f"Modified style {name}")
     except StyleError as error:
         raise ToolError("not_found", str(error), field="name",
