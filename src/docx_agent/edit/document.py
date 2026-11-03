@@ -33,6 +33,7 @@ from .styles import BUILTIN_HEADING, outline_value, style_outline_level
 from . import effective as _effective
 from . import inline as _inline
 from . import formatting as _formatting
+from .addresses import AddressOps, span_ends
 from .annotations import AnnotationOps
 from .formatops import FormatOps
 from .links import Bookmark, Hyperlink, LinkOps  # noqa: F401 -- Bookmark: edit/__init__.py imports it from here
@@ -705,7 +706,7 @@ STAMPING = ("document", "paragraph")
 
 class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, PictureOps, CommentOps, TableOps,
                TableFormatOps, DrawingOps, ControlOps, SectionOps, NoteOps, FieldOps, AnnotationOps, AuthoringOps,
-               PropertyOps, ImportOps, ChartOps, ProvenanceOps):
+               PropertyOps, ImportOps, ChartOps, ProvenanceOps, AddressOps):
     """An open Word document, editable, undoable and re-renderable.
 
     ``stamping`` says what the first edit stamps.  ``"document"`` (the default): every
@@ -1091,7 +1092,7 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
                 return found
         found = self._direct(identifier)
         if found is None:
-            raise KeyError(f"no paragraph or table {identifier!r}")
+            raise self._unknown(identifier)
         return found
 
     def _resolve_block(self, identifier: str) -> tuple[str, "ParagraphEntry | TableEntry | ControlBlock"]:
@@ -1124,18 +1125,26 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
 
     def get(self, identifier: str):
         """Whatever an id names: a paragraph, run, table, row, cell, section, story,
-        hyperlink (``hl:``), bookmark (``bm:``), picture or other drawing (``d:``, a group's
+        hyperlink (``hl:``), bookmark (``bm:``, or its plain name when no story has it), picture or other drawing (``d:``, a group's
         member ``d:<group>/<member>``), note
         (``fn:``, ``en:``), comment (``c:``, ``c#``), revision (``rev:``) or content control
         (``cc:``, ``cc@``), field (``fld:``) -- every id ``to_markdown`` and ``state`` write."""
         kinds = (("hl:", self.hyperlink), ("bm:", self.bookmark), ("d:", self.drawing), ("fld:", self.field),
                  ("fn:", self.note), ("en:", self.note), ("c:", self.comment), ("c#", self.comment),
                  ("rev:", self.revision), ("cc:", self.content_control), ("cc@", self.content_control))
+        if not isinstance(identifier, str) or not identifier.strip() or span_ends(identifier) is not None:
+            raise self._unknown(identifier)
         for prefix, find in kinds:
             if identifier.startswith(prefix):
                 return find(identifier)
         if ":" not in identifier and "@" not in identifier and "/" not in identifier:
-            return self.story(identifier)
+            try:
+                return self.story(identifier)
+            except KeyError as error:
+                try:
+                    return self.bookmark(identifier)    # a bookmark by its plain name
+                except KeyError:
+                    raise error from None
         if identifier == "s:body" or identifier.startswith(("s:", "s@")):
             for section in self.sections():
                 if section.id in (identifier, self._renamed_section(identifier),
@@ -1424,6 +1433,66 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
                 self._new_text_id(part, element)
             self.package.mark_dirty(part)
         return EditResult(renames.get(entry.id, entry.id), renamed=renames)
+
+    def set_text_paragraphs(self, identifier: str, value: str) -> EditResult:
+        """Paragraph ``identifier`` rewritten as :meth:`Paragraph.set_text` does with the
+        first line of ``value``, and each later line (``"\\n"`` between them; ``"\\r\\n"``
+        reads as one) a new paragraph after it, in order -- what pressing Enter at the end
+        of the paragraph and typing makes.  Each new paragraph takes the paragraph's
+        properties (its style, alignment, spacing, indents, keeps and list membership, so a
+        list item continues the list), without a section break or a revision record, and
+        the run formatting of the paragraph's last text run (as
+        :meth:`insert_paragraph` after it, and ``word_edit_table``'s lines, do).  A ``\\v``
+        stays a line break inside its paragraph.  An empty line is an empty paragraph.
+
+        The result's ``id`` is the paragraph's, ``created`` the new paragraphs' ids in
+        order.  No change (``changed`` false) when the paragraph and the ones right after
+        it already hold the lines in its style -- a repeated call adds nothing.  Refused
+        (``EditError``) for a paragraph that ends a section: the new paragraphs would
+        start the next section."""
+        lines = value.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+        if len(lines) == 1:
+            return self._set_text(identifier, value)
+        for line in lines:
+            _text.check_text(line)
+        part, entry = self._resolve(identifier)
+        if not isinstance(entry, ParagraphEntry):
+            raise EditError(f"{identifier} is not a paragraph")
+        element = entry.element
+        if element.find(f"{W_PPR}/{W_SECTPR}") is not None:
+            raise EditError(f"{entry.id} ends a section: paragraphs split after it would start the next "
+                            "section; write its text without \\n and insert the others before it")
+        if self._already_lines(element, lines):
+            return EditResult(entry.id, changed=False)
+        with self.batch():
+            first = self._set_text(entry.id, lines[0])
+            renamed = dict(first.renamed)
+            created: list[str] = []
+            current = first.id
+            for line in lines[1:]:
+                made = self.insert_paragraph(line, after=current)
+                renamed.update(made.renamed)
+                created.append(made.id)
+                current = made.id
+        return EditResult(renamed.get(entry.id, first.id), created=created, renamed=renamed)
+
+    def _already_lines(self, element: Element, lines: list[str]) -> bool:
+        """Whether ``element`` and the paragraphs right after it hold ``lines``, all in its
+        paragraph style."""
+        style = element.find(f"{W_PPR}/{_W}pStyle")
+        wanted = style.get(qn("w:val")) if style is not None else None
+        node: Element | None = element
+        for k, line in enumerate(lines):
+            if k:
+                node = node.getnext() if node is not None else None
+                while node is not None and not (isinstance(node.tag, str) and node.tag in (W_P, W_TBL)):
+                    node = node.getnext()
+            if node is None or node.tag != W_P or _text.paragraph_text(node) != line:
+                return False
+            found = node.find(f"{W_PPR}/{_W}pStyle")
+            if (found.get(qn("w:val")) if found is not None else None) != wanted:
+                return False
+        return True
 
     def _new_text_id(self, part: str, element: Element) -> None:
         """A paragraph whose text changed gets a new ``w14:textId``, as Word gives one: the
@@ -1860,19 +1929,11 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
     def _blocks_of(self, blocks: "str | list[str]") -> tuple[list[Element], str]:
         """The block elements ``blocks`` names, in document order, and their part."""
         if isinstance(blocks, str):
-            first, sep, last = blocks.partition("..")
-            if not sep:
-                part, entry = self._resolve_block(first)
+            ends = span_ends(blocks)
+            if ends is None:
+                part, entry = self._resolve_block(blocks)
                 return [entry.element], part
-            part, start = self._resolve_block(first)
-            end_part, end = self._resolve_block(last)
-            if end_part != part or start.element.getparent() is not end.element.getparent():
-                raise EditError(f"{blocks!r}: a range moved is blocks of one container")
-            siblings = [c for c in start.element.getparent() if isinstance(c.tag, str) and c.tag in _MOVABLE]
-            a, b = siblings.index(start.element), siblings.index(end.element)
-            if b < a:
-                raise EditError(f"{blocks!r} ends before it starts")
-            return siblings[a:b + 1], part
+            return self._span_elements(*ends, movable=_MOVABLE)
         if not blocks:
             raise EditError("no blocks to move")
         found = [self._resolve_block(identifier) for identifier in blocks]
@@ -1965,7 +2026,7 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
             raise KeyError(f"{identifier} is a ref: refs live in the tools' session, and "
                            "docx_agent.tools.block_of(session, doc, ...) resolves one "
                            "(block_of(call, ...) in a handler)")
-        if ".." in identifier and "@" not in identifier:
+        if span_ends(identifier) is not None:
             raise EditError(f"{identifier!r} is a span of blocks: blocks_between takes its two ends")
         if _RANGE_ID.fullmatch(identifier):
             return self._element_of(self.range(identifier).start_id)

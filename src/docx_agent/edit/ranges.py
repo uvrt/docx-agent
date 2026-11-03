@@ -238,12 +238,14 @@ class _Match:
 
 def parse_range(document: "Document", identifier: str, view: str = "current") -> TextRange:
     """The range an id names: ``<paragraph>@<start>:<end>``, ``<paragraph>@<offset>`` (an
-    empty range, a position) or ``<paragraph>@<start>..<paragraph>@<end>``."""
-    match = _RANGE.fullmatch(identifier)
+    empty range, a position) or ``<paragraph>@<start>..<paragraph>@<end>`` -- or the text
+    an address holds: a paragraph's whole text, a cell's (its first paragraph's start to
+    its last one's end), a bookmark's, a hyperlink's or a run's (round 28, W9)."""
+    match = _RANGE.fullmatch(identifier) if isinstance(identifier, str) else None
     if match is None:
-        position = re.fullmatch(r"(.+?)@(\d+)", identifier)
+        position = re.fullmatch(r"(.+?)@(\d+)", identifier) if isinstance(identifier, str) else None
         if position is None:
-            raise KeyError(f"{identifier!r} is not a range")
+            return _text_of(document, identifier, view)
         start_id, offset = position.group(1), int(position.group(2))
         document._resolve(start_id)
         return TextRange(document, start_id, offset, view=view)
@@ -251,6 +253,28 @@ def parse_range(document: "Document", identifier: str, view: str = "current") ->
     if match.group("b") is not None:
         return TextRange(document, start_id, int(match.group("a")), start_id, int(match.group("b")), view)
     return TextRange(document, start_id, int(match.group("a")), match.group("end"), int(match.group("c")), view)
+
+
+def _text_of(document: "Document", identifier: str, view: str) -> TextRange:
+    """The text a paragraph, cell, bookmark, hyperlink or run id holds, as a range."""
+    from .addresses import AddressError, span_ends
+    from .document import Cell, Paragraph, Run
+    from .links import Bookmark, Hyperlink
+
+    wanted = "give a range (p:A@4:11), a position (p:A@5), a paragraph, a cell or a bookmark"
+    if span_ends(identifier) is not None:
+        raise AddressError(f"{identifier} is a span of blocks, not text: {wanted}, or a range across "
+                           "paragraphs (p:A@3..p:B@8)")
+    found = document.get(identifier)
+    if isinstance(found, Paragraph):
+        return found.range(view=view)
+    if isinstance(found, Cell):
+        paragraphs = found.paragraphs
+        return TextRange(document, paragraphs[0].id, 0, paragraphs[-1].id, len(paragraphs[-1].text_in(view)), view)
+    if isinstance(found, (Bookmark, Hyperlink, Run)):
+        return found.range()
+    kind = type(found).__name__.lower()
+    raise AddressError(f"{identifier} is a {kind}, not text: {wanted}")
 
 
 def pattern_for(text: str, *, regex: bool = False, case: bool = True, whitespace: str | None = None) -> re.Pattern:
@@ -278,23 +302,13 @@ class TextOps:
         return parse_range(self, identifier, view)
 
     def _scope(self: "Document", within: str | None) -> list[tuple[str, list[ParagraphEntry]]]:
-        """The stories' paragraphs a find looks in: everything, a story, a table, a span of
-        blocks (``p:A..t:B``, inclusive, its tables' cells included: the span the block tools
-        take, resolved by ``_blocks_of``) or one paragraph."""
+        """The stories' paragraphs a find looks in: everything, or what ``within`` holds --
+        a story, a block, a span of blocks (``p:A..t:B``, ``p:A..``: the span the block tools
+        take), a row, a cell, a section, a bookmark or a range, tables' cells included
+        (:meth:`~docx_agent.edit.addresses.AddressOps._scope_paragraphs`)."""
         if within is None:
             return [(part, self._index(part).paragraphs) for part in self._parts()]
-        part = self._part_for_story(within)
-        if part is not None:
-            return [(part, self._index(part).paragraphs)]
-        if ".." in within and "@" not in within:
-            elements, part = self._blocks_of(within)
-            nested = {id(p) for element in elements for p in element.iter(_W + "p")}
-            return [(part, [e for e in self._index(part).paragraphs if id(e.element) in nested])]
-        part, entry = self._resolve(within)
-        if isinstance(entry, ParagraphEntry):
-            return [(part, [entry])]
-        nested = set(map(id, entry.element.iter(_W + "p")))
-        return [(part, [e for e in self._index(part).paragraphs if id(e.element) in nested])]
+        return [self._scope_paragraphs(within)]
 
     def find(self: "Document", text: str, *, within: str | None = None, regex: bool = False,
              case: bool = True, whitespace: str | None = None, across_paragraphs: bool = False,

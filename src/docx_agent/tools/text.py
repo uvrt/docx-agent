@@ -7,7 +7,8 @@ from typing import Any
 
 from ooxml_edit.tools import (Result, ToolError, array, boolean, number, obj, string)
 
-from ..edit.document import Paragraph, Table, W_P
+from ..edit.addresses import is_text_range, span_ends
+from ..edit.document import Cell, EditResult, Paragraph, Table
 from ..edit.ranges import TextRange
 from ..edit.styles import StyleError
 from ..markdown import model as m
@@ -26,16 +27,8 @@ REF = string("Ref name for $name.", optional=True)
 
 def text_range(document: Any, address: str) -> TextRange:
     """A text range from an address: a range id (``p:A@4:11``, ``p:A@5``, ``p:A@3..p:B@8``),
-    or a paragraph id, which is the whole paragraph's text."""
-    if "@" in address and not address.startswith("p@"):
-        return document.range(address)
-    if address.startswith("p@") and address.count("@") > 1:
-        return document.range(address)
-    found = document.get(address)
-    if isinstance(found, Paragraph):
-        return found.range()
-    raise ToolError("invalid_arguments", f"{address} is not text: give a paragraph or range id",
-                    field="target")
+    or the text a paragraph, cell (``t:X/c1,1``) or bookmark holds (``Document.range``)."""
+    return document.range(address)
 
 
 def find_range(call: Any, find: str, within: str | None) -> TextRange:
@@ -43,31 +36,19 @@ def find_range(call: Any, find: str, within: str | None) -> TextRange:
 
 
 def paragraphs_of(document: Any, address: str) -> list[Paragraph]:
-    """The paragraphs an address covers: one, a span's (``p:A..p:B``, tables' cells
-    included), a range's, or a table's."""
-    if ".." in address and "@" not in address:
-        elements, part = document._blocks_of(address)
-        out = []
-        index = document._index(part)
-        for element in elements:
-            nodes = [element] if element.tag == W_P else list(element.iter(W_P))
-            for node in nodes:
-                entry = index.entry_for(node)
-                if entry is not None:
-                    out.append(document.paragraph(entry.id))
-        return out
-    if "@" in address and not address.startswith("p@"):
-        return [document.paragraph(i) for i in document.range(address).paragraph_ids()]
-    found = document.get(address)
+    """The paragraphs an address covers: one; a span's (``p:A..p:B``, ``p:A..``; tables'
+    cells included); a range's; a table's, row's or cell's; a section's, bookmark's or
+    story's -- what :meth:`~docx_agent.edit.addresses.AddressOps._scope_paragraphs` reads."""
+    found = None if (span_ends(address) is not None or is_text_range(address)) else document.get(address)
     if isinstance(found, Paragraph):
         return [found]
     if isinstance(found, Table):
         return [p for row in range(len(found.rows)) for col in range(found.column_count)
                 for p in _cell_paragraphs(found, row, col)]
-    if hasattr(found, "paragraphs"):
-        paragraphs = found.paragraphs
-        return list(paragraphs() if callable(paragraphs) else paragraphs)
-    raise ToolError("invalid_arguments", f"{address} holds no paragraphs", field="targets")
+    _, entries = document._scope_paragraphs(address)
+    if not entries:
+        raise ToolError("invalid_arguments", f"{address} holds no paragraphs", field="targets")
+    return [document.paragraph(entry.id) for entry in entries]
 
 
 def _cell_paragraphs(table: Table, row: int, column: int) -> list[Paragraph]:
@@ -88,27 +69,54 @@ SET_ITEM = obj({"target": string("Paragraph, or table cell t:X/c<row>,<col>."),
            {"doc": DOC,
             "target": string("Paragraph, or table cell t:X/c<row>,<col>.", optional=True),
             "text": string("The whole new text, plain.", optional=True),
-            "items": array(SET_ITEM, "Or several paragraphs.", optional=True)},
+            "items": array(SET_ITEM, "Or several paragraphs.", optional=True),
+            "split_paragraphs": boolean("Each \\n starts a paragraph in the target's style; \\v a line break. "
+                                        "Default false.", optional=True)},
            refs=('target', 'items[].target'), group="core", mutates=True,
            facts=("text", "items[].text"))
 def word_set_text(call: Any, doc: str, target: str | None = None, text: str | None = None,
-                  items: list[dict] | None = None) -> Result:
+                  items: list[dict] | None = None, split_paragraphs: bool = False) -> Result:
     one_of({"target": target, "items": items}, "target", "items")
     if items == []:         # a trimmed batch's leftover: nothing to do, said, not refused
         return Result.nothing_given("written")
     work = items if items is not None else [{"target": target, "text": need(text, "text")}]
     edits = []
-    for item in work:
-        address = resolve(call, item["target"])
-        found = call.document.get(address)
-        if not isinstance(found, Paragraph):
-            paragraphs = getattr(found, "paragraphs", None)
-            if not paragraphs:
-                raise ToolError("invalid_arguments", f"{address} is not a paragraph or a cell",
-                                field="target")
-            found = (paragraphs() if callable(paragraphs) else paragraphs)[0]
-        edits.append(found.set_text(item["text"]))
-    return outcome(edits, f"Set the text of {len(edits)} paragraph(s)")
+    for k, item in enumerate(work):
+        field = "text" if items is None else f"items[{k}].text"
+        if not split_paragraphs and ("\n" in item["text"] or "\r" in item["text"]):
+            raise ToolError("invalid_arguments", f"{field} holds \\n: give split_paragraphs true to write "
+                            "each line as a paragraph, or \\v for a line break inside one", field=field)
+        edits.extend(_set_one(call, resolve(call, item["target"]), item["text"], split_paragraphs))
+    made = sum(len(edit.created) for edit in edits)
+    return outcome(edits, f"Set the text of {len(work)} {'target' if split_paragraphs else 'paragraph'}(s)"
+                   + (f", {made} new paragraph(s)" if made else ""))
+
+
+def _set_one(call: Any, address: str, text: str, split: bool) -> list[Any]:
+    """One target's text: a paragraph's, or a cell's first paragraph's; split, every line a
+    paragraph -- after the paragraph, or as the cell's paragraphs (the cell's others go, as
+    word_edit_table's set_cells writes a cell's lines)."""
+    from .objects import _set_cell
+
+    document = call.document
+    if span_ends(address) is not None:
+        raise ToolError("invalid_arguments", f"{address} is a span: word_set_text writes one paragraph or "
+                        "cell per target; give items, one per paragraph", field="target")
+    found = document.get(address)
+    if isinstance(found, Cell) and split:
+        lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+        if [p.text for p in found.paragraphs] == lines:
+            return [EditResult(found.paragraphs[0].id, changed=False)]
+        return _set_cell(document, found._table, found.row, found.column, "\n".join(lines))
+    if not isinstance(found, Paragraph):
+        paragraphs = getattr(found, "paragraphs", None)
+        if not paragraphs or isinstance(found, Table):
+            raise ToolError("invalid_arguments", f"{address} is a {type(found).__name__.lower()}: word_set_text "
+                            "writes a paragraph or a cell (t:X/c<row>,<col>)", field="target")
+        found = (paragraphs() if callable(paragraphs) else paragraphs)[0]
+    if split:
+        return [document.set_text_paragraphs(found.id, text)]
+    return [found.set_text(text)]
 
 
 # -- W6 word_insert_text -----------------------------------------------------------------------

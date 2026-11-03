@@ -37,8 +37,8 @@ from test_tools_word import AGREEMENT, CLOCK_AT
 #: ``clean``, +42) 2,541; round 16, F8 (check's ``layout``, ``min_size`` and ``styles``,
 #: +67) 2,608; round 23, V4 (word_read's ``range`` names a section, ``s:2``, +4) 2,612; V3
 #: (check, find_text, replace_text and render without a deck's parameters and values)
-#: 2,328.
-REVIEW_CORE_GUARD = 2330
+#: 2,328; round 28, W9 (word_read's ``range`` names a cell and an open span, +5) 2,333.
+REVIEW_CORE_GUARD = 2335
 #: Every definition a reviewer is sent, estimated.  Measured 6,820 (6,813 before); round 9,
 #: N1, 6,884; round 12, Q1, 6,919; round 15, T2, 6,955; round 16, F11, 6,997; F8, 7,064; F9
 #: (word_design_facts, a reading tool, deferred: +170) 7,234; round 17, P3
@@ -47,8 +47,9 @@ REVIEW_CORE_GUARD = 2330
 #: (word_design_facts' ``declared_styles`` and ``cursor``) 7,560; round 23, V4 (word_read's
 #: ``s:2``; word_delete is not a reviewer's) 7,564; V3 (the shared tools without a deck's
 #: parameters) 7,281; round 24, W6 (word_styles' ``shading``; its list and describe are a
-#: reviewer's) 7,310.
-REVIEW_ALL_GUARD = 7315
+#: reviewer's) 7,310; round 28, W9 (word_read's ``range`` and word_inspect's ``target``
+#: name a cell and an open span) 7,327.
+REVIEW_ALL_GUARD = 7330
 
 REVIEW_CORE = {"save_document", "describe", "find_text", "render", "check", "open_document",
                "batch", "word_read", "word_comments", "word_changes"}

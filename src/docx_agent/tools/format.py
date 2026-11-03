@@ -11,6 +11,7 @@ from typing import Any
 from ooxml_edit.charts import ChartDataWarning
 from ooxml_edit.tools import DocumentFormat
 
+from ..edit.addresses import AddressError
 from ..edit.authoring import AuthoringWarning
 from ..edit.charts import DiagramDrawingDropped, UntrackedChartEdit
 from ..edit.document import Document
@@ -136,6 +137,7 @@ def _candidates(error: AmbiguousAnchor) -> list[str]:
 
 
 ERRORS = {
+    AddressError: ("invalid_arguments", lambda error: error.options),
     AmbiguousAnchor: ("ambiguous", _candidates),
     AnchorNotFound: "not_found",
     FormattingError: "unit",

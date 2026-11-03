@@ -130,6 +130,14 @@ class TableOps:
 
         part, entry = self._resolve(identifier)
         if not isinstance(entry, TableEntry):
+            holder = entry.element.getparent()
+            while holder is not None and holder.tag != _W + "tbl":
+                holder = holder.getparent()
+            found = self._index(part).entry_for(holder) if holder is not None else None
+            if found is not None:
+                from .addresses import AddressError
+
+                raise AddressError(f"{identifier} is a paragraph in table {found.id}: give the table", [found.id])
             raise EditError(f"{identifier} is not a table")
         return part, entry
 
