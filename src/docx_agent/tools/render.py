@@ -14,6 +14,7 @@ them itself); their PNGs are ``render_pages``' byte for byte (:mod:`.shared`: do
 from __future__ import annotations
 
 import re
+import threading
 from typing import Any
 
 from ooxml_edit.tools import render, worker_task
@@ -70,14 +71,15 @@ class PageRenderer(RendererBase):
         fresh = None
         previous = None
         if isinstance(state, tuple) and len(state) == 2 and state[0] == "previous":
-            previous = _loaded(state[1])[0]
+            # Taken, not handed back: the new layout goes on with its fonts and measurements.
+            previous = _taken(state[1])[0]
             state = None
         if state is not None:
-            layout, fonts = _loaded(state)
+            layout, fonts = _taken(state)
+            kept = state
         else:
             layout, _, fonts = docx2svg.lay_out_docx(data, options, previous=previous)
-            fresh = pickle.dumps((_light(layout), fonts), protocol=pickle.HIGHEST_PROTOCOL)
-            _remember(fresh, (layout, fonts))
+            fresh = kept = pickle.dumps((_light(layout), fonts), protocol=pickle.HIGHEST_PROTOCOL)
         count = len(layout.pages)
         svgs = docx2svg.page_svgs(layout, data, options, device_size=True, fonts=fonts)
         numbers = [page for page in items if 1 <= page <= count]
@@ -112,6 +114,7 @@ class PageRenderer(RendererBase):
         fingerprint = render.fingerprint(self, skip, sans, file_stamps(plain, dirs), files,
                                          [(name, content_key(blob)) for name, blob in embedded],
                                          system)
+        _remember(kept, (layout, fonts))  # this task is done with them: the next may take them
         return Layout([View(page, svg) for page, svg in zip(numbers, svgs)], fingerprint,
                       raster={"files": files, "embedded": embedded, "dirs": dirs, "skip": skip,
                               "sans": sans},
@@ -324,8 +327,16 @@ class _locked:
 #: The layouts this process made or read last, by a digest of their pickle (``laid_out``):
 #: the next call handing one back to the same process does not read it again, and finds
 #: what the layout's flow measured, which the pickle leaves out (:func:`_light`).
+#:
+#: A task takes its layout out (:func:`_taken`) and puts it back when it is done
+#: (:func:`_remember`), so no two tasks running at once hold the same layout and the same
+#: ``InstalledFonts``: laying out and drawing pages write to both, and with the GIL off
+#: (Python 3.15t) two threads of an in-process runner would write at once.  A second task
+#: asking for a layout another holds reads its own from the pickle.  Every use of the dict
+#: holds :data:`_RECENT_LOCK`.
 _RECENT: dict = {}
 _RECENT_SIZE = 2
+_RECENT_LOCK = threading.Lock()
 
 
 def _light(layout):
@@ -342,24 +353,29 @@ def _light(layout):
 
 
 def _remember(blob: bytes, laid: tuple) -> None:
+    """``laid``, ``(layout, fonts)``, kept as the newest under ``blob``'s digest, for the
+    next task that brings ``blob`` back."""
     import hashlib
 
     key = hashlib.sha256(blob).digest()
-    _RECENT.pop(key, None)
-    _RECENT[key] = laid
-    while len(_RECENT) > _RECENT_SIZE:
-        _RECENT.pop(next(iter(_RECENT)))
+    with _RECENT_LOCK:
+        _RECENT.pop(key, None)
+        _RECENT[key] = laid
+        while len(_RECENT) > _RECENT_SIZE:
+            del _RECENT[next(iter(_RECENT))]
 
 
-def _loaded(blob: bytes) -> tuple:
-    """``(layout, fonts)`` of a ``laid_out`` pickle: the one this process holds, else read."""
+def _taken(blob: bytes) -> tuple:
+    """``(layout, fonts)`` of a ``laid_out`` pickle, this task's alone: the one this
+    process holds, taken out of :data:`_RECENT` until :func:`_remember` puts it back, else
+    read from the pickle."""
     import hashlib
     import pickle
 
-    found = _RECENT.get(hashlib.sha256(blob).digest())
+    with _RECENT_LOCK:
+        found = _RECENT.pop(hashlib.sha256(blob).digest(), None)
     if found is None:
         found = pickle.loads(blob)
-        _remember(blob, found)
     return found
 
 
