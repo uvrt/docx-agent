@@ -20,6 +20,10 @@ It builds on [`ooxml-edit`](https://github.com/uvrt/ooxml-edit) (the lxml-based 
 package, ordered insertion and undo, and its charts subpackage, extracted from pptx-agent)
 and renders and lays out through `docx2svg`.
 
+**Threads.** A `Document` is one thread's at a time: its package, undo history and kept
+layouts do not lock. The tools give each call its document alone (a session's entry lock);
+used directly from several threads, hold a lock of your own around every use.
+
 The phases' features in brief. Unlike the recipes above, these snippets are illustrative:
 their files and ids are placeholders.
 
