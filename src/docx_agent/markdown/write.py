@@ -72,6 +72,7 @@ from typing import TYPE_CHECKING, Callable, Mapping
 from ..edit import ids as _ids
 from ..edit import numbering as _numbering
 from ..edit import text as _text
+from ..edit.addresses import span_ends
 from ..edit.errors import EditError
 from ..oxml.xml import Element, append_in_order, insert_in_order, make, remove
 from . import model as m
@@ -354,18 +355,12 @@ def _locate(document: "Document", at: str) -> _Place:
             raise EditError(f"{story} holds notes or comments: insert after one of their paragraphs")
         return _Place(part, container, None, None, position=len(document._index(part).paragraphs))
     if kind == "replace":
-        first, sep, last = rest.partition("..")
-        part, entry = document._resolve_block(first)
-        elements = [entry.element]
-        if sep:
-            other_part, other = document._resolve_block(last)
-            if other_part != part or other.element.getparent() is not entry.element.getparent():
-                raise EditError(f"{rest!r}: a range replaced is blocks of one container")
-            siblings = [c for c in entry.element.getparent() if isinstance(c.tag, str) and c.tag in _BLOCKS]
-            a, b = siblings.index(entry.element), siblings.index(other.element)
-            if b < a:
-                a, b = b, a
-            elements = siblings[a:b + 1]
+        ends = span_ends(rest)
+        if ends is None:
+            part, entry = document._resolve_block(rest)
+            elements = [entry.element]
+        else:
+            elements, part = document._span_elements(*ends, movable=_BLOCKS)
         ids = [_id_of(document, part, e) for e in elements]
         return _Place(part, elements[0].getparent(), elements[0], ids[0], replaced=ids,
                       position=_position(document, part, elements[0], False))

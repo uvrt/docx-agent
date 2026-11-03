@@ -161,10 +161,16 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 #: next block too: its last row keeps) +31 to every definition (12,997 -> 13,028), none to the
 #: core (2,440).  The guard rises to 13,030.  word_format_table is not strict: the strict set
 #: is unchanged (6 tools, 23 optional parameters).
+#: Round 28, W9 and W10: word_set_text's ``text`` (and its items') says a ``\\n`` starts a
+#: paragraph (+14; no parameter: a newline, refused before, splits) and word_read's
+#: ``range`` (a cell, an open span ``p:A..``) +4 to the core (2,440 -> 2,458, about 3,638
+#: counted by the proxy) and to every definition; word_inspect's ``target`` (the same
+#: forms, a section) +12 more there (13,028 -> 13,059).  The guard rises to 13,060.  The
+#: strict set is unchanged (6 tools, 23 optional parameters).
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 6500
-ALL_GUARD = 13030
+ALL_GUARD = 13060
 
 
 @pytest.fixture(scope="module")

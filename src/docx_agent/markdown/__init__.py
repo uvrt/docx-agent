@@ -16,8 +16,12 @@ document with the same style map.
 
 from __future__ import annotations
 
+import dataclasses
+import re
 from typing import TYPE_CHECKING
 
+from ..edit.addresses import SPAN_SYNTAX, AddressError, inside_table, is_text_range, span_ends
+from ..edit.errors import EditError
 from . import model
 from .parse import differences, model_ast, parse_ast
 from .read import (Marker, Options, ParagraphRecord, Reader, TableRecord, build, note_definitions,
@@ -170,20 +174,44 @@ def check(document: "Document", **options) -> list[str]:
 
 
 def select(reader: Reader, range: str | None) -> list[tuple[str, list, str]]:
-    """``(part, records, kind)`` to write: ``kind`` is ``body``, ``story`` or ``notes``."""
+    """``(part, records, kind)`` to write: ``kind`` is ``body``, ``story``, ``notes``,
+    ``range`` or ``cell`` (a cell's own blocks).  ``range`` takes every form the address
+    resolver reads (:mod:`docx_agent.edit.addresses`): a story, a section, a block (a
+    paragraph in a table names its table), a span of blocks -- either end open (``p:A..``
+    to the story's end, ``..t:B`` from its start) -- a row (its table with that row), a
+    cell (its blocks), a bookmark or a text range (the blocks holding it)."""
     document = reader.document
     body = document.package.document_part()
     if range is None:
         return [(body, reader.story(body), "body")]
-    if ".." in range:
-        first, _, last = range.partition("..")
-        records = _story(reader, _part_of(document, first))
-        a, b = _position(document, records, first), _position(document, records, last)
-        if _part_of(document, first) != _part_of(document, last):
-            raise KeyError(f"{range!r} spans two stories")
+    if not range.strip():
+        raise AddressError("a range is empty: give a block id, a span (" + SPAN_SYNTAX + "), a section or a story")
+    ends = span_ends(range)
+    if ends is not None:
+        first, last = ends
+        part = _part_of(document, first or last)
+        if first and last and _part_of(document, last) != part:
+            raise AddressError(f"{range!r} spans two stories: " + SPAN_SYNTAX)
+        records = _story(reader, part)
+        a = _position(document, records, first) if first else 0
+        b = _position(document, records, last) if last else len(records) - 1
         if b < a:
-            a, b = b, a
-        return [(_part_of(document, first), records[a:b + 1], "range")]
+            raise EditError(f"{range!r} ends before it starts")
+        return [(part, records[a:b + 1], "range")]
+    if is_text_range(range):
+        found = document.range(range)
+        return _between(document, reader, found.start_id, found.end_id)
+    if range.startswith("bm:") or (not re.search(r"[:@/#]", range) and document._part_for_story(range) is None):
+        try:
+            found = document.bookmark(range).range()
+        except KeyError:
+            if range.startswith("bm:"):
+                raise
+        else:
+            return _between(document, reader, found.start_id, found.end_id)
+    inside = _inside_table(document, reader, range)
+    if inside is not None:
+        return [inside]
     if range.startswith(("s:", "s@")):
         records = reader.story(body)
         sections = [k for k, r in enumerate(records) if isinstance(r, ParagraphRecord) and r.section is not None]
@@ -214,6 +242,38 @@ def select(reader: Reader, range: str | None) -> list[tuple[str, list, str]]:
     records = _story(reader, part)
     k = _position(document, records, range)
     return [(part, records[k:k + 1], "range")]
+
+
+def _between(document: "Document", reader: Reader, first: str, last: str) -> list[tuple[str, list, str]]:
+    """The blocks from the one holding paragraph ``first`` through the one holding ``last``."""
+    part = _part_of(document, first)
+    records = _story(reader, part)
+    a, b = _position(document, records, first), _position(document, records, last)
+    return [(part, records[min(a, b):max(a, b) + 1], "range")]
+
+
+def _inside_table(document: "Document", reader: Reader, address: str) -> tuple[str, list, str] | None:
+    """A row's (its table, that row alone) or a cell's (its blocks, ``kind`` ``cell``)
+    records, or ``None`` when ``address`` is neither."""
+    from ..edit.document import Cell, Row
+
+    if not (address.startswith("tr:") or "/tr:" in address or inside_table(address)):
+        return None
+    found = document.get(address)
+    if not isinstance(found, (Cell, Row)):
+        return None
+    table_id = found._table.id
+    part = _part_of(document, table_id)
+    for record in walk_records(_story(reader, part)):
+        if isinstance(record, TableRecord) and record.id == table_id:
+            if isinstance(found, Row):
+                line = [list(cells) for cells in record.rows if cells and cells[0].row == found._index]
+                return part, [dataclasses.replace(record, rows=line, header_rows=0)], "range"
+            for cells in record.rows:
+                for cell in cells:
+                    if cell.row == found.row and cell.column == found.column:
+                        return part, list(cell.records), "cell"
+    raise KeyError(f"{address!r} is not in its story in this view")
 
 
 def _story(reader: Reader, part: str) -> list:

@@ -5,6 +5,53 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.30 -- unreleased
+
+- **Every place-taking parameter reads the same ids** (production round 28, W9). One
+  resolver (`docx_agent/edit/addresses.py`) behind every `target`, `range`, `within`,
+  `targets`, `blocks`, `at`, `after`/`before` and `section`: a cell id (`t:X/c1,1`), a row
+  (`tr:`, `t:X/r1`), a section (`s:2`, `s:body`), a bookmark (`bm:Name` or its plain name), a
+  story, a text range and a span are read the same everywhere they make sense
+  (ROADMAP.md, "One resolver for every place", has the table). `word_inspect` on a cell
+  inspects the cell: its paragraphs, and `cell` with its id, table, row, column and the
+  properties it states. `word_read` reads a cell's blocks, a row as its table with that row,
+  a bookmark's or range's blocks. Scopes (`find_text`/`replace_text` `range`, every `within`,
+  `word_format` and `word_lists` `targets`, `word_changes` `within`) take cells, rows,
+  sections and bookmarks; text targets and the `at` of `word_fields`, `word_notes`,
+  `word_drawings` and the content-control tool take a paragraph (its text), a cell (its paragraphs'
+  text) and a bookmark as well as a range; a `section` takes any id in the body (its
+  section). **Open spans:** `p:A..` runs from `p:A` to the end of its container (the body,
+  or the cell it is in), `..t:B` from the start; refs at either end (`$a..$b`, `$a..`). A
+  malformed span (`p:A...p:B`, `..`, three ends) is refused with the syntax, never as an empty
+  id; a cell, row, span, section, bookmark, story or text range where one block is wanted, and a
+  paragraph in a table given as a table, is `invalid_arguments` with the ids that would do in
+  `valid_options`. Library: `AddressError` (a `KeyError`), `Document.range` takes a
+  paragraph, cell, bookmark, hyperlink or run id, `section_of` any id in the body, `get` a
+  bookmark's plain name. Calls that worked do what they did (but a reversed span, below); refusals that change: a cell,
+  row, span, section, bookmark or text range where a paragraph or table is wanted was
+  `not_found` ("no paragraph or table ..."), now `invalid_arguments` naming what it is.
+- **`word_set_text` writes each `\n` as a paragraph** (W10). A `\n` in the text, refused
+  before, now starts a new paragraph after the target (`Document.set_text_paragraphs`);
+  `\v` stays a line break. No parameter: what was refused now works. The first line
+  rewrites the target as before (its formatting kept); each new paragraph takes the target's
+  paragraph properties -- style, alignment, spacing, indents, keeps, list membership --
+  without a section break or a revision record, and its last text run's formatting, as
+  Enter at the end of the paragraph and `insert_paragraph` after it do. A cell target whose
+  text has a `\n` gets the lines as its paragraphs (its others go, as `word_edit_table`
+  `set_cells` writes them); without one, its first paragraph is rewritten as before. With
+  `items`, each target is split on its own. A repeat changes nothing; a paragraph that ends
+  a section is refused (the new paragraphs would start the next one). Tracked like any
+  insertion; one undo step.
+- **A reversed span is refused everywhere alike.** `word_read`'s `range` and
+  `word_insert_markdown`'s `replace:` read `p:B..p:A` (its last end before its first) the
+  other way round; now they refuse it as `word_delete` and `word_move` do (`'p:B..p:A' ends
+  before it starts`).
+- **Tool definitions.** `word_set_text`'s `text` says a `\n` starts a paragraph (+14) and
+  `word_read`'s `range` names a cell and an open span (+4): the core 2,440 -> 2,458
+  estimated (about 3,638 counted by the proxy); every definition, with `word_inspect`'s
+  `target` (+12), 13,028 -> 13,059. The strict set is unchanged: 6 tools, 23 optional
+  parameters.
+
 ## 0.1.29 -- unreleased
 
 - **A batch of Word ops costs about the same per op at any document size** (production

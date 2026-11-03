@@ -94,10 +94,13 @@ def state(document: "Document", range: str | None = None, *, view: str = "final"
     writer = _Writer(document, reader, layout=layout, xml=xml)
     blocks: list = []
     records_all: list = []
+    cell = None
     for part, records, kind in select(reader, range):
         if kind == "notes":
             writer.note_labels += [identifier for where, identifier, _ in document._notes() if where == part]
             continue
+        if kind == "cell":
+            cell = _cell(document, range)
         blocks += writer.blocks(records)
         records_all += records
     writer.note_labels += [n for r in walk_records(records_all) for n in referenced_notes(r)]
@@ -113,6 +116,8 @@ def state(document: "Document", range: str | None = None, *, view: str = "final"
         "comments": writer.comments(),
         "revisions": writer.revisions(),
     }
+    if cell is not None:
+        out["cell"] = cell
     out["styles"] = writer.styles()
     if layout:
         lay = writer.layout()
@@ -120,6 +125,16 @@ def state(document: "Document", range: str | None = None, *, view: str = "final"
                          "stopped": None if lay.stopped is None else {
                              "page": lay.stopped.page, "reason": lay.stopped.reason, "at": lay.stopped.at}}
     return out
+
+
+def _cell(document: "Document", address: str) -> dict:
+    """What a state of one cell says of the cell itself: its id, table, place and spans, and
+    the properties it states (:meth:`~docx_agent.Document.cell_properties`)."""
+    found = document.get(address)
+    table = found._table.id
+    properties = document.cell_properties(table, found.row, found.column)
+    return {"id": found.id, "table": table, "row": found.row, "column": found.column,
+            "properties": properties}
 
 
 class _Writer:

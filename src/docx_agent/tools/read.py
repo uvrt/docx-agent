@@ -160,7 +160,7 @@ def _drawings(document: Any) -> list[Any]:
 
 @word_tool("word_read", "The document as Markdown with an id comment before each block. Paged: pass next_cursor back. view markup shows tracked changes, comments and fields in place.",
            {"doc": DOC,
-            "range": string("A block, span p:A..t:B or section s:2. Default the whole body.", optional=True),
+            "range": string("Block, cell, span p:A..t:B (p:A.. to the end) or section s:2. Default the body.", optional=True),
             "view": string("final: changes accepted; markup: changes, comments, fields in place. Default final.",
                            enum=["final", "markup", "original"], optional=True),
             "stories": string("all adds headers, footers, notes. Default body.",
@@ -188,13 +188,14 @@ def word_read(call: Any, doc: str, range: str | None = None, view: str = "final"
 
 @word_tool("word_inspect", "Exact formatting of blocks: style, runs, effective font, size, spacing, indents, list, revisions; with layout, where each is placed.",
            {"doc": DOC,
-            "target": string("A block or span p:A..t:B."),
+            "target": string("A block, cell t:X/c1,1, span p:A..t:B (p:A.. to the end) or section."),
             "layout": boolean("Also each block's page, top and bottom. Default false.",
                               optional=True)},
            refs=('target',), group="word_text")
 def word_inspect(call: Any, doc: str, target: str, layout: bool = False) -> Result:
     state = call.document.state(resolve(call, target), layout=layout)
-    data = {key: tool_names(state[key], "effective") for key in ("styles", "blocks", "notes", "comments", "revisions")
+    data = {key: tool_names(state[key], "effective") for key in ("cell", "styles", "blocks", "notes", "comments",
+                                                                  "revisions")
             if state.get(key)}
     return Result(summary=f"Inspected {target}", data=data)
 

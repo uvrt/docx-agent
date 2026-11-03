@@ -18,6 +18,7 @@ pytest.importorskip("ooxml_edit.errors", reason="needs ooxml-edit 0.66 (typed re
 from ooxml_edit.errors import ArgumentError, UnitError  # noqa: E402
 from ooxml_edit.tools import Toolbox  # noqa: E402
 
+from docx_agent.edit.addresses import AddressError  # noqa: E402
 from docx_agent.edit.errors import EditError  # noqa: E402
 from docx_agent.edit.formatting import FormattingError  # noqa: E402
 from docx_agent.edit.inline import SpanError  # noqa: E402
@@ -57,6 +58,7 @@ def test_removing_the_last_node_is_invalid_arguments(box):
     (EditError("not this way"), "refused"),
     (AnchorNotFound("nowhere"), "not_found"),
     (AmbiguousAnchor("twice", []), "ambiguous"),
+    (AddressError("t:X/c1,1 is a cell, not a block", ["t:X"]), "invalid_arguments"),
     # Python's own ValueError is still unit; its TypeError internal.
     (ValueError("invalid literal"), "unit"),
     (TypeError("unsupported operand"), "internal"),
@@ -67,5 +69,5 @@ def test_the_codes(box, error, code):
 
 def test_every_mapped_error_is_tested():
     tested = {FormattingError, SpanError, PictureError, EditError, AnchorNotFound,
-              AmbiguousAnchor}
+              AmbiguousAnchor, AddressError}
     assert set(ERRORS) == tested

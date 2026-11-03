@@ -692,6 +692,8 @@ class SectionOps:
         return identifier
 
     def _section_record(self: "Document", identifier: str) -> tuple[str, Element, Element | None]:
+        if isinstance(identifier, str) and not identifier.startswith(("s:", "s@")):
+            identifier = self.section_of(identifier).id      # a block, cell, bookmark...: its section
         wanted = self._canonical_section(identifier)
         records = self._section_records()
         for record in records:
@@ -710,12 +712,21 @@ class SectionOps:
         return self.section_of(identifier)
 
     def section_of(self: "Document", identifier: str) -> Section:
-        """The section a body paragraph or table is in."""
-        part, entry = self._resolve(identifier)
-        if part != self.package.document_part():
+        """The section a body paragraph or table is in -- or anything else in the body an id
+        names (:meth:`block_of`'s ids: a cell, row, bookmark, range, note...): the section
+        of the block holding it."""
+        from .addresses import AddressError, span_ends
+
+        if span_ends(identifier) is not None:
+            raise AddressError(f"{identifier} is a span: give one block, or a section (s:2, s:body)")
+        if isinstance(identifier, str) and self._part_for_story(identifier) is not None:
+            raise AddressError(f"{identifier} is a story: give a block in the body, or a section (s:2, s:body)")
+        found = self._held(identifier)
+        part = self.package.document_part()
+        if found is None or found[0] != part:
             raise KeyError(f"{identifier} is not in the body")
         records = self._section_records()
-        at = self._paragraph_place(part, entry.element)
+        at = self._paragraph_place(part, found[1])
         if at is not None:
             # By the paragraphs' places (round 28, W8): a block's place is its first
             # paragraph's, and a section's paragraph is never inside a table.
@@ -726,7 +737,7 @@ class SectionOps:
             return Section(self, records[-1][0])
         nodes = list(self.package.tree(part).iter())  # held: one proxy per element, stable id()s
         order = {id(node): k for k, node in enumerate(nodes)}
-        at = order[id(entry.element)]
+        at = order[id(found[1])]
         for identifier_, _, paragraph in records:
             if paragraph is None or order[id(paragraph)] >= at:
                 return Section(self, identifier_)
