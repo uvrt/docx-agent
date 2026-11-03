@@ -653,12 +653,18 @@ class SectionOps:
     def _section_records(self: "Document") -> list[tuple[str, Element, Element | None]]:
         """``(id, w:sectPr, paragraph that ends it or None)`` for every section, in order."""
         body_part = self.package.document_part()
+        index = self._index(body_part)
         out = []
-        for entry in self._index(body_part).paragraphs:
-            properties = entry.element.find(W_PPR)
-            sect = properties.find(W_SECTPR) if properties is not None else None
-            if sect is not None and in_body(entry.element):
-                out.append((section_id(entry.id), sect, entry.element))
+        # lxml's walk finds the breaks (round 28, W8: read on every edit of a table's width,
+        # a Python walk over every paragraph cost each op of a batch the document's size).
+        for sect in self.package.tree(body_part).iter(W_SECTPR):
+            properties = sect.getparent()
+            paragraph = properties.getparent() if properties.tag == W_PPR else None
+            entry = index.entry_for(paragraph) if paragraph is not None else None
+            # The first w:sectPr of the paragraph's first w:pPr, as find() takes them.
+            if entry is not None and paragraph.tag == _ids.W_P and paragraph.find(W_PPR) is properties \
+                    and properties.find(W_SECTPR) is sect and in_body(paragraph):
+                out.append((section_id(entry.id), sect, paragraph))
         body = self.package.tree(body_part).find(W_BODY)
         last = body.find(W_SECTPR) if body is not None else None
         if last is not None:
@@ -720,6 +726,15 @@ class SectionOps:
         if found is None or found[0] != part:
             raise KeyError(f"{identifier} is not in the body")
         records = self._section_records()
+        at = self._paragraph_place(part, entry.element)
+        if at is not None:
+            # By the paragraphs' places (round 28, W8): a block's place is its first
+            # paragraph's, and a section's paragraph is never inside a table.
+            index = self._index(part)
+            for identifier_, _, paragraph in records:
+                if paragraph is None or index.entry_for(paragraph).index >= at:
+                    return Section(self, identifier_)
+            return Section(self, records[-1][0])
         nodes = list(self.package.tree(part).iter())  # held: one proxy per element, stable id()s
         order = {id(node): k for k, node in enumerate(nodes)}
         at = order[id(found[1])]
@@ -727,6 +742,14 @@ class SectionOps:
             if paragraph is None or order[id(paragraph)] >= at:
                 return Section(self, identifier_)
         return Section(self, records[-1][0])
+
+    def _paragraph_place(self: "Document", part: str, element: Element) -> int | None:
+        """The place among the part's paragraphs (its index's) of ``element`` -- a paragraph,
+        or a block whose first paragraph it is -- or ``None`` when it holds none indexed."""
+        index = self._index(part)
+        first = element if element.tag == _ids.W_P else next(element.iter(_ids.W_P), None)
+        entry = index.entry_for(first) if first is not None else None
+        return entry.index if entry is not None and getattr(entry, "index", None) is not None else None
 
     def _section_paragraphs(self: "Document", identifier: str) -> list[str]:
         records = self._section_records()

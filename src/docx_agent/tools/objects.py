@@ -14,7 +14,7 @@ from ooxml_edit.tools import (REVIEW, Result, ToolError, array, boolean, integer
 
 from ..edit import provenance as _provenance
 from ..edit.pictures import PictureError
-from ._base import need, note_small_text, outcome, remember, resolve, short, word_tool
+from ._base import engage, need, note_small_text, outcome, remember, resolve, short, word_tool
 from .structure import _position
 from .table_data import DATE_FORMAT, FROM_COLUMNS, HEADER, cell_text, fits, no_source, placed
 
@@ -482,14 +482,12 @@ def word_format_table(call: Any, doc: str, table: str, scope: str, row: int | No
             # Round 27, W7: asked for what the table already is (keep_together false on a
             # table not kept together): as asked, the warnings say why nothing changed.
             result.summary, result.changed = f"No change to {table}", []
+        loose = _loose_paragraph_after(document, result.renamed.get(table, table)) if keep_with_next else None
         if keep_together:
-            taller = _taller_than_page(document, result.renamed.get(table, table))
-            if taller is not None:
-                result.warnings.append(taller)
-        if keep_with_next:
-            loose = _loose_paragraph_after(document, result.renamed.get(table, table))
-            if loose is not None:
-                result.warnings.append(loose)
+            # Round 28, W8: from the layout, which a batch makes once, after its last op.
+            _later_taller(call, result.renamed.get(table, table), before=loose)
+        if loose is not None:
+            result.warnings.append(loose)
         elif keep_together is False and document.table_properties(result.renamed.get(table, table))["keep_together"]:
             # Round 25, W5: what keeps the rows now is their styles' (a label style's keep).
             kept = document._table_entry(result.renamed.get(table, table))[1].id
@@ -552,6 +550,21 @@ def word_format_table(call: Any, doc: str, table: str, scope: str, row: int | No
 
 #: keep_together on a table taller than a page (round 25): Word does keep it, so does the tool.
 TALLER_THAN_PAGE = "taller than a page: Word starts it on a new page and breaks it where the page is full"
+
+
+def _later_taller(call: Any, table: str, *, before: str | None) -> None:
+    """:func:`_taller_than_page`'s warning, said once the document is as the call leaves it
+    (``call.defer``: after the handler, or after a batch's last op -- one layout for the
+    batch, where laying the document out after each op cost its size per op, round 28 W8),
+    in its place: before ``before`` (the warning said after it), else last."""
+    def say(result: Result) -> None:
+        engage(call)                        # the layout engine, with its deadline afresh
+        taller = _taller_than_page(call.document, table)
+        if taller is not None:
+            at = result.warnings.index(before) if before in result.warnings else len(result.warnings)
+            result.warnings.insert(at, taller)
+
+    call.defer(say)
 
 
 def _taller_than_page(document: Any, table: str) -> str | None:

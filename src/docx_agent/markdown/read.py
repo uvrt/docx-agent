@@ -185,6 +185,9 @@ class Reader:
         self._default_style = next((s for s in self._styles.values() if s.kind == "paragraph" and s.default), None)
         self._outline: dict[str | None, int | None] = {}
         self._counters: dict = {}
+        #: While :meth:`block` passes the blocks before the one it reads: only their list
+        #: items are counted (:meth:`_count`), no record is made.
+        self._counting = False
         self._numbering_model = None
         self._comments = {r["w_id"]: r for r in document._comment_records()}
         # Lists held for the reader's life: lxml keeps one proxy per element only while one
@@ -321,7 +324,73 @@ class Reader:
         gone = _DELETED if self.view == "current" else _INSERTED if self.view == "original" else ()
         return next((child for child in mark if child.tag in gone), None)
 
+    def block(self, part: str, identifier: str) -> list | None:
+        """The records :meth:`story` gives the top-level table holding ``identifier`` (its
+        id, a row's, a cell's, a paragraph's in it), without reading the story's other
+        blocks: of those before it, only the list items are counted -- the one thing a
+        block's reading takes from the blocks before it (:meth:`number`) -- and those after
+        it are not read (round 28, W8: ``word_edit_table`` returns its table, and reading
+        the whole story for it made each op of a batch cost the document's size).
+        ``None`` where the id is not in a top-level table of a story with blocks (a
+        paragraph, a note), or the view shows no such table there: :meth:`story` then."""
+        root = self.document.package.tree(part)
+        if root is None or root.tag in (_W + "footnotes", _W + "endnotes", _W + "comments"):
+            return None
+        container = root.find(_W + "body") if root.tag == _W + "document" else root
+        try:
+            element = self.document._resolve(identifier)[1].element
+        except (KeyError, ValueError):
+            return None
+        table = None
+        node = element
+        while node is not None and node is not container:
+            if node.tag == _W + "tbl":
+                table = node
+            node = node.getparent()
+        if node is None or table is None:
+            return None
+        groups = self._groups(self._items(container, part))
+        place = next((k for k, (kind, value) in enumerate(groups) if kind == "tbl" and value is table), None)
+        if place is None:
+            return None
+        # The part's list counts from the story's start, as story() counts them, and as
+        # they were after: a reader that reads the story later counts it from the start.
+        before = self._counters.pop(part, None)
+        try:
+            self._counting = True
+            try:
+                self._records(groups[:place], part)
+            finally:
+                self._counting = False
+            record = self.table(table, part)
+        finally:
+            self._counters.pop(part, None)
+            if before is not None:
+                self._counters[part] = before
+        wanted = self.document._resolve(identifier)[1].id
+        found: set[str] = set()
+        for inner in walk_records([record] if record is not None else []):
+            if isinstance(inner, ParagraphRecord):
+                found.add(inner.id)
+                found.update(inner.joins)
+            elif isinstance(inner, TableRecord):
+                found.add(inner.id)
+        if wanted not in found:
+            return None
+        return [record]
+
+    def _count(self, elements: list, part: str) -> None:
+        """What reading a paragraph (``elements``, one in the view) does to the blocks after
+        it: its list item counted, as :meth:`_classify` counts it."""
+        last = self._as_viewed(elements[-1])
+        listed = membership(self.document, last)
+        if listed is not None and listed.format not in (None, "none"):
+            self.number(part, listed, last)
+
     def _join(self, items: list, part: str) -> list:
+        return self._records(self._groups(items), part)
+
+    def _groups(self, items: list) -> list:
         # Groups of paragraphs that are one in the view (docx2svg's _join, both ways).
         groups: list = []
         pending: list[Element] = []
@@ -348,9 +417,15 @@ class Reader:
             if self.view != "original" or any(
                     _text.paragraph_text(p, self.view) or p.find(f"{_W}pPr/{_W}sectPr") is not None for p in pending):
                 groups.append(("p", pending))
+        return groups
+
+    def _records(self, groups: list, part: str) -> list:
         out: list = []
         for kind, value in groups:
             if kind == "p":
+                if self._counting:
+                    self._count(value, part)
+                    continue
                 out.append(self.paragraph(value, part))
             elif kind == "tbl":
                 table = self.table(value, part)

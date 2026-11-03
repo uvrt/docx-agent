@@ -234,6 +234,11 @@ def select(reader: Reader, range: str | None) -> list[tuple[str, list, str]]:
             return [(story.part, [], "notes")]
         return [(story.part, reader.story(story.part), "story" if story.part != body else "body")]
     part = _part_of(document, range)
+    if "_stories" not in reader.__dict__ or part not in reader.__dict__["_stories"]:
+        # A table read alone, its story not read yet: that table only (Reader.block).
+        alone = reader.block(part, range)
+        if alone is not None:
+            return [(part, alone, "range")]
     records = _story(reader, part)
     k = _position(document, records, range)
     return [(part, records[k:k + 1], "range")]
