@@ -70,11 +70,12 @@
    "expect": {
     "ok": true,
     "summary": "Read d:1",
-    "data_sha": "68806cae3fe51339",
+    "data_sha": "741a6b61da9866a9",
     "data_keys": [
      "axes",
      "axes.category",
      "axes.value",
+     "blanks",
      "categories",
      "gap_width",
      "id",
@@ -96,7 +97,7 @@
      "workbook.sheet",
      "workbook.workbook"
     ],
-    "data_sha_core": "68806cae3fe51339"
+    "data_sha_core": "741a6b61da9866a9"
    }
   },
   {
@@ -275,11 +276,12 @@
    "expect": {
     "ok": true,
     "summary": "Read d:1",
-    "data_sha": "a0d56ec8fa83b314",
+    "data_sha": "ca91f20bb516529c",
     "data_keys": [
      "axes",
      "axes.category",
      "axes.value",
+     "blanks",
      "categories",
      "gap_width",
      "id",
@@ -301,7 +303,7 @@
      "workbook.sheet",
      "workbook.workbook"
     ],
-    "data_sha_core": "a0d56ec8fa83b314"
+    "data_sha_core": "ca91f20bb516529c"
    }
   },
   {
