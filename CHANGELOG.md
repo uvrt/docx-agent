@@ -34,6 +34,23 @@ snapshot commit; the development history before it is summarised here.
   row by key, a selection) and failed as `internal`; it is the refusal (`limit`, or
   `refused` for an existing table's room) with its advice and no options.
 
+## 0.1.31 -- unreleased
+
+- **A render worker's kept layouts are safe from threads** (free threading, step 1). The
+  layouts a worker keeps for the next call (`tools/render.py`, `_RECENT`) were an unlocked
+  dict, and two tasks handed the same pickle got the same layout and the same
+  `InstalledFonts`, which laying out and drawing write to: in-process threads with the GIL
+  off (Python 3.15t) could raise from its eviction or write to one set of fonts at once.
+  Every use now holds a lock, and a task takes its layout out until it is done, so a second
+  task at the same time reads its own from the pickle; a layout handed as `previous` is not
+  put back, since the new layout goes on with its fonts and measurements. A warm render (the
+  layout held) costs what it did; copying the fonts per task instead would have added 10 to
+  90 ms a call. New `tests/test_threads.py`; a thread note in
+  [docs/api-tour.md](docs/api-tour.md). New `.github/workflows/freethreading.yml`: the suite
+  on Python 3.15t, Linux and macOS, with lxml 7 (a pre-release, in that workflow only), the
+  GIL off and `RuntimeWarning` an error, after checking that importing the package and its
+  dependencies leaves the GIL off; not a required check yet.
+
 ## 0.1.30 -- unreleased
 
 - **Every place-taking parameter reads the same ids** (production round 28, W9). One
