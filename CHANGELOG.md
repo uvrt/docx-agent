@@ -5,6 +5,32 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.35 -- unreleased
+
+- **Copies follow a revised sample** (production round 31, R8): `Document.follow_sample(sample,
+  copies, sample_document=None, preview=False)` and `word_follow_sample` (deferred, in
+  `word_style`) make each named copy of a sample table -- or paragraph -- take the sample's
+  formatting in one undo step, keeping its own text and values
+  (`docx_agent.edit.follow`): the table's properties (style, width, alignment, borders,
+  shading, layout, margins, style options; not its alt text), the grid's column widths
+  where the column counts agree, each row's and cell's properties from the corresponding
+  sample row and cell (as `compare_blocks` pairs them: header rows one to one, the last body
+  row the pattern for more), each paired paragraph's properties (not its list membership)
+  and its runs' formatting property by property -- the copy's runs with its paragraph's
+  usual value take the sample's, a word in its own emphasis keeps it; a paragraph with no
+  text gets it on its mark. Never changed: text, rows, columns, merges, lists. The report
+  says per copy what changed and `not_followed`: each difference `compare_blocks` still
+  finds (less the copy's own row count), with `why` and `fix` calls where a tool makes it;
+  20 per copy, 100 per reply, the rest counted (`more`, `left_out`). `preview` reports the
+  same and changes nothing. A sample in another open document: styles by name, a built-in
+  one added, one Word lacks reported. Tracked: `w:tblPrChange`, `w:tblGridChange`,
+  `w:tcPrChange`, `w:pPrChange`, `w:rPrChange` as each edit records them; rows untracked,
+  as Word (a warning). Addresses as the other tools take them: a cell or row address or a
+  paragraph in a table names its table, an empty copy address and a repeat are ignored with
+  a note, the sample itself is a no-op; an unknown one is refused naming the tables there
+  with their rows and columns. +260 to every definition (13,459 -> 13,719), none to the core;
+  not strict.
+
 ## 0.1.34 -- unreleased
 
 - **The table style new tables get** (production round 31, R3), as Word's Table Design >

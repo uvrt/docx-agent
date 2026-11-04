@@ -1,4 +1,5 @@
-"""Style: ``word_lists``, ``word_styles``, ``word_template``, ``word_design_facts`` and ``word_compare_blocks``
+"""Style: ``word_lists``, ``word_styles``, ``word_template``, ``word_design_facts``, ``word_compare_blocks``
+and ``word_follow_sample``
 (``word_format``, the general setter, is in :mod:`.text` and in this group)."""
 
 from __future__ import annotations
@@ -338,11 +339,11 @@ COMPARE_PAGE = 60
 
 
 def _compared_documents(arguments: Any) -> list[str]:
-    """``doc`` and, when it names another, the reference's document."""
+    """``doc`` and, when it names another, the reference's (or the sample's) document."""
     out = [arguments["doc"]] if isinstance(arguments.get("doc"), str) else []
-    reference = arguments.get("reference")
+    reference = arguments.get("reference", arguments.get("sample"))
     other = reference.get("doc") if isinstance(reference, dict) else None
-    if isinstance(other, str) and other not in out:
+    if isinstance(other, str) and other and other not in out:   # "" a placeholder: doc
         out.append(other)
     return out
 
@@ -373,4 +374,35 @@ def word_compare_blocks(call: Any, doc: str, blocks: list[str], reference: dict,
                   data=data, total=total, next_cursor=next_cursor)
 
 
-TOOLS = [word_lists, word_styles, word_template, word_design_facts, word_compare_blocks]
+# -- round 31, R8 word_follow_sample ----------------------------------------------------------
+
+
+@word_tool("word_follow_sample", "Make copies of a sample table or paragraph follow the revised sample in one step: its widths, table, row, cell and paragraph formatting, styles, run formatting; each copy keeps its text, rows, columns and merges.",
+           {"doc": DOC,
+            "sample": obj({"doc": string("Its document. Default doc.", optional=True),
+                           "block": string("Its block.")}, "The revised sample, t:... or p:...."),
+            "copies": array(string(), "Blocks made from it, t:... or p:....", min_items=1),
+            "preview": boolean("Report what would change, change nothing.", optional=True)},
+           refs=('copies[]',), group="word_style", mutates=True, documents=_compared_documents,
+           reads=lambda arguments: bool(arguments.get("preview")))
+def word_follow_sample(call: Any, doc: str, sample: dict, copies: list[str], preview: bool = False) -> Result:
+    """:meth:`Document.follow_sample <docx_agent.Document.follow_sample>`: per copy what
+    changed and what was not followed, with why and the calls that make it where a tool does."""
+    other = sample.get("doc") or doc
+    if other not in call.entries:
+        raise ToolError("not_found", f"no open document {other!r}", field="sample.doc",
+                        valid_options=list(call.entries)[:50])
+    source = call.entries[other].document
+    edit, data = call.document.follow_sample(sample["block"], resolve(call, copies),
+                                             sample_document=source if other != doc else None,
+                                             preview=bool(preview))
+    entries = data["copies"]
+    changed = [e["copy"] for e in entries if e["changed"]]
+    left = sum(len(e["not_followed"]) + e.get("more", 0) for e in entries)
+    verb = "would follow" if preview else "followed"
+    summary = (f"{len(changed)} of {len(entries)} cop{'y' if len(entries) == 1 else 'ies'} {verb} {data['sample']}"
+               + (f"; {left} difference(s) not followed (see not_followed)" if left else "; nothing left to follow"))
+    return outcome([] if preview else [edit], summary, data=data, changed=[] if preview else changed)
+
+
+TOOLS = [word_lists, word_styles, word_template, word_design_facts, word_compare_blocks, word_follow_sample]

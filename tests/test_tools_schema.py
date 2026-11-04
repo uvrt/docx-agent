@@ -189,10 +189,14 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 #: guard rises to 13,460.  word_insert_markdown is strict: an enum value and its description
 #: only, so the strict set is unchanged (6 tools, 23 optional parameters); word_styles is not
 #: strict.  word_delete's find with target (no longer exactly one of them) changes no definition.
+#: Round 31, R8: word_follow_sample (deferred, in word_style: copies made to follow a revised
+#: sample in one call, with preview) adds 260 to every definition (13,459 -> 13,719), none to
+#: the core (2,458).  The guard rises to 13,720.  It is not sent strict (one optional
+#: parameter, preview): the strict set is unchanged (6 tools, 23 optional parameters).
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 6500
-ALL_GUARD = 13460
+ALL_GUARD = 13720
 
 
 @pytest.fixture(scope="module")
@@ -252,7 +256,7 @@ def test_the_groups_are_the_roadmaps():
     assert groups["word_objects"] == {"word_edit_table", "word_format_table",
                                       "word_drawings", "word_controls"}
     assert groups["word_style"] == {"word_format", "word_lists", "word_styles", "word_template",
-                                    "word_design_facts", "word_compare_blocks"}
+                                    "word_design_facts", "word_compare_blocks", "word_follow_sample"}
     assert all(len(names) < 10 for group, names in groups.items() if group != "core")
 
 
