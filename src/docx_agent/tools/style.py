@@ -7,7 +7,7 @@ from typing import Any
 
 import json
 
-from ooxml_edit.tools import REVIEW, Result, ToolError, array, boolean, integer, obj, page_list, string
+from ooxml_edit.tools import REVIEW, Result, ToolError, array, boolean, integer, number, obj, page_list, string
 
 from ..edit.design import ALL_KINDS, CAPS, KINDS
 from ..edit.formatting import RUN_PROPERTIES, read_paragraph, read_run, read_shading
@@ -29,7 +29,7 @@ STYLE_FIELDS["shading"] = string("Fill: RRGGBB, theme colour, 'accent1 lighter 8
 # -- W10 word_lists ----------------------------------------------------------------------------
 
 
-@word_tool("word_lists", "Lists: add paragraphs to a bullet or numbered list, remove them, set level, restart or continue numbering, change a level's number format.",
+@word_tool("word_lists", "Lists: add paragraphs to a bullet or numbered list, remove them, set level, restart or continue numbering, change a level's number format and positions.",
            {"doc": DOC,
             "targets": array(string(), "Paragraphs or spans.", min_items=1),
             "action": string("What to do.", enum=["add", "remove", "level", "restart", "continue", "format"]),
@@ -39,11 +39,17 @@ STYLE_FIELDS["shading"] = string("Fill: RRGGBB, theme colour, 'accent1 lighter 8
                              minimum=0, maximum=32767, optional=True),
             "number_format": string("format: decimal, lowerLetter, upperRoman, bullet...",
                                     optional=True),
-            "label": string("format: label, e.g. %1) or a bullet.", optional=True)},
+            "label": string("format: label, e.g. %1) or a bullet.", optional=True),
+            # Round 30, W14: Word's "Define new multilevel list" positions.
+            "number_at": number("format: number's position.", minimum=-1584, maximum=1584, optional=True),
+            "text_at": number("format: text indent.", minimum=-1584, maximum=1584, optional=True),
+            "follow": string("format: after the number.", enum=["tab", "space", "nothing"], optional=True),
+            "tab_at": number("format: tab stop.", minimum=-1584, maximum=1584, optional=True)},
            refs=('targets[]',), group="word_style", mutates=True)
 def word_lists(call: Any, doc: str, targets: list[str], action: str, kind: str = "bullet",
                level: int | None = None, start: int | None = None, number_format: str | None = None,
-               label: str | None = None) -> Result:
+               label: str | None = None, number_at: float | None = None, text_at: float | None = None,
+               follow: str | None = None, tab_at: float | None = None) -> Result:
     document = call.document
     paragraphs = [p for address in resolve(call, targets) for p in paragraphs_of(document, address)]
     edits = []
@@ -70,7 +76,8 @@ def word_lists(call: Any, doc: str, targets: list[str], action: str, kind: str =
         else:
             if k == 0:
                 edits.append(document.set_list_format(identifier, level=level, format=number_format, text=label,
-                                                      start=start))
+                                                      start=start, number_at=number_at, text_at=text_at,
+                                                      follow=follow, tab_at=tab_at))
     lists = []
     for paragraph in paragraphs:
         membership = document.list_of(paragraph.id)
@@ -125,6 +132,16 @@ def describe_style(document: Any, style: Any) -> dict[str, Any]:
         if shading is not None:
             declared["shading"] = shading
         data["declared"] = declared
+        if style.kind == "paragraph":
+            # Round 30, W15: the list level it numbers at, its own or through based_on.
+            from ..edit.numbering import style_link
+
+            link = style_link(document, style.id)
+            if link is not None:
+                if "from" in link:
+                    held = next((s for s in document.styles if s.id == link["from"]), None)
+                    link["from"] = (held.name or held.id) if held is not None else link["from"]
+                data["numbering"] = link
     data["usage"] = document.styles.usage(style.name, style.kind)
     return data
 
@@ -200,7 +217,8 @@ def word_styles(call: Any, doc: str, action: str, name: str | None = None, kind:
                                     str(error), field="numbering.list" if isinstance(error, StyleError)
                                     or "level" not in str(error) else "numbering.level") from None
             edit = styles.modify(name, kind, **formatting)
-            what = "unlinked from its list level" if formatting["numbering"] is None else \
+            what = ("unlinked from its list level" if edit.changed else "numbers nothing, left as it was") \
+                if formatting["numbering"] is None else \
                 f"linked to level {formatting['numbering']['level']} of list {numbering['list'].strip()}"
             return outcome([edit], f"Modified style {name}: {what}")
         return outcome([styles.modify(name, kind, **formatting)], f"Modified style {name}")
