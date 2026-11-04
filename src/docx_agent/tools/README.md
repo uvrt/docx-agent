@@ -29,7 +29,7 @@ ooxml-edit's Responses round-trip test). Chat Completions has not been run live.
 
 | Group | Tools |
 | --- | --- |
-| `core` (always loaded) | `open_document`, `new_document`, `save_document`, `undo`, `find_text`, `replace_text`, `render`, `check`, `describe`, `word_read`, `word_set_text`, `batch` |
+| `core` (always loaded) | `open_document`, `new_document`, `save_document`, `undo`, `find_text`, `replace_text`, `render`, `check`, `describe`, `word_read`, `word_set_text`, `batch`, `read_batch` |
 | `shared_misc` | `close_document`, `read_blob`, `set_properties`, `edit_chart`, `edit_smartart` |
 | `word_text` | `word_inspect`, `word_insert_text`, `word_delete`, `word_insert_markdown` |
 | `word_review` | `word_set_tracking`, `word_changes`, `word_comments` |
@@ -105,8 +105,9 @@ chief = toolbox.session(roles=["review", "accept"])  # settles tracked changes, 
 ```
 
 A reviewer's core is open, save, `describe`, `word_read`, `find_text`, `render`, `check`,
-`batch`, `word_comments` and `word_changes` (2,350 estimated tokens against the full core's
-2,570); the mixed tools offer only `list` (`word_styles` `describe` too), `edit_chart`
+`batch`, `read_batch`, `word_comments` and `word_changes` (2,516 estimated tokens against
+the full core's 2,642); `read_batch` (ooxml-edit 0.78.0) reads many things in one call --
+blocks, formatting, a check -- each answered as alone, within its own size budget. The mixed tools offer only `list` (`word_styles` `describe` too), `edit_chart`
 only `read`; accepting or rejecting tracked changes is `accept`'s. A call outside the session's roles --
 in a `batch` too, op by op -- is refused naming the role it needs; a reviewer reports each
 finding with the call that would fix it, for a builder (`roles=["review", "edit"]`, or the

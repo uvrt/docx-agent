@@ -37,8 +37,9 @@ from test_tools_word import AGREEMENT, CLOCK_AT
 #: ``clean``, +42) 2,541; round 16, F8 (check's ``layout``, ``min_size`` and ``styles``,
 #: +67) 2,608; round 23, V4 (word_read's ``range`` names a section, ``s:2``, +4) 2,612; V3
 #: (check, find_text, replace_text and render without a deck's parameters and values)
-#: 2,328; round 28, W9 (word_read's ``range`` names a cell and an open span, +5) 2,333.
-REVIEW_CORE_GUARD = 2335
+#: 2,328; round 28, W9 (word_read's ``range`` names a cell and an open span, +5) 2,333;
+#: round 32, R15 (read_batch, ooxml-edit 0.78.0, +183) 2,516.
+REVIEW_CORE_GUARD = 2520
 #: Every definition a reviewer is sent, estimated.  Measured 6,820 (6,813 before); round 9,
 #: N1, 6,884; round 12, Q1, 6,919; round 15, T2, 6,955; round 16, F11, 6,997; F8, 7,064; F9
 #: (word_design_facts, a reading tool, deferred: +170) 7,234; round 17, P3
@@ -51,11 +52,12 @@ REVIEW_CORE_GUARD = 2335
 #: name a cell and an open span) 7,327; round 29, C1 (edit_chart's ``blanks`` and ``null``
 #: in its values, ooxml-edit 0.75.0) 7,376; W12 (word_styles' ``numbering``, +84, as
 #: ``shading``: its list and describe are a reviewer's) 7,460; round 31, R3 and R4
-#: (word_styles' ``set_default`` and ``tabs``, +165, the same way) 7,625.
-REVIEW_ALL_GUARD = 7630
+#: (word_styles' ``set_default`` and ``tabs``, +165, the same way) 7,625; round 32, R15
+#: (read_batch) 7,808.
+REVIEW_ALL_GUARD = 7810
 
 REVIEW_CORE = {"save_document", "describe", "find_text", "render", "check", "open_document",
-               "batch", "word_read", "word_comments", "word_changes"}
+               "batch", "read_batch", "word_read", "word_comments", "word_changes"}
 LISTING = {"word_changes", "word_sections", "word_fields", "word_notes", "word_links",
            "word_drawings", "word_controls"}
 
@@ -305,3 +307,37 @@ def test_an_editor_in_chief_s_prompt_follows_the_tools_sent(box):
     assert "You may add comments" in prompt and "tracked changes" not in prompt
     assert box.system_prompt(roles=roles, groups="core") == \
         box.system_prompt(roles=roles, tools=sent)
+
+
+def test_a_reviewer_reads_many_blocks_in_one_read_batch(box):
+    """ooxml-edit 0.78.0 (round 32, R15): read_batch is a reader's, in its core and named in
+    its prompt: the outline, blocks and a check in one call, each answered as alone; a
+    change among them is refused by role, the others answered, nothing changed."""
+    session = _session(box, ["review"])
+    assert "read_batch makes many reads" in box.system_prompt(roles=["review"])
+    assert "read_batch" in {d["name"] for d in box.definitions("anthropic", groups="core",
+                                                               roles=["review"])}
+    read = box.dispatch(session, "word_read", {"doc": "d1"})
+    ops = [{"tool": "describe", "arguments": {"doc": "d1"}},
+           {"tool": "word_read", "arguments": {"doc": "d1"}},
+           {"tool": "check", "arguments": {"doc": "d1", "include": ["validate"]}},
+           {"tool": "word_set_text", "arguments": {"doc": "d1", "target": "p:1",
+                                                   "text": "x"}}]
+    result = box.dispatch(session, "read_batch", {"ops": ops})
+    assert result.ok
+    answers = result.data["ops"]
+    assert ["error" in answer for answer in answers] == [False, False, False, True]
+    assert answers[1]["data"] == read.data
+    assert answers[3]["error"]["details"]["role"] == "edit"
+    assert session.entry("d1").version == 0
+
+
+def test_a_builder_s_change_in_a_read_batch_is_sent_to_batch(box):
+    session = _session(box, None)
+    result = box.dispatch(session, "read_batch", {"ops": [
+        {"tool": "word_set_text", "arguments": {"doc": "d1", "target": "p:1", "text": "x"}},
+        {"tool": "word_read", "arguments": {"doc": "d1"}}]})
+    refused, read = result.data["ops"]
+    assert refused["error"]["code"] == "refused"
+    assert refused["error"]["valid_options"] == ["batch", "word_set_text"]
+    assert "error" not in read and session.entry("d1").version == 0
