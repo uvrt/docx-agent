@@ -14,7 +14,7 @@ from ooxml_edit.tools import DocumentFormat
 from ..edit.addresses import AddressError
 from ..edit.authoring import AuthoringWarning
 from ..edit.charts import DiagramDrawingDropped, UntrackedChartEdit
-from ..edit.document import Document
+from ..edit.document import Document, NoCell
 from ..edit.errors import EditError
 from ..edit.formatting import FormattingError
 from ..edit.inline import SpanError
@@ -138,6 +138,8 @@ def _candidates(error: AmbiguousAnchor) -> list[str]:
 
 ERRORS = {
     AddressError: ("invalid_arguments", lambda error: error.options),
+    # Round 31, R5c: a cell the table lacks, with the cells it has.
+    NoCell: ("not_found", lambda error: error.options),
     AmbiguousAnchor: ("ambiguous", _candidates),
     AnchorNotFound: "not_found",
     FormattingError: "unit",

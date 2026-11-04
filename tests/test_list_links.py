@@ -349,9 +349,9 @@ def test_numbering_skips_level_names_its_paragraph_para(box):
     document = Document.open(make(lone, section="%1.%2"))
     [entry] = numbering_skips_level(document)
     first = document.paragraphs()[0].id
-    assert entry["para"] == entry["first"] == first and list(entry)[0] == "para"
+    assert entry["para"] == first and list(entry)[0] == "para" and "first" not in entry
     session = box.session()
     session.open(make(lone, section="%1.%2"), "lone.docx")
     result = dispatch(box, session, "check", doc="d1", include=["layout"])
     [entry] = result.data["layout"]["numbering_skips_level"]
-    assert entry["para"] == entry["first"]
+    assert entry["para"] == first and "first" not in entry

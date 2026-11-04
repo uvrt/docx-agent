@@ -590,12 +590,13 @@ class Table:
         return len(grid.findall(qn("w:gridCol"))) if grid is not None else 0
 
     def cell(self, row: int, column: int) -> "Cell":
-        """The cell over grid position ``(row, column)`` (0-based); ``IndexError`` if none.
+        """The cell over grid position ``(row, column)`` (0-based); :class:`NoCell` (an
+        ``IndexError``) if none, saying the table's rows, columns and merged cells.
         ``table.cell(0, 1).text``."""
         grid = self.grid()
         found = grid[row][column] if 0 <= row < len(grid) and 0 <= column < len(grid[row]) else None
         if found is None:
-            raise IndexError(f"{self.id} has no cell at ({row}, {column})")
+            raise NoCell(self.id, row, column, grid)
         return found
 
     def __repr__(self) -> str:
@@ -616,6 +617,48 @@ class Row:
 
     def __repr__(self) -> str:
         return f"<Row {self.id}>"
+
+
+class NoCell(IndexError):
+    """A table has no cell at a grid position (round 31, R5c): the message says the table's
+    rows, columns and merged cells, ``options`` its cells' ids (the first 50)."""
+
+    def __init__(self, table_id: str, row: int, column: int, grid: list[list["Cell | None"]]) -> None:
+        super().__init__(no_cell_message(table_id, row, column, grid))
+        self.options = [cell.id for cell in _origins(grid)][:50]
+
+
+def _origins(grid: list[list["Cell | None"]]) -> list["Cell"]:
+    seen: dict[tuple[int, int], Cell] = {}
+    for line in grid:
+        for cell in line:
+            if cell is not None:
+                seen.setdefault((cell.row, cell.column), cell)
+    return list(seen.values())
+
+
+def no_cell_message(table_id: str, row: int, column: int, grid: list[list["Cell | None"]]) -> str:
+    """``t:X has no cell at (1, 2)``, then what the table has: its rows and columns (from 0),
+    each merged cell with the positions it covers, the positions no cell covers."""
+    rows, columns = len(grid), max((len(line) for line in grid), default=0)
+    spans: dict[tuple[int, int], list[tuple[int, int]]] = {}
+    empty = []
+    for r, line in enumerate(grid):
+        for c in range(columns):
+            cell = line[c] if c < len(line) else None
+            if cell is None:
+                empty.append(f"({r}, {c})")
+            else:
+                spans.setdefault((cell.row, cell.column), []).append((r, c))
+    merged = [f"({o[0]}, {o[1]})-({cells[-1][0]}, {cells[-1][1]})" for o, cells in spans.items() if len(cells) > 1]
+    text = (f"{table_id} has no cell at ({row}, {column}): it has {rows} row(s) (0 to {rows - 1}) and "
+            f"{columns} column(s) (0 to {columns - 1}), counted from 0")
+    if merged:
+        text += "; merged: " + ", ".join(merged[:10]) + (f" and {len(merged) - 10} more" if len(merged) > 10 else "") \
+            + " (a merged cell's id is its first position's)"
+    if empty:
+        text += "; no cell at " + ", ".join(empty[:10]) + (f" and {len(empty) - 10} more" if len(empty) > 10 else "")
+    return text
 
 
 class Cell:

@@ -1090,6 +1090,17 @@ doc.render_svg(pages=diff.changed)     # or render_png; ids on every paragraph g
   follows the number and its tab stop as Word's "Define new multilevel list" writes them.
   `word_styles` `describe` gives a style's list level (own or inherited, and from which
   style); `numbering_skips_level` names its paragraph `para` (`first` kept).
+- **Round 31 (R3-R6):** `Styles.set_default` / `word_styles` `set_default` is Word's Table
+  Design > Set as Default (measured: the settings' `w:defaultTableStyle`, nothing else), which
+  new tables and Markdown tables take first. `Styles.modify(tabs=...)` replaces a style's own
+  tab stops and clears an inherited one (`w:tab w:val="clear"`, measured: Word honours it); a
+  stop with no position is at the widest text column's end, worked out when written (Word
+  draws a right tab past the right margin at the paragraph's right edge, so a far stop would
+  follow the margins in the file; docx2svg draws it where it is, so it waits for that).
+  Frequent wrong calls answered: `word_delete` find with target (find within it), a Markdown
+  caption (`: text`, Pandoc's `Table:` beside a table), a missing cell's message (the
+  table's rows, columns, merges), `keep_together` on a one-row table (a no-op with a note).
+  `check`'s `column_fit`; `numbering_skips_level`'s `first` gone.
 - **Cost.** One full layout per document state, cached by the bytes' hash: `layout()` and
   `render_svg()` of the same state read one `docx2svg.convert_docx` (every page laid out
   and written as SVG; writing the SVG costs little beside the layout), tested by counting

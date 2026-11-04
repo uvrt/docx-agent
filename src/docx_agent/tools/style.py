@@ -12,7 +12,7 @@ from ooxml_edit.tools import REVIEW, Result, ToolError, array, boolean, integer,
 from ..edit.design import ALL_KINDS, CAPS, KINDS
 from ..edit.formatting import RUN_PROPERTIES, read_paragraph, read_run, read_shading
 from ..edit.errors import EditError
-from ..edit.styles import StyleError
+from ..edit.styles import TAB_ALIGNMENTS, TAB_LEADERS, StyleError, read_tabs
 from ._base import need, outcome, resolve, tool_names, word_tool
 from .text import PARAGRAPH_FIELDS, RUN_FIELDS, paragraphs_of, split_formatting  # noqa: F401
 
@@ -131,6 +131,9 @@ def describe_style(document: Any, style: Any) -> dict[str, Any]:
         shading = read_shading(paragraph if style.kind == "paragraph" else run)
         if shading is not None:
             declared["shading"] = shading
+        tabs = read_tabs(node) if style.kind == "paragraph" else None
+        if tabs is not None:
+            declared["tabs"] = tabs                   # round 31, R4: its own stops, clears too
         data["declared"] = declared
         if style.kind == "paragraph":
             # Round 30, W15: the list level it numbers at, its own or through based_on.
@@ -142,13 +145,18 @@ def describe_style(document: Any, style: Any) -> dict[str, Any]:
                     held = next((s for s in document.styles if s.id == link["from"]), None)
                     link["from"] = (held.name or held.id) if held is not None else link["from"]
                 data["numbering"] = link
+    if style.kind == "table":
+        chosen = document.styles.table_default()
+        if chosen is not None and chosen.id == style.id:
+            data["default"] = True                    # round 31, R3: new tables get it
     data["usage"] = document.styles.usage(style.name, style.kind)
     return data
 
 
-@word_tool("word_styles", "The style sheet: list, describe (formatting, usage), add, modify, remove (with a replacement while used), purge unused.",
+@word_tool("word_styles", "The style sheet: list, describe (formatting, usage), add, modify, remove (with a replacement while used), purge unused, set_default (the table style new tables get).",
            {"doc": DOC,
-            "action": string("What to do.", enum=["list", "describe", "add", "modify", "remove", "purge_unused"]),
+            "action": string("What to do.", enum=["list", "describe", "add", "modify", "remove", "purge_unused",
+                                                  "set_default"]),
             "name": string("Style name.", optional=True),
             "kind": string("Default paragraph.",
                            enum=["paragraph", "character", "table"], optional=True),
@@ -160,37 +168,63 @@ def describe_style(document: Any, style: Any) -> dict[str, Any]:
             "numbering": obj({"list": string("A list's number, a style in it, or none to unlink."),
                               "level": integer("From 0. Default 0.", minimum=0, maximum=8, optional=True)},
                              "modify: link to a list level.", optional=True),
+            # Round 31, R4: a paragraph style's own tab stops.
+            "tabs": array(obj({"position": number("Points. Omit: the text column's end.", minimum=-1584,
+                                                  maximum=1584, optional=True),
+                               "alignment": string("Default left; clear: an inherited stop.",
+                                                   enum=list(TAB_ALIGNMENTS), optional=True),
+                               "leader": string("Default none.", enum=list(TAB_LEADERS), optional=True)}),
+                          "add, modify: the style's tab stops, replacing its own; [] removes them.", optional=True),
             **STYLE_FIELDS},
            group="word_style", mutates=True, track=False,
            action_roles={"list": REVIEW, "describe": REVIEW})
 def word_styles(call: Any, doc: str, action: str, name: str | None = None, kind: str | None = None,
                 based_on: str | None = None, next_style: str | None = None, replacement: str | None = None,
-                in_use_only: bool = False, numbering: dict | None = None, **values: Any) -> Result:
+                in_use_only: bool = False, numbering: dict | None = None, tabs: list[dict] | None = None,
+                **values: Any) -> Result:
     document = call.document
     styles = document.styles
     try:
         if action == "list":
             rows = []
+            chosen = styles.table_default()
             for style in styles:
                 if not style.name or (kind and style.kind != kind):
                     continue
                 if in_use_only and not styles.usage(style.name, style.kind).get("content"):
                     continue
-                rows.append({"name": style.name, "kind": style.kind, "based_on": style.based_on})
-            return Result(summary=f"{len(rows)} style(s)", data=rows[:200])
+                row = {"name": style.name, "kind": style.kind, "based_on": style.based_on}
+                if chosen is not None and style.id == chosen.id:
+                    row["default"] = True             # round 31, R3: new tables get it
+                rows.append(row)
+            return Result(summary=f"{len(rows)} style(s)" + (f"; new tables get {chosen.name}" if chosen else ""),
+                          data=rows[:200])
         if action == "purge_unused":
             return outcome([styles.purge_unused()], "Purged unused styles")
         name = need(name, "name")
         if numbering is not None and action != "modify":
             raise ToolError("invalid_arguments", f"numbering is modify's: {action} takes none", field="numbering")
+        if tabs is not None and action not in ("add", "modify"):
+            raise ToolError("invalid_arguments", f"tabs is add's and modify's: {action} takes none", field="tabs")
         if action == "describe":
             return Result(summary=f"Style {name}", data=describe_style(document, styles.get(name, kind)))
         if action == "remove":
             return outcome([styles.remove(name, kind, replacement=replacement)], f"Removed style {name}")
+        if action == "set_default":
+            # Round 31, R3: Word's Table Design > Set as Default (this document).
+            if kind not in (None, "table"):
+                raise ToolError("invalid_arguments", "set_default sets the table style new tables get: kind table",
+                                field="kind", valid_options=["table"])
+            kind = "table"                            # a refusal lists the table styles
+            edit = styles.set_default(name)
+            return outcome([edit], f"New tables get {styles.table_default().name}" if edit.changed
+                           else f"No change: new tables get {name}")
         run, paragraph = split_formatting(values)
         formatting = {**run, **paragraph}
         if values.get("shading") is not None:
             formatting["shading"] = None if values["shading"].strip().lower() == "none" else values["shading"]
+        if tabs is not None:
+            formatting["tabs"] = [{k: v for k, v in stop.items() if v is not None} for stop in tabs]
         if action == "add":
             edit = styles.add(name, kind or "paragraph", based_on=based_on, next_style=next_style, **formatting)
             return outcome([edit], f"Added style {name}")
@@ -203,8 +237,8 @@ def word_styles(call: Any, doc: str, action: str, name: str | None = None, kind:
             formatting["numbering"] = None if unlink else {
                 "list": int(given) if given.isdigit() else given, "level": numbering.get("level", 0)}
         if not formatting:
-            raise ToolError("invalid_arguments", "modify needs formatting to set, or numbering",
-                            valid_options=[*STYLE_FIELDS, "numbering"])
+            raise ToolError("invalid_arguments", "modify needs formatting to set, numbering or tabs",
+                            valid_options=[*STYLE_FIELDS, "numbering", "tabs"])
         if numbering is not None:
             if styles.get(name, kind).kind != "paragraph":     # the style first, by its name
                 raise ToolError("invalid_arguments", f"{name!r} is a {styles.get(name, kind).kind} style: "

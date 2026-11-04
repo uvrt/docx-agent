@@ -31,6 +31,9 @@ and footnote text) unless a rule names another -- so mapping ``paragraph`` to a 
 leaves cells and notes as they were.  A cell of a column aligned centre or right (``:--:``,
 ``--:``) is ``table_cell_center`` or ``table_cell_right`` when a rule names a style for it
 (the default names none): the style then gives the alignment, and no direct ``w:jc`` is written.
+``caption`` (round 31) is a paragraph Markdown marks as a caption (:mod:`.write`), Word's
+built-in Caption unless a rule names another; it is written only: the reader shows a caption
+paragraph's style on its block as before.
 
 A caller passes ``insert_markdown(style_map=...)`` a :class:`StyleMap` or a plain dict
 (:meth:`StyleMap.from_dict`), whose keys are :data:`DICT_KEYS`::
@@ -48,7 +51,7 @@ from dataclasses import dataclass
 CONSTRUCTS = (
     "paragraph", "heading", "bullet_list", "ordered_list", "blockquote", "code_block",
     "code", "emphasis", "strong", "strikethrough", "link", "table", "table_cell", "table_cell_center",
-    "table_cell_right", "footnote_text", "footnote_reference", "thematic_break",
+    "table_cell_right", "footnote_text", "footnote_reference", "thematic_break", "caption",
 )
 
 #: Which kind of style each construct is written with.
@@ -56,7 +59,7 @@ STYLE_KINDS = {
     "paragraph": "paragraph", "heading": "paragraph", "bullet_list": "paragraph",
     "ordered_list": "paragraph", "blockquote": "paragraph", "code_block": "paragraph", "table_cell": "paragraph",
     "table_cell_center": "paragraph", "table_cell_right": "paragraph",
-    "footnote_text": "paragraph", "code": "character", "emphasis": "character",
+    "footnote_text": "paragraph", "caption": "paragraph", "code": "character", "emphasis": "character",
     "strong": "character", "link": "character", "footnote_reference": "character",
     "table": "table", "strikethrough": "direct", "thematic_break": "direct",
 }
@@ -108,6 +111,8 @@ DEFAULT_RULES: tuple[Rule, ...] = (
     Rule("footnote_text", "footnote text"),
     Rule("footnote_reference", "footnote reference", reads=("endnote reference",)),
     Rule("thematic_break", None, direct="w:pBdr/w:bottom"),
+    # Round 31, R5b: a caption paragraph (`: text`; `Table: text` beside a table), written only.
+    Rule("caption", "caption"),
 )
 
 _HEADING_NAME = re.compile(r"heading ([1-9])", re.IGNORECASE)
@@ -133,6 +138,7 @@ DICT_KEYS: dict[str, tuple[str, int]] = {
     "emphasis": ("emphasis", 0),
     "strong": ("strong", 0),
     "link": ("link", 0),
+    "caption": ("caption", 0),
 }
 #: Other spellings the dict takes for the same keys.
 _DICT_ALIASES = {
@@ -177,7 +183,8 @@ class StyleMap:
         ``bullet5``, ``number``, ``number2``-``number5``, ``table`` (a table style),
         ``table_cell`` (its cells' paragraphs), ``table_cell_center`` and
         ``table_cell_right`` (the cells' paragraphs of a column aligned so), ``footnote`` (a footnote's text),
-        ``footnote_reference``, ``emphasis``, ``strong``, ``link``; ``heading1`` and
+        ``footnote_reference``, ``emphasis``, ``strong``, ``link``, ``caption`` (a caption
+        paragraph, :mod:`.write`); ``heading1`` and
         ``blockquote`` are taken too.  A value is a style's name; a reading rule's other
         names (``reads``) are kept."""
         base = base or DEFAULT

@@ -62,8 +62,7 @@ takes its targets as one list with the values for all, so it is ``calls``, not `
     whose last row keeps with the next, drawn last on its page, the block after it on a
     later page -- a chain of keeps longer than a page, broken there.
 ``numbering_skips_level`` (round 29, W12)
-    ``{"para", "style", "level", "list", "unused_levels", "label", "shows", "paragraphs",
-    "first"}``:
+    ``{"para", "style", "level", "list", "unused_levels", "label", "shows", "paragraphs"}``:
     paragraphs numbered at a list level whose label shows a level above that no paragraph
     is numbered at -- a section heading's ``1.1`` with no chapter heading before it.  Read
     from the document, so listed where the layout failed too; :func:`numbering_skips_level`
@@ -104,6 +103,18 @@ takes its targets as one list with the values for all, so it is ``calls``, not `
     counts -- an indent that pushes it out does -- and a side that stays within the body's
     lines beside it (a negative indent's reach, ``Document.body_lines``) does not.  ``fix`` for an inline picture that only runs past
     the right margin: resized to fit (``word_drawings`` ``resize``, keeping its aspect).
+``column_fit`` (round 31, R6)
+    ``{"table", "roomy", "wraps", "widths", "pages", "fix"}``: a body table's column whose
+    widest line uses at most 60% of its text width (:data:`ROOMY_SHARE`; every paragraph of
+    it on one line) beside a column with a paragraph drawn on at least 3 lines
+    (:data:`WRAP_LINES`) -- a label column split evenly with values that wrap.  ``roomy``
+    and ``wraps``: ``{"column", "width", "widest_line", "longest_word"}`` (pt; ``width`` the
+    grid column's, the others the text as drawn, ``longest_word`` the widest run without a
+    space, which no width breaks) and the wrapping one's ``lines``; ``widths`` every grid
+    column's suggested width: the roomy one its widest line or word plus its cell margins and
+    3 pt (:data:`FIT_SLACK`), the room it frees -- at least 18 pt (:data:`MIN_FREED`) -- to
+    the wrapping one; ``fix`` sets those two (``word_format_table`` ``scope: "column"``).
+    Cells over more than one column are not counted.
 ``uncertain``
     ``{"page", "placeholders", "approximations", "story_stops"}``: the pages the layout drew
     a placeholder on, laid out by a rule it has not measured, or could not draw a header,
@@ -294,6 +305,7 @@ class _Facts:
         split, unrepeated = self.tables()
         self.capped(split, "split_rows", out)
         self.capped(unrepeated, "header_not_repeated", out)
+        self.capped(self.column_fit(), "column_fit", out)
         self.capped(self.past_margins(), "past_margins", out)
         self.uncertain(out)
         return out
@@ -789,6 +801,48 @@ class _Facts:
                                    "not_repeated_on": missing})
         return split, unrepeated
 
+    def column_fit(self) -> list[dict]:
+        """Round 31, R6: per body table, a column whose widest line uses at most
+        :data:`ROOMY_SHARE` of its text width beside a column with a paragraph drawn on at
+        least :data:`WRAP_LINES` lines, and the widths that let both fit
+        (:func:`_fit_columns`)."""
+        tree = self.document.package.tree(self.main)
+        drawn: dict[str, dict[tuple[int, int], dict]] = {}
+        for number, page in enumerate(self.layout.pages, start=1):
+            for line in page.lines:
+                match = _CELL_LINE.match(line.path) if line.story is None else None
+                if not match:
+                    continue
+                cell = drawn.setdefault(match.group(1), {}).setdefault(
+                    (int(match.group(2)) - 1, int(match.group(3)) - 1), {"lines": {}, "words": [], "pages": set()})
+                cell["pages"].add(number)
+                widths = _line_widths(line.spans)
+                if widths is None:
+                    continue
+                key = match.group(4)
+                cell["lines"].setdefault(key, []).append(widths[0])
+                cell["words"].append(widths[1])
+        entries = []
+        for path, cells in drawn.items():
+            element = resolve_path(tree, path)
+            if element is None:
+                continue
+            found = _fit_columns(self.document, element, cells)
+            if not found:
+                continue
+            identifier = _block_id(self.document, self.main, path) or path
+            pages = sorted({n for cell in cells.values() for n in cell["pages"]})
+            if not self.shown(pages):
+                continue
+            for entry in found:
+                entry = {"table": identifier, **entry, "pages": pages}
+                entry["fix"] = {"tool": "word_format_table", "calls": [
+                    {"table": identifier, "scope": "column", "column": c, "width": entry["widths"][c]}
+                    for c in (entry["roomy"]["column"], entry["wraps"]["column"])]}
+                entries.append(entry)
+        entries.sort(key=lambda e: -e["wraps"]["lines"])
+        return entries
+
     def _header_look(self, path: str, element) -> list[str]:
         """Why a table's first row looks like a header, drawn unlike its second row:
         ``first_row_look`` (the style's first-row formatting applies to it), ``bold``,
@@ -955,6 +1009,100 @@ def _kind(line) -> str:
     if story == "body":
         return "table" if "/w:tc[" in line.path else "body"
     return {"footnotes": "footnote", "endnotes": "endnote"}.get(story, story)
+
+
+#: A line of a paragraph right in a body table's cell (not a nested table's): the table's
+#: path, the 1-based row and cell (``w:tc``), the paragraph's path.
+_CELL_LINE = re.compile(r"^(w:body(?:/w:sdt\[\d+\]/w:sdtContent)*/w:tbl\[\d+\])/w:tr\[(\d+)\]"
+                        r"/w:tc\[(\d+)\]/(w:p\[\d+\]|w:sdt\[\d+\]/w:sdtContent/w:p\[\d+\])$")
+
+#: ``column_fit`` (round 31, R6), decided, not measured: a column is roomy when its widest
+#: line uses at most this share of its text width (the cell's width less its margins)...
+ROOMY_SHARE = 0.6
+#: ... and it would give its neighbour at least this, pt;
+MIN_FREED = 18.0
+#: a column wraps heavily when one of its cells has a paragraph drawn on at least this many lines.
+WRAP_LINES = 3
+#: Room left beside the roomy column's widest line, pt: the suggested width is not to the
+#: glyph (Word's widths and the layout's may differ by a fraction of a point per line).
+FIT_SLACK = 3.0
+
+
+def _line_widths(spans) -> tuple[float, float] | None:
+    """``(ink width, widest word)`` of a line, pt: from its first character that is not
+    white space to the end of its last (:func:`_ink`), and its longest run of characters
+    without a space (a word the line cannot break, but where it is broken by width);
+    ``None`` for a line of none."""
+    ink = _ink(spans)
+    if ink is None:
+        return None
+    widest = 0.0
+    start = end = None
+    for span in spans:
+        for k, char in enumerate(span.chars):
+            if k >= len(span.xs):
+                continue
+            if char.isspace():
+                if start is not None:
+                    widest = max(widest, _pt(end - start))
+                start = None
+                continue
+            pen, stop = span.xs[k], span.xs[k + 1] if k + 1 < len(span.xs) else span.end
+            start = pen if start is None else start
+            end = stop
+    if start is not None:
+        widest = max(widest, _pt(end - start))
+    return _pt(ink[1] - ink[0]), widest
+
+
+def _fit_columns(document: "Document", table, cells: dict[tuple[int, int], dict]) -> list[dict]:
+    """``column_fit``'s entries for one table: ``cells`` ``{(row, w:tc index): {"lines":
+    {paragraph: [ink widths]}, "words": [widest word per line]}}``.  Only cells over one
+    grid column count; a table of fewer than two columns, or with no grid, has none."""
+    from .edit.table_format import grid_widths, row_cells
+    from .markdown.write import _cell_margins
+
+    grid = [w / 20 for w in grid_widths(table)]
+    if len(grid) < 2:
+        return []
+    margins = _cell_margins(document, table)
+    columns: dict[int, dict] = {}
+    for r, row in enumerate(table.findall(_W + "tr")):
+        for k, (_, start, span) in enumerate(row_cells(row)):
+            seen = cells.get((r, k))
+            if seen is None or span != 1 or start >= len(grid):
+                continue
+            left, right = margins.get((r, k), (5.4, 5.4))
+            column = columns.setdefault(start, {"text_width": grid[start] - left - right, "margins": left + right,
+                                                "widest_line": 0.0, "longest_word": 0.0, "lines": 0})
+            column["text_width"] = min(column["text_width"], grid[start] - left - right)
+            column["margins"] = max(column["margins"], left + right)
+            for widths in seen["lines"].values():
+                column["widest_line"] = max(column["widest_line"], max(widths))
+                column["lines"] = max(column["lines"], len(widths))
+            column["longest_word"] = max([column["longest_word"], *seen["words"]])
+    out = []
+    for c, roomy in sorted(columns.items()):
+        if roomy["lines"] != 1 or roomy["text_width"] <= 0 \
+                or roomy["widest_line"] > ROOMY_SHARE * roomy["text_width"]:
+            continue
+        need = round(max(roomy["widest_line"], roomy["longest_word"]) + FIT_SLACK + roomy["margins"], 1)
+        freed = round(grid[c] - need, 1)
+        if freed < MIN_FREED:
+            continue
+        beside = [n for n in (c - 1, c + 1) if n in columns and columns[n]["lines"] >= WRAP_LINES]
+        if not beside:
+            continue
+        n = max(beside, key=lambda k: columns[k]["lines"])
+        wraps = columns[n]
+        widths = [round(w, 1) for w in grid]
+        widths[c], widths[n] = need, round(grid[n] + freed, 1)
+        out.append({"roomy": {"column": c, "width": round(grid[c], 1), "widest_line": roomy["widest_line"],
+                              "longest_word": roomy["longest_word"]},
+                    "wraps": {"column": n, "width": round(grid[n], 1), "lines": wraps["lines"],
+                              "widest_line": wraps["widest_line"], "longest_word": wraps["longest_word"]},
+                    "widths": widths})
+    return out
 
 
 def _ink(spans) -> tuple | None:
@@ -1207,15 +1355,13 @@ def numbering_skips_level(document: "Document") -> list[dict[str, Any]]:
     at -- a section style's ``1.1`` with no chapter before it (Word counts the level never
     used from its start: ``1.1``, ``1.2``; measured, ``feedback-round29/measurements-W.md``).
 
-    ``{"para", "style", "level", "list", "unused_levels", "label", "shows", "paragraphs",
-    "first"}`` per list, level and paragraph style, in document order: ``level`` and ``unused_levels``
+    ``{"para", "style", "level", "list", "unused_levels", "label", "shows", "paragraphs"}`` per list, level and paragraph style, in document order: ``level`` and ``unused_levels``
     from 0, as ``word_lists`` and ``word_styles``' ``numbering`` take them; ``list`` the
     ``numId`` the first one is numbered with (the levels used are counted over every list
     of its definition, which count on from each other); ``label`` the level's ``lvlText``;
     ``shows`` the first one's number where every level above it the label shows is unused
     and every level shown decimal; ``para`` the first one's id, as the other layout facts name
-    their paragraph (round 30, W15), and ``first`` the same id, the name 0.1.32 gave it, kept
-    for readers of that.  A label that shows only its own level (``a)``, a bullet) never skips one.  The
+    their paragraph (round 30, W15; 0.1.32's interim ``first`` went in round 31).  A label that shows only its own level (``a)``, a bullet) never skips one.  The
     main story's paragraphs, a table's too; a paragraph whose style's level is tied to
     another style is numbered by none (Word draws no number) and is left out."""
     from .edit.numbering import Numbering, definition_of, membership, paragraph_style_id, style_list
@@ -1245,7 +1391,7 @@ def numbering_skips_level(document: "Document") -> list[dict[str, Any]]:
             groups[key]["paragraphs"] += 1
         else:
             groups[key] = {"para": entry.id, "style": name, "level": found.level, "list": found.num_id,
-                           "label": found.text, "paragraphs": 1, "first": entry.id}
+                           "label": found.text, "paragraphs": 1}
     out = []
     for (definition, level, _), group in groups.items():
         shown = sorted({int(n) - 1 for n in _LEVEL_REF.findall(group["label"] or "")})
@@ -1259,7 +1405,7 @@ def numbering_skips_level(document: "Document") -> list[dict[str, Any]]:
         if shows is not None:
             group["shows"] = shows
         out.append({k: group[k] for k in ("para", "style", "level", "list", "unused_levels", "label", "shows",
-                                          "paragraphs", "first") if k in group})
+                                          "paragraphs") if k in group})
     return out
 
 
