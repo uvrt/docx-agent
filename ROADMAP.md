@@ -1083,6 +1083,13 @@ doc.render_svg(pages=diff.changed)     # or render_png; ids on every paragraph g
   the level loses both; `None` unlinks), and `check`'s `numbering_skips_level` names a
   style numbered at a level whose label shows a level above that nothing uses (`1.1` with
   no chapter: Word counts the unused level from its start).
+- **Round 30 (W13-W15):** `numbering=None` also stops a level a style inherits through
+  `based_on` (`w:numId` 0 in the style, as Word writes "Numbering: None"; measured), a no-op
+  unlink says so, and linking a level names the styles based on it that number there too.
+  `set_list_format` / `word_lists` `format` set a level's number and text positions, what
+  follows the number and its tab stop as Word's "Define new multilevel list" writes them.
+  `word_styles` `describe` gives a style's list level (own or inherited, and from which
+  style); `numbering_skips_level` names its paragraph `para` (`first` kept).
 - **Cost.** One full layout per document state, cached by the bytes' hash: `layout()` and
   `render_svg()` of the same state read one `docx2svg.convert_docx` (every page laid out
   and written as SVG; writing the SVG costs little beside the layout), tested by counting

@@ -255,8 +255,8 @@ def test_a_level_used_with_the_level_above_never_used_is_a_fact():
     document = Document.open(make(SECTIONS_ONLY))
     assert labels(document)[:2] == ["1.1", "1.2"]                 # Word: 1.1, 1.2 (measured)
     [entry] = numbering_skips_level(document)
-    assert entry == {"style": "Section title", "level": 1, "list": 1, "unused_levels": [0],
-                     "label": "%1.%2", "shows": "1.1", "paragraphs": 2,
+    assert entry == {"para": document.paragraphs()[0].id, "style": "Section title", "level": 1, "list": 1,
+                     "unused_levels": [0], "label": "%1.%2", "shows": "1.1", "paragraphs": 2,
                      "first": document.paragraphs()[0].id}
     assert numbering_skips_level(Document.open(make())) == []
 

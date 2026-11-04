@@ -63,8 +63,12 @@ How to use them:
 - **Numbered headings from a template's list:** `word_styles` `modify` with `numbering`
   (`{"list": <its number or a style in it>, "level": n}`) links a style to a level, as Word's
   "Link level to style": the style that held the level is unlinked and its paragraphs lose
-  their numbers (the warning counts them); `{"list": "none"}` unlinks. `check`'s
-  `numbering_skips_level` names a level used while the level above never is.
+  their numbers (the warning counts them); `{"list": "none"}` unlinks, and stops a level
+  the style inherits from the style it is based on (a warning names those when you link).
+  `describe` shows a style's level, own or inherited. A level's indent is the list's:
+  `word_lists` `format` sets `number_at`, `text_at`, `follow` and `tab_at` (a label wider
+  than its hanging indent runs into the text: widen it). `check`'s `numbering_skips_level`
+  names a level used while the level above never is.
 - **`check`'s `layout.settings`** holds what the document is set to do (the tables kept
   together), not facts to act on: a summary counts none of it. A table kept together that
   is taller than a page is said there and, once, in `keep_with_next_at_foot`

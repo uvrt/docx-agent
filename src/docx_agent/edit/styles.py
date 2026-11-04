@@ -282,8 +282,11 @@ class Styles:
         round 29): the level names the style, the style numbers its paragraphs at that level
         (its ``w:numPr``) with the level's indent (its own ``w:ind`` goes), and the style that
         held the level before is unlinked -- its ``w:numPr`` and ``w:ind`` go, so its
-        paragraphs are no longer numbered (a warning says how many).  ``numbering=None``
-        unlinks the style.  Chapter, section, subsection styles linked to levels 0, 1, 2 of
+        paragraphs are no longer numbered (a warning says how many).  A style based on it
+        numbers at that level too, as Word numbers it: a warning names each, with its
+        paragraphs.  ``numbering=None`` unlinks the style and stops numbering it inherits
+        through ``based_on`` too (``w:numId`` 0, as Word writes "Numbering: None"); a style
+        that numbers nothing is left as it was, said in a warning.  Chapter, section, subsection styles linked to levels 0, 1, 2 of
         one list number 1, 1.1, 1.1.1 as Word does::
 
             doc.styles.modify("Chapter title", numbering={"list": 3, "level": 0})
@@ -319,24 +322,34 @@ class Styles:
             if shading is not _NOT_GIVEN:
                 _write_shading(node, style.kind, shd)
             warnings: list[str] = []
+            changed = True
             if link is not None:
-                from .numbering import link_style_level
+                from .numbering import inheriting_styles, link_style_level
 
                 for holder in link_style_level(document, style.id, *link):
                     held = self._style_of(holder)
                     uses = len(self._content_references(holder))
                     warnings.append(f"{held} held level {link[1]} of list {link[0]} before: unlinked, "
                                     f"its {uses} paragraph(s) are no longer numbered")
+                # Round 30, W13: a style based on this one numbers at the level too (Word).
+                for heir in inheriting_styles(document, style.id):
+                    uses = len(self._content_references(heir))
+                    warnings.append(f"{self._style_of(heir)} is based on {style.name!r}: it numbers at level "
+                                    f"{link[1]} of list {link[0]} too, its {uses} paragraph(s) (numbering none "
+                                    "on it stops that)")
             elif numbering is None:
                 from .numbering import unlink_style
 
-                unlink_style(document, style.id)
+                if not unlink_style(document, style.id):
+                    warnings.append(f"{style.name!r} numbers nothing, neither its own nor through based_on: "
+                                    "left as it was")
+                    changed = bool(paragraph_values or run_values or shading is not _NOT_GIVEN)
             for tag in ("w:pPr", "w:rPr"):
                 child = node.find(qn(tag))
                 if child is not None and not len(child):
                     remove(child)
             document.package.mark_dirty(document.package.styles_part())
-        return EditResult(f"style:{style.id}", warnings=warnings)
+        return EditResult(f"style:{style.id}", changed=changed, warnings=warnings)
 
     def _style_of(self, style_id: str) -> str:
         """A style's name, quoted, for a message (its id when it has none)."""

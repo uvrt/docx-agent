@@ -62,7 +62,8 @@ takes its targets as one list with the values for all, so it is ``calls``, not `
     whose last row keeps with the next, drawn last on its page, the block after it on a
     later page -- a chain of keeps longer than a page, broken there.
 ``numbering_skips_level`` (round 29, W12)
-    ``{"style", "level", "list", "unused_levels", "label", "shows", "paragraphs", "first"}``:
+    ``{"para", "style", "level", "list", "unused_levels", "label", "shows", "paragraphs",
+    "first"}``:
     paragraphs numbered at a list level whose label shows a level above that no paragraph
     is numbered at -- a section heading's ``1.1`` with no chapter heading before it.  Read
     from the document, so listed where the layout failed too; :func:`numbering_skips_level`
@@ -284,7 +285,7 @@ class _Facts:
                      if self.shown({p for i in e["ids"] for p in self.pages_of(i)})],
                     "empty_paragraphs", out)
         self.capped(self.keep_with_next(), "keep_with_next_at_foot", out)
-        self.capped([e for e in numbering_skips_level(self.document) if self.shown(self.pages_of(e["first"]))],
+        self.capped([e for e in numbering_skips_level(self.document) if self.shown(self.pages_of(e["para"]))],
                     "numbering_skips_level", out)
         # Round 25, W5: what the document is set to do, not facts to act on.
         settings: dict[str, Any] = {}
@@ -1206,13 +1207,15 @@ def numbering_skips_level(document: "Document") -> list[dict[str, Any]]:
     at -- a section style's ``1.1`` with no chapter before it (Word counts the level never
     used from its start: ``1.1``, ``1.2``; measured, ``feedback-round29/measurements-W.md``).
 
-    ``{"style", "level", "list", "unused_levels", "label", "shows", "paragraphs", "first"}``
-    per list, level and paragraph style, in document order: ``level`` and ``unused_levels``
+    ``{"para", "style", "level", "list", "unused_levels", "label", "shows", "paragraphs",
+    "first"}`` per list, level and paragraph style, in document order: ``level`` and ``unused_levels``
     from 0, as ``word_lists`` and ``word_styles``' ``numbering`` take them; ``list`` the
     ``numId`` the first one is numbered with (the levels used are counted over every list
     of its definition, which count on from each other); ``label`` the level's ``lvlText``;
     ``shows`` the first one's number where every level above it the label shows is unused
-    and every level shown decimal; ``first`` its id.  A label that shows only its own level (``a)``, a bullet) never skips one.  The
+    and every level shown decimal; ``para`` the first one's id, as the other layout facts name
+    their paragraph (round 30, W15), and ``first`` the same id, the name 0.1.32 gave it, kept
+    for readers of that.  A label that shows only its own level (``a)``, a bullet) never skips one.  The
     main story's paragraphs, a table's too; a paragraph whose style's level is tied to
     another style is numbered by none (Word draws no number) and is left out."""
     from .edit.numbering import Numbering, definition_of, membership, paragraph_style_id, style_list
@@ -1241,7 +1244,7 @@ def numbering_skips_level(document: "Document") -> list[dict[str, Any]]:
         if key in groups:
             groups[key]["paragraphs"] += 1
         else:
-            groups[key] = {"style": name, "level": found.level, "list": found.num_id,
+            groups[key] = {"para": entry.id, "style": name, "level": found.level, "list": found.num_id,
                            "label": found.text, "paragraphs": 1, "first": entry.id}
     out = []
     for (definition, level, _), group in groups.items():
@@ -1255,7 +1258,7 @@ def numbering_skips_level(document: "Document") -> list[dict[str, Any]]:
             if all(k in unused for k in shown if k < level) else None
         if shows is not None:
             group["shows"] = shows
-        out.append({k: group[k] for k in ("style", "level", "list", "unused_levels", "label", "shows",
+        out.append({k: group[k] for k in ("para", "style", "level", "list", "unused_levels", "label", "shows",
                                           "paragraphs", "first") if k in group})
     return out
 

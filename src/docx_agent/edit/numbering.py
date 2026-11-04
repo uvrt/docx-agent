@@ -732,7 +732,10 @@ def link_style_level(document: "Document", style_id: str, num_id: int, level: in
 def unlink_style(document: "Document", style_id: str) -> bool:
     """Unlink a paragraph style from the list level it is linked to, as Word's "Link level
     to style" set to none does (measured, round 29): no level names it any more, and the
-    style loses its ``w:numPr`` -- and, where a level was linked to it, its ``w:ind``.
+    style loses its ``w:numPr`` -- and, where a level was linked to it, its ``w:ind``.  A
+    style still numbered after that through its ``basedOn`` chain gets ``w:numPr`` with
+    ``w:numId`` 0 and no ``w:ilvl``, as Word writes a derived style's "Numbering: None"
+    (measured, round 30: ``feedback-round30/measurements-X.md``), so it numbers nothing.
     Inside an edit.  Whether anything changed."""
     numbering = Numbering(document)
     linked = False
@@ -743,12 +746,71 @@ def unlink_style(document: "Document", style_id: str) -> bool:
                 remove(tied)
                 linked = True
     node = _styles_by_id(document).get(style_id)
+    own = node.find(f"{_W}pPr/{_W}numPr/{_W}numId") if node is not None else None
+    if not linked and own is not None and own.get(_W + "val") == "0":
+        return False                             # numbering none already
     changed = _drop_style_numbering(node, indent=linked) if node is not None else False
+    if node is not None and style_list(document, style_id) is not None:
+        properties = node.find(_W + "pPr")
+        if properties is None:
+            properties = append_in_order(node, make("w:pPr"))
+        stop = append_in_order(properties, make("w:numPr"))
+        stop.append(make("w:numId", **{"w:val": "0"}))
+        changed = True
     if linked:
         document.package.mark_dirty(numbering.part)
     if changed:
         document.package.mark_dirty(document.package.styles_part())
     return linked or changed
+
+
+def style_link(document: "Document", style_id: str) -> dict | None:
+    """How a paragraph style numbers its paragraphs, for ``word_styles`` ``describe`` (round
+    30, W15): ``{"list": numId, "level": n, "own": bool, "from": style id}`` -- ``own``
+    whether the ``w:numId`` is the style's own, ``from`` the style in its ``basedOn`` chain
+    that holds it when not; ``{"list": "none"}`` for a style whose own ``w:numId`` 0 stops
+    numbering; ``None`` when it numbers nothing (as :func:`style_list`)."""
+    styles = _styles_by_id(document)
+    node = styles.get(style_id)
+    own = node.find(f"{_W}pPr/{_W}numPr/{_W}numId") if node is not None else None
+    if own is not None and _int(own.get(_W + "val")) == 0:
+        return {"list": "none"}
+    found = style_list(document, style_id)
+    if found is None:
+        return None
+    holder, seen = style_id, set()
+    while holder and holder not in seen and holder in styles:
+        seen.add(holder)
+        if styles[holder].find(f"{_W}pPr/{_W}numPr/{_W}numId") is not None:
+            break
+        based = styles[holder].find(_W + "basedOn")
+        holder = based.get(_W + "val") if based is not None else None
+    out: dict = {"list": found[0], "level": found[1], "own": holder == style_id}
+    if holder != style_id:
+        out["from"] = holder
+    return out
+
+
+def inheriting_styles(document: "Document", style_id: str) -> list[str]:
+    """The paragraph styles numbered with ``style_id``'s ``w:numPr`` through their
+    ``basedOn`` chain (none of their own on the way), as Word numbers them: a style based
+    on a style linked to a level numbers at that level too (measured, round 30)."""
+    styles = _styles_by_id(document)
+    out = []
+    for other, node in styles.items():
+        if other == style_id or node.get(_W + "type") != "paragraph":
+            continue
+        seen: set[str] = set()
+        current = other
+        while current and current not in seen and current in styles:
+            seen.add(current)
+            if styles[current].find(f"{_W}pPr/{_W}numPr/{_W}numId") is not None:
+                break
+            based = styles[current].find(_W + "basedOn")
+            current = based.get(_W + "val") if based is not None else None
+        if current == style_id and style_list(document, other) is not None:
+            out.append(other)
+    return out
 
 
 def following_members(document: "Document", part: str, entry: ParagraphEntry, num_id: int) -> list[ParagraphEntry]:
@@ -957,13 +1019,31 @@ class ListOps:
 
     def set_list_format(self: "Document", identifier: str, *, level: int | None = None,
                         format: str | None = None, text: str | None = None, start: int | None = None,
-                        font: str | None = None) -> "EditResult":
+                        font: str | None = None, number_at: float | None = None,
+                        text_at: float | None = None, follow: str | None = None,
+                        tab_at: float | None = None) -> "EditResult":
         """Change a level of a paragraph's list (its own level by default): ``format``
         (``w:numFmt``: ``decimal``, ``lowerLetter``, ``upperRoman``, ``bullet``...),
         ``text`` (``w:lvlText``: ``%1)``, a bullet character), ``start``, the label's
         ``font``.  Copy-on-write: if another instance shares the abstract definition, this
-        list gets a copy of its own first, so no other list changes."""
+        list gets a copy of its own first, so no other list changes.
+
+        Round 30, W14, as Word's "Define new multilevel list" writes them (measured:
+        ``feedback-round30/measurements-X.md``), in points: ``number_at`` (the number's
+        "Aligned at") and ``text_at`` ("Text indent at") -- the level's ``w:ind``,
+        ``left`` the text's position and ``hanging`` the difference (``firstLine`` where
+        the number is right of the text, ``firstLine`` 0 where they are equal); the one not
+        given keeps its place.  ``follow`` (``tab``, ``space``, ``nothing``: ``w:suff``,
+        absent for a tab), ``tab_at`` ("Add tab stop at": the level's ``num`` tab stop).
+        A style linked to the level takes this indent: W12 gives it none of its own."""
         from .document import EditError
+
+        for name, value in (("number_at", number_at), ("text_at", text_at), ("tab_at", tab_at)):
+            if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float))
+                                      or not -1584 <= value <= 1584):
+                raise EditError(f"{name} is in points, -1584 to 1584")
+        if follow is not None and follow not in _FOLLOW:
+            raise EditError(f"follow is one of {', '.join(_FOLLOW)}")
 
         part, entry = self._paragraph_entry(identifier)
         found = membership(self, entry.element)
@@ -1007,9 +1087,72 @@ class ListOps:
                 for attribute in ("ascii", "hAnsi"):
                     fonts.set(_W + attribute, font)
                 fonts.set(_W + "hint", "default")
+            if follow is not None:
+                suffix = lvl.find(_W + "suff")
+                if follow == "tab":
+                    if suffix is not None:
+                        remove(suffix)
+                else:
+                    if suffix is None:
+                        suffix = append_in_order(lvl, make("w:suff"))
+                    suffix.set(_W + "val", follow)
+            if number_at is not None or text_at is not None or tab_at is not None:
+                _level_positions(lvl, number_at, text_at, tab_at)
             return set()
 
         return self._list_edit(identifier, change)
+
+
+#: What follows a level's number (``w:suff``; a tab when absent).
+_FOLLOW = ("tab", "space", "nothing")
+
+
+def _level_positions(lvl: Element, number_at: float | None, text_at: float | None,
+                     tab_at: float | None) -> None:
+    """A level's number and text positions (``w:ind``) and its tab stop, in points, as
+    Word's "Define new multilevel list" writes them (measured, round 30): ``left`` the
+    text's, ``hanging`` the number's distance left of it, ``firstLine`` its distance right
+    of it, ``firstLine`` 0 where they are one; the tab a ``num`` tab stop in ``w:tabs``."""
+    properties = lvl.find(_W + "pPr")
+    if properties is None:
+        properties = append_in_order(lvl, make("w:pPr"))
+    if number_at is not None or text_at is not None:
+        indent = properties.find(_W + "ind")
+        if indent is None:
+            indent = append_in_order(properties, make("w:ind"))
+
+        def twips(*names: str) -> int:
+            for name in names:
+                value = _int(indent.get(_W + name))
+                if value is not None:
+                    return value
+            return 0
+
+        left = twips("left", "start")
+        number = left - twips("hanging") + twips("firstLine")
+        left = round(text_at * 20) if text_at is not None else left
+        number = round(number_at * 20) if number_at is not None else number
+        for name in ("start", "hanging", "firstLine", "hangingChars", "firstLineChars", "startChars", "leftChars"):
+            indent.attrib.pop(_W + name, None)
+        indent.set(_W + "left", str(left))
+        if number < left:
+            indent.set(_W + "hanging", str(left - number))
+        else:
+            indent.set(_W + "firstLine", str(number - left))
+    if tab_at is not None:
+        tabs = properties.find(_W + "tabs")
+        if tabs is None:
+            tabs = append_in_order(properties, make("w:tabs"))
+        for tab in tabs.findall(_W + "tab"):
+            if tab.get(_W + "val") == "num":
+                remove(tab)
+        tab = make("w:tab", **{"w:val": "num", "w:pos": str(round(tab_at * 20))})
+        after = next((t for t in tabs.findall(_W + "tab") if (_int(t.get(_W + "pos")) or 0) > round(tab_at * 20)),
+                     None)
+        if after is not None:
+            after.addprevious(tab)
+        else:
+            tabs.append(tab)
 
 
 #: ``ST_NumberFormat`` values Word offers for a list level.

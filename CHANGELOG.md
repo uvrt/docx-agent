@@ -5,6 +5,39 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.33 -- unreleased
+
+- **"Numbering: None" stops a list level a style inherits** (production round 30, W13), as
+  Word writes it (measured in Word: `feedback-round30/measurements-X.md`): a style based on
+  a style linked to a level numbers at that level too (Word numbers it, 1. a. 2. a.), and
+  `Styles.modify(name, numbering=None)` (`{"list": "none"}` in `word_styles`) now stops that
+  as well: where the style still numbers through `based_on` after its own link goes, it gets
+  `w:numPr` with `w:numId` 0 and no `w:ilvl` (what Word writes for a derived style's
+  "Numbering: None"; Word keeps it on saving and draws no number, the paragraphs after it
+  counting on). A style that numbers nothing, its own or inherited, is left as it was:
+  `changed` false and a warning saying so (the tool's summary too). Linking a style to a
+  level warns, like the previous holder's warning, naming each style based on it that numbers
+  at the level too, with its paragraph count. `numId` 0 was already no numbering in
+  docx2svg and in docx-agent's own numbering (`list_of`, `check`, `numbering_skips_level`,
+  a style's list); tests hold it for a style's `w:numId` 0.
+- **A list level's positions and what follows its number** (W14), as Word's "Define new
+  multilevel list" writes them (measured): `set_list_format(..., number_at=, text_at=,
+  follow=, tab_at=)` and `word_lists` `format` with `number_at`, `text_at` (points: the
+  number's "Aligned at" and "Text indent at", the level's `w:ind` -- `left` the text,
+  `hanging` the difference, `firstLine` where the number is right of the text, `firstLine` 0
+  where they are one; the one not given keeps its place), `follow` (`tab`, `space`,
+  `nothing`: `w:suff`, none for a tab) and `tab_at` (the level's `num` tab stop, "Add tab
+  stop at"). A style linked to the level takes this indent. docx2svg draws every label and
+  text where Word's PDF has them (ten cases). +90 to every definition (13,192 -> 13,282),
+  none to the core; word_lists is not strict (the strict set: 6 tools, 23 optional
+  parameters).
+- **`word_styles` `describe` says a paragraph style's list level** (W15): `numbering`
+  `{"list", "level", "own"}` and, for a level inherited through `based_on`, `from` (the
+  style that holds it); `{"list": "none"}` for a style whose own `w:numId` 0 stops
+  numbering; absent for a style that numbers nothing.
+- **`numbering_skips_level` names its paragraph `para`** (W15), as the other layout facts
+  do; `first`, its name in 0.1.32, stays with the same id for readers of that.
+
 ## 0.1.32 -- unreleased
 
 - **A paragraph style linked to a list level** (production round 29, W12), as Word's "Link

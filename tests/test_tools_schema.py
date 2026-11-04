@@ -177,10 +177,15 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 #: 13,192), none to the core (2,458).  The guard rises to 13,195.  word_styles is not
 #: strict (deferred, in word_style): the strict set is unchanged (6 tools, 23 optional
 #: parameters).
+#: Round 30, W14: word_lists' ``number_at``, ``text_at``, ``follow`` and ``tab_at`` (a
+#: level's positions and what follows its number, as Word's "Define new multilevel list"
+#: sets them) +90 to every definition (13,192 -> 13,282), none to the core (2,458).  The
+#: guard rises to 13,285.  word_lists is not strict (deferred, in word_style): the strict
+#: set is unchanged (6 tools, 23 optional parameters).
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 6500
-ALL_GUARD = 13195
+ALL_GUARD = 13285
 
 
 @pytest.fixture(scope="module")
