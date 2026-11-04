@@ -1101,6 +1101,12 @@ doc.render_svg(pages=diff.changed)     # or render_png; ids on every paragraph g
   caption (`: text`, Pandoc's `Table:` beside a table), a missing cell's message (the
   table's rows, columns, merges), `keep_together` on a one-row table (a no-op with a note).
   `check`'s `column_fit`; `numbering_skips_level`'s `first` gone.
+- **Round 31 (R8):** `Document.follow_sample` / `word_follow_sample`: named copies of a
+  sample table or paragraph take the sample's properties (table, grid, rows, cells,
+  paragraphs, run formatting by property) in one undo step, keeping their text, rows,
+  columns, merges and lists; `preview`; per copy what was not followed, with why and fix
+  calls (what `compare_blocks` still finds). Copies are named: docx-agent keeps no record
+  of where a table was copied from (a record kept at copy time is an open question).
 - **Cost.** One full layout per document state, cached by the bytes' hash: `layout()` and
   `render_svg()` of the same state read one `docx2svg.convert_docx` (every page laid out
   and written as SVG; writing the SVG costs little beside the layout), tested by counting

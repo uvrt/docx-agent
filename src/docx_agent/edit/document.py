@@ -955,6 +955,24 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
         return compare_blocks(self, [blocks] if isinstance(blocks, str) else list(blocks), reference,
                               reference_document)
 
+    def follow_sample(self, sample: str, copies, *, sample_document: "Document | None" = None,
+                      preview: bool = False) -> tuple[EditResult, dict]:
+        """Each of ``copies`` (table or paragraph ids) made to follow ``sample``, a block of
+        ``sample_document`` (another open document) or of this one: the sample's table, row,
+        cell and paragraph properties and its run formatting, each copy keeping its own text,
+        rows, columns, merges and lists (:mod:`docx_agent.edit.follow`).  One undo step; with
+        ``preview`` nothing changes.  ``(result, report)``: the report's ``copies`` say per
+        copy what changed and what was not followed, with why::
+
+            result, report = doc.follow_sample("t:9C", ["t:1A", "t:2B"])
+            for entry in report["copies"]:
+                print(entry["copy"], entry["changed"], [d["why"] for d in entry["not_followed"]])
+        """
+        from .follow import follow
+
+        return follow(self, sample, [copies] if isinstance(copies, str) else list(copies),
+                      sample_document=sample_document, preview=preview)
+
     def validate(self, target: str | os.PathLike[str] | None = None) -> list:
         """The structural problems Word would repair or refuse (:func:`docx_agent.validate.check`):
         schema order, relationships, content types, unique ids, paired ranges, numbering,
