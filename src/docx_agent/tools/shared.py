@@ -673,5 +673,7 @@ def set_properties(call: Any, doc: str, title: str | None = None, author: str | 
                    data={k: properties.get(k) for k in ("title", "author", "language", "subject")})
 
 
+#: ``read_batch`` (ooxml-edit 0.78.0; round 32, R15): many reads in one call, each with its
+#: own budget; a reader's tool, in the core.
 TOOLS = [new_document, save_document, describe, find_text, replace_text, render, check, edit_chart,
-         edit_smartart, set_properties, *shared.SESSION_TOOLS]
+         edit_smartart, set_properties, *shared.SESSION_TOOLS, shared.READ_BATCH]

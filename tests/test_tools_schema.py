@@ -197,10 +197,15 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 #: differences left out, counted) +37 to every definition (13,719 -> 13,756), none to the
 #: core (2,458).  The guard rises to 13,760.  word_follow_sample is not strict: the strict
 #: set is unchanged (6 tools, 23 optional parameters).
+#: Round 32, R15 (ooxml-edit 0.78.0): read_batch (many reads in one call, each with its own
+#: budget) in the core, where a builder reading block after block reaches for it: +183 to
+#: the core (2,458 -> 2,642, about 3,910 counted by the proxy) and to every definition
+#: (13,756 -> 13,939).  The guard rises to 13,940.  read_batch is sent non-strict (free-form
+#: ops): the strict set is unchanged (6 tools, 23 optional parameters).
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 6500
-ALL_GUARD = 13760
+ALL_GUARD = 13940
 
 
 @pytest.fixture(scope="module")

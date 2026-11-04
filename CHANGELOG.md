@@ -5,6 +5,21 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.37 -- unreleased
+
+- **`read_batch` in the core: many reads in one call, a reader's too** (production round 32,
+  R15; ooxml-edit 0.78.0). `describe`, `word_read` (ranges, views), `word_inspect`,
+  `check`, `find_text`, the listing tools... in one call, each answered as
+  the call alone, within its own `max_result_chars`; the reply within 96,000 characters,
+  what does not fit listed with the call that asks for it. It changes nothing and is the
+  `review` role's, so a reader (`roles=["review"]`) has it in its core; a change among its
+  ops is refused with the way out (`batch`). The prompt's line on `word_read` says several
+  reads go in one `read_batch`; ooxml-edit's shared fragment names it too. Offline tokens:
+  the core 2,458 -> 2,642 (about 3,910 counted by the proxy), every definition 13,756 ->
+  13,939 (guard 13,940), a reviewer's core (review, resolve, accept) 2,333 -> 2,516 (guard
+  2,520) and every definition 7,625 -> 7,808 (guard 7,810). Sent non-strict: the strict set
+  is unchanged (6 tools, 23 optional parameters). `ooxml-edit>=0.78.0` (was 0.73.0).
+
 ## 0.1.36 -- unreleased
 
 - **Numbered headings in a table of contents** (production round 32, R12): `update_fields`

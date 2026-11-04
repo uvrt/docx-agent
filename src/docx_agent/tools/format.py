@@ -32,7 +32,7 @@ PROMPT = """\
 Word documents
 - describe first: headings with ids, sections, styles, comments, revisions, fields, \
 tables, pages. word_read gives Markdown with an id comment before each block; pass a range \
-to read part of it.
+to read part of it. Several reads go in one read_batch.
 - Addresses: p:3B212964 a paragraph; p:3B212964@4:11 characters 4-11 of it; p:A@5 a \
 position; p:A..t:B the blocks from A through B; t: table, c: comment, rev: revision, \
 fn:/en: note, d: drawing, cc: content control, fld: field, s:body the last section, \
