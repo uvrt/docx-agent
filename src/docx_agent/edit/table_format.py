@@ -4,8 +4,8 @@ e5-word.json``).
 
 What Word writes, and docx-agent with it (lengths in points here, twips in the file):
 
-* **A new table** is E2's (Word's Insert Table): the document's table style (the one its
-  tables use most, else Table Grid), ``w:tblW`` auto, ``w:tblLook`` 04A0, the text width
+* **A new table** is E2's (Word's Insert Table): the document's table style (its default
+  for new tables, round 31; else the one its tables use most, else Table Grid), ``w:tblW`` auto, ``w:tblLook`` 04A0, the text width
   shared among the columns, a ``w:tcW`` in each cell.  A table never touches another: Word
   keeps a paragraph between two tables, and after a table that ends a cell.
 * **Header rows**: ``w:trPr/w:tblHeader`` on each; **fixed layout**: ``w:tblLayout
@@ -461,12 +461,17 @@ class TableFormatOps:
         :func:`kept_together`; the last too or not), each row's deciding paragraph's direct
         ``w:keepNext`` that differs from its styles' -- a keep where they give none, a
         release where they keep.  A direct keep its styles give anyway, the rows' other
-        paragraphs and every other property stay.  :class:`EditError` for a one-row table
-        (nothing to keep together; ``cant_split`` keeps a row on one page).  Off, a table not
-        kept so (one row, too) is as asked: no change, said in ``warnings`` (round 27, W7)."""
+        paragraphs and every other property stay.  A one-row table has nothing to keep
+        together: no change, said in ``warnings`` (round 31, R5d: refused before, which failed
+        a whole batch; ``cant_split`` keeps a row on one page).  Off, a table not kept so is
+        as asked: no change, said in ``warnings`` (round 27, W7)."""
         from .document import EditResult
 
         part, entry = self._table_entry(table)
+        if on and len(entry.rows) < 2:
+            return EditResult(entry.id, changed=False, warnings=[
+                f"{entry.id} has one row: nothing to keep together, left as it was (cant_split keeps a row on one "
+                "page; keep_with_next on its paragraph, word_format, keeps it with the next block)"])
         if not on and not kept_together(row_keeps(self, entry.element)):
             return EditResult(entry.id, changed=False, warnings=[f"{entry.id} was not kept together"])
         rows = self._keep_rows(entry)
@@ -584,12 +589,12 @@ class TableFormatOps:
         from .document import EditError
 
         _, entry = self._table_entry(table)
-        if not 0 <= row < len(entry.rows):
-            raise EditError(f"{entry.id} has no row {row}")
-        for cell, start, span in row_cells(entry.rows[row][0]):
+        for cell, start, span in row_cells(entry.rows[row][0]) if 0 <= row < len(entry.rows) else ():
             if start <= column < start + span:
                 return cell
-        raise EditError(f"{entry.id} has no cell at ({row}, {column})")
+        from .document import no_cell_message
+
+        raise EditError(no_cell_message(entry.id, row, column, self.table(entry.id).grid()))
 
     # -- a new table ------------------------------------------------------------------------
 
@@ -600,7 +605,8 @@ class TableFormatOps:
                      look: dict | None = None) -> "EditResult":
         """A new table of ``rows`` x ``columns`` after or before a block (a paragraph or a
         table; in a cell, a nested table), as Word makes one: the document's table style
-        (``style="default"``: the one its tables use most, else Table Grid; a name; ``None``
+        (``style="default"``: the document's default table style -- :meth:`Styles.set_default`
+        -- else the one its tables use most, else Table Grid; a name; ``None``
         for none), the width the table sits in shared among the columns unless ``widths``
         (points) says otherwise, ``data`` the cells' text (a row of strings each).
         ``width`` (points or ``"n%"``), ``layout`` (``fixed``/``autofit``), ``header_rows``,
@@ -715,6 +721,12 @@ class TableFormatOps:
         return EditResult(new.id, created=made, renamed=renames, blocks=[new.id])
 
     def _default_table_style(self: "Document") -> str:
+        """``style="default"``'s table style: the document's default for new tables (Set as
+        Default's ``w:defaultTableStyle``, round 31), else the one its tables use most, else
+        Table Grid."""
+        chosen = self.styles.table_default()
+        if chosen is not None and chosen.name:
+            return chosen.name
         counts: dict[str, int] = {}
         for part in self._parts():
             for node in self.package.tree(part).iter(_W + "tblStyle"):

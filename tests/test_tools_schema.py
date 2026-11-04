@@ -182,10 +182,17 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 #: sets them) +90 to every definition (13,192 -> 13,282), none to the core (2,458).  The
 #: guard rises to 13,285.  word_lists is not strict (deferred, in word_style): the strict
 #: set is unchanged (6 tools, 23 optional parameters).
+#: Round 31, R3-R5b: word_styles' ``set_default`` action (Word's Set as Default for a table
+#: style) and ``tabs`` (a style's tab stops: position, alignment with clear, leader) +168,
+#: word_insert_markdown's ``caption`` style_map element and ``captions (: text)`` in its
+#: description +8, to every definition (13,282 -> 13,459), none to the core (2,458).  The
+#: guard rises to 13,460.  word_insert_markdown is strict: an enum value and its description
+#: only, so the strict set is unchanged (6 tools, 23 optional parameters); word_styles is not
+#: strict.  word_delete's find with target (no longer exactly one of them) changes no definition.
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 6500
-ALL_GUARD = 13285
+ALL_GUARD = 13460
 
 
 @pytest.fixture(scope="module")

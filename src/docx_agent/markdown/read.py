@@ -583,7 +583,8 @@ class Reader:
         if rule is not None and rule.construct == "code_block":
             record.construct = "code"
             return
-        record.unknown_style = rule is None
+        # A caption rule is the write half's (round 31, R5b): its style is still shown on read.
+        record.unknown_style = rule is None or rule.construct == "caption"
         border = element.find(f"{_W}pPr/{_W}pBdr/{_W}bottom")
         if not record.text.strip() and border is not None and border.get(_W + "val") not in (None, "nil", "none") \
                 and not record.inline:

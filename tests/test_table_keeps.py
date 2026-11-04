@@ -198,13 +198,29 @@ def test_keep_together_mends_a_released_row_and_keeps_a_nested_tables_first_para
 
 def test_keep_together_refuses_what_it_cannot_do(box, session):
     d = session.open(docx(p("Before") + grid(1) + p("Between") + grid(3) + p("After")), "refuse.docx")
-    one, three = [t.id for t in session.entry(d).document.tables()]
-    for arguments, field in (({"table": one, "scope": "table", "keep_together": True}, None),
-                             ({"table": three, "scope": "row", "row": 0, "keep_together": True}, "keep_together")):
-        refused = box.dispatch(session, "word_format_table", {"doc": d, **arguments})
-        assert not refused.ok, arguments
-        if field:
-            assert refused.error.field == field
+    three = session.entry(d).document.tables()[1].id
+    refused = box.dispatch(session, "word_format_table", {"doc": d, "table": three, "scope": "row", "row": 0,
+                                                          "keep_together": True})
+    assert not refused.ok and refused.error.field == "keep_together"
+
+
+def test_keep_together_on_a_one_row_table_is_a_note_and_a_batch_applies(box, session):
+    """Round 31, R5d: a one-row table has nothing to keep together -- no change, said in a
+    warning (refused before, which failed every op of a batch); cant_split beside it applies."""
+    d = session.open(docx(p("Before") + grid(1) + p("Between") + grid(3) + p("After")), "one.docx")
+    document = session.entry(d).document
+    one, three = [t.id for t in document.tables()]
+    named = document._table_entry(one)[1].id
+    result = ok(box, session, "word_format_table", doc=d, table=one, scope="table", keep_together=True)
+    assert result.summary == f"No change to {one}" and result.changed == []
+    assert result.warnings[0].startswith(f"{named} has one row: nothing to keep together, left as it was")
+    batch = ok(box, session, "batch", ops=[
+        {"tool": "word_format_table", "arguments": {"doc": d, "table": one, "scope": "table", "cant_split": True,
+                                               "keep_together": True, "keep_with_next": True}},
+        {"tool": "word_format_table", "arguments": {"doc": d, "table": three, "scope": "table", "keep_together": True}}])
+    assert batch.ok
+    assert document.row_properties(one, 0)["cant_split"] is True
+    assert document.table_properties(document.tables()[1].id)["keep_together"] is True
 
 
 def test_turning_off_a_keep_the_table_does_not_have_changes_nothing(box, session):

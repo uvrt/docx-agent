@@ -755,12 +755,12 @@ class TableOps:
         if rows == 1 and columns == 1:
             return EditResult(entry.id, changed=False)
         all_rows = [r for r, _ in entry.rows]
-        if not 0 <= row < len(all_rows):
-            raise EditError(f"{entry.id} has no row {row}")
         target = next(((cell, start, span) for cell, start, span in _cells(all_rows[row])
-                       if start <= column < start + span), None)
+                       if start <= column < start + span), None) if 0 <= row < len(all_rows) else None
         if target is None:
-            raise EditError(f"{entry.id} has no cell at ({row}, {column})")
+            from .document import no_cell_message
+
+            raise EditError(no_cell_message(entry.id, row, column, self.table(entry.id).grid()))
         tracking = self._active_tracking()
         with self._edit():
             renames = self._prepare(part, [])

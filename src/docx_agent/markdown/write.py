@@ -36,7 +36,8 @@ the reader reads -- resolved in the document by ``w:name``:
   as direct ``w:b``/``w:i`` -- the only direct formatting written besides strikethrough
   (``w:strike``, which has no style) and a thematic break's border.  ``emphasis="direct"``
   writes ``w:i``/``w:b`` throughout instead.
-* **Tables** (GFM) in the document's table style -- the one its tables use most, else Table
+* **Tables** (GFM) in the document's table style -- its default for new tables
+  (``Styles.set_default``, Word's Set as Default), else the one its tables use most, else Table
   Grid -- as Word makes a table (``tools/e2_probe.py``): ``w:tblW`` auto, ``tblLook``
   ``04A0``, the text width shared among the columns; the header row repeats
   (``w:tblHeader``) and a column's alignment is its cells' style -- ``table_cell_center``,
@@ -565,6 +566,12 @@ def _bytes(value, src: str) -> bytes:
 # -- the writer -------------------------------------------------------------------------------
 
 
+#: A caption paragraph's marker (round 31, R5b): ``: `` anywhere in the body; Pandoc's
+#: ``Table:`` beside a table.
+_CAPTION = re.compile(r":[ \t]+")
+_TABLE_CAPTION = re.compile(r"[Tt]able:[ \t]*")
+
+
 class Writer:
     """Model blocks as elements of one part, with the styles, lists, links, pictures and
     notes they need."""
@@ -615,8 +622,9 @@ class Writer:
         styles = self.document.styles
         found = None
         if construct == "table" and rule == DEFAULT.style_for("table"):
-            # The default row: the style the document's tables use most, else Table Grid.
-            found = self._table_style_in_use()
+            # The default row: the document's default table style (round 31), else the one
+            # its tables use most, else Table Grid.
+            found = self.document.styles.table_default() or self._table_style_in_use()
         found = found or self._find(rule.style, kind)
         if found is None and construct == "heading":
             found = self._heading_by_outline(level)
@@ -686,12 +694,32 @@ class Writer:
 
     def blocks(self, blocks: list) -> list[Element]:
         out: list[Element] = []
-        for block in blocks:
-            made = self.block(block)
+        for k, block in enumerate(blocks):
+            caption = self.caption(blocks, k)
+            made = [self.paragraph(caption, self.style("caption"))] if caption is not None else self.block(block)
             if made and out and made[0].tag == W_TBL and out[-1].tag == W_TBL:
                 out.append(self.separator())
             out += made
         return out
+
+    def caption(self, blocks: list, k: int) -> list | None:
+        """The inline of ``blocks[k]`` without its caption marker when it is a caption paragraph
+        (round 31, R5b), else ``None``: a paragraph of the body (not in a quote, a list or a
+        note) whose text starts ``: `` -- anywhere, under a picture too -- or, as Pandoc
+        marks a table's caption, ``Table:`` (``table:``) right before or after a table."""
+        block = blocks[k]
+        if self._quote or self._note or not isinstance(block, m.Paragraph) or not block.inline:
+            return None
+        first = block.inline[0]
+        if not isinstance(first, m.Text) or first.marks or first.href:
+            return None
+        beside = any(0 <= j < len(blocks) and isinstance(blocks[j], m.Table) for j in (k - 1, k + 1))
+        found = _CAPTION.match(first.text) or (beside and _TABLE_CAPTION.match(first.text))
+        if not found:
+            return None
+        rest = first.text[found.end():]
+        inline = ([m.Text(rest)] if rest else []) + list(block.inline[1:])
+        return inline if m.has_content(inline) else None
 
     def separator(self) -> Element:
         """An empty paragraph between two tables, in the body's paragraph style: Word joins

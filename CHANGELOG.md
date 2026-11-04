@@ -5,6 +5,53 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.34 -- unreleased
+
+- **The table style new tables get** (production round 31, R3), as Word's Table Design >
+  Set as Default ("this document only") writes it (measured in Word:
+  `feedback-round31/measurements-C.md`): `Styles.set_default(name)` and `word_styles`
+  `set_default` write the settings' `w:defaultTableStyle` naming the style -- nothing else:
+  not the styles' `w:default`, not the tables there are (Word draws a table with no style of
+  its own as before, and reads its default table style from that setting, not from a table
+  style's `w:default`). A built-in table style the document lacks is written as Word writes
+  it; the same style again is no change, said. `insert_table(style="default")` and
+  `insert_markdown`'s tables take it first, then the most used one, then Table Grid.
+  `Styles.table_default()` reads it; `word_styles` `list` marks it `"default": true` (and
+  its summary names it), `describe` too.
+- **A style's tab stops** (R4): `Styles.modify(name, tabs=[{"position", "alignment",
+  "leader"}])` (`add` too) and `word_styles` `add`/`modify` `tabs` replace a paragraph style's
+  own stops (`[]` removes them), written as Word writes a style's tab stop (`w:val`,
+  `w:leader`, `w:pos`, in order of position); `{"position": pt, "alignment": "clear"}`
+  clears a stop the style inherits through `based_on` (Word's own clear writes `w:tab
+  w:val="clear"`, and Word honours one written so: measured), with a warning when it
+  inherits none there. A stop with no `position` is at the text column's end, worked out when
+  written: the widest section's width between its margins (a warning names the widths where
+  sections differ). Measured: Word draws a right tab past the right margin at the
+  paragraph's right edge (the margin less a right indent) and one within the margin where it
+  is, so a stop far past any margin would follow the margins from the file alone -- but
+  docx2svg draws a stop where it is, past the page, so that form waits for docx2svg.
+  `word_styles` `describe` lists a style's own stops. With `set_default`, +168 to every
+  definition (word_styles is not strict); the caption element +8 (word_insert_markdown is
+  strict: an enum value, so the strict set stays 6 tools, 23 optional parameters).
+- **Frequent wrong calls** (R5a-d): `word_delete` with `find` and `target` finds within the
+  target (a note says so; with a different `within` too, refused). A Markdown paragraph
+  starting `: ` -- or, as Pandoc marks a table's caption, `Table: ` before or after a table
+  -- is a caption paragraph in the Caption style (written as Word writes it where missing),
+  its marker taken off; `style_map`'s new `caption` element names another style (in a quote,
+  a list item or a note it is text; reading shows the paragraph's style on its block as
+  before). A cell a table lacks (`word_inspect` `t:X/c1,2`, the cell edits) says the table's
+  rows and columns, counted from 0, its merged cells and the positions no cell covers, with
+  its cells' ids as the options. `keep_together` on a one-row table is no change with a note
+  (`cant_split` keeps a row on one page) instead of a refusal that failed a whole batch.
+- **`check`'s `column_fit`** (R6, in `layout`): a body table's column whose widest line uses
+  at most 60% of its text width (every paragraph on one line), beside a column with a
+  paragraph drawn on 3 or more lines, freeing at least 18 pt: both columns' width, widest
+  line and longest word (pt), the wrapping one's lines, every column's suggested width (the
+  roomy one its widest line or word, its cell margins and 3 pt; the rest to the wrapping
+  one) and the `word_format_table` calls that set them. Thresholds decided, not measured.
+- **`numbering_skips_level`'s `first` is gone** (its name in 0.1.32): `para` names the
+  paragraph.
+
 ## 0.1.33 -- unreleased
 
 - **"Numbering: None" stops a list level a style inherits** (production round 30, W13), as

@@ -65,8 +65,9 @@ In the library, `doc.layout().coverage_facts()` returns the same.
 `check` with `layout` (or `min_size`, `styles`) measures the pages from that same layout --
 text below a size by kind, direct formatting over the style with the call that clears it,
 styles not in an allowed list, empty paragraphs used as space, keep-with-next paragraphs at
-a page's foot, rows split across pages and header rows that do not repeat, pictures and
-tables past the margins, and the pages a reviewer cannot judge from the render -- as facts
+a page's foot, rows split across pages and header rows that do not repeat, table columns
+that leave room beside one that wraps (with widths that fit), pictures and tables past the
+margins, and the pages a reviewer cannot judge from the render -- as facts
 with block ids and pages; `docx_agent.layout_facts.layout_facts(doc.layout())` in the
 library.
 A Word toolbox is sent the shared tools with a document's parameters only: `check` has

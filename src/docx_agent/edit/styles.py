@@ -219,17 +219,19 @@ class Styles:
     # -- editing -----------------------------------------------------------------------------
 
     def add(self, name: str, kind: str = "paragraph", *, based_on: str | None = None,
-            next_style: str | None = None, **formatting) -> "EditResult":
+            next_style: str | None = None, tabs=None, **formatting) -> "EditResult":
         """A new style named ``name`` (refused if the name is taken), based on ``based_on``
         (a name), with run formatting (and, for a paragraph style, paragraph formatting)
         as :mod:`docx_agent.edit.formatting` takes it, and ``shading`` (its forms there: a
         fill, a theme colour lighter or darker) -- a paragraph style's behind its
         paragraphs, a character style's behind its text.  Its id is the name without spaces
-        or punctuation, numbered if taken."""
+        or punctuation, numbered if taken.  ``tabs``: its tab stops, as :meth:`modify` takes them."""
         from .document import EditError, EditResult
 
         if kind not in ("paragraph", "character"):
             raise EditError("add() makes paragraph and character styles")
+        if tabs and kind != "paragraph":
+            raise EditError("a character style has no tab stops")
         if not name.strip() or len(name) > 253:
             raise EditError("a style name is 1 to 253 characters")
         if self.find(name) is not None:
@@ -270,9 +272,13 @@ class Styles:
             if shd is not None:
                 _write_shading(node, kind, shd)
             self._append(node)
-        return EditResult(f"style:{style_id}", created=[f"style:{style_id}"])
+            warnings: list[str] = []
+            if tabs:
+                stops, warnings = self._tab_stops(style_id, tabs)
+                write_tabs(node, stops)
+        return EditResult(f"style:{style_id}", created=[f"style:{style_id}"], warnings=warnings)
 
-    def modify(self, name: str, kind: str | None = None, *, numbering=_NOT_GIVEN,
+    def modify(self, name: str, kind: str | None = None, *, numbering=_NOT_GIVEN, tabs=_NOT_GIVEN,
                **formatting) -> "EditResult":
         """Change a style's run and paragraph formatting and its ``shading`` (``None``
         removes a value).
@@ -290,7 +296,17 @@ class Styles:
         one list number 1, 1.1, 1.1.1 as Word does::
 
             doc.styles.modify("Chapter title", numbering={"list": 3, "level": 0})
-            doc.styles.modify("Section title", numbering={"list": "Chapter title", "level": 1})"""
+            doc.styles.modify("Section title", numbering={"list": "Chapter title", "level": 1})
+
+        ``tabs`` (round 31, R4) replaces a paragraph style's own tab stops (``[]`` or ``None``
+        removes them): ``[{"position": pt, "alignment": "right", "leader": "dot"}]``, as
+        :func:`write_tabs` writes them; ``{"position": pt, "alignment": "clear"}`` clears a
+        stop the style inherits through ``based_on`` (Word's ``w:tab w:val="clear"``).
+        A stop with no ``position`` is at the text column's end, worked out now: the widest
+        section's width between its margins (a warning names the widths where sections
+        differ)::
+
+            doc.styles.modify("toc 1", tabs=[{"alignment": "right", "leader": "dot"}])"""
         from .document import EditError, EditResult
 
         style = self.find(name, kind)
@@ -298,6 +314,10 @@ class Styles:
             raise EditError(f"the document has no style {name!r}")
         if numbering is not _NOT_GIVEN and style.kind != "paragraph":
             raise EditError(f"{name!r} is a {style.kind} style: only a paragraph style is linked to a list level")
+        if tabs is not _NOT_GIVEN and style.kind != "paragraph":
+            raise EditError(f"{name!r} is a {style.kind} style: only a paragraph style has tab stops")
+        stops, tab_warnings = ([], []) if tabs is _NOT_GIVEN or tabs is None else \
+            self._tab_stops(style.id, tabs)
         link = None if numbering is _NOT_GIVEN or numbering is None else self._list_level(numbering)
         formatting = dict(formatting)
         shading = formatting.pop("shading", _NOT_GIVEN)
@@ -321,7 +341,9 @@ class Styles:
             _formatting.write_run(node, run_values, document._theme_color)
             if shading is not _NOT_GIVEN:
                 _write_shading(node, style.kind, shd)
-            warnings: list[str] = []
+            if tabs is not _NOT_GIVEN:
+                write_tabs(node, stops)
+            warnings: list[str] = list(tab_warnings)
             changed = True
             if link is not None:
                 from .numbering import inheriting_styles, link_style_level
@@ -343,13 +365,101 @@ class Styles:
                 if not unlink_style(document, style.id):
                     warnings.append(f"{style.name!r} numbers nothing, neither its own nor through based_on: "
                                     "left as it was")
-                    changed = bool(paragraph_values or run_values or shading is not _NOT_GIVEN)
+                    changed = bool(paragraph_values or run_values or shading is not _NOT_GIVEN
+                                   or tabs is not _NOT_GIVEN)
             for tag in ("w:pPr", "w:rPr"):
                 child = node.find(qn(tag))
                 if child is not None and not len(child):
                     remove(child)
             document.package.mark_dirty(document.package.styles_part())
         return EditResult(f"style:{style.id}", changed=changed, warnings=warnings)
+
+    def inherited_tabs(self, style_id: str) -> dict[int, tuple[str, str | None]]:
+        """The tab stops a paragraph style inherits through ``based_on`` (not its own):
+        ``{position twips: (w:val, w:leader)}``, each base's own stops over its base's and
+        its clears taking a stop away, as Word reads them (measured, round 31)."""
+        chain, current, seen = [], self._node(style_id), {style_id}
+        based = current.find(_W + "basedOn") if current is not None else None
+        while based is not None and based.get(_W + "val") not in seen:
+            seen.add(based.get(_W + "val"))
+            current = self._node(based.get(_W + "val"))
+            if current is None:
+                break
+            chain.append(current)
+            based = current.find(_W + "basedOn")
+        out: dict[int, tuple[str, str | None]] = {}
+        for node in reversed(chain):
+            for tab in node.findall(f"{_W}pPr/{_W}tabs/{_W}tab"):
+                try:
+                    position = int(tab.get(_W + "pos") or "")
+                except ValueError:
+                    continue
+                if tab.get(_W + "val") == "clear":
+                    out.pop(position, None)
+                else:
+                    out[position] = (tab.get(_W + "val") or "left", tab.get(_W + "leader"))
+        return out
+
+    def _tab_stops(self, style_id: str, tabs) -> tuple[list[tuple[int, str, str | None]], list[str]]:
+        """``modify``'s ``tabs`` checked, as ``(position twips, w:val, w:leader)``, and the
+        warnings: a clear of a stop the style does not inherit, the text column's end where
+        sections differ."""
+        from .document import EditError
+
+        if not isinstance(tabs, (list, tuple)):
+            raise EditError('tabs is a list of {"position": pt, "alignment": ..., "leader": ...}')
+        inherited = self.inherited_tabs(style_id)
+        out: list[tuple[int, str, str | None]] = []
+        warnings: list[str] = []
+        end = None
+        for stop in tabs:
+            if not isinstance(stop, dict) or set(stop) - {"position", "alignment", "leader"}:
+                raise EditError('a tab stop is {"position": pt, "alignment": left|center|right|decimal|bar|clear, '
+                                '"leader": none|dot|hyphen|underscore|heavy|middle_dot}')
+            alignment = stop.get("alignment", "left")
+            if alignment not in TAB_ALIGNMENTS:
+                raise EditError(f"a tab stop's alignment is one of {', '.join(TAB_ALIGNMENTS)}, not {alignment!r}")
+            leader = stop.get("leader")
+            if leader is not None and leader not in TAB_LEADERS:
+                raise EditError(f"a tab stop's leader is one of {', '.join(TAB_LEADERS)}, not {leader!r}")
+            if alignment == "clear" and leader not in (None, "none"):
+                raise EditError("a cleared tab stop has no leader")
+            position = stop.get("position")
+            if position is None:
+                if alignment == "clear":
+                    raise EditError("a tab stop to clear needs its position (the inherited stop's)")
+                if end is None:
+                    end, note = self._column_end()
+                    if note:
+                        warnings.append(note)
+                twips = end
+            elif isinstance(position, bool) or not isinstance(position, (int, float)) \
+                    or not -1584 <= position <= 1584:
+                raise EditError(f"a tab stop's position is in points, -1584 to 1584, not {position!r}")
+            else:
+                twips = int(round(position * 20))
+            if any(t == twips for t, _, _ in out):
+                raise EditError(f"two tab stops at {twips / 20:g} pt: give each position once")
+            if alignment == "clear" and twips not in inherited:
+                held = ", ".join(f"{t / 20:g}" for t in sorted(inherited)) or "none"
+                warnings.append(f"the style inherits no tab stop at {twips / 20:g} pt to clear (it inherits: {held})")
+            out.append((twips, TAB_ALIGNMENTS[alignment], None if leader in (None, "none") else TAB_LEADERS[leader]))
+        return sorted(out), warnings
+
+    def _column_end(self) -> tuple[int, str | None]:
+        """A tab stop at the text column's end: the widest section's width between its
+        margins, twips (A4 with one-inch margins where no section says), and a note where
+        the sections' widths differ (Word draws a right tab past the right margin at the
+        margin: measured, round 31)."""
+        widths = [w for w in (section.text_width for section in self._document.sections()) if w]
+        if not widths:
+            return 9026, None
+        widest = max(widths)
+        if len(set(widths)) == 1:
+            return widest, None
+        listed = ", ".join(f"{w / 20:g}" for w in sorted(set(widths)))
+        return widest, (f"the sections' text columns differ ({listed} pt): the stop is at the widest's end, "
+                        f"{widest / 20:g} pt; Word draws a right tab past a narrower column's margin at that margin")
 
     def _style_of(self, style_id: str) -> str:
         """A style's name, quoted, for a message (its id when it has none)."""
@@ -394,6 +504,54 @@ class Styles:
             raise EditError(f"list {num_id} has no level {level}: its levels are "
                             + (", ".join(map(str, levels)) or "none"))
         return num_id, level
+
+    # -- the default table style (round 31, R3) ---------------------------------------------
+
+    def table_default(self) -> Style | None:
+        """The table style new tables get: the one the settings' ``w:defaultTableStyle``
+        names (what Word's Table Design > Set as Default writes, measured round 31), ``None``
+        when they name none or a style the document lacks.  (Not :meth:`default`'s
+        ``"table"``: that is the style a table with no style of its own is drawn in, Normal
+        Table.)"""
+        part = self._document.package.settings_part()
+        node = self._document.package.tree(part).find(_W + "defaultTableStyle") if part is not None else None
+        style_id = node.get(_W + "val") if node is not None else None
+        return next((s for s in self if s.id == style_id and s.kind == "table"), None) if style_id else None
+
+    def set_default(self, name: str | None, kind: str = "table") -> "EditResult":
+        """Make ``name`` the table style new tables get, as Word's Table Design > Set as
+        Default ("this document only") does it: the settings' ``w:defaultTableStyle`` names
+        the style, nothing else changes -- not the styles, not the tables there are (Word
+        draws a table with no style of its own in Normal Table still; measured, round 31,
+        ``feedback-round31/measurements-C.md``).  A built-in table style the document lacks
+        is written as Word writes it on first use; ``None`` removes the setting.
+        :meth:`Document.insert_table` and ``insert_markdown``'s tables use it first::
+
+            doc.styles.set_default("Plan Table")"""
+        from .document import EditError, EditResult
+
+        if kind != "table":
+            raise EditError("set_default sets the table style new tables get: give a table style")
+        document = self._document
+        current = self.table_default()
+        if name is not None:
+            self.resolve(name, "table")
+            found = self.find(name, "table")
+            if current is not None and found is not None and found.id == current.id:
+                return EditResult(f"style:{current.id}", changed=False,
+                                  warnings=[f"{current.name!r} was already the default table style"])
+        elif current is None and document.package.settings_part() is None:
+            return EditResult(None, changed=False, warnings=["the document had no default table style"])
+        with document._edit():
+            style_id = self._ensure(name, "table") if name is not None else None
+            part = document.package.settings_part() or document._create_settings_part()
+            root = document.package.tree(part)
+            for node in root.findall(_W + "defaultTableStyle"):
+                remove(node)
+            if style_id is not None:
+                append_in_order(root, make("w:defaultTableStyle", **{"w:val": style_id}))
+            document.package.mark_dirty(part)
+        return EditResult(f"style:{style_id}" if style_id else None)
 
     # -- removing ---------------------------------------------------------------------------
 
@@ -539,6 +697,56 @@ class Styles:
 
     def __repr__(self) -> str:
         return f"<Styles {len(self)}>"
+
+
+#: A tab stop's alignment as the tools say it, and its ``w:val`` (Word writes ``left`` and
+#: ``right``, transitional's names, measured round 31).
+TAB_ALIGNMENTS = {"left": "left", "center": "center", "right": "right", "decimal": "decimal", "bar": "bar",
+                  "clear": "clear"}
+#: A tab stop's leader, and its ``w:leader``.
+TAB_LEADERS = {"none": "none", "dot": "dot", "hyphen": "hyphen", "underscore": "underscore", "heavy": "heavy",
+               "middle_dot": "middleDot"}
+
+
+def write_tabs(node: Element, stops: list[tuple[int, str, str | None]]) -> None:
+    """A style's own ``w:tabs``: ``stops`` ``(position twips, w:val, w:leader)``, in order of
+    position, as Word writes them (``w:val``, ``w:leader``, ``w:pos``; a clear has no
+    leader); none removes it."""
+    properties = node.find(_W + "pPr")
+    old = properties.find(_W + "tabs") if properties is not None else None
+    if old is not None:
+        remove(old)
+    if not stops:
+        return
+    if properties is None:
+        properties = append_in_order(node, make("w:pPr"))
+    tabs = append_in_order(properties, make("w:tabs"))
+    for position, value, leader in stops:
+        tab = make("w:tab", **{"w:val": value})
+        if leader is not None:
+            tab.set(qn("w:leader"), leader)
+        tab.set(qn("w:pos"), str(position))
+        tabs.append(tab)
+
+
+def read_tabs(node: Element) -> list[dict] | None:
+    """A style's own tab stops as ``modify`` takes them (points), ``None`` for none."""
+    tabs = node.findall(f"{_W}pPr/{_W}tabs/{_W}tab")
+    if not tabs:
+        return None
+    names = {v: k for k, v in TAB_LEADERS.items()}
+    out = []
+    for tab in tabs:
+        try:
+            position = int(tab.get(_W + "pos") or "") / 20
+        except ValueError:
+            continue
+        stop: dict = {"position": position, "alignment": {"start": "left", "end": "right"}.get(
+            tab.get(_W + "val") or "left", tab.get(_W + "val") or "left")}
+        if tab.get(_W + "leader") not in (None, "none"):
+            stop["leader"] = names.get(tab.get(_W + "leader"), tab.get(_W + "leader"))
+        out.append(stop)
+    return out
 
 
 def _write_shading(node: Element, kind: str, attributes: dict | None) -> None:

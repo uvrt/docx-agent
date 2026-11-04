@@ -184,14 +184,27 @@ def inserted_range(place: str, where: str, text: str, renamed: dict[str, str]) -
                              optional=True),
             "collapse_space": boolean("Also delete the space the deletion would leave doubled. "
                                       "Default false.", optional=True)},
-           refs=('target', 'within'), group="word_text", mutates=True, exactly_one=[("find", "target")])
+           refs=('target', 'within'), group="word_text", mutates=True)
 def word_delete(call: Any, doc: str, find: str | None = None, within: str | None = None,
                 target: str | None = None, collapse_space: bool = False) -> Result:
     document = call.document
+    if find is None and target is None:
+        raise ToolError("invalid_arguments", "give find (text to delete) or target (what to delete)",
+                        field="find", valid_options=["find", "target"])
+    note = None
+    if find is not None and target is not None:
+        # Round 31, R5a: find with a target is find within it (the call meant), said in a note.
+        if within is not None and resolve(call, within) != resolve(call, target):
+            raise ToolError("invalid_arguments", "find searches within one block or span: give within or "
+                            "target with it, not both", field="target", valid_options=["within", "target"])
+        within, note = target, f"find was searched within target {target}: within names where to search"
     if find is not None:
         found = find_range(call, find, within)
         text = found.text
-        return outcome([found.delete(collapse_space=collapse_space)], f"Deleted {short(text, 60)!r}")
+        result = outcome([found.delete(collapse_space=collapse_space)], f"Deleted {short(text, 60)!r}")
+        if note is not None:
+            result.warnings.append(note)
+        return result
     target = resolve(call, target)
     if "@" in target and not target.startswith(("p@", "cc@")):
         return outcome([document.delete_text(target, collapse_space=collapse_space)], f"Deleted {target}")
@@ -211,7 +224,8 @@ def word_delete(call: Any, doc: str, find: str | None = None, within: str | None
 
 STYLE_KEYS = ["paragraph", "h1", "h2", "h3", "h4", "h5", "h6", "quote", "code", "inline_code",
               "bullet", "bullet2", "bullet3", "number", "number2", "number3", "table", "table_cell",
-              "table_cell_center", "table_cell_right", "footnote", "footnote_reference", "emphasis", "strong", "link"]
+              "table_cell_center", "table_cell_right", "footnote", "footnote_reference", "emphasis", "strong", "link",
+              "caption"]
 
 STYLE_MAP = array(obj({"element": string("Markdown element.", enum=STYLE_KEYS),
                        "style": string("The document's style name for it.")}),
@@ -238,7 +252,7 @@ def images_from(call: Any):
     return image
 
 
-@word_tool("word_insert_markdown", "Write Markdown as blocks in the document's styles: headings, lists, tables (empty header row: none), links, footnotes, images ![alt](b1). Returns the new blocks' ids.",
+@word_tool("word_insert_markdown", "Write Markdown as blocks in the document's styles: headings, lists, tables (empty header row: none), links, footnotes, images ![alt](b1), captions (: text). Returns the new blocks' ids.",
            {"doc": DOC,
             "markdown": string("Markdown.", optional=True),
             "blob": string("Or a Markdown blob handle.", optional=True),
