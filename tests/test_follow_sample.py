@@ -13,7 +13,7 @@ pytest.importorskip("ooxml_edit.tools.shared", reason="needs ooxml-edit 0.4 (the
 from ooxml_edit.tools import Toolbox  # noqa: E402
 
 from docx_agent import Document  # noqa: E402
-from docx_agent.edit.follow import NOT_FOLLOWED_CAP, WHY, _textless  # noqa: E402
+from docx_agent.edit.follow import KIND, KINDS, NOT_FOLLOWED_CAP, WHY, _textless  # noqa: E402
 from docx_agent.tools import FORMAT, GROUPS, TOOLS  # noqa: E402
 
 AUTHOR, DATE = "A. Reviewer", "2026-11-04T09:00:00Z"
@@ -279,3 +279,73 @@ def test_rule_4_the_reply_has_a_budget_and_names_what_it_left_out(monkeypatch):
     shown = sum(len(e["not_followed"]) for e in report["copies"])
     assert shown == 3 and sum(e.get("more", 0) for e in report["copies"]) > 0
     assert "word_compare_blocks" in report["left_out"]
+
+
+# -- round 32, R13: each difference left says its kind ------------------------------------------
+
+
+def _left_over() -> tuple[Document, str, list[str]]:
+    """Copies with a column more, two cells merged, a paragraph in a list: differences of
+    each kind."""
+    document, sample, copies = _document()
+    document.insert_column(copies[0], 2)
+    document.merge_cells(copies[1], (1, 1), (1, 2))
+    document.add_to_list(document.table(copies[1]).cell(1, 0).paragraphs[0].id, "bullet")
+    return document, sample, copies
+
+
+def test_every_not_followed_entry_has_a_kind():
+    assert set(KIND.values()) <= set(KINDS) and set(WHY) <= set(KIND)
+    document, sample, copies = _left_over()
+    _, report = document.follow_sample(sample, copies)
+    found = {d["property"]: d["kind"] for e in report["copies"] for d in e["not_followed"]}
+    assert all(e.get("kind") in KINDS for c in report["copies"] for e in c["not_followed"])
+    assert found["columns"] == found["merges"] == "structure" and found["list"] == "own"
+    _, report = document.follow_sample(sample, [document.paragraphs()[0].id])
+    assert report["copies"][0]["not_followed"][0]["kind"] == "structure"
+
+
+def test_report_actionable_leaves_the_copies_own_out_counted():
+    document, sample, copies = _left_over()
+    _, every = document.follow_sample(sample, copies, preview=True)
+    _, actionable = document.follow_sample(sample, copies, preview=True, report="actionable")
+    for full, short in zip(every["copies"], actionable["copies"]):
+        own = [d for d in full["not_followed"] if d["kind"] == "own"]
+        assert short["not_followed"] == [d for d in full["not_followed"] if d["kind"] != "own"]
+        assert short.get("own", 0) == len(own)
+    assert actionable["copies"][1]["own"] == 1                     # the list membership
+    _, blank = document.follow_sample(sample, copies, preview=True, report="")   # rule 1: a placeholder
+    assert blank["copies"] == every["copies"]
+
+
+def test_report_names_its_forms_when_refused():
+    from docx_agent.edit.errors import EditError
+
+    document, sample, copies = _document()
+    with pytest.raises(EditError, match="actionable"):
+        document.follow_sample(sample, copies, report="some")
+
+
+def test_rule_4_over_the_budget_the_copies_own_become_counts_first(monkeypatch):
+    from docx_agent.edit import follow as _follow
+
+    document, sample, copies = _left_over()
+    _, full = document.follow_sample(sample, copies, preview=True)
+    total = sum(len(e["not_followed"]) for e in full["copies"])
+    own = sum(1 for e in full["copies"] for d in e["not_followed"] if d["kind"] == "own")
+    assert own
+    monkeypatch.setattr(_follow, "REPLY_CAP", total - 1)
+    _, report = document.follow_sample(sample, copies, preview=True)
+    assert sum(e.get("own", 0) for e in report["copies"]) == own
+    assert not any(e.get("more") for e in report["copies"])         # nothing else cut
+    assert all(d["kind"] != "own" for e in report["copies"] for d in e["not_followed"])
+
+
+def test_the_tool_takes_report(box):
+    session = box.session()
+    document, sample, copies = _left_over()
+    doc = session.open(document.to_bytes(), "parts.docx")
+    result = _ok(box, session, "word_follow_sample", doc=doc, sample={"block": sample}, copies=copies,
+                 preview=True, report="actionable")
+    assert result.data["copies"][1]["own"] == 1
+    assert all(d["kind"] != "own" for e in result.data["copies"] for d in e["not_followed"])

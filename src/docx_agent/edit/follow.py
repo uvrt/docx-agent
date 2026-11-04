@@ -110,6 +110,21 @@ WHY = {
 #: Why, for anything else left: the cell it is in is merged differently from the sample's.
 WHY_OTHER = "the cell is merged differently from the sample's"
 
+#: What kind of difference each ``not_followed`` entry is (round 32, R13; the same names as
+#: pptx-agent's ``ppt_follow_sample``): ``own`` -- the copy's own content, kept by design
+#: (its text and lines, its list membership); ``changed_by_copy`` -- the copy keeps a value
+#: of its own the sample's cannot replace here (a style this document lacks and Word has no
+#: built-in one by its name); ``structure`` -- columns, merges, the kind of block, unlike the
+#: sample's.  ``report: "actionable"`` leaves the ``own`` entries out, counted per copy.
+KINDS = ("own", "changed_by_copy", "structure")
+KIND = {
+    "kind": "structure", "columns": "structure", "widths": "structure", "merges": "structure",
+    "missing_paragraph": "own", "extra_paragraph": "own", "list": "own",
+    "paragraph_style": "changed_by_copy", "table_style": "changed_by_copy",
+}
+#: The ``report`` forms: every difference, or those that are not the copy's own.
+REPORTS = ("all", "actionable")
+
 #: Differences reported per copy at most; ``more`` counts the rest.
 NOT_FOLLOWED_CAP = 20
 #: Differences reported in one reply at most, over every copy (the rest counted in ``more``
@@ -138,12 +153,19 @@ class _Styles:
 
 
 def follow(document: "Document", sample: str, copies: list[str], *,
-           sample_document: "Document | None" = None, preview: bool = False) -> tuple[Any, dict]:
+           sample_document: "Document | None" = None, preview: bool = False,
+           report: str = "all") -> tuple[Any, dict]:
     """Each of ``copies`` made to follow ``sample`` (the module's rules): ``(EditResult,
     report)``, the report ``{"sample", "preview", "copies": [...]}`` with one entry per copy
-    (:func:`_report`).  One undo step; with ``preview`` nothing changes."""
+    (:func:`_report`).  One undo step; with ``preview`` nothing changes.  ``report``
+    ``"actionable"`` leaves out the differences that are the copy's own (``kind`` ``own``),
+    counted in each copy's ``own``; ``"all"`` (``""`` too) lists every one."""
     from .document import EditError, EditResult
 
+    form = (report or "all").strip().lower()
+    if form not in REPORTS:
+        raise EditError(f"report {report!r} is not one of {', '.join(REPORTS)}: \"all\" lists every "
+                        "difference not followed, \"actionable\" leaves out the copies' own")
     source = sample_document or document
     notes: list[str] = []
     sample_entry = _locate(source, sample, None, notes, "sample")
@@ -235,6 +257,13 @@ def follow(document: "Document", sample: str, copies: list[str], *,
         with document._edit():
             renames = run()
     copies_out = [_report(entry, preview) for entry in reports]
+    if form == "actionable":
+        for entry in copies_out:
+            _own_counted(entry)
+    elif sum(len(entry["not_followed"]) for entry in copies_out) > REPLY_CAP:
+        # Over the reply's budget: the copies' own become counts before anything is cut.
+        for entry in copies_out:
+            _own_counted(entry)
     room = REPLY_CAP
     for entry in copies_out:
         shown = entry["not_followed"]
@@ -252,6 +281,15 @@ def follow(document: "Document", sample: str, copies: list[str], *,
     result = EditResult(first, renamed={} if preview else renames, changed=changed,
                         count=sum(1 for entry in copies_out if entry["changed"]), warnings=warnings)
     return result, report
+
+
+def _own_counted(entry: dict) -> None:
+    """A copy's ``own`` differences taken out of ``not_followed`` and counted in ``own``."""
+    kept = [d for d in entry["not_followed"] if d.get("kind") != "own"]
+    dropped = len(entry["not_followed"]) - len(kept)
+    if dropped:
+        entry["not_followed"] = kept
+        entry["own"] = entry.get("own", 0) + dropped
 
 
 def _shapes(document: "Document", like: Element | None, limit: int = 20) -> list[str]:
@@ -346,8 +384,9 @@ class _Log:
 def _report(entry: dict, preview: bool) -> dict:
     """One copy's entry: ``copy`` (its id), ``changed``, what changed (``table`` the table's
     properties by name, ``widths``, and how many ``rows``, ``cells``, ``paragraphs`` and
-    ``runs``), and ``not_followed``: each difference left, with ``why`` (and ``fix``, the calls
-    that make it, where a tool does)."""
+    ``runs``), and ``not_followed``: each difference left, with ``why``, ``kind``
+    (:data:`KINDS`) and ``fix`` (the calls that make it, where a tool does); ``own`` counts
+    the copy's own differences left out of it, ``more`` those past the cap."""
     log: _Log = entry["log"]
     out: dict[str, Any] = {"copy": entry["id"], "changed": log.changed()}
     if entry["asked"] != entry["id"]:
@@ -369,9 +408,15 @@ def _report(entry: dict, preview: bool) -> dict:
         if name in ("paragraph_style", "table_style") and difference.get("reference") not in entry["styles"]:
             why = WHY_OTHER
         item["why"] = why
+        item["kind"] = "structure" if why == WHY_OTHER else KIND.get(name, "structure")
         left.append(item)
     if entry["lists"]:
-        left.append({"property": "list", "paragraphs": entry["lists"], "why": WHY["list"], "fix": None})
+        left.append({"property": "list", "paragraphs": entry["lists"], "why": WHY["list"], "kind": "own",
+                     "fix": None})
+    out["not_followed"] = left
+    if len(left) > NOT_FOLLOWED_CAP:
+        _own_counted(out)               # the copy's own become a count before anything is cut
+        left = out["not_followed"]
     out["not_followed"] = left[:NOT_FOLLOWED_CAP]
     if len(left) > NOT_FOLLOWED_CAP:
         out["more"] = len(left) - NOT_FOLLOWED_CAP
@@ -639,4 +684,4 @@ def _follow_runs(paragraph: Element, sample: Element, styles: _Styles) -> int:
     return len(changed)
 
 
-__all__ = ["KEEP_CELL", "KEEP_PARAGRAPH", "KEEP_ROW", "KEEP_TABLE", "NOT_FOLLOWED_CAP", "REPLY_CAP", "WHY", "follow"]
+__all__ = ["KINDS", "KIND", "REPORTS", "KEEP_CELL", "KEEP_PARAGRAPH", "KEEP_ROW", "KEEP_TABLE", "NOT_FOLLOWED_CAP", "REPLY_CAP", "WHY", "follow"]

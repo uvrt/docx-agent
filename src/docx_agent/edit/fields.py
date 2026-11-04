@@ -25,6 +25,12 @@ runs and paragraphs) or simple (``w:fldSimple``).  What Word writes was measured
   instruction and the separate).  Each heading gets a hidden bookmark ``_Toc<9 digits>``
   around its text (Word reuses one that is there).  The TOC 1-9 styles are Word's
   (``word_toc_styles.py``).
+* **A numbered heading's entry** (round 32, R12; ``tools/toc_numbers_probe.py``,
+  ``tests/observations/toc-numbers-word.json``): the list's number as the heading draws it
+  in its own Hyperlink run, a tab run in the paragraph mark's formatting, then the text --
+  with a left stop in the entry (:class:`_TocLooks`); a number followed by a space or by
+  nothing is the number, a space and the text in one run.  The entry's right dot stop is
+  written only when its ``toc N`` style has no tab stop (own or inherited) of its own (R14).
 
 **Which paragraphs a table of contents lists** (production round 21, T1; measured with
 ``tools/toc_probe.py``, ``tests/observations/toc-word.json``: 51 made-up documents updated
@@ -114,6 +120,13 @@ TOC_INSTRUCTION = ' TOC \\o "{first}-{last}"{h}{z}{u} '
 EMPTY_TOC = "No table of contents entries found."
 #: Where a TOC entry's right tab stop is: the text width less this (measured).
 TOC_TAB_INSET = 10
+#: A numbered heading's entry (its list number then a tab): the least room Word leaves from
+#: the number's end to the stop it writes after it, in twips (measured, round 32, R12:
+#: 240 at every font size and indent tried).
+TOC_NUMBER_GAP = 240
+#: The left indent Word takes for a ``toc N`` style the document lacks, per level below
+#: the first, in twips (measured: 720 for toc 4 ... 1920 for toc 9).
+TOC_LEVEL_STEP = 240
 #: The first number of a ``_Toc`` bookmark made here (Word's are 9 digits).
 TOC_BOOKMARK_BASE = 100000000
 #: English month and day names (``DATE``'s pictures; the probe's en-GB document).
@@ -958,6 +971,8 @@ class FieldOps:
             style_ids[level] = style_ids.get(level) or self.styles._ensure(f"toc {level}", "paragraph")
         link_style = self.styles._ensure("Hyperlink", "character") if hyperlinks and headings else None
         tab = self._toc_tab(entries_place[-1])
+        labels = self._toc_labels() if headings else {}
+        looks = _TocLooks(self, link_style)
         bookmarks = [self._toc_bookmark(entry.element) for entry, _ in headings]
         pages = []
         for (entry, _), name in zip(headings, bookmarks):
@@ -980,9 +995,18 @@ class FieldOps:
             paragraph = make("w:p")
             properties = make("w:pPr")
             properties.append(make("w:pStyle", **{"w:val": style_ids[level]}))
-            tabs = make("w:tabs")
-            tabs.append(make("w:tab", **{"w:val": "right", "w:leader": "dot", "w:pos": str(tab)}))
-            properties.append(tabs)
+            label, suffix = labels.get(id(entry.element), (None, None))
+            stops = []
+            if label and suffix == "tab":
+                stops.append(make("w:tab", **{"w:val": "left", "w:pos": str(looks.number_stop(level, label))}))
+            if not looks.has_tabs(level):
+                # The style's own stops (any, inherited too) are the entry's: Word adds none.
+                stops.append(make("w:tab", **{"w:val": "right", "w:leader": "dot", "w:pos": str(tab)}))
+            if stops:
+                tabs = make("w:tabs")
+                for stop in stops:
+                    tabs.append(stop)
+                properties.append(tabs)
             mark = make("w:rPr")
             mark.append(make("w:noProof"))
             properties.append(mark)
@@ -994,7 +1018,16 @@ class FieldOps:
             if hyperlinks:
                 container = make("w:hyperlink", **{"w:anchor": name, "w:history": "1"})
                 paragraph.append(container)
-            container.append(_toc_text_run(_heading_text(entry.element), link_style))
+            text = _heading_text(entry.element)
+            if label and suffix == "tab":
+                container.append(_toc_text_run(label, link_style))
+                tab_run = make("w:r")
+                tab_run.append(copy.deepcopy(mark))        # the paragraph mark's formatting, as Word's
+                tab_run.append(make("w:tab"))
+                container.append(tab_run)
+            elif label:
+                text = f"{label} {text}"                   # a space or nothing after it: a space (measured)
+            container.append(_toc_text_run(text, link_style))
             number = omit_levels is None or not (omit_levels[0] <= level <= omit_levels[1])
             if number:
                 for run in _toc_page_runs(name, page or "", hidden):
@@ -1122,6 +1155,42 @@ class FieldOps:
             width = None
         return (width or 9026) - TOC_TAB_INSET
 
+    def _toc_labels(self: "Document") -> dict[int, tuple[str, str]]:
+        """``id(paragraph) -> (label, suffix)`` for the body's numbered paragraphs: the
+        number Word draws (docx2svg's measured counter, as the Markdown reader counts) and
+        what follows it (``tab``, ``space`` or ``nothing``).  A paragraph whose style's
+        level is tied to another style is numbered by none (Word draws no number)."""
+        from docx2svg.linebreak import ListCounters
+        from docx2svg.parse.styles import parse_numbering, parse_styles
+        from lxml.etree import tostring as serialize
+
+        from .numbering import Numbering, membership, paragraph_style_id, style_list
+
+        package = self.package
+        part, styles = package.numbering_part(), package.styles_part()
+        if not part:
+            return {}
+        parsed = parse_numbering(serialize(package.tree(part)),
+                                 parse_styles(serialize(package.tree(styles))) if styles else None)
+        numbering = Numbering(self)
+        counters: dict[bool, ListCounters] = {}
+        out = {}
+        for entry in self._index(package.document_part()).paragraphs:
+            element = entry.element
+            found = membership(self, element)
+            if found is None or found.format in (None, "none"):
+                continue
+            if found.from_style and style_list(self, paragraph_style_id(element)) is None:
+                continue
+            story = _in_text_box(element)
+            item = counters.setdefault(story, ListCounters()).item(parsed, found.num_id, found.level)
+            if not item.label:
+                continue
+            level = numbering.level(found.num_id, found.level)
+            node = level.find(_W + "suff") if level is not None else None
+            out[id(element)] = (item.label, node.get(_W + "val") if node is not None else "tab")
+        return out
+
     def _toc_bookmark(self: "Document", paragraph: Element) -> str:
         """The heading's ``_Toc`` bookmark: one starting at its text's start (Word reuses
         it), else a new one around its text."""
@@ -1152,6 +1221,98 @@ class FieldOps:
         part = self.package.document_part()
         self.package.mark_dirty(part)
         return name
+
+
+def _in_text_box(element: Element) -> bool:
+    node = element.getparent()
+    while node is not None:
+        if node.tag == _W + "txbxContent":
+            return True
+        node = node.getparent()
+    return False
+
+
+class _TocLooks:
+    """What a numbered entry's stop depends on, per TOC level (round 32, R12, measured with
+    Word's own update): the ``toc N`` styles' indents and tab stops, and the entry text's
+    face.
+
+    **The stop after the number** (``w:tab w:val="left"`` in the entry, the number then a
+    tab run): the number's end -- the line's start (left indent less hanging, plus first
+    line) plus the number's width in the entry's face -- plus :data:`TOC_NUMBER_GAP`; the
+    stop is the left indent of the first of ``toc 1`` ... ``toc 9``, *in level order*, at or
+    past that (a style the document lacks: :data:`TOC_LEVEL_STEP` per level), else that
+    point itself, rounded.  **The right stop**: none when the level's style has any tab
+    stop of its own or inherited (Word's entries rely on it), else the column's end less
+    10 twips."""
+
+    def __init__(self, document: "Document", link_style: str | None) -> None:
+        self.document = document
+        self.link_style = link_style
+        self._looks: dict[int, tuple] = {}
+        self._fonts = None
+
+    def _look(self, level: int):
+        if level not in self._looks:
+            from .effective import style_look
+
+            style = self.document.styles.find(f"toc {level}", "paragraph")
+            if style is None:
+                self._looks[level] = (None, None, None)
+            else:
+                paragraph, run = style_look(self.document, style.id)
+                linked = style_look(self.document, style.id, character_style=self.link_style)[1] \
+                    if self.link_style else run
+                self._looks[level] = (paragraph, run, linked)
+        return self._looks[level]
+
+    def has_tabs(self, level: int) -> bool:
+        paragraph = self._look(level)[0]
+        return bool(paragraph is not None and paragraph._resolved.get("tabs"))
+
+    def indent(self, level: int) -> float:
+        """A level's left indent, twips."""
+        paragraph = self._look(level)[0]
+        return paragraph.indent_left * 20 if paragraph is not None else (level - 1) * TOC_LEVEL_STEP
+
+    def number_stop(self, level: int, label: str) -> int:
+        paragraph, run, linked = self._look(level)
+        start = 0.0 if paragraph is None else (paragraph.indent_left - paragraph.hanging + paragraph.first_line) * 20
+        end = start + self._width(label, run, linked) + TOC_NUMBER_GAP
+        for other in range(1, 10):
+            indent = self.indent(other)
+            if indent >= end:
+                return round(indent)
+        return round(end)
+
+    def _width(self, text: str, run, linked) -> float:
+        """``text``'s advance in twips: the toc style's size, bold and italic; the face the
+        Hyperlink style's fonts give it (in a TOC the Hyperlink style keeps only its fonts
+        and caps: round 31)."""
+        if run is None:
+            return len(text) * 120.0
+        face = (linked.font if linked is not None else None) or run.font or "Calibri"
+        if run.caps or run.small_caps or (linked is not None and (linked.caps or linked.small_caps)):
+            text = text.upper()
+        if self._fonts is None:
+            from pathlib import Path
+
+            from docx2svg.fonts import InstalledFonts
+            from docx2svg.measure import TableAdvances
+
+            from ..layout import font_dirs_of
+
+            self._fonts = (InstalledFonts(dirs=tuple(Path(d) for d in font_dirs_of(self.document))),
+                           TableAdvances())
+        total = 0.0
+        for char in text:
+            found = None
+            for source in self._fonts:
+                found = source.advance(face, run.bold, run.italic, char)
+                if found is not None:
+                    break
+            total += found[0] / found[1] if found else 0.5
+        return total * run.size * 20
 
 
 class _Unknown(Exception):

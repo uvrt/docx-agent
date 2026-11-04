@@ -1107,6 +1107,13 @@ doc.render_svg(pages=diff.changed)     # or render_png; ids on every paragraph g
   columns, merges and lists; `preview`; per copy what was not followed, with why and fix
   calls (what `compare_blocks` still finds). Copies are named: docx-agent keeps no record
   of where a table was copied from (a record kept at copy time is an open question).
+- **Round 32 (R12-R14):** a table of contents' entry for a numbered heading carries its list
+  number as Word's own update writes it (the number, a tab run and the text, with the left
+  stop Word computes from the number's width and the `toc N` indents; a space after the
+  number for a list followed by a space or nothing), and no right dot stop where the `toc N`
+  style has a stop of its own (measured: `tools/toc_numbers_probe.py`).
+  `word_follow_sample`'s `not_followed` entries say their `kind` (`own`, `changed_by_copy`,
+  `structure`, shared with pptx-agent) and `report: "actionable"` leaves the copies' own out.
 - **Cost.** One full layout per document state, cached by the bytes' hash: `layout()` and
   `render_svg()` of the same state read one `docx2svg.convert_docx` (every page laid out
   and written as SVG; writing the SVG costs little beside the layout), tested by counting

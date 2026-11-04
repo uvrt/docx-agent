@@ -193,10 +193,14 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 #: sample in one call, with preview) adds 260 to every definition (13,459 -> 13,719), none to
 #: the core (2,458).  The guard rises to 13,720.  It is not sent strict (one optional
 #: parameter, preview): the strict set is unchanged (6 tools, 23 optional parameters).
+#: Round 32, R13: word_follow_sample's ``report`` ("all" or "actionable": the copies' own
+#: differences left out, counted) +37 to every definition (13,719 -> 13,756), none to the
+#: core (2,458).  The guard rises to 13,760.  word_follow_sample is not strict: the strict
+#: set is unchanged (6 tools, 23 optional parameters).
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 6500
-ALL_GUARD = 13720
+ALL_GUARD = 13760
 
 
 @pytest.fixture(scope="module")
