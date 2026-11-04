@@ -382,10 +382,13 @@ def word_compare_blocks(call: Any, doc: str, blocks: list[str], reference: dict,
             "sample": obj({"doc": string("Its document. Default doc.", optional=True),
                            "block": string("Its block.")}, "The revised sample, t:... or p:...."),
             "copies": array(string(), "Blocks made from it, t:... or p:....", min_items=1),
-            "preview": boolean("Report what would change, change nothing.", optional=True)},
+            "preview": boolean("Report what would change, change nothing.", optional=True),
+            "report": string("actionable: leave out the copies' own (kind own), counted.",
+                             enum=["all", "actionable"], optional=True)},
            refs=('copies[]',), group="word_style", mutates=True, documents=_compared_documents,
            reads=lambda arguments: bool(arguments.get("preview")))
-def word_follow_sample(call: Any, doc: str, sample: dict, copies: list[str], preview: bool = False) -> Result:
+def word_follow_sample(call: Any, doc: str, sample: dict, copies: list[str], preview: bool = False,
+                       report: str = "all") -> Result:
     """:meth:`Document.follow_sample <docx_agent.Document.follow_sample>`: per copy what
     changed and what was not followed, with why and the calls that make it where a tool does."""
     other = sample.get("doc") or doc
@@ -395,10 +398,10 @@ def word_follow_sample(call: Any, doc: str, sample: dict, copies: list[str], pre
     source = call.entries[other].document
     edit, data = call.document.follow_sample(sample["block"], resolve(call, copies),
                                              sample_document=source if other != doc else None,
-                                             preview=bool(preview))
+                                             preview=bool(preview), report=report or "all")
     entries = data["copies"]
     changed = [e["copy"] for e in entries if e["changed"]]
-    left = sum(len(e["not_followed"]) + e.get("more", 0) for e in entries)
+    left = sum(len(e["not_followed"]) + e.get("more", 0) + e.get("own", 0) for e in entries)
     verb = "would follow" if preview else "followed"
     summary = (f"{len(changed)} of {len(entries)} cop{'y' if len(entries) == 1 else 'ies'} {verb} {data['sample']}"
                + (f"; {left} difference(s) not followed (see not_followed)" if left else "; nothing left to follow"))

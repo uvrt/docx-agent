@@ -5,6 +5,31 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.36 -- unreleased
+
+- **Numbered headings in a table of contents** (production round 32, R12): `update_fields`
+  writes a heading's list number in its entry, as Word's own update does (measured,
+  `tools/toc_numbers_probe.py`, `tests/observations/toc-numbers-word.json`, 27 made-up
+  documents): the number (`3`, `3.1`, as the list draws it) in its own Hyperlink run, a tab
+  run in the paragraph mark's formatting, then the heading's text; a number followed by a
+  space -- or by nothing -- is the number, a space and the text in one run. A tab gets a
+  left stop in the entry: the number's end (the line's start plus its width in the entry's
+  face) plus 240 twips, moved to the left indent of the first `toc 1` ... `toc 9` style, in
+  level order, at or past it (240 twips per level for a style the document lacks), else
+  that point itself. Every one of the 27 documents' entries as Word wrote them.
+- **The right tab stop next to the style's own** (production round 32, R14): an entry gets
+  no right dot stop of its own when its `toc N` style has a tab stop (its own or inherited,
+  any alignment or leader), as Word writes it -- no second stop 0.5 pt from the style's.
+  A style with none (or one that clears its inherited stop) still gets the column's end less
+  10 twips.
+- **`not_followed` kinds** (production round 32, R13, the names pptx-agent's
+  `ppt_follow_sample` uses): every entry `word_follow_sample` leaves has a `kind`: `own`
+  (the copy's own text, lines and list membership), `changed_by_copy` (a style this
+  document lacks that Word has no built-in for), `structure` (columns, widths of another
+  column count, merges, another kind of block). `report: "actionable"` leaves the `own` ones
+  out, counted per copy in `own`; over the reply's budget the `own` ones become counts
+  before anything else is cut.
+
 ## 0.1.35 -- unreleased
 
 - **Copies follow a revised sample** (production round 31, R8): `Document.follow_sample(sample,
