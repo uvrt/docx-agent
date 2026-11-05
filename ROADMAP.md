@@ -1122,7 +1122,10 @@ doc.render_svg(pages=diff.changed)     # or render_png; ids on every paragraph g
   79 pages; the render worker kept them before), which the next layout in that process
   reuses -- from the pickle alone, every block is measured again (63 pages, one paragraph
   edited: 6 s against 9 s whole, 1 s with the measurements). Callers asking for a state
-  while it is laid out wait for that layout, unlocked where the call may let its lock go.
+  while it is laid out wait for that layout, unlocked where the call may let its lock go
+  (**R17, 0.1.40:** only there -- a caller holding the document's lock lays out on its own,
+  and a layout's owner ends it before taking the lock back: waiting under the lock
+  deadlocked; the lock order is in `docx_agent.layout`'s docstring).
   `check(pages=...)`'s `direct_formatting` and `column_fit` do only those pages' work, and
   a long table's paths are listed once (they grew with the square of the rows). Measured on
   a made-up 79-page report with 25 tables, one of 432 rows, through the tool layer: see the

@@ -13,6 +13,26 @@ Each state is laid out **from the document's last layout** (round 33: docx2svg's
 page a layout of the bytes alone), and callers asking for a state while it is laid out
 **wait for that one layout** rather than lay it out again.
 
+**Locks and waits** (round 34, R17: a wait for a layout under the document's lock hung every
+call on it).  One rule: *never wait for a layout in progress while holding the document's
+lock*.  In order, each taken only with those before it held, never the other way:
+
+1. the document's lock (ooxml-edit's ``DocumentEntry.lock``, taken by ``Session.lock`` in
+   document order; ``Call.unlocked()`` lets the call's go and takes them back in that order);
+2. the lock over the document's layouts (:func:`_keeper`: the cache, the layouts in progress,
+   the one kept for the next version; held only for a lookup or to map a layout to ids --
+   never while laying out or waiting) -- one document's at a time (:func:`adopt` takes the
+   copy's, lets it go, then the document's), and :data:`_KEEPERS_LOCK` only to make one;
+3. :data:`_RECENT_LOCK` (taken in :func:`lay_out_bytes`, with neither of the above held).
+
+A layout in progress (:class:`_Flight`) is waited for only by a caller that let the
+document's lock go to wait (``unlocked`` given and not yielding ``False``: a lone check, the
+work ahead of a change); a caller holding it -- a batch's ops, a ``read_batch``'s reads, ``word_inspect``'s
+placements, ``Document.layout()`` under the lock, ``update_fields`` -- or a caller with no
+``unlocked`` at all (a library's own thread) lays out on its own, its own snapshot.  The
+flight's owner ends its flight -- result or error -- *before* it takes the document's lock
+back.  So a flight ends whatever any lock's holder does, and no wait closes a cycle.
+
 What it answers (ROADMAP.md, "Reflow feedback"):
 
 * ``where(id)`` -- one :class:`Placement` per page and text column the paragraph (or table)
@@ -847,7 +867,10 @@ def convert(document: "Document", *, unlocked=None, current=None, **options) -> 
     after a render of the same state lays nothing out), never from a stale one: docx2svg
     lays out again from the first changed block, or the whole document where it cannot
     (:data:`docx2svg.relayout.FALLBACKS`).  **Shared**: callers asking for the same state
-    while it is laid out wait for that one layout (with ``unlocked``, waiting unlocked).
+    while it is laid out wait for that one layout -- only those that let the document's lock
+    go to wait (``unlocked`` given, not yielding ``False``); a caller holding it, or with no
+    ``unlocked`` (``Document.layout()``), lays out on its own
+    (round 34, R17: the order is in the module's docstring).
 
     ``unlocked`` (a context manager factory) runs the slow part -- docx2svg's layout of the
     bytes -- inside it, where another thread may change ``document`` (an agent tool layer
@@ -865,29 +888,44 @@ def convert(document: "Document", *, unlocked=None, current=None, **options) -> 
         cached = document._layouts.get(key)
         if cached is not None:
             return cached
-        flight = document._layout_flights.get(key)
-        leader = flight is None
-        if leader:
-            flight = document._layout_flights[key] = _Flight()
     outside = unlocked if unlocked is not None else _held
     # Taken with the bytes, before the lock is let go: another call on the document points
     # ``converter`` at its own engine, or back at none, when it ends (round 33, R16c).
     converter = document.converter
-    if leader:
-        try:
-            with outside():
-                flight.result = _lay_out(document, data, options, converter)
-        except BaseException as error:
-            flight.error = error
-            raise
-        finally:
-            with lock:
-                document._layout_flights.pop(key, None)
-            flight.done.set()
-    else:
-        with outside():
-            flight.wait()
-    raw, fonts, warnings, svgs = flight.result
+    with outside() as entered:
+        # Round 34 (R17): only a caller that let the document's lock go waits for a layout in
+        # progress (``unlocked()`` given, and not yielding ``False``: ooxml-edit's
+        # ``Call.unlocked`` yields whether it let the lock go).  One that holds it -- a batch's op,
+        # a read_batch's read, a layout under the lock (``Document.layout``) -- lays out on
+        # its own: the layout's owner takes that lock back once it is done.
+        with lock:
+            cached = document._layouts.get(key)
+            flight = None if cached is not None else document._layout_flights.get(key)
+            leader = cached is None and flight is None
+            if leader:
+                flight = document._layout_flights[key] = _Flight()
+        if cached is not None:
+            result = None
+        elif leader:
+            try:
+                flight.result = result = _lay_out(document, data, options, converter)
+            except BaseException as error:
+                flight.error = error
+                raise
+            finally:
+                # The flight ends here, before ``outside()`` takes the document's lock back:
+                # a caller holding it may be waiting for this layout (never with R17's rule,
+                # but a flight never waits on the lock it may be waited for under).
+                with lock:
+                    document._layout_flights.pop(key, None)
+                flight.done.set()
+        elif unlocked is not None and entered is not False:
+            result = flight.wait()
+        else:
+            result = _lay_out(document, data, options, converter)
+    if cached is not None:
+        return cached
+    raw, fonts, warnings, svgs = result
     # Mapped to ids once: the first caller back maps it, under the lock over the layouts
     # (never held while waiting for anything else), and the others find it cached.
     with lock:
