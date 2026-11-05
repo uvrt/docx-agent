@@ -203,8 +203,8 @@ def test_a_render_and_a_layout_lay_the_document_out_once(markup_doc, monkeypatch
     import docx2svg
 
     calls = []
-    real = docx2svg.convert_docx
-    monkeypatch.setattr(docx2svg, "convert_docx", lambda *a, **k: calls.append(1) or real(*a, **k))
+    real = docx2svg.lay_out_docx
+    monkeypatch.setattr(docx2svg, "lay_out_docx", lambda *a, **k: calls.append(1) or real(*a, **k))
     monkeypatch.setattr(docx2svg, "convert_docx_to_layout", None)
     monkeypatch.setattr(docx2svg, "convert_docx_to_svg", None)
     document = Document.open(markup_doc)

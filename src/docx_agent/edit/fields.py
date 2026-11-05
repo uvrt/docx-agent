@@ -614,16 +614,21 @@ class FieldOps:
         return EditResult(identifier, created=[identifier, *ids], renamed=renames, unknown=unknown,
                           warnings=self._empty_tocs([identifier]))
 
-    def _empty_tocs(self: "Document", identifiers: list[str] | None = None) -> list[str]:
+    def _empty_tocs(self: "Document", identifiers: list[str] | None = None, *,
+                    found: "list[tuple[str, _Found]] | None" = None) -> list[str]:
         """A warning for each table of contents (of ``identifiers``, else every one) that
         found no entries -- Word's "No table of contents entries found." -- since a TOC put in
-        before the headings it lists stays empty until the fields are updated (trial 2, N8)."""
+        before the headings it lists stays empty until the fields are updated (trial 2, N8).
+        ``found``: every field as ``(id, field)``, read already (each part scanned once)."""
+        if found is None:
+            found = [(f"fld:{self._story_of(part)}/{item.number}", item)
+                     for part in self._parts() for item in scan(part, self.package.tree(part))]
         empty = []
-        for item in self.fields():
-            if item.keyword != "TOC" or (identifiers is not None and item.id not in identifiers):
+        for identifier, item in found:
+            if item.keyword != "TOC" or (identifiers is not None and identifier not in identifiers):
                 continue
-            if item.result.strip() in ("", EMPTY_TOC):
-                empty.append(f"{item.id}: the table of contents has no entries: no heading at its levels "
+            if self._result_text(item).strip() in ("", EMPTY_TOC):
+                empty.append(f"{identifier}: the table of contents has no entries: no heading at its levels "
                              "yet; add the headings, then update the fields")
         return empty
 

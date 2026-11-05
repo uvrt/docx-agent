@@ -166,13 +166,13 @@ def test_keep_together_lays_the_document_out_once_per_batch(box, monkeypatch):
     ops = [{"tool": "word_format_table", "arguments": {"doc": doc, "table": t, "scope": "table",
                                                        "keep_together": True}} for t in tables * 2]
     laid = []
-    run = _base.Engine.__call__
+    run = _base.Engine.lay_out
 
-    def counting(self, data, options):
+    def counting(self, data, options, state=None):
         laid.append(1)
-        return run(self, data, options)
+        return run(self, data, options, state)
 
-    monkeypatch.setattr(_base.Engine, "__call__", counting)
+    monkeypatch.setattr(_base.Engine, "lay_out", counting)
     result = box.dispatch(session, "batch", {"ops": ops})
     assert result.ok and sum("taller than a page" in w for w in result.warnings) == 2
     assert len(laid) == 1                          # after the last op; each op's own would be six

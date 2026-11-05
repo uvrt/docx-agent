@@ -5,9 +5,13 @@ exactly one element of the live tree.  :class:`DocumentLayout` resolves those pa
 docx2svg's own :func:`docx2svg.paths.resolve_path` (the rules ``data-docx-path`` is counted
 by, exported for this) and keys every line by the id the paragraph has in the document.
 
-The document is laid out **once** per state: :func:`convert` calls
-:func:`docx2svg.convert_docx`, which returns the layout of every page and the pages' SVG
-together, and both ``layout()`` and ``render_svg()`` read that one conversion.
+The document is laid out **once** per state: :func:`convert` lays it out with
+:func:`docx2svg.lay_out_docx` (:func:`lay_out_bytes`) -- every page -- and both ``layout()``
+and ``render_svg()`` read that one layout, the SVG of a page drawn from it when asked for.
+Each state is laid out **from the document's last layout** (round 33: docx2svg's
+``previous``, only from the page an edit reaches until the pages line up again, page for
+page a layout of the bytes alone), and callers asking for a state while it is laid out
+**wait for that one layout** rather than lay it out again.
 
 What it answers (ROADMAP.md, "Reflow feedback"):
 
@@ -33,7 +37,10 @@ from __future__ import annotations
 
 import dataclasses
 import hashlib
+import pickle
 import re
+import threading
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any
@@ -41,6 +48,7 @@ from typing import TYPE_CHECKING, Any
 import docx2svg
 from docx2svg.paths import path_part, resolve_path
 
+from .edit.effective import PathFinder
 from .edit.ids import ParagraphEntry, TableEntry
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -211,12 +219,14 @@ class DocumentLayout:
         #: Per page: [(id or None, line)].
         self._lines: list[list[tuple[str | None, object]]] = []
         resolved: dict[tuple[str, str], str | None] = {}
+        # Every line's path resolved in this one state: each table's rows listed once.
+        paths = PathFinder()
         for page in self.pages:
             lines = []
             for line in page.text_lines():
                 key = (_part_of(document, line.path, line.part), line.path)
                 if key not in resolved:
-                    resolved[key] = _paragraph_id(document, *key)
+                    resolved[key] = _paragraph_id(document, *key, paths)
                     if resolved[key] is None:
                         self.unmapped.append(line.path)
                 lines.append((resolved[key], line))
@@ -546,8 +556,11 @@ def _part_of(document: "Document", path: str, part: str | None = None) -> str:
     return path_part(_Parts(document), path, part) or document.package.document_part()
 
 
-def _paragraph_id(document: "Document", part: str, path: str) -> str | None:
-    element = resolve_path(document.package.tree(part), path)
+def _paragraph_id(document: "Document", part: str, path: str, paths: "PathFinder | None" = None) -> str | None:
+    """The id of the paragraph ``path`` names in ``part``; ``paths``: a
+    :class:`~docx_agent.edit.effective.PathFinder` for many paths of one state at once."""
+    tree = document.package.tree(part)
+    element = paths.resolve(tree, path) if paths is not None else resolve_path(tree, path)
     if element is None or element.tag != _W + "p":
         return None
     try:
@@ -557,8 +570,9 @@ def _paragraph_id(document: "Document", part: str, path: str) -> str | None:
     return entry.id if entry is not None else None
 
 
-def _block_id(document: "Document", part: str, path: str) -> str | None:
-    element = resolve_path(document.package.tree(part), path)
+def _block_id(document: "Document", part: str, path: str, paths: "PathFinder | None" = None) -> str | None:
+    tree = document.package.tree(part)
+    element = paths.resolve(tree, path) if paths is not None else resolve_path(tree, path)
     if element is None:
         return None
     entry = document._index(part).entry_for(element)
@@ -572,12 +586,19 @@ _CACHE_SIZE = 8
 
 @dataclass
 class _Conversion:
-    """One state of the document laid out once: its layout in this API's ids, and the SVG
-    of every page, tagged with ids as they are asked for."""
+    """One state of the document laid out once: its layout in this API's ids, and what
+    drawing its pages takes -- docx2svg's layout itself, the bytes and the faces it was
+    measured with -- each page's SVG drawn when first asked for and tagged with ids."""
 
     layout: DocumentLayout
-    svgs: list[str]
+    raw: Any
+    data: bytes
+    fonts: Any
+    options: dict
     tagged: dict[int, str] = field(default_factory=dict)
+    #: Each page's SVG as docx2svg draws it (the old protocol of a ``converter``: all of
+    #: them, drawn with the layout).
+    svgs: dict[int, str] = field(default_factory=dict)
 
 
 def check_options(options: dict, method: str) -> None:
@@ -653,12 +674,180 @@ def convert_bytes(data: bytes, options: dict) -> tuple:
 convert_bytes.__ooxml_edit_task__ = True
 
 
+# -- the layout kept for the next version (round 33, R16) -----------------------------------
+#
+# A document is laid out from the layout of its version before (docx2svg's ``lay_out_docx``
+# with ``previous``): from the page an edit reaches until the pages line up again, the rest
+# taken over -- page for page the layout of the new bytes alone (docx2svg's relayout checks;
+# ``tests/test_incremental_layout.py`` here).  The layout is handed between versions as a
+# pickle of the layout and its faces (:func:`_light`: without what its flow measured, most
+# of a long document's pickle); the process that made it keeps it whole, with those
+# measurements (:data:`_RECENT`), which the next layout in that process reuses.
+
+#: The layouts this process made or read last, by a digest of their pickle (``laid_out``):
+#: the next layout handed one back in the same process does not read it again, and finds
+#: what its flow measured, which the pickle leaves out (:func:`_light`).
+#:
+#: A task takes its layout out (:func:`_taken`) and puts it back when it is done
+#: (:func:`_remember`), so no two tasks running at once hold the same layout and the same
+#: ``InstalledFonts``: laying out and drawing pages write to both, and with the GIL off
+#: (Python 3.15t) two threads of an in-process runner would write at once.  A second task
+#: asking for a layout another holds reads its own from the pickle.  Every use of the dict
+#: holds :data:`_RECENT_LOCK`.  Two are kept: a long report's, with its measurements, is
+#: about 80 MB in memory (79 pages; ``ROADMAP.md``, "Reflow feedback", round 33).
+_RECENT: dict = {}
+_RECENT_SIZE = 2
+_RECENT_LOCK = threading.Lock()
+
+
+def _light(layout):
+    """``layout`` to pickle: without what its flow measured (``layout.state.memo``, which
+    a layout of the next version reuses for the blocks that did not change -- most of a
+    long document's pickle).  The process that made it keeps it (:data:`_RECENT`)."""
+    state = getattr(layout, "state", None)
+    if state is None or not getattr(state, "memo", None):
+        return layout
+    return dataclasses.replace(layout, state=dataclasses.replace(state, memo={}))
+
+
+def _remember(blob: bytes, laid: tuple) -> None:
+    """``laid`` -- ``(layout, fonts, warnings)`` -- kept as the newest under ``blob``'s
+    digest, for the next task that brings ``blob`` back."""
+    key = hashlib.sha256(blob).digest()
+    with _RECENT_LOCK:
+        _RECENT.pop(key, None)
+        _RECENT[key] = laid
+        while len(_RECENT) > _RECENT_SIZE:
+            del _RECENT[next(iter(_RECENT))]
+
+
+def _taken(blob: bytes) -> tuple:
+    """``(layout, fonts, warnings)`` of a ``laid_out`` pickle, this task's alone: the one
+    this process holds, taken out of :data:`_RECENT` until :func:`_remember` puts it back,
+    else read from the pickle."""
+    with _RECENT_LOCK:
+        found = _RECENT.pop(hashlib.sha256(blob).digest(), None)
+    if found is None:
+        found = pickle.loads(blob)
+    return found
+
+
+def lay_out_bytes(data: bytes, options: dict, state: Any = None) -> tuple:
+    """docx2svg's layout of a document's bytes, kept for the next version: ``(laid_out,
+    facts)``, ``laid_out`` the pickle of ``(layout, fonts, warnings)`` (:func:`_light`) and
+    ``facts`` -- from an earlier version's layout -- ``changed`` (the pages whose drawing
+    changed), ``relaid`` (why it was laid out whole, docx2svg's
+    :data:`~docx2svg.relayout.FALLBACKS` code, or ``None``) and ``relaid_cause``.
+
+    ``state``: ``None``; a ``laid_out`` of these very bytes and options, handed back (not
+    laid out again: the same pickle comes back); or ``("previous", laid_out)``, the layout
+    of an earlier version, which the document is laid out again from -- with what its flow
+    measured where this process still holds it (:data:`_RECENT`), else measured again
+    (still faster than a whole layout: 63 pages, one paragraph edited, 6 s against 9 s; 1 s
+    with the measurements).  What :func:`convert` runs -- through the
+    document's :attr:`~docx_agent.Document.converter`, which may run it in another process
+    (an agent tool layer's worker pool, with a deadline)."""
+    if isinstance(state, (bytes, bytearray)):
+        return bytes(state), {"changed": None, "relaid": None, "relaid_cause": None}
+    previous = None
+    if isinstance(state, tuple) and len(state) == 2 and state[0] == "previous":
+        # Taken, not handed back: the new layout goes on with its fonts and measurements.
+        previous = _taken(state[1])[0]
+    convert_options = docx2svg.ConvertOptions(**options)
+    layout, _, fonts = docx2svg.lay_out_docx(data, convert_options, previous=previous)
+    laid = (layout, fonts, list(convert_options.warnings))
+    blob = pickle.dumps((_light(layout), fonts, laid[2]), protocol=pickle.HIGHEST_PROTOCOL)
+    _remember(blob, laid)
+    if previous is None:
+        return blob, {"changed": None, "relaid": None, "relaid_cause": None}
+    return blob, {"changed": layout.changed_pages, "relaid": layout.relaid, "relaid_cause": layout.relaid_cause}
+
+
+# A task ooxml-edit's subprocess workers may run (the mark), as :func:`convert_bytes` is.
+lay_out_bytes.__ooxml_edit_task__ = True
+
+#: The options that change what a layout draws, not where: a layout made with other values
+#: of these is the same layout (docx2svg's ``relayout.options_key`` leaves them out too).
+DRAWING_OPTIONS = frozenset({"pages", "width", "height", "glyph_size", "text", "selectable_text", "glyphs",
+                             "warnings", "coverage"})
+
+
+def layout_key(data: bytes, options: dict) -> tuple:
+    """What one layout is of: the bytes' digest and the options that change it."""
+    return (hashlib.sha256(data).digest(),
+            repr(sorted((k, v) for k, v in options.items() if k not in DRAWING_OPTIONS)))
+
+
+class _Flight:
+    """A layout in progress: callers asking for the same state wait for it (:func:`convert`)."""
+
+    def __init__(self) -> None:
+        self.done = threading.Event()
+        self.result: Any = None
+        self.error: BaseException | None = None
+
+    def wait(self) -> Any:
+        self.done.wait()
+        if self.error is not None:
+            raise self.error
+        return self.result
+
+
+def _keeper(document: "Document") -> threading.Lock:
+    """The lock over ``document``'s layouts: the cache, the layouts in progress and the
+    one kept for the next version, which concurrent callers (threads; with the GIL off,
+    really at once) share."""
+    lock = getattr(document, "_layout_lock", None)
+    if lock is None:
+        with _KEEPERS_LOCK:
+            lock = getattr(document, "_layout_lock", None)
+            if lock is None:
+                lock = threading.Lock()
+                document._layout_lock = lock
+                document._layout_flights = {}
+                document._layout_kept = None
+    return lock
+
+
+_KEEPERS_LOCK = threading.Lock()
+
+
+def kept_layout(document: "Document", data: bytes, options: dict) -> Any:
+    """The state to hand :func:`lay_out_bytes` (or the render pipeline's layout task) for
+    ``data``: the ``laid_out`` of these bytes when it is the one kept, else
+    ``("previous", laid_out)`` of the document's last layout, else ``None``."""
+    lock = _keeper(document)
+    key = layout_key(data, options)
+    with lock:
+        kept = document._layout_kept
+    if kept is None:
+        return None
+    if kept[0] == key:
+        return kept[1]
+    return ("previous", kept[1]) if kept[0][1] == key[1] else None
+
+
+def keep_layout(document: "Document", data: bytes, options: dict, laid_out: bytes) -> None:
+    """Keep ``laid_out``, the layout of ``data`` with ``options``, as the document's last:
+    the one its next version is laid out from (one per document: about 5 MB for 79 pages)."""
+    lock = _keeper(document)
+    with lock:
+        document._layout_kept = (layout_key(data, options), laid_out)
+
+
 def convert(document: "Document", *, unlocked=None, current=None, **options) -> _Conversion:
-    """The document now, laid out once by :func:`docx2svg.convert_docx` -- every page, so
-    the layout answers for all of them -- and cached by its bytes and the options.  Both
-    :func:`lay_out` and :func:`render_svg` read it, so a render and a layout of the same
-    state cost one layout.  docx2svg finds the faces Word draws itself, Office's cloud-font
-    cache among them (Aptos Display, a new document's heading face).
+    """The document now, laid out once -- every page, so the layout answers for all of
+    them -- and cached by its bytes and the options.  Both :func:`lay_out` and
+    :func:`render_svg` read it, so a render and a layout of the same state cost one layout.
+    docx2svg finds the faces Word draws itself, Office's cloud-font cache among them (Aptos
+    Display, a new document's heading face).
+
+    **Incremental** (round 33): laid out from the document's last layout
+    (:func:`lay_out_bytes`; the render tool's layouts are kept the same way, so a check
+    after a render of the same state lays nothing out), never from a stale one: docx2svg
+    lays out again from the first changed block, or the whole document where it cannot
+    (:data:`docx2svg.relayout.FALLBACKS`).  **Shared**: callers asking for the same state
+    while it is laid out wait for that one layout (with ``unlocked``, waiting unlocked).
 
     ``unlocked`` (a context manager factory) runs the slow part -- docx2svg's layout of the
     bytes -- inside it, where another thread may change ``document`` (an agent tool layer
@@ -671,17 +860,67 @@ def convert(document: "Document", *, unlocked=None, current=None, **options) -> 
     options = layout_options(document, options)
     data = document.to_bytes()
     key = cache_key(data, options)
-    cached = document._layouts.get(key)
-    if cached is not None:
-        return cached
-    converter = document.converter or convert_bytes
-    if unlocked is None:
-        raw, svgs, warnings = converter(data, dict(options))
+    lock = _keeper(document)
+    with lock:
+        cached = document._layouts.get(key)
+        if cached is not None:
+            return cached
+        flight = document._layout_flights.get(key)
+        leader = flight is None
+        if leader:
+            flight = document._layout_flights[key] = _Flight()
+    outside = unlocked if unlocked is not None else _held
+    if leader:
+        try:
+            with outside():
+                flight.result = _lay_out(document, data, options)
+        except BaseException as error:
+            flight.error = error
+            raise
+        finally:
+            with lock:
+                document._layout_flights.pop(key, None)
+            flight.done.set()
     else:
-        with unlocked():
-            raw, svgs, warnings = converter(data, dict(options))
-    owner = document if current is None or current() else type(document).open(data)
-    return keep(document, key, _Conversion(DocumentLayout(owner, raw, warnings), list(svgs)))
+        with outside():
+            flight.wait()
+    raw, fonts, warnings, svgs = flight.result
+    # Mapped to ids once: the first caller back maps it, under the lock over the layouts
+    # (never held while waiting for anything else), and the others find it cached.
+    with lock:
+        cached = document._layouts.get(key)
+        if cached is not None:
+            return cached
+        owner = document if current is None or current() else type(document).open(data)
+        conversion = _Conversion(DocumentLayout(owner, raw, warnings), raw, data, fonts, options,
+                                 svgs=dict(enumerate(svgs or (), start=1)))
+        return keep(document, key, conversion)
+
+
+@contextmanager
+def _held():
+    yield
+
+
+def _lay_out(document: "Document", data: bytes, options: dict) -> tuple:
+    """``(layout, fonts, warnings, svgs)`` of ``data``: through the document's converter --
+    its :func:`lay_out_bytes` (``converter.lay_out``), from the document's last layout --
+    or, for a converter of the old protocol (``converter(data, options) -> (layout, svgs,
+    warnings)``), whole with every page's SVG.  The layout is this caller's own copy (the
+    pickle read): the one kept for the next version is never one a caller holds."""
+    converter = document.converter
+    if converter is not None and not hasattr(converter, "lay_out"):
+        raw, svgs, warnings = converter(data, dict(options))
+        return raw, None, warnings, list(svgs)
+    state = kept_layout(document, data, options)
+    if isinstance(state, bytes):
+        blob = state                         # laid out already (a render of this state)
+    else:
+        run = converter.lay_out if converter is not None else lay_out_bytes
+        blob, _facts = run(data, dict(options), state)
+        keep_layout(document, data, options, blob)
+    raw, fonts, warnings = pickle.loads(blob)
+    return raw, fonts, list(warnings), None
 
 
 def keep(document: "Document", key: str, conversion: _Conversion) -> _Conversion:
@@ -710,12 +949,20 @@ def render_svg(document: "Document", pages: list[int] | None = None, **options) 
     """docx2svg's SVG of the pages (1-based; every page by default), every paragraph group
     carrying ``data-docx-agent-id``; from the same conversion as :func:`lay_out`."""
     conversion = convert(document, **options)
-    count = len(conversion.svgs)
+    count = len(conversion.raw.pages)
     selected = list(range(1, count + 1)) if pages is None else [n for n in pages if 1 <= n <= count]
+    missing = [n for n in selected if n not in conversion.tagged and n not in conversion.svgs]
+    if missing:
+        # Drawn from the layout as docx2svg's convert_docx draws them (page_svgs), only the
+        # pages asked for.
+        drawing = docx2svg.ConvertOptions(**{**conversion.options, "pages": missing})
+        for number, svg in zip(missing, docx2svg.page_svgs(conversion.raw, conversion.data, drawing,
+                                                           fonts=conversion.fonts)):
+            conversion.svgs[number] = svg
     out = []
     for number in selected:
         if number not in conversion.tagged:
-            conversion.tagged[number] = _tag(document, conversion.layout, conversion.svgs[number - 1])
+            conversion.tagged[number] = _tag(document, conversion.layout, conversion.svgs.pop(number))
         out.append(conversion.tagged[number])
     return out
 

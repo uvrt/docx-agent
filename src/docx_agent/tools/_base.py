@@ -27,7 +27,7 @@ from typing import Any, Callable, Iterable, Iterator, Mapping, Sequence
 
 from ooxml_edit.tools import Result, ToolError, page_list, tool as _tool
 
-from ..layout import cache_key, convert_bytes, layout_options
+from ..layout import cache_key, convert_bytes, lay_out_bytes, layout_options
 
 #: A Word document of this many pages or fewer gets its reflow in every edit's checks.
 REFLOW_PAGES = 20
@@ -40,7 +40,7 @@ STALE = "stale: call check"
 
 class Engine:
     """``document.converter``: docx-agent lays a document out through it
-    (:func:`docx_agent.layout.convert_bytes` in a worker process), so a layout, a reflow,
+    (:func:`docx_agent.layout.lay_out_bytes` in a worker process), so a layout, a reflow,
     ``update_fields``' passes and a TOC's page numbers share one deadline
     (``Limits.layout_timeout``, 30 s), and a worker still busy at it is killed and the call
     reports ``timeout``."""
@@ -57,11 +57,19 @@ class Engine:
         return self
 
     def __call__(self, data: bytes, options: dict) -> tuple:
+        return self._run(convert_bytes, data, options, timeout=self._remaining())
+
+    def lay_out(self, data: bytes, options: dict, state: Any = None) -> tuple:
+        """:func:`docx_agent.layout.lay_out_bytes` in a worker process, under the deadline:
+        the layout kept for the next version (round 33)."""
+        return self._run(lay_out_bytes, data, options, state, timeout=self._remaining())
+
+    def _remaining(self) -> float:
         remaining = self.deadline - time.monotonic()
         if remaining <= 0:
             raise ToolError("timeout", f"laying the document out did not finish within "
                             f"{self.timeout:g} s", details={"timeout": self.timeout})
-        return self._run(convert_bytes, data, options, timeout=remaining)
+        return remaining
 
 
 def engage(call: Any) -> None:
@@ -222,10 +230,12 @@ def checks(entry: Any, touched: Sequence[Any]) -> dict[str, Any]:
     return out
 
 
-def validate_delta(entry: Any) -> dict[str, Any]:
+def validate_delta(entry: Any, problems: Sequence[Any] | None = None) -> dict[str, Any]:
+    """The document's problems (``problems``, else ``validate()``'s) against those it had
+    when opened."""
     key = problem_key
     baseline = {key(problem) for problem in entry.baseline_problems}
-    problems = list(entry.document.validate())
+    problems = list(entry.document.validate()) if problems is None else list(problems)
     now = {key(problem) for problem in problems}
     return {"new": [str(p) for p in problems if key(p) not in baseline],
             "fixed": [str(p) for p in entry.baseline_problems if key(p) not in now],
