@@ -9,7 +9,7 @@ from typing import Any
 from ooxml_edit.tools import REVIEW, Result, ToolError, array, number, obj, string
 
 from ..edit.sections import STARTS
-from ._base import need, one_of, outcome, remember, resolve, short, word_tool
+from ._base import lay_out_ahead, need, update_fields_ahead, one_of, outcome, remember, resolve, short, word_tool
 from .text import find_range, text_range
 
 DOC = string("Document id.")
@@ -234,6 +234,23 @@ def field_json(field: Any) -> dict[str, Any]:
             "result": short(field.result, 160), "paragraph": field.paragraph_id}
 
 
+#: The fields whose results ``update`` reads from the layout (``Document._compute``).
+_LAID_OUT = frozenset({"PAGE", "NUMPAGES", "SECTIONPAGES", "PAGEREF", "TOC", "STYLEREF"})
+
+
+def _fields_ahead(call: Any, doc: str, action: str, kind: str | None = None,
+                  ids: list[str] | None = None, **_: Any) -> None:
+    """``word_fields``' work ahead of its change (round 33, R16c), with the document's lock
+    let go so that other calls do not wait for it: an update of page numbers or contents
+    done on a copy, its layouts kept (:func:`~._base.update_fields_ahead`); the layout a
+    page cross-reference reads (:func:`~._base.lay_out_ahead`)."""
+    if action == "update":
+        if any(found.keyword in _LAID_OUT for found in call.document._all_fields()):
+            update_fields_ahead(call, ids)
+    elif action == "insert_cross_reference" and kind == "page":
+        lay_out_ahead(call)
+
+
 @word_tool("word_fields", "Fields: list; insert a TOC, caption, cross-reference, date or other field; update all results (TOC, page numbers, REF, SEQ) after changes.",
            {"doc": DOC,
             "action": string("What to do.", enum=["list", "insert_toc", "insert_caption",
@@ -252,7 +269,7 @@ def field_json(field: Any) -> dict[str, Any]:
             "instruction": string("insert_field: the instruction, e.g. NUMPAGES.", optional=True),
             "ids": array(string(), "update: only these fields (fld:...).", optional=True)},
            refs=('after', 'before', 'at', 'ids[]'), group="word_structure", mutates=True,
-           action_roles={"list": REVIEW})
+           action_roles={"list": REVIEW}, ahead=_fields_ahead)
 def word_fields(call: Any, doc: str, action: str, after: str | None = None, before: str | None = None,
                 at: str | None = None, find: str | None = None, levels: str | None = None,
                 bookmark: str | None = None, kind: str = "text", label: str | None = None,

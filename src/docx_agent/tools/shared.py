@@ -20,7 +20,7 @@ from ..edit.properties import refreshed_app
 from ..layout import font_dirs_of, keep_layout, kept_layout, lay_out_unlocked, locale_of
 from ..layout_facts import CAP, empty_paragraphs, layout_facts, numbering_skips_level
 from .render import RENDERER
-from ._base import outcome, page, reflow_json, remember, resolve, short, validate_delta, wrap
+from ._base import cached_layout, outcome, page, reflow_json, remember, resolve, short, validate_delta, wrap
 
 KIND = "docx"
 PAGE_SIZES = ("A4", "Letter", "Legal", "A5", "A3")
@@ -473,6 +473,12 @@ def check(call: Any, doc: str, slides: list | None = None, pages: list[int] | No
     return Result(summary="Checked " + ", ".join(wanted), data=report)
 
 
+#: What a check laid out between a batch's changes says (round 33, R16c): the way out.
+BATCH_CHECK = ("check laid the document out between the batch's changes, holding it: other calls waited. "
+               "Put check after the batch's last change (or call it alone): there it lets the document go "
+               "while it lays out")
+
+
 def _layout_facts(call: Any, pages: list[int] | None, seen: bool = True) -> tuple[dict[str, Any], Any]:
     """``reflow``'s facts, and the layout they are of (``None`` where it failed); ``seen``:
     the layout a later check's ``since_last_check`` is measured from (not for ``layout``
@@ -486,7 +492,12 @@ def _layout_facts(call: Any, pages: list[int] | None, seen: bool = True) -> tupl
             # one validate and fields read and the result reports.
             layout = lay_out_unlocked(document, call.unlocked, lambda: entry.version == version)
         else:
+            laid_out = call.in_batch and cached_layout(document) is None
             layout = document.layout()
+            if laid_out:
+                # Between a batch's changes (round 33, R16c): after the last one, a check
+                # runs once the batch is done and lets the document go while it lays out.
+                call.warn(BATCH_CHECK)
     except ToolError as error:
         return {"error": f"{error.code}: {error.message}"}, None
     facts: dict[str, Any] = {"pages": layout.page_count, "complete": layout.pages_known is not None}

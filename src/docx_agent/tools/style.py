@@ -14,7 +14,7 @@ from ..edit.design import ALL_KINDS, CAPS, KINDS
 from ..edit.formatting import RUN_PROPERTIES, read_paragraph, read_run, read_shading
 from ..edit.errors import EditError
 from ..edit.styles import TAB_ALIGNMENTS, TAB_LEADERS, StyleError, read_tabs
-from ._base import need, outcome, resolve, tool_names, word_tool
+from ._base import lay_out_ahead, need, outcome, resolve, tool_names, word_tool
 from .text import PARAGRAPH_FIELDS, RUN_FIELDS, paragraphs_of, split_formatting  # noqa: F401
 
 DOC = string("Document id.")
@@ -269,7 +269,8 @@ def word_styles(call: Any, doc: str, action: str, name: str | None = None, kind:
 @word_tool("word_template", "Upgrade the document to Word's current compatibility mode, reporting the reflow. To save it as a template, save_document with format dotx.",
            {"doc": DOC,
             "action": string("What to do.", enum=["upgrade_to_modern"])},
-           batchable=False, group="word_style", mutates=True, track=False)
+           batchable=False, group="word_style", mutates=True, track=False,
+           ahead=lambda call, **_: call.document.compatibility_mode < 15 and lay_out_ahead(call))
 def word_template(call: Any, doc: str, action: str) -> Result:
     from ._base import reflow_json
 

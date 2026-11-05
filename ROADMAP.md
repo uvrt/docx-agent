@@ -1126,10 +1126,15 @@ doc.render_svg(pages=diff.changed)     # or render_png; ids on every paragraph g
   `check(pages=...)`'s `direct_formatting` and `column_fit` do only those pages' work, and
   a long table's paths are listed once (they grew with the square of the rows). Measured on
   a made-up 79-page report with 25 tables, one of 432 rows, through the tool layer: see the
-  0.1.38 changelog entry. Still under the lock: a check inside a batch, and
-  `word_fields` update, which lay out the state they hold (incremental now, so seconds);
-  letting the lock go there needs ooxml-edit (a batch's reads after its last change run
-  after the batch; a changing call laying out before it changes anything).
+  0.1.38 changelog entry. **R16c (0.1.39, ooxml-edit 0.79.0):** no layout under the lock.
+  A check after a batch's last change runs after the batch, letting the document go as a
+  lone check does (a check between a batch's changes still holds it, and says so);
+  `word_fields` update does every pass on a copy ahead of its change, the lock let go,
+  and finds each pass's layout cached under the lock (`layout.twin`/`adopt`); a page
+  cross-reference and the upgrade lay out ahead. Still under the lock: a document of 20
+  pages or fewer gets its reflow in every edit's checks (fast at that size), and the
+  first read of a new version projects the whole document to Markdown (`word_read` of one
+  paragraph: 2-3 s on the 79-page report).
 - **Cost.** One layout per document state, cached by the bytes' hash: `layout()` and
   `render_svg()` of the same state read one `docx2svg.lay_out_docx` (every page laid out;
   a page's SVG drawn from it when asked for), tested by counting the calls; since round 33

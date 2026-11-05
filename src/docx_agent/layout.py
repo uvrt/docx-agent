@@ -870,10 +870,13 @@ def convert(document: "Document", *, unlocked=None, current=None, **options) -> 
         if leader:
             flight = document._layout_flights[key] = _Flight()
     outside = unlocked if unlocked is not None else _held
+    # Taken with the bytes, before the lock is let go: another call on the document points
+    # ``converter`` at its own engine, or back at none, when it ends (round 33, R16c).
+    converter = document.converter
     if leader:
         try:
             with outside():
-                flight.result = _lay_out(document, data, options)
+                flight.result = _lay_out(document, data, options, converter)
         except BaseException as error:
             flight.error = error
             raise
@@ -902,13 +905,13 @@ def _held():
     yield
 
 
-def _lay_out(document: "Document", data: bytes, options: dict) -> tuple:
+def _lay_out(document: "Document", data: bytes, options: dict, converter: Any = None) -> tuple:
     """``(layout, fonts, warnings, svgs)`` of ``data``: through the document's converter --
     its :func:`lay_out_bytes` (``converter.lay_out``), from the document's last layout --
     or, for a converter of the old protocol (``converter(data, options) -> (layout, svgs,
     warnings)``), whole with every page's SVG.  The layout is this caller's own copy (the
-    pickle read): the one kept for the next version is never one a caller holds."""
-    converter = document.converter
+    pickle read): the one kept for the next version is never one a caller holds.
+    ``converter``: the document's when its bytes were taken."""
     if converter is not None and not hasattr(converter, "lay_out"):
         raw, svgs, warnings = converter(data, dict(options))
         return raw, None, warnings, list(svgs)
@@ -929,6 +932,49 @@ def keep(document: "Document", key: str, conversion: _Conversion) -> _Conversion
     while len(document._layouts) > _CACHE_SIZE:
         document._layouts.pop(next(iter(document._layouts)))
     return conversion
+
+
+def twin_of(document: "Document") -> dict:
+    """What a copy of ``document`` needs to lay out as it does (:func:`twin`): its font
+    folders, locale, stamping, converter and last layout.  Read under the document's lock."""
+    lock = _keeper(document)
+    with lock:
+        kept = document._layout_kept
+    return {"stamping": document.stamping, "font_dirs": getattr(document, "font_dirs", None),
+            "locale": getattr(document, "locale", None), "converter": document.converter,
+            "kept": kept}
+
+
+def twin(data: bytes, like: dict) -> "Document":
+    """A copy opened from ``data`` -- a document's bytes now -- that lays out as the document
+    does (``like``: :func:`twin_of`), from its last layout: work on it with the document's
+    lock let go, then :func:`adopt` its layouts (round 33, R16c: ``word_fields`` update)."""
+    from .edit.document import Document
+
+    copy = Document.open(data, stamping=like["stamping"])
+    copy.font_dirs = like["font_dirs"]
+    copy.locale = like["locale"]
+    copy.converter = like["converter"]
+    _keeper(copy)
+    copy._layout_kept = like["kept"]
+    return copy
+
+
+def adopt(document: "Document", copy: "Document") -> None:
+    """Keep ``copy``'s layouts (:func:`twin`) as ``document``'s: each cached under the bytes
+    and options it is of, so the document finds one wherever it comes to those very bytes
+    (an update of its fields writing what the copy's wrote), and the copy's last as the one
+    its next version is laid out from.  Correct for any state: a layout is looked up by
+    its bytes' digest."""
+    with _keeper(copy):
+        conversions = list(copy._layouts.items())
+        kept = copy._layout_kept
+    with _keeper(document):
+        for key, conversion in conversions:
+            if key not in document._layouts:
+                keep(document, key, conversion)
+        if kept is not None:
+            document._layout_kept = kept
 
 
 def lay_out_unlocked(document: "Document", unlocked, current) -> DocumentLayout:
