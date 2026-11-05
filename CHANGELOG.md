@@ -5,6 +5,23 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.40 -- unreleased
+
+- **No wait for a layout in progress while holding the document** (production round 34,
+  R17). 0.1.38's shared layouts and 0.1.39's unlocked layouts could deadlock: a lone
+  `check` laid the document out with its lock let go, then waited to take the lock back
+  *before* ending its layout's flight, while a call holding the lock -- a `read_batch`'s
+  `word_inspect` or `check`, a batch's `check`, any layout under the lock -- waited for
+  that flight. Every other call on the document then queued for the lock. Now:
+  - a flight's owner ends it (result or error) before it takes the document's lock back;
+  - only a caller that let the document's lock go waits for a layout in progress; a
+    caller holding it (and `Document.layout()`, which cannot tell) lays out on its own,
+    from the document's last layout.
+  The order of the locks and waits is written down in `docx_agent.layout`'s docstring.
+  Tests run lone checks beside a `read_batch` of `check` and `word_inspect`, a batch with
+  a check between its changes, `word_fields` update and nine callers at once, each joined
+  with a deadline (a deadlock fails the test, never hangs the run).
+
 ## 0.1.39 -- unreleased
 
 - **No layout under the lock** (production round 33, R16c; ooxml-edit 0.79.0). A `check`

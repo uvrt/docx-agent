@@ -186,7 +186,18 @@ def test_a_render_and_a_layout_of_one_state_share_its_layout(made):
 # -- shared: one layout per state in flight ---------------------------------------------------
 
 
+class _Free:
+    """A tool layer's ``unlocked()`` that let the document's lock go (yields ``True``)."""
+
+    def __enter__(self):
+        return True
+
+    def __exit__(self, *exc):
+        return False
+
+
 def test_concurrent_callers_of_one_state_share_one_layout(made):
+    """Callers that wait unlocked (a lone check's ``unlocked``) share the one layout."""
     document = Document.open(made)
     started = threading.Event()
     calls = []
@@ -204,22 +215,80 @@ def test_concurrent_callers_of_one_state_share_one_layout(made):
 
     def ask(k: int) -> None:
         try:
-            got[k] = document.layout()
+            got[k] = layout_module.lay_out_unlocked(document, _Free, None)
         except Exception as error:  # noqa: BLE001 -- reported below
             errors.append(error)
 
     try:
-        threads = [threading.Thread(target=ask, args=(k,)) for k in range(8)]
+        threads = [threading.Thread(target=ask, args=(k,), daemon=True) for k in range(8)]
         threads[0].start()
         started.wait(10)
         for thread in threads[1:]:
             thread.start()
         for thread in threads:
-            thread.join()
+            thread.join(120)
     finally:
         layout_module.lay_out_bytes = real
+    assert not any(thread.is_alive() for thread in threads)
     assert errors == [] and len(calls) == 1
     assert all(layout is got[0] for layout in got)
+
+
+def test_a_caller_holding_the_document_never_waits_for_a_layout_in_progress(made):
+    """Round 34 (R17): a layout asked for under the document's lock (``Document.layout()``,
+    or an ``unlocked()`` that kept the lock: it yields ``False``) is laid out on its own
+    while another's is in progress; the one in progress ends before its owner takes the
+    lock back (here: before its ``unlocked()`` exits)."""
+    document = Document.open(made)
+    started, release = threading.Event(), threading.Event()
+    real = layout_module.lay_out_bytes
+    order: list = []
+
+    def slow(data, options, state=None):
+        if not started.is_set():
+            started.set()
+            release.wait(60)             # the owner's layout runs until the holder is done
+        return real(data, options, state)
+
+    class Owner:
+        def __enter__(self):
+            return True
+
+        def __exit__(self, *exc):
+            order.append(("owner takes the lock back", bool(document._layout_flights)))
+            return False
+
+    class Kept:
+        def __enter__(self):
+            return False
+
+        def __exit__(self, *exc):
+            return False
+
+    layout_module.lay_out_bytes = slow
+    out: dict = {}
+    try:
+        owner = threading.Thread(target=lambda: out.setdefault(
+            "owner", layout_module.lay_out_unlocked(document, Owner, None)), daemon=True)
+        owner.start()
+        assert started.wait(60)
+
+        def holder():
+            out["held"] = layout_module.convert(document).layout      # does not wait for it
+            out["kept"] = layout_module.lay_out_unlocked(document, Kept, None)
+
+        holding = threading.Thread(target=holder, daemon=True)
+        holding.start()
+        holding.join(120)                   # a wait for the owner's layout would end here
+        assert not holding.is_alive(), "a caller holding the document waited for the layout"
+        release.set()
+        owner.join(120)
+    finally:
+        release.set()
+        layout_module.lay_out_bytes = real
+    assert not owner.is_alive()
+    assert out["held"].page_count == out["kept"].page_count == out["owner"].page_count
+    assert order == [("owner takes the lock back", False)]
 
 
 def test_a_failed_layout_fails_every_caller_waiting_for_it_and_is_not_kept(made):
