@@ -291,14 +291,11 @@ def test_check_reports_the_spaces_english_does_not_want():
 
 
 def test_check_is_scoped_to_a_range(box):
-    from test_scoped_check import scoped_tools
-
     document = french("Un : deux", "Trois : quatre", spaced=False)
     second = document.paragraphs()[1].id
-    with Toolbox(scoped_tools(), formats=[docx_format()], groups=GROUPS, workers=0) as toolbox:
-        session = _session(toolbox, document)
-        report = _ok(toolbox, session, "check", doc="d1", range=[second]).data["layout"]
-        assert [e["para"] for e in report["punctuation_spacing"]] == [second]
+    session = _session(box, document)
+    report = _ok(box, session, "check", doc="d1", range=[second]).data["layout"]
+    assert [e["para"] for e in report["punctuation_spacing"]] == [second]
 
 
 def test_a_paragraph_lists_ten_marks_and_counts_the_rest():

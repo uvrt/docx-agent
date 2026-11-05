@@ -1,0 +1,211 @@
+{
+ "proofing": {
+  "fr": [
+   "Bonjour: le monde.",
+   "Vraiment? Oui.",
+   "Attention! Oui.",
+   "Premier; second.",
+   "Il a dit «bonjour» hier."
+  ],
+  "fr-FR": [
+   "Bonjour: le monde.",
+   "Vraiment? Oui.",
+   "Attention! Oui.",
+   "Premier; second.",
+   "Il a dit «bonjour» hier."
+  ],
+  "fr-CH": [
+   "Bonjour: le monde.",
+   "Vraiment? Oui.",
+   "Attention! Oui.",
+   "Premier; second.",
+   "Il a dit «bonjour» hier."
+  ],
+  "fr-CA": [
+   "Il a dit «bonjour» hier."
+  ],
+  "fr-BE": [],
+  "fr-LU": [],
+  "fr-MC": [],
+  "en-US": [
+   "Bonjour : le monde.",
+   "Bonjour{U+00A0}: le monde.",
+   "Bonjour{U+202F}: le monde.",
+   "Vraiment ? Oui.",
+   "Vraiment{U+00A0}? Oui.",
+   "Vraiment{U+202F}? Oui.",
+   "Attention ! Oui.",
+   "Attention{U+00A0}! Oui.",
+   "Attention{U+202F}! Oui.",
+   "Premier ; second.",
+   "Premier{U+00A0}; second.",
+   "Premier{U+202F}; second."
+  ],
+  "en-GB": [
+   "Bonjour : le monde.",
+   "Bonjour{U+00A0}: le monde.",
+   "Bonjour{U+202F}: le monde.",
+   "Vraiment ? Oui.",
+   "Vraiment{U+00A0}? Oui.",
+   "Vraiment{U+202F}? Oui.",
+   "Attention ! Oui.",
+   "Attention{U+00A0}! Oui.",
+   "Attention{U+202F}! Oui.",
+   "Premier ; second.",
+   "Premier{U+00A0}; second.",
+   "Premier{U+202F}; second."
+  ],
+  "de-DE": [
+   "Bonjour : le monde.",
+   "Bonjour{U+00A0}: le monde.",
+   "Bonjour{U+202F}: le monde.",
+   "Vraiment ? Oui.",
+   "Vraiment{U+00A0}? Oui.",
+   "Vraiment{U+202F}? Oui.",
+   "Attention ! Oui.",
+   "Attention{U+00A0}! Oui.",
+   "Attention{U+202F}! Oui.",
+   "Premier ; second.",
+   "Premier{U+00A0}; second.",
+   "Premier{U+202F}; second."
+  ],
+  "nl-NL": [
+   "Bonjour : le monde.",
+   "Bonjour{U+00A0}: le monde.",
+   "Bonjour{U+202F}: le monde.",
+   "Vraiment ? Oui.",
+   "Vraiment{U+00A0}? Oui.",
+   "Vraiment{U+202F}? Oui.",
+   "Attention ! Oui.",
+   "Attention{U+00A0}! Oui.",
+   "Attention{U+202F}! Oui.",
+   "Premier ; second.",
+   "Premier{U+00A0}; second.",
+   "Premier{U+202F}; second."
+  ],
+  "es-ES": [
+   "Bonjour : le monde.",
+   "Bonjour{U+00A0}: le monde.",
+   "Bonjour{U+202F}: le monde.",
+   "Vraiment ? Oui.",
+   "Vraiment{U+00A0}? Oui.",
+   "Vraiment{U+202F}? Oui.",
+   "Attention ! Oui.",
+   "Attention{U+00A0}! Oui.",
+   "Attention{U+202F}! Oui.",
+   "Premier ; second.",
+   "Premier{U+00A0}; second.",
+   "Premier{U+202F}; second.",
+   "Il a dit « bonjour » hier.",
+   "Il a dit «{U+00A0}bonjour{U+00A0}» hier.",
+   "Il a dit «{U+202F}bonjour{U+202F}» hier."
+  ],
+  "it-IT": [
+   "Bonjour : le monde.",
+   "Bonjour{U+00A0}: le monde.",
+   "Bonjour{U+202F}: le monde.",
+   "Vraiment ? Oui.",
+   "Vraiment{U+00A0}? Oui.",
+   "Vraiment{U+202F}? Oui.",
+   "Attention ! Oui.",
+   "Attention{U+00A0}! Oui.",
+   "Attention{U+202F}! Oui.",
+   "Premier ; second.",
+   "Premier{U+00A0}; second.",
+   "Premier{U+202F}; second.",
+   "Il a dit « bonjour » hier.",
+   "Il a dit «{U+00A0}bonjour{U+00A0}» hier.",
+   "Il a dit «{U+202F}bonjour{U+202F}» hier."
+  ],
+  "pt-PT": [
+   "Bonjour : le monde.",
+   "Bonjour{U+00A0}: le monde.",
+   "Bonjour{U+202F}: le monde.",
+   "Vraiment ? Oui.",
+   "Vraiment{U+00A0}? Oui.",
+   "Vraiment{U+202F}? Oui.",
+   "Attention ! Oui.",
+   "Attention{U+00A0}! Oui.",
+   "Attention{U+202F}! Oui.",
+   "Premier ; second.",
+   "Premier{U+00A0}; second.",
+   "Premier{U+202F}; second.",
+   "Il a dit « bonjour » hier.",
+   "Il a dit «{U+00A0}bonjour{U+00A0}» hier.",
+   "Il a dit «{U+202F}bonjour{U+202F}» hier."
+  ]
+ },
+ "edges_fr": {
+  "flagged": [
+   "Rendez-vous à 12:30 demain.",
+   "Le ratio est 1:2 ici.",
+   "Quoi?! Non.",
+   "Non!!! Jamais.",
+   "Il hésite...? Non.",
+   "Fin?",
+   "Titre:",
+   "Il a dit « oui »!",
+   "Bonjour :le monde.",
+   "Le mot « déjà» ici.",
+   "Le mot «déjà » ici.",
+   "L’API v2:beta tourne.",
+   "x?y"
+  ],
+  "passed": [
+   "Voir http://example.com/page pour plus.",
+   "Le fichier C:\\dossier est vide.",
+   "Quoi ?! Non.",
+   "Le point (?) reste.",
+   "Sourire :-) oui.",
+   "Mot{tab}: tab."
+  ]
+ },
+ "autoformat": {
+  "fr-FR": [
+   "Il a dit «{U+00A0}bonjour{U+00A0}» hier.",
+   "Il a dit «bonjour» hier.",
+   "Vraiment? Oui : non !"
+  ],
+  "fr-CA": [
+   "Il a dit «{U+00A0}bonjour{U+00A0}» hier.",
+   "Il a dit «bonjour» hier.",
+   "Vraiment? Oui : non !"
+  ],
+  "fr-CH": [
+   "Il a dit «{U+00A0}bonjour{U+00A0}» hier.",
+   "Il a dit «bonjour» hier.",
+   "Vraiment? Oui : non !"
+  ],
+  "fr-BE": [
+   "Il a dit «{U+00A0}bonjour{U+00A0}» hier.",
+   "Il a dit «bonjour» hier.",
+   "Vraiment? Oui : non !"
+  ]
+ },
+ "line_breaks": {
+  "ordinary": {
+   "lines_starting_with_a_mark": {
+    "!": 1,
+    "?": 1,
+    ":": 1,
+    ";": 1,
+    "»": 1
+   }
+  },
+  "U+00A0": {
+   "lines_starting_with_a_mark": {}
+  },
+  "U+202F": {
+   "lines_starting_with_a_mark": {}
+  }
+ },
+ "language": {
+  "docDefaults fr-FR": "french",
+  "Normal fr-FR": "french",
+  "Normal fr-FR, run en-GB": "english uk",
+  "docDefaults fr-FR, Normal de-DE": "german",
+  "themeFontLang fr-FR only": "belgian dutch",
+  "themeFontLang fr-FR, docDefaults en-US": "english us",
+  "none": "belgian dutch"
+ }
+}
