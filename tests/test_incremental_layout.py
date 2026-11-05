@@ -19,6 +19,10 @@ from docx_agent import Document
 from docx_agent import layout as layout_module
 from docx_agent.layout_facts import layout_facts
 
+# What each test compares holds with whatever faces the layout finds: run where Office's
+# faces are absent too (CI), laid out with the stand-ins docx2svg picks.
+pytestmark = pytest.mark.any_faces
+
 WORDS = ("lantern meadow river stone harbour quiet orchard copper valley signal morning ledger window "
          "garden timber bridge market evening canvas thread pebble summit").split()
 
@@ -349,13 +353,17 @@ def test_concurrent_checks_of_one_version_lay_it_out_once_unlocked(made, monkeyp
 
     laid = []
     started = threading.Event()
+    ended: list = []
     run = _base.Engine.lay_out
 
     def slow(self, data, options, state=None):
         laid.append(1)
         started.set()
-        time.sleep(0.5)
-        return run(self, data, options, state)
+        time.sleep(1.0)
+        try:
+            return run(self, data, options, state)
+        finally:
+            ended.append(time.perf_counter())
 
     monkeypatch.setattr(_base.Engine, "lay_out", slow)
     with _toolbox(workers=0) as box:
@@ -372,12 +380,11 @@ def test_concurrent_checks_of_one_version_lay_it_out_once_unlocked(made, monkeyp
         started.wait(30)
         for thread in threads[1:]:
             thread.start()
-        began = time.perf_counter()
         read = box.dispatch(session, "word_read", {"doc": doc, "range": first})
-        waited = time.perf_counter() - began
+        read_at = time.perf_counter()
         for thread in threads:
             thread.join()
-    assert read.ok and waited < 0.5
+    assert read.ok and read_at < ended[0]          # read while the layout went on
     assert all(r.ok for r in results) and len(laid) == 1
     assert len({r.data["reflow"]["pages"] for r in results}) == 1
 
