@@ -122,7 +122,9 @@ takes its targets as one list with the values for all, so it is ``calls``, not `
     ``unknown_from``: the page the layout stopped at, when it was made to stop.
 
 Each list holds at most :data:`CAP` entries, the most telling first; ``<fact>_left_out``
-counts the rest.  ``pages`` (``check``'s) keeps the entries on those pages.
+counts the rest.  ``pages`` (``check``'s) keeps the entries on those pages; ``scope``
+(``check``'s ``range``, round 35: :class:`docx_agent.scope.Scope`) the entries about its
+blocks, on their pages.
 """
 
 from __future__ import annotations
@@ -146,6 +148,7 @@ from .layout import PX_PER_PT, _block_id, _in_body, _story_kind
 if TYPE_CHECKING:  # pragma: no cover
     from .edit.document import Document
     from .layout import DocumentLayout
+    from .scope import Scope
 
 _W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 _WP = "{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}"
@@ -184,14 +187,22 @@ def _pt(px) -> float:
 
 
 def layout_facts(layout: "DocumentLayout", *, pages: Iterable[int] | None = None,
-                 min_size: float | None = None, styles: list[str] | None = None) -> dict[str, Any]:
-    """The facts the module lists, of ``layout`` (and the document state it is of)."""
-    return _Facts(layout, pages, min_size, styles).run()
+                 min_size: float | None = None, styles: list[str] | None = None,
+                 scope: "Scope | None" = None) -> dict[str, Any]:
+    """The facts the module lists, of ``layout`` (and the document state it is of).
+    ``scope`` (round 35, R18: ``check``'s ``range``, :class:`docx_agent.scope.Scope`) keeps
+    the entries about its blocks (:meth:`Scope.about`), and ``smallest_text`` measures its
+    paragraphs' text only; ``pages`` is then the scope's pages."""
+    return _Facts(layout, pages, min_size, styles, scope).run()
 
 
 class _Facts:
-    def __init__(self, layout: "DocumentLayout", pages, min_size, styles) -> None:
+    def __init__(self, layout: "DocumentLayout", pages, min_size, styles, scope=None) -> None:
         self.layout = layout
+        self.scope = scope
+        #: The scope's paragraphs, canonical (a line's key is matched through it).
+        self.scoped = (None if scope is None else
+                       {layout._canon(identifier) for identifier in scope.paragraphs})
         self.document: "Document" = layout._document
         #: The paths of this one state, each table's rows listed once (round 33).
         self.paths = PathFinder()
@@ -279,8 +290,9 @@ class _Facts:
                     best = (page, line.top)
         return best
 
-    @staticmethod
-    def capped(entries: list, name: str, out: dict) -> None:
+    def capped(self, entries: list, name: str, out: dict) -> None:
+        if self.scope is not None:
+            entries = [entry for entry in entries if self.scope.about(entry)]
         out[name] = entries[:CAP]
         if len(entries) > CAP:
             out[f"{name}_left_out"] = len(entries) - CAP
@@ -319,6 +331,8 @@ class _Facts:
             if self.wanted is not None and number not in self.wanted:
                 continue
             for key, line in lines:
+                if self.scoped is not None and (key is None or self.layout._canon(key) not in self.scoped):
+                    continue
                 kind = _kind(line)
                 for span in line.spans:
                     if span.kind not in ("text", "label") or span.vertical_align in ("superscript", "subscript"):
@@ -495,8 +509,9 @@ class _Facts:
         self.capped(entries, "styles_not_allowed", out)
         out["styles_unknown"] = unknown
 
-    @staticmethod
-    def _count(groups: dict, kind: str, style_id: str, identifier: str) -> None:
+    def _count(self, groups: dict, kind: str, style_id: str, identifier: str) -> None:
+        if self.scope is not None and not self.scope.holds(identifier):
+            return
         groups.setdefault((kind, style_id), {"blocks": []})["blocks"].append(identifier)
 
     def _table_pages(self, identifier: str) -> list[int]:
