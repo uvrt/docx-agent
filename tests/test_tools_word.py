@@ -940,7 +940,8 @@ def test_check_is_sent_without_a_decks_parameters_and_still_refuses_them(box, se
     """Round 23, V3: the Word toolbox's check has no slides, boxes, spacing or contrast; an
     older prompt that passes one gets the refusal it always got (slides: read as pages)."""
     sent = next(d for d in box.definitions("anthropic", defer=False) if d["name"] == "check")
-    assert set(sent["input_schema"]["properties"]) == {"doc", "pages", "include", "min_size", "styles"}
+    assert set(sent["input_schema"]["properties"]) == {"doc", "pages", "include", "min_size", "styles",
+                                                         "range", "copies"}
     d = open_doc(session)
     refused = fails(box, session, "check", "invalid_arguments", doc=d, boxes=True)
     assert refused.field == "boxes" and refused.message == "boxes is for decks; for a document use include"
@@ -959,7 +960,7 @@ def test_find_replace_and_render_are_sent_without_a_decks_parameters(box, sessio
     sent = {d["name"]: d["input_schema"]["properties"] for d in box.definitions("anthropic", defer=False)}
     assert set(sent["find_text"]) == {"doc", "text", "regex", "range", "stories", "cursor"}
     assert set(sent["replace_text"]) == {"doc", "find", "replace", "expect", "regex", "range", "stories"}
-    assert set(sent["render"]) == {"doc", "pages", "width", "sheet"}
+    assert set(sent["render"]) == {"doc", "pages", "width", "sheet", "range"}
     assert sent["find_text"]["stories"]["enum"] == ["body", "all"]
     assert "scope" not in sent["undo"] and "clean" in sent["save_document"]
     d = open_doc(session)

@@ -8,15 +8,13 @@ it follows its reference, what differs (with its fixes and kind), and where the 
 example text is still in it; each comparison is kept by what both sides hold, so an edit
 elsewhere finds it kept.
 
-The shared definitions of ``check`` and ``render`` are ooxml-edit's.  Until they carry
-``range`` and ``copies``, :func:`scoped_tools` adds them here as ooxml-edit is to (the
-parameters below, the reference's document locked with the copy's); with an ooxml-edit that
-has them, the toolbox's own are used.  Every document here is made up.
+The shared definitions of ``check`` and ``render`` are ooxml-edit's (``range`` and
+``copies`` since 0.81.0, the reference's document locked with the copy's).  Every document
+here is made up.
 """
 
 from __future__ import annotations
 
-import copy as _copy
 import threading
 import time
 
@@ -24,8 +22,7 @@ import pytest
 
 pytest.importorskip("ooxml_edit.tools.shared", reason="needs ooxml-edit (the shared tools)")
 
-from ooxml_edit.tools import Toolbox, shared  # noqa: E402
-from ooxml_edit.tools.registry import array, obj, string  # noqa: E402
+from ooxml_edit.tools import Toolbox  # noqa: E402
 
 from docx_agent import Document  # noqa: E402
 from docx_agent.edit import copies as copies_module  # noqa: E402
@@ -35,44 +32,9 @@ from docx_agent.validate import Problem, check as validate_package, problems_in 
 
 pytestmark = pytest.mark.any_faces
 
-_RANGE = array(string(), "Documents: blocks, spans p:A..t:B or sections s:2; their facts, pages.",
-               optional=True)
-_COPIES = array(obj({"blocks": string("The copy's block or span."),
-                     "reference": obj({"doc": string("Its document. Default doc.", optional=True),
-                                       "block": string("Its block or span.")}, "What it was made from.")}),
-                "Documents: copies compared with their reference.", optional=True)
-
-
-def _documents(arguments) -> list[str]:
-    out = [arguments["doc"]] if isinstance(arguments.get("doc"), str) else []
-    for item in arguments.get("copies") or []:
-        reference = item.get("reference") if isinstance(item, dict) else None
-        other = reference.get("doc") if isinstance(reference, dict) else None
-        if isinstance(other, str) and other and other not in out:
-            out.append(other)
-    return out
-
-
-def scoped_tools() -> list:
-    """The Word tools, ``check`` and ``render`` with ``range`` (and ``check`` with ``copies``)."""
-    out = []
-    for tool in TOOLS:
-        if tool.name in ("check", "render") and "range" not in tool.schema["properties"]:
-            spec = _copy.copy(shared.SPECS[tool.name])
-            spec.params = {**spec.params, "range": _RANGE}
-            spec.kind_fields = {**spec.kind_fields, "range": ("docx",)}
-            if tool.name == "check":
-                spec.params["copies"] = _COPIES
-                spec.kind_fields["copies"] = ("docx",)
-                spec.documents = _documents
-            tool = spec.make(dict(tool.handlers))
-        out.append(tool)
-    return out
-
-
 @pytest.fixture
 def box():
-    with Toolbox(scoped_tools(), formats=[FORMAT], groups=GROUPS, workers=0) as toolbox:
+    with Toolbox(TOOLS, formats=[FORMAT], groups=GROUPS, workers=0) as toolbox:
         yield toolbox
 
 
@@ -297,7 +259,7 @@ def test_scoped_checks_lone_and_in_a_read_batch_all_finish(made, monkeypatch):
         return run(engine, data, options, state)
 
     monkeypatch.setattr(_base.Engine, "lay_out", slow)
-    with Toolbox(scoped_tools(), formats=[FORMAT], groups=GROUPS, workers=0) as toolbox:
+    with Toolbox(TOOLS, formats=[FORMAT], groups=GROUPS, workers=0) as toolbox:
         session = toolbox.session()
         d1 = session.open(data, "report.docx")
         scoped_check = {"doc": d1, "range": [_span(chapters[1])]}
