@@ -5,6 +5,14 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## Unreleased
+
+- `ooxml-edit>=0.81.0` (was 0.79.0): its shared `check` carries `range` and `copies` and
+  its `render` `range` (production round 35, R18/R19), so 0.1.41's scoped checks, scoped
+  renders and copies reach the model. The tests use the toolbox's own definitions (no
+  longer adding them); offline tokens +229 to the core (2,642 -> 2,871) and to every
+  definition (13,939 -> 14,168), a reviewer's core 2,746 and everything 8,037.
+
 ## 0.1.41 -- unreleased
 
 - **`check` and `render` on some blocks** (production round 35, R18). `check(range=[...])`
