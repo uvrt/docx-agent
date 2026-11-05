@@ -1138,6 +1138,16 @@ doc.render_svg(pages=diff.changed)     # or render_png; ids on every paragraph g
   pages or fewer gets its reflow in every edit's checks (fast at that size), and the
   first read of a new version projects the whole document to Markdown (`word_read` of one
   paragraph: 2-3 s on the 79-page report).
+- **Round 35 (R18, R19):** `check` and `render` on some blocks: `range`, one or several
+  of `word_read`'s range forms; the facts about the blocks on the pages they fall on
+  (`docx_agent.scope`: a fact is about its subject -- `para`, `paras`, `ids`, `table`,
+  `drawing`, `blocks` -- else about its page), the problems found in them
+  (`validate.problems_in`), each range's pages; `render` draws those pages. Copies against
+  their reference (`docx_agent.edit.copies`): blocks paired as a cell's paragraphs are,
+  differences with kinds and fixes, example text defined as the reference's sentences of
+  three words or twenty characters outside its header rows; each comparison kept by the
+  digests of both sides' blocks and styles, not the version. The definitions are
+  ooxml-edit's shared ones (`range`, `copies` to be added there).
 - **Cost.** One layout per document state, cached by the bytes' hash: `layout()` and
   `render_svg()` of the same state read one `docx2svg.lay_out_docx` (every page laid out;
   a page's SVG drawn from it when asked for), tested by counting the calls; since round 33

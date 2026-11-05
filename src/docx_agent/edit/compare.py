@@ -76,8 +76,10 @@ at 96 dpi); a column dragged by hand moves by more.
 from __future__ import annotations
 
 from collections import Counter
+from contextlib import contextmanager
+from contextvars import ContextVar
 from difflib import SequenceMatcher
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Iterator
 
 from . import effective as _effective
 from . import text as _text
@@ -155,6 +157,12 @@ def compare_blocks(document: "Document", blocks: list[str], reference: str,
     ``{"reference", "compared", "same", "differences"}``, each difference
     ``{"block", "property", "cells" | "rows" | "paragraphs", "value", "reference", "fix"}``
     (the module says what each is)."""
+    with styles_read():
+        return _compare_blocks(document, blocks, reference, reference_document)
+
+
+def _compare_blocks(document: "Document", blocks: list[str], reference: str,
+                    reference_document: "Document | None") -> dict[str, Any]:
     source = _Block(reference_document or document, reference)
     out: list[dict] = []
     same: list[str] = []
@@ -276,19 +284,58 @@ def _close(a, b) -> bool:
     return a == b
 
 
+#: Within one comparison (:func:`styles_read`), what a document's style sheet answered,
+#: by ``(id(document), question)``: the style sheet is read for every paragraph compared --
+#: each read lists every style -- and does not change while a comparison runs (round 35,
+#: R19: 6 copies of 10 blocks, 13 s, nearly all of it here).
+_STYLES_READ: ContextVar["dict | None"] = ContextVar("compare_styles_read", default=None)
+
+
+@contextmanager
+def styles_read() -> Iterator[None]:
+    """Within the block, each document's style sheet answers each question once (nested:
+    the outermost block's answers).  Only around reading: nothing may change a style sheet
+    inside it."""
+    if _STYLES_READ.get() is not None:
+        yield
+        return
+    token = _STYLES_READ.set({})
+    try:
+        yield
+    finally:
+        _STYLES_READ.reset(token)
+
+
+def _answered(document: "Document", question: tuple, answer):
+    read = _STYLES_READ.get()
+    if read is None:
+        return answer()
+    key = (id(document), *question)
+    if key not in read:
+        read[key] = answer()
+    return read[key]
+
+
 def _style_name(document: "Document", style_id: str | None) -> str | None:
     if style_id is None:
         return None
-    found = next((s for s in document.styles if s.id == style_id), None)
-    return found.name if found is not None else style_id
+
+    def answer() -> str | None:
+        found = next((s for s in document.styles if s.id == style_id), None)
+        return found.name if found is not None else style_id
+
+    return _answered(document, ("name", style_id), answer)
 
 
 def _has_style(document: "Document", name: str, kind: str) -> bool:
-    try:
-        document.styles.resolve(name, kind)
-        return True
-    except Exception:  # noqa: BLE001 -- a style the document neither has nor would add
-        return False
+    def answer() -> bool:
+        try:
+            document.styles.resolve(name, kind)
+            return True
+        except Exception:  # noqa: BLE001 -- a style the document neither has nor would add
+            return False
+
+    return _answered(document, ("has", name, kind), answer)
 
 
 def _tables(block: _Block, source: _Block) -> list[dict]:
@@ -639,9 +686,12 @@ def _paragraph_values(document: "Document", paragraph) -> dict[str, Any]:
 
 
 def _default_style(document: "Document") -> str | None:
-    found = next((s for s in document.styles if getattr(s, "kind", None) == "paragraph"
-                  and getattr(s, "default", False)), None)
-    return found.id if found is not None else None
+    def answer() -> str | None:
+        found = next((s for s in document.styles if getattr(s, "kind", None) == "paragraph"
+                      and getattr(s, "default", False)), None)
+        return found.id if found is not None else None
+
+    return _answered(document, ("default",), answer)
 
 
 def _paragraph_value(effective, name: str):

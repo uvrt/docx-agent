@@ -42,6 +42,7 @@ from __future__ import annotations
 import re
 from collections import Counter
 from dataclasses import dataclass
+from typing import Any
 
 from lxml import etree
 
@@ -579,3 +580,101 @@ def _comment_part_problems(package: WordPackage, roots: dict[str, Element]) -> l
             if raw not in durable_ids:
                 out.append(Problem("comment-extensible-unknown", main, raw))
     return out
+
+
+# -- problems in some blocks (round 35, R18) -----------------------------------------------------
+
+#: The problems found again in a block alone: what its own XML holds.
+_LOCAL_CHECKS = ("_order_problems", "_revision_problems", "_table_problems")
+
+#: Per code, the element and attribute a problem's ``detail`` is the value of: a problem is
+#: in some blocks when one of their elements carries it (``None``: any attribute; a tuple of
+#: tags: any of them).  ``casefold``: names compared as Word compares bookmark names.
+_HELD_BY = {
+    "paraid-repeated": ((_W + "p", _W + "tr"), PARA_ID),
+    "paraid-out-of-range": ((_W + "p", _W + "tr"), PARA_ID),
+    "textid-without-paraid": ((_W + "p", _W + "tr"), TEXT_ID),
+    "textid-out-of-range": ((_W + "p", _W + "tr"), TEXT_ID),
+    "bookmark-unpaired": ((_W + "bookmarkStart", _W + "bookmarkEnd"), _W + "id"),
+    "bookmark-name-invalid": ((_W + "bookmarkStart",), _W + "name"),
+    "bookmark-name-repeated": ((_W + "bookmarkStart",), _W + "name"),
+    "comment-range-unpaired": ((_W + "commentRangeStart", _W + "commentRangeEnd"), _W + "id"),
+    "comment-reference-without-comment": ((_W + "commentReference",), _W + "id"),
+    "footnote-reference-without-note": ((_W + "footnoteReference",), _W + "id"),
+    "endnote-reference-without-note": ((_W + "endnoteReference",), _W + "id"),
+    "docpr-id-repeated": ((_WP + "docPr",), "id"),
+    "numbering-num-missing": ((_W + "numId",), _W + "val"),
+    "numbering-level-out-of-range": ((_W + "ilvl",), _W + "val"),
+    "revision-id-repeated": (tuple(_RECORDS), _W + "id"),
+    "move-unpaired": ((_W + "moveFromRangeStart", _W + "moveToRangeStart"), _W + "name"),
+    "relationship-id-unknown": (None, None),
+}
+
+
+def problems_in(problems: "list[Problem]", part: str, roots: "list[Element]") -> "list[Problem]":
+    """The ``problems`` (of the whole package, :func:`check`'s) that are in ``roots`` --
+    blocks or paragraphs of ``part``: what one of their elements carries (a repeated
+    paraId, a missing style a paragraph names, an unpaired bookmark's mark, ...) or what
+    the check finds again in them alone (children out of order, text in a deletion, a cell
+    not ending in a paragraph).  A problem of the package, of another part or of the part
+    as a whole (a field begun and never ended) is in none."""
+    if not roots or not problems:
+        return []
+    local: set[tuple[str, str]] = set()
+    for root in roots:
+        for name in _LOCAL_CHECKS:
+            local |= {(p.code, p.detail) for p in globals()[name](part, root)}
+    values: dict[tuple[Any, Any], set[str]] = {}
+    any_value: set[str] = set()
+    styles: set[str] = set()
+    authorless: set[str] = set()
+    moves: set[str] = set()
+    for root in roots:
+        for node in root.iter():
+            tag = node.tag
+            if not isinstance(tag, str):
+                continue
+            for attribute, value in node.attrib.items():
+                values.setdefault((tag, attribute), set()).add(value)
+                if attribute.startswith(_R):
+                    any_value.add(value)
+            local_name = tag.rpartition("}")[2]
+            if local_name in ("pStyle", "rStyle", "tblStyle"):
+                styles.add(f"{local_name} {node.get(_W + 'val')}")
+            if tag in _RECORDS and node.get(_W + "author") is None:
+                authorless.add(local_name)
+            if local_name in ("moveFromRangeStart", "moveFromRangeEnd", "moveToRangeStart", "moveToRangeEnd"):
+                moves.add(f"{'from' if 'From' in local_name else 'to'} {node.get(_W + 'id') or ''}")
+
+    def held(problem: Problem) -> bool:
+        if (problem.code, problem.detail) in local:
+            return True
+        if problem.code == "style-missing":
+            return problem.detail in styles
+        if problem.code == "revision-without-author":
+            return problem.detail in authorless
+        if problem.code == "move-range-unpaired":
+            return problem.detail in moves
+        rule = _HELD_BY.get(problem.code)
+        if rule is None:
+            return False
+        tags, attribute = rule
+        if tags is None:
+            return problem.detail in any_value
+        wanted = problem.detail.casefold() if problem.code == "bookmark-name-repeated" else problem.detail.upper()
+        for tag in tags:
+            for value in values.get((tag, attribute), ()):
+                if (value.casefold() if problem.code == "bookmark-name-repeated" else value.upper()) == wanted:
+                    return True
+        return False
+
+    story = {part}
+    return [p for p in problems if (p.part in story or p.code in _BODY_WIDE) and held(p)]
+
+
+#: Codes reported against the main part although their marks may be in any story: looked
+#: for in the blocks all the same.
+_BODY_WIDE = frozenset({"bookmark-unpaired", "bookmark-name-invalid", "bookmark-name-repeated",
+                        "comment-range-unpaired", "comment-reference-without-comment",
+                        "footnote-reference-without-note", "endnote-reference-without-note",
+                        "docpr-id-repeated", "revision-id-repeated"})

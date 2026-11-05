@@ -19,7 +19,9 @@ from ..edit.document import Document
 from ..edit.properties import refreshed_app
 from ..layout import font_dirs_of, keep_layout, kept_layout, lay_out_unlocked, locale_of
 from ..layout_facts import CAP, empty_paragraphs, layout_facts, numbering_skips_level
+from ..scope import MAX_RANGES, Scope, ranges_of
 from .render import RENDERER
+from .scoped import compare_copies, problems_in_scope, range_pages
 from ._base import cached_layout, outcome, page, reflow_json, remember, resolve, short, validate_delta, wrap
 
 KIND = "docx"
@@ -290,10 +292,27 @@ def draw(call: Any, pages: list[int], width: int, relaid: list | None = None
 
 @handler("render")
 def render(call: Any, doc: str, slides: list | None = None, pages: list[int] | None = None,
-           width: int | None = None, sheet: dict | None = None) -> Result:
+           width: int | None = None, sheet: dict | None = None, range: Any = None) -> Result:
+    ranges = ranges_of(resolve(call, range))
+    if ranges:
+        # Round 35, R18: the pages some blocks fall on -- one image, or a sheet of them.
+        pages, scoped = _range_pages(call, ranges, _pages_of(call, slides, pages))
+        if sheet is None and len(pages) > call.limits.max_images_per_call:
+            call.warn(f"the range is on {len(pages)} pages, more than {call.limits.max_images_per_call} "
+                      "images a call: drawn as one sheet")
+            sheet = {}
+        result = (_render_sheet(call, pages, width, sheet) if sheet is not None
+                  else _render_pages(call, pages, width))
+        result.data["range"] = scoped
+        return result
     if sheet is not None:
         return _render_sheet(call, _pages_of(call, slides, pages), width, sheet)
-    pages = list(dict.fromkeys(_pages_of(call, slides, pages) or [1]))
+    return _render_pages(call, _pages_of(call, slides, pages), width)
+
+
+def _render_pages(call: Any, pages: list[int] | None, width: int | None) -> Result:
+    """``render`` of ``pages`` (default the first), each its own image."""
+    pages = list(dict.fromkeys(pages or [1]))
     width = width or DEFAULT_WIDTH
     if len(pages) > call.limits.max_images_per_call:
         raise ToolError("limit", f"at most {call.limits.max_images_per_call} pages per call; sheet: {{}} tiles "
@@ -326,6 +345,32 @@ def render(call: Any, doc: str, slides: list | None = None, pages: list[int] | N
         # and another closes...), to explain a slow refresh.
         result.data["relaid"] = relaid[0]
     return result
+
+
+def _range_pages(call: Any, ranges: list[str], pages: list[int] | None) -> tuple[list[int], list[dict]]:
+    """The pages ``ranges`` fall on (with ``pages``, those of them), and each range as
+    reported (``{"range", "blocks", "pages"}``), from the document's layout: laid out with
+    its lock let go where the call may, else on its own snapshot (round 34's rule)."""
+    if len(ranges) > MAX_RANGES:
+        raise ToolError("limit", f"{len(ranges)} ranges: at most {MAX_RANGES} per render; a span p:A..t:B "
+                        "covers many blocks", field="range")
+    document, entry = call.document, call.entry
+    scope = Scope(document, ranges)
+    version = entry.version
+    layout = (lay_out_unlocked(document, call.unlocked, lambda: entry.version == version) if call.may_unlock
+              else document.layout())
+    scoped, on = range_pages(scope, layout)
+    if not on:
+        raise ToolError("not_found", "the range's blocks are drawn on no page (hidden, or past where the "
+                        "layout stopped)", field="range",
+                        valid_options=list(range(1, layout.page_count + 1))[:50])
+    if pages is not None:
+        wanted = [p for p in on if p in pages]
+        if not wanted:
+            raise ToolError("invalid_arguments", f"pages {pages} hold none of the range's blocks: they are on "
+                            f"pages {on}; leave pages out to draw them", field="pages", valid_options=on[:50])
+        on = wanted
+    return on, scoped
 
 
 def _render_sheet(call: Any, pages: list[int] | None, width: int | None, sheet: dict) -> Result:
@@ -430,7 +475,10 @@ def _shortest_ratio(document: Document) -> float | None:
 def check(call: Any, doc: str, slides: list | None = None, pages: list[int] | None = None,
           include: list[str] | None = None, boxes: bool | None = None,
           spacing: float | None = None, contrast: float | None = None,
-          min_size: float | None = None, styles: list[str] | None = None) -> Result:
+          min_size: float | None = None, styles: list[str] | None = None,
+          range: Any = None, copies: list | None = None) -> Result:
+    """The document's facts; ``range`` (round 35, R18) scopes them to some blocks
+    (:mod:`.scoped`), ``copies`` (R19) compares copies with their reference."""
     pages = _pages_of(call, slides, pages)
     if boxes is not None:
         raise _decks_only("boxes", "include")
@@ -450,27 +498,71 @@ def check(call: Any, doc: str, slides: list | None = None, pages: list[int] | No
         min_size = getattr(document, "min_text_size", None)
     if (min_size is not None or styles is not None) and "layout" not in wanted:
         wanted.append("layout")               # what they measure (round 16, F8)
+    # Round 35, R18: the facts about some blocks, on the pages they fall on -- read under the
+    # lock, before the layout lets it go.
+    ranges = ranges_of(resolve(call, range))
+    if len(ranges) > MAX_RANGES:
+        raise ToolError("limit", f"{len(ranges)} ranges: at most {MAX_RANGES} per check; a span p:A..t:B "
+                        "covers many blocks", field="range")
+    scope = Scope(document, ranges) if ranges else None
+    if scope is not None and "layout" not in wanted:
+        wanted.append("layout")               # the facts about the blocks are the layout's
     report: dict[str, Any] = {}
     if "validate" in wanted:
         found = list(document.validate())          # once: the delta reads the same problems
-        report["validate"] = {**validate_delta(entry, found), "problems": [str(p) for p in found][:50]}
+        if scope is None:
+            report["validate"] = {**validate_delta(entry, found), "problems": [str(p) for p in found][:50]}
+        else:
+            inside, elsewhere = problems_in_scope(document, scope, found)
+            delta = validate_delta(entry, found)
+            named = {str(p) for p in inside}
+            report["validate"] = {"new": [p for p in delta["new"] if p in named], "fixed": delta["fixed"],
+                                  "baseline": delta["baseline"], "problems": [str(p) for p in inside][:50],
+                                  "elsewhere": elsewhere}
+    if copies:
+        # Round 35, R19: under the lock, on the version validate read.
+        report["copies"] = compare_copies(call, copies)
     if "reflow" in wanted or "layout" in wanted:
         reflow, layout = _layout_facts(call, pages, seen="reflow" in wanted)
+        scoped_pages = pages
+        if scope is not None:
+            if layout is not None:
+                report["range"], on = range_pages(scope, layout)
+                scoped_pages = on if pages is None else [p for p in on if p in pages]
+                if pages is not None and not scoped_pages:
+                    call.warn(f"pages {pages} hold none of the range's blocks (on pages {on}): no layout facts")
+                since = reflow.get("since_last_check")
+                if since is not None:
+                    since["changed"] = [p for p in since["changed"] if p in scoped_pages]
+            else:
+                report["range"] = [{"range": r.address, "blocks": len(r.blocks), "pages": None}
+                                   for r in scope.ranges]
         if "reflow" in wanted:
             report["reflow"] = reflow
         if "layout" in wanted:
             # Measured on the layout reflow reports and render draws: never a second one.
             # Where the layout failed, the facts read from the document alone (round 18, Q4;
             # round 29, W12).
-            report["layout"] = (layout_facts(layout, pages=pages, min_size=min_size, styles=styles)
+            report["layout"] = (layout_facts(layout, pages=scoped_pages, min_size=min_size, styles=styles,
+                                             scope=scope)
                                 if layout is not None else
-                                {"error": reflow["error"], "empty_paragraphs": empty_paragraphs(document)[:CAP],
-                                 "numbering_skips_level": numbering_skips_level(document)[:CAP]})
+                                {"error": reflow["error"],
+                                 "empty_paragraphs": [e for e in empty_paragraphs(document)
+                                                      if scope is None or scope.about(e)][:CAP],
+                                 "numbering_skips_level": [e for e in numbering_skips_level(document)
+                                                           if scope is None or scope.about(e)][:CAP]})
     if "fields" in wanted:
         report["fields"] = _field_facts(document)
     if "app" in wanted:
         report["app_findings"] = None
-    return Result(summary="Checked " + ", ".join(wanted), data=report)
+    summary = "Checked " + ", ".join(wanted)
+    if scope is not None:
+        summary += f" in {len(scope.ranges)} range(s)"
+    if "copies" in report:
+        found = report["copies"]
+        summary += (f"; copies: {found['follow']} of {found['compared']} follow their reference, "
+                    f"{found['with_example_text']} with its example text")
+    return Result(summary=summary, data=report)
 
 
 #: What a check laid out between a batch's changes says (round 33, R16c): the way out.

@@ -43,6 +43,14 @@ with Toolbox(TOOLS, formats=[FORMAT], groups=GROUPS) as toolbox:
   docx2svg could lay out. `complete` is false when a block, a header or footer, or a face
   could not be laid out. Coverage also gives the stop and the faces substituted with open
   ones. A check on a partial layout is not a passed check.
+- **`check` and `render` take `range`** (round 35): one or several blocks, spans
+  (`p:A..t:B`), cells or sections; `check` reports the facts about those blocks on the
+  pages they fall on, the problems found in them and each range's pages, `render` draws
+  those pages. **`check` takes `copies`**: each copy (a block or span) compared with the
+  reference it was made from, here or in another open document -- whether it follows,
+  what differs with its fix and kind, where the reference's example text is still in it,
+  and one `word_follow_sample` call per reference to make the copies follow. A comparison
+  is kept while neither side's blocks change.
 - **Layout runs in the toolbox's worker pool** through `Document.converter`, under a 30 s
   deadline: past it the worker is killed, the call reports `timeout` and changes nothing.
   The workers start with `spawn`, which imports the program's main module again in each,

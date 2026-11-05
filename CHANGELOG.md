@@ -5,6 +5,43 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.41 -- unreleased
+
+- **`check` and `render` on some blocks** (production round 35, R18). `check(range=[...])`
+  -- each range any address `word_read` takes: a block, a span `p:A..t:B` (`p:A..` to the
+  end), a cell, a section `s:2`, a bookmark; several in one call -- reports the facts about
+  those blocks: the layout facts of their paragraphs, tables and drawings, measured on the
+  pages they fall on (`smallest_text` of their text only), `validate`'s problems found in
+  them (`problems`, with `elsewhere` counting the rest; `docx_agent.validate.problems_in`:
+  what one of their elements carries, or what their XML alone shows again), and each
+  range's pages (`range: [{"range", "blocks", "pages"}]`). A range adds `layout` to the
+  default facts. `render(range=[...])` draws the pages the blocks fall on, as `pages`
+  does; on more pages than a call's images, one sheet (said in the warnings). With
+  `pages` too, those of them. The layout is the document's shared one, laid out with the
+  lock let go where the call may and on its own snapshot where it holds the lock (round
+  34's rule; a test runs scoped checks lone and in a `read_batch` at once). A range that
+  names nothing is refused with the body's sections as spans (`docx_agent.scope`).
+- **Copies against their reference** (R19). `check(copies=[{"blocks", "reference": {"doc",
+  "block"}}])`: each copy -- a block or span made from a sample, the reference in this or
+  another open document -- compared with its reference block by block
+  (`docx_agent.edit.copies`): whether it `follows` (every difference its own), the
+  differences with their fix calls and `kind` (`own`, `structure`, `changed_by_copy`,
+  `format`), and `example_text`: the copy's paragraphs still holding the reference's own
+  sentences (of three words or twenty characters; not its header rows' labels). One
+  `word_follow_sample` call per reference block makes every copy that drifted follow
+  (`fix`). Each comparison is kept by the digests of both sides' blocks and of each
+  document's styles and theme, not by the document's version, so an edit elsewhere finds
+  it kept (`kept`, per copy `cached`); 128 per document, least recently used dropped.
+  The reply keeps to a budget (20 differences a copy, 100 a reply; the copy's own
+  counted, not listed) and says how to read the rest.
+- **A comparison reads each style sheet once.** `word_compare_blocks`, `word_follow_sample`
+  and the copies above asked the style sheet for a style's name for every paragraph
+  compared, each time listing every style: 1.6 s for a copy of 10 blocks, now 0.13 s
+  (`compare.styles_read`).
+- The tool definitions are ooxml-edit's: `check`'s `range` and `copies` and `render`'s
+  `range` reach the model once ooxml-edit's shared definitions carry them; the handlers
+  take them now (tests add them to the definitions as ooxml-edit is to).
+
 ## 0.1.40 -- unreleased
 
 - **No wait for a layout in progress while holding the document** (production round 34,
