@@ -60,7 +60,8 @@ TOOLS = shared.TOOLS + WORD_TOOLS
 CORE_TOOLS = [t.name for t in TOOLS if t.group == CORE]
 
 
-def docx_format(*, min_text_size: "float | dict[str, float] | None" = None, assets: Any = None) -> DocumentFormat:
+def docx_format(*, min_text_size: "float | dict[str, float] | None" = None, assets: Any = None,
+                typography: bool = True) -> DocumentFormat:
     """:data:`FORMAT` with the application's own settings (round 17, P6) -- never tool
     arguments, so the definitions the model is sent stay the same unless a setting adds a
     tool; ``deck_format``'s counterpart:
@@ -88,6 +89,14 @@ def docx_format(*, min_text_size: "float | dict[str, float] | None" = None, asse
 
         icons = FolderCatalogue("brand-icons")               # brand-icons/index.json
         toolbox = Toolbox(TOOLS, formats=[docx_format(assets=icons)], groups=GROUPS)
+
+    ``typography`` (round 35, R21; default on): the text a call writes gets the spacing
+    Word's proofing of its language expects around ``: ; ! ?`` and guillemets -- in French,
+    a no-break space (U+00A0) -- and the result says how many spaces it wrote
+    (:mod:`docx_agent.edit.typography`); ``False`` writes the text as given.  ``check``
+    reports the places still without it either way (``punctuation_spacing``)::
+
+        toolbox = Toolbox(TOOLS, formats=[docx_format(typography=False)], groups=GROUPS)
     """
     from ..edit.minimums import text_minimums
 
@@ -107,6 +116,7 @@ def docx_format(*, min_text_size: "float | dict[str, float] | None" = None, asse
         if configure is not None:
             configure(document, session)
         document.min_text_size = dict(min_text_size) if isinstance(min_text_size, dict) else min_text_size
+        document.typography = bool(typography)
 
     return dataclasses.replace(FORMAT, configure=configured, tools=tools)
 

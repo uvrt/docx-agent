@@ -5,8 +5,30 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
-## Unreleased
+## 0.1.42 -- unreleased
 
+- **Spacing around punctuation by the text's language** (production round 35, R21;
+  `docx_agent.edit.typography`). Text a call writes -- every tool that writes text:
+  `word_insert_markdown`, `word_set_text`, `word_insert_text`, `replace_text`, table cells,
+  comments, notes, headers and footers, text boxes, content control values -- in a run whose language is
+  French gets a no-break space (U+00A0) before `:` `;` `!` `?` and inside `« »`: an ordinary
+  space it wrote there becomes U+00A0, a missing one is put in next to what it wrote. Text
+  that was there before is not changed; marks between words (`12:30`, `x?y`, URLs), code
+  (Markdown code, the code styles), text Word does not proof (`w:noProof`) and field
+  results are left alone. The result says how many spaces it wrote. Canadian French gets
+  the guillemets only; other French variants take French's rule. `docx_format(typography=False)`
+  (`Document.typography`) writes text as given. Measured in Word (`tools/typography_probe.py`,
+  `tests/observations/typography-word.json`): French proofing flags a missing space and
+  accepts an ordinary one, U+00A0 and U+202F; Word breaks a line before a mark after an
+  ordinary space and never after U+00A0 or U+202F; AutoFormat writes U+00A0 inside
+  guillemets; a run's language is its own `w:lang`, its styles', `w:docDefaults'` -- not
+  `w:themeFontLang`.
+- **`check`'s `punctuation_spacing`** (in `layout`; also where the layout fails): per
+  paragraph of any story, the places still without the spacing -- `breakable` (an ordinary
+  space), `missing` -- and, for English, German, Dutch, Spanish, Italian and Portuguese,
+  the spaces their proofing flags (`space_before`, and `space_inside` guillemets for the
+  last three; reported, never removed on writing), with `replace_text` fix calls. Scoped
+  by `pages` and `range` as the other facts.
 - `ooxml-edit>=0.81.0` (was 0.79.0): its shared `check` carries `range` and `copies` and
   its `render` `range` (production round 35, R18/R19), so 0.1.41's scoped checks, scoped
   renders and copies reach the model. The tests use the toolbox's own definitions (no

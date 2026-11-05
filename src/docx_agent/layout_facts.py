@@ -46,6 +46,14 @@ takes its targets as one list with the values for all, so it is ``calls``, not `
     used for spacing -- every run in the container in its one entry; read from the document,
     so listed where the layout failed too.  :func:`empty_paragraphs` has the rule.  A body
     run is a spacer too, measured there.
+``punctuation_spacing`` (round 35, R21)
+    ``{"para", "language", "marks": [{"at", "kind"}], "fix"}``: a paragraph (of any story)
+    whose text does not have the spacing Word's proofing of its language expects around
+    ``: ; ! ?`` and guillemets -- French: an ordinary space (``breakable``: Word breaks the
+    line before the mark) or none (``missing``) where a no-break space belongs; English,
+    German, Dutch, Spanish, Italian, Portuguese: a space Word flags (``space_before``,
+    ``space_inside``).  ``fix``: ``replace_text`` calls.  Read from the document, so listed
+    where the layout failed too; :mod:`docx_agent.edit.typography` has the rule.
 ``keep_with_next_at_foot``
     ``{"para", "style", "page", "next", "next_page"}``: a keep-with-next paragraph drawn
     last on its page, its next block on a later page -- unless that block starts a new page
@@ -140,6 +148,7 @@ from collections.abc import Mapping
 
 from .edit import effective as _effective
 from .edit.minimums import is_caption, minimum_for, text_minimums
+from .edit.typography import problems as punctuation_spacing
 from .edit import text as _text
 from .edit.document import _cells, _find, _int
 from .edit.effective import PathFinder
@@ -312,6 +321,8 @@ class _Facts:
         self.capped(self.keep_with_next(), "keep_with_next_at_foot", out)
         self.capped([e for e in numbering_skips_level(self.document) if self.shown(self.pages_of(e["para"]))],
                     "numbering_skips_level", out)
+        self.capped([e for e in punctuation_spacing(self.document) if self.shown(self.pages_of(e["para"]))],
+                    "punctuation_spacing", out)
         # Round 25, W5: what the document is set to do, not facts to act on.
         settings: dict[str, Any] = {}
         self.capped(self.keep_together(), "keep_together", settings)

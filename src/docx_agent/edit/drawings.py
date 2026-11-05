@@ -50,6 +50,7 @@ from lxml import etree
 
 from ..oxml.xml import Element, insert_in_order, make, remove
 from . import ids as _ids
+from . import typography as _typography
 
 if TYPE_CHECKING:  # pragma: no cover
     from .document import Document, EditResult
@@ -607,6 +608,8 @@ class DrawingOps:
                                       anchor_id, edit_id, paragraphs, text_box)
             run = _inline.new_run(entry.element, where.start, run_children)
             _inline.hoist(run)
+            for content in run.iterfind(f".//{_MC}Choice//{_W}txbxContent"):
+                _typography.record_all(content)  # the text written in it (round 35, R21)
             no_proof = make("w:noProof")
             properties = run.find(_W + "rPr")
             if properties is None:

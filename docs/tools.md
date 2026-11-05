@@ -51,6 +51,12 @@ with Toolbox(TOOLS, formats=[FORMAT], groups=GROUPS) as toolbox:
   what differs with its fix and kind, where the reference's example text is still in it,
   and one `word_follow_sample` call per reference to make the copies follow. A comparison
   is kept while neither side's blocks change.
+- **Text is spaced as its language wants** (round 35): what a call writes in French gets a
+  no-break space before `: ; ! ?` and inside `« »` (measured in Word: an ordinary space lets
+  the mark start the next line), and the result says how many; text already there is not
+  changed. `check`'s `punctuation_spacing` lists what is left, and the spaces English,
+  German, Dutch, Spanish, Italian and Portuguese proofing flags, with `replace_text` fixes.
+  `docx_format(typography=False)` turns the writing off.
 - **Layout runs in the toolbox's worker pool** through `Document.converter`, under a 30 s
   deadline: past it the worker is killed, the call reports `timeout` and changes nothing.
   The workers start with `spawn`, which imports the program's main module again in each,

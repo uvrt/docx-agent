@@ -26,6 +26,7 @@ import difflib
 from dataclasses import dataclass, field
 
 from ..oxml.xml import REVISION_PROPERTY_TAGS, XML_SPACE, Element, qn, remove
+from . import typography as _typography
 
 VIEWS = ("current", "original", "markup")
 
@@ -323,13 +324,22 @@ def _apply(paragraph: Element, items: list[Atom], deleted: set[int],
             continue
         node = items[indices[0]].node
         pieces: list[str] = []
+        # Which characters this call wrote (round 35: typography spaces only those): the
+        # inserted ones, and kept ones it had written already.
+        mask: list[bool] = []
+        record = _typography.recorder()
         for k in indices:
-            pieces.extend(before.get(k, ()))
+            for piece in before.get(k, ()):
+                pieces.append(piece)
+                mask.extend([True] * len(piece))
             if k not in deleted:
                 pieces.append(items[k].char)
-            pieces.extend(after.get(k, ()))
+                mask.append(record is not None and record.written(node, items[k].offset))
+            for piece in after.get(k, ()):
+                pieces.append(piece)
+                mask.extend([True] * len(piece))
         # Characters of the node that are not atoms (none, in a well-formed run) stay.
-        _replace_text_node(node, "".join(pieces))
+        _replace_text_node(node, "".join(pieces), mask)
         touched_runs.append(items[indices[0]].run)  # type: ignore[arg-type]
 
     # Remove deleted tabs, breaks and objects.
@@ -354,25 +364,34 @@ def _apply(paragraph: Element, items: list[Atom], deleted: set[int],
             remove(run)
 
 
-def _replace_text_node(node: Element, text: str) -> None:
+def _replace_text_node(node: Element, text: str, written: list[bool] | None = None) -> None:
     """Replace a ``w:t`` with the elements that spell ``text`` -- ``w:t`` for plain stretches,
-    ``w:tab``/``w:br``/... for the special characters -- in the same run."""
-    elements = _spell(text, template=node)
+    ``w:tab``/``w:br``/... for the special characters -- in the same run.  ``written``: which
+    of ``text``'s characters the call wrote (:func:`_spell`)."""
+    elements = _spell(text, template=node, written=written)
     for element in elements:
         node.addprevious(element)
     remove(node)
 
 
-def _spell(text: str, template: Element | None = None) -> list[Element]:
+def _spell(text: str, template: Element | None = None, written: list[bool] | bool = True) -> list[Element]:
+    """The elements that spell ``text``.  ``written``: whether the call wrote it (every
+    character, or per character), recorded for :mod:`typography` while an edit records."""
     out: list[Element] = []
     plain: list[str] = []
+    marks: list[bool] = []
+    record = _typography.recorder()
 
     def flush() -> None:
         if plain:
-            out.append(_t("".join(plain), template))
+            node = _t("".join(plain), template)
+            out.append(node)
+            if record is not None:
+                record.add(node, [k for k, mark in enumerate(marks) if mark])
             plain.clear()
+            marks.clear()
 
-    for char in text:
+    for k, char in enumerate(text):
         if char in _SPECIAL:
             flush()
             tag, attributes = _SPECIAL[char]
@@ -382,6 +401,7 @@ def _spell(text: str, template: Element | None = None) -> list[Element]:
             out.append(element)
         else:
             plain.append(char)
+            marks.append(written if isinstance(written, bool) else written[k])
     flush()
     return out
 
@@ -420,11 +440,12 @@ def run_properties_for(paragraph: Element, reference: Element | None) -> Element
     return properties if len(properties) else None
 
 
-def make_run(text: str, properties: Element | None) -> Element:
+def make_run(text: str, properties: Element | None, *, verbatim: bool = False) -> Element:
+    """A run of ``text``; ``verbatim`` (code) is not given the language's spacing."""
     run = _make("w:r")
     if properties is not None:
         run.append(properties)
-    for element in _spell(text):
+    for element in _spell(text, written=not verbatim):
         run.append(element)
     return run
 

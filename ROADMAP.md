@@ -1148,6 +1148,16 @@ doc.render_svg(pages=diff.changed)     # or render_png; ids on every paragraph g
   three words or twenty characters outside its header rows; each comparison kept by the
   digests of both sides' blocks and styles, not the version. The definitions are
   ooxml-edit's shared ones (`range`, `copies` to be added there).
+- **Round 35 (R21):** spacing around punctuation by the text's language
+  (`docx_agent.edit.typography`). Writing: `text._spell` records the characters a call
+  writes into each `w:t` (a context variable, carried through run splits and joins); the
+  edit or batch that started recording spaces them before it ends, in its undo step --
+  only characters it wrote are changed, a space is inserted only next to them. The language
+  is the run's through its styles (measured). Not written: removals (the languages that
+  want no space -- text tagged English with French spacing is likelier French with the
+  wrong language); `check` reports those. Measured (`tools/typography_probe.py`): proofing
+  per language, AutoFormat's guillemets, line breaks, the language cascade; AutoFormat as
+  you type cannot be scripted.
 - **Cost.** One layout per document state, cached by the bytes' hash: `layout()` and
   `render_svg()` of the same state read one `docx2svg.lay_out_docx` (every page laid out;
   a page's SVG drawn from it when asked for), tested by counting the calls; since round 33

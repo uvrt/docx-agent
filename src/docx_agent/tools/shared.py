@@ -18,7 +18,7 @@ from ooxml_edit.tools.render import png_size
 from ..edit.document import Document
 from ..edit.properties import refreshed_app
 from ..layout import font_dirs_of, keep_layout, kept_layout, lay_out_unlocked, locale_of
-from ..layout_facts import CAP, empty_paragraphs, layout_facts, numbering_skips_level
+from ..layout_facts import CAP, empty_paragraphs, layout_facts, numbering_skips_level, punctuation_spacing
 from ..scope import MAX_RANGES, Scope, ranges_of
 from .render import RENDERER
 from .scoped import compare_copies, problems_in_scope, range_pages
@@ -550,7 +550,9 @@ def check(call: Any, doc: str, slides: list | None = None, pages: list[int] | No
                                  "empty_paragraphs": [e for e in empty_paragraphs(document)
                                                       if scope is None or scope.about(e)][:CAP],
                                  "numbering_skips_level": [e for e in numbering_skips_level(document)
-                                                           if scope is None or scope.about(e)][:CAP]})
+                                                           if scope is None or scope.about(e)][:CAP],
+                                 "punctuation_spacing": [e for e in punctuation_spacing(document)
+                                                         if scope is None or scope.about(e)][:CAP]})
     if "fields" in wanted:
         report["fields"] = _field_facts(document)
     if "app" in wanted:
