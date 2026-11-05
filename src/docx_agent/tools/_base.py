@@ -456,6 +456,17 @@ def _engaged(work: Callable[..., Any]) -> Callable[..., Any]:
     return run
 
 
+#: What a call's result says when the text it wrote got its language's spacing (round 35, R21).
+SPACED = ("{} space(s) before : ; ! ? or inside « » written as no-break spaces (U+00A0), as Word's "
+          "proofing of the text's language expects")
+
+
+def _space_written(call: Any) -> int:
+    """The spacing of the text the call wrote, now, inside its undo step: how many spaces."""
+    space = getattr(call.document, "space_written", None)
+    return space() if space is not None else 0
+
+
 def wrap(handler: Callable[..., Any], *, mutates: bool, track: bool = True) -> Callable[..., Any]:
     @functools.wraps(handler)
     def run(call: Any, **arguments: Any) -> Any:
@@ -468,8 +479,12 @@ def wrap(handler: Callable[..., Any], *, mutates: bool, track: bool = True) -> C
                 if track:
                     with tracked(call, call.entry):
                         returned = handler(call, **arguments)
+                        spaced = _space_written(call)
                 else:
                     returned = handler(call, **arguments)
+                    spaced = _space_written(call)
+                if spaced and isinstance(returned, Result):
+                    returned.warnings.append(SPACED.format(spaced))
                 keep = True  # the checks hook lays out after the call, then releases
             else:
                 returned = handler(call, **arguments)

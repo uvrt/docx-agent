@@ -579,6 +579,8 @@ class Writer:
     def __init__(self, document: "Document", part: str, style_map: StyleMap, options: Options,
                  pictures: dict[str, bytes], notes: dict) -> None:
         self.document = document
+        #: Writing a code block: its text is not given the language's spacing.
+        self._verbatim = False
         self.part = part
         self.map = style_map
         self.options = options
@@ -766,7 +768,11 @@ class Writer:
     def code(self, text: str) -> list[Element]:
         style = self.style("code_block")
         body = text[:-1] if text.endswith("\n") else text
-        return [self.paragraph([m.Text(line)] if line else [], style) for line in body.split("\n")]
+        self._verbatim = True  # code keeps its spacing (round 35, R21)
+        try:
+            return [self.paragraph([m.Text(line)] if line else [], style) for line in body.split("\n")]
+        finally:
+            self._verbatim = False
 
     def list(self, block: m.ListBlock, depth: int) -> list[Element]:
         level = min(depth, _MAX_LEVEL)
@@ -962,7 +968,8 @@ class Writer:
             text = _INVALID.sub("�", item.text.replace("\n", " "))
             if not text:
                 return []
-            return [_text.make_run(text, self.run_properties(item.marks, item.href is not None and item.href != ""))]
+            return [_text.make_run(text, self.run_properties(item.marks, item.href is not None and item.href != ""),
+                                   verbatim=self._verbatim or "code" in item.marks)]
         if isinstance(item, m.Html):
             return [_text.make_run(_INVALID.sub("�", item.text.replace("\n", " ")), None)]
         if isinstance(item, m.Break):

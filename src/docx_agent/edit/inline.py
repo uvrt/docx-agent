@@ -30,6 +30,7 @@ from lxml import etree
 
 from ..oxml.xml import XML_SPACE, Element, remove
 from . import text as _text
+from . import typography as _typography
 from .text import Atom
 
 _W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
@@ -153,6 +154,9 @@ def split_before(atom: Atom) -> bool:
         left = _copy_text(node, text[:atom.offset])
         node.addprevious(left)
         _set_text(node, text[atom.offset:])
+        record = _typography.recorder()
+        if record is not None:
+            record.split(node, left, atom.offset)
         split = True
     before = []
     for child in run:
@@ -284,7 +288,11 @@ def _join_texts(run: Element) -> None:
     previous = None
     for child in list(run):
         if child.tag == W_T and previous is not None and previous.tag == W_T and _same_attributes(previous, child):
+            shift = len(previous.text or "")
             _set_text(previous, (previous.text or "") + (child.text or ""))
+            record = _typography.recorder()
+            if record is not None:
+                record.join(previous, child, shift)
             remove(child)
             continue
         previous = child

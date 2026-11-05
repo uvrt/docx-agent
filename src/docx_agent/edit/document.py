@@ -28,6 +28,7 @@ from ..oxml.xml import REVISION_PROPERTY_TAGS, Element, qn, remove
 from . import ids as _ids
 from .errors import EditError
 from . import text as _text
+from . import typography as _typography
 from .ids import PartIndex, ParagraphEntry, TableEntry
 from .styles import BUILTIN_HEADING, outline_value, style_outline_level
 from . import effective as _effective
@@ -812,6 +813,11 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
         #: The tracking context (``tracking()``) and the per-edit overrides (``track=``).
         self._tracking = None
         self._track_stack: list = []
+        #: Whether text an edit writes gets the spacing its language wants around punctuation
+        #: (round 35, R21: :mod:`docx_agent.edit.typography`); ``docx_format(typography=False)``.
+        self.typography = True
+        #: The spaces that spacing wrote or made U+00A0, all edits together.
+        self.typography_spaced = 0
 
     # -- lifecycle ---------------------------------------------------------------------------
 
@@ -1396,6 +1402,7 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
     def _edit(self) -> Iterator[None]:
         """One undo step; on failure everything is rolled back and the caches dropped."""
         outermost = not self.history.in_batch
+        recording = self._start_recording()
         try:
             with self.history.batch():
                 if outermost:
@@ -1403,12 +1410,53 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
                 before = self._revision_id_counts() if outermost else None
                 boxes = self._text_box_snapshot() if outermost else None
                 yield
+                if recording is not None:
+                    self._space_written(_typography.recorder())
                 if outermost:
                     self._sync_text_boxes(boxes)
                     self._unique_revision_ids(before)
                     self._prune_provenance()  # a deleted table's record goes with it
         finally:
+            if recording is not None:
+                _typography.stop(recording)
             self._invalidate()
+
+    def _start_recording(self):
+        """Round 35, R21: the text an edit (or a batch: a tool call) writes is recorded, and
+        spaced as its language wants before it ends, in its undo step -- by the edit or batch
+        that started the recording; ``None`` when one is recording already or it is off."""
+        if not getattr(self, "typography", True) or _typography.recorder() is not None:
+            return None
+        return _typography.start()
+
+    def space_written(self) -> int:
+        """Give the text written so far in the recording edit or batch the spacing its
+        language wants now, rather than when it ends (the tool layer, to say what it did):
+        the number of spaces written or made U+00A0."""
+        before = getattr(self, "typography_spaced", 0)
+        self._space_written(_typography.recorder())
+        return getattr(self, "typography_spaced", 0) - before
+
+    def _space_written(self, record: "_typography.Recorder | None") -> None:
+        """The spacing of the written text's language (:mod:`docx_agent.edit.typography`),
+        counted in :attr:`typography_spaced`."""
+        if not record:
+            return
+        roots = {id(self.package.tree(part)): part for part in self._parts()}
+        mine = [p for p in record.paragraphs() if id(p.getroottree().getroot()) in roots]
+        made, changed = _typography.apply_written(self, record, mine)
+        if not made:
+            return
+        from .drawings import _MC, sync_text_box
+
+        self.typography_spaced = getattr(self, "typography_spaced", 0) + made
+        for paragraph in changed:
+            part = roots.get(id(paragraph.getroottree().getroot()))
+            if part is not None:
+                self.package.mark_dirty(part)
+            # A text box's: its fallback holds the same (``_sync_text_boxes``).
+            for holder in paragraph.iterancestors(_MC + "AlternateContent"):
+                sync_text_box(holder)
 
     def _text_box_snapshot(self) -> list[tuple[str, Element, bytes]]:
         """Every text box's content as Word reads it (the ``mc:Choice``), before an edit."""
@@ -1575,6 +1623,11 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
         replaces the copied properties with that paragraph style alone.  The new paragraph is
         stamped at once, so its id is durable from the start.
         """
+        with self.batch():  # its text is made before the edit: recorded (round 35, R21)
+            return self._insert_paragraph(text, after=after, before=before, style=style)
+
+    def _insert_paragraph(self, text: str, *, after: str | None, before: str | None,
+                          style: str | None) -> EditResult:
         if (after is None) == (before is None):
             raise EditError("give exactly one of after= or before=")
         _text.check_text(text)
@@ -2226,14 +2279,19 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
     def batch(self) -> Iterator[None]:
         """Collapse every edit inside into one undo step; roll all of them back on error."""
         outermost = not self.history.in_batch
+        recording = self._start_recording()
         try:
             with self.history.batch():
                 if outermost:
                     self._prune_provenance()  # entries a save left behind: none comes back
                 yield
+                if recording is not None:
+                    self._space_written(_typography.recorder())
                 if outermost:
                     self._prune_provenance()  # a deleted table's record goes with it
         finally:
+            if recording is not None:
+                _typography.stop(recording)
             self._invalidate()
 
     def undo(self) -> bool:
