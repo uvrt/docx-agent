@@ -131,7 +131,6 @@ import re
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any, Iterable
 
-from docx2svg.paths import resolve_path
 from docx2svg.table import resolve_table, row_keeps_with_next, table_style_id
 from docx2svg.resolve.cascade import style_chain
 
@@ -141,6 +140,7 @@ from .edit import effective as _effective
 from .edit.minimums import is_caption, minimum_for, text_minimums
 from .edit import text as _text
 from .edit.document import _cells, _find, _int
+from .edit.effective import PathFinder
 from .layout import PX_PER_PT, _block_id, _in_body, _story_kind
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -193,6 +193,8 @@ class _Facts:
     def __init__(self, layout: "DocumentLayout", pages, min_size, styles) -> None:
         self.layout = layout
         self.document: "Document" = layout._document
+        #: The paths of this one state, each table's rows listed once (round 33).
+        self.paths = PathFinder()
         self.wanted = None if pages is None else set(pages)
         # One number for every kind, or a mapping by kind (round 17, P6b: the application's
         # setting, docx_format(min_text_size=...)), read as docx_agent.edit.minimums reads it.
@@ -393,11 +395,11 @@ class _Facts:
                 note = entry.element.getparent()
                 if note is not None and note.tag in _SEPARATOR_NOTES and note.get(_W + "type"):
                     continue          # separator, continuationSeparator, continuationNotice
-                found = self._direct(entry.element, entry.id)
-                if found is None:
-                    continue
                 pages = self.pages_of(entry.id)
                 if not self.shown(pages):
+                    continue          # (round 33: before the work, not after)
+                found = self._direct(entry.element, entry.id)
+                if found is None:
                     continue
                 found["pages"] = pages
                 entries.append((-len(found["props"]), order, found))
@@ -635,7 +637,7 @@ class _Facts:
         match = _ROW.match(line.path) if line.story is None else None
         if match is None:
             return None
-        identifier = _block_id(self.document, self.main, match.group(1))
+        identifier = _block_id(self.document, self.main, match.group(1), self.paths)
         k = position.get(self.layout._canon(identifier)) if identifier is not None else None
         if k is None or k + 1 >= len(self.top_level) or self.top_level[k][0] != "t":
             return None
@@ -719,13 +721,13 @@ class _Facts:
         state = _effective.model(self.document).model
         entries = []
         for table, drawn_rows in rows.items():
-            element = resolve_path(tree, table)
+            element = self.paths.resolve(tree, table)
             found = _model_table(state.body, table)
             if element is None or found is None:
                 continue
             own = element.findall(_W + "tr")
             header_rows = _header_rows(element)
-            identifier = _block_id(self.document, self.main, table) or table
+            identifier = _block_id(self.document, self.main, table, self.paths) or table
             taller = identifier in self.taller_kept
             for row, drawn in sorted(drawn_rows.items()):
                 after = drawn_rows.get(row + 1)
@@ -772,8 +774,8 @@ class _Facts:
         for table, pages in table_pages.items():
             if len(pages) < 2:
                 continue
-            identifier = _block_id(self.document, self.main, table) or table
-            element = resolve_path(tree, table)
+            identifier = _block_id(self.document, self.main, table, self.paths) or table
+            element = self.paths.resolve(tree, table)
             header_rows = _header_rows(element) if element is not None else 0
             ordered = sorted(pages)
             for row, drawn in sorted(rows.get(table, {}).items()):
@@ -808,10 +810,16 @@ class _Facts:
         (:func:`_fit_columns`)."""
         tree = self.document.package.tree(self.main)
         drawn: dict[str, dict[tuple[int, int], dict]] = {}
+        # With pages asked for, only the tables drawn on them are measured (every page of
+        # each: an entry is of the whole table).
+        shown = None if self.wanted is None else {
+            match.group(1) for number in self.wanted if 1 <= number <= len(self.layout.pages)
+            for line in self.layout.pages[number - 1].lines
+            for match in [_CELL_LINE.match(line.path) if line.story is None else None] if match}
         for number, page in enumerate(self.layout.pages, start=1):
             for line in page.lines:
                 match = _CELL_LINE.match(line.path) if line.story is None else None
-                if not match:
+                if not match or (shown is not None and match.group(1) not in shown):
                     continue
                 cell = drawn.setdefault(match.group(1), {}).setdefault(
                     (int(match.group(2)) - 1, int(match.group(3)) - 1), {"lines": {}, "words": [], "pages": set()})
@@ -824,16 +832,16 @@ class _Facts:
                 cell["words"].append(widths[1])
         entries = []
         for path, cells in drawn.items():
-            element = resolve_path(tree, path)
+            pages = sorted({n for cell in cells.values() for n in cell["pages"]})
+            if not self.shown(pages):
+                continue          # (round 33: before the work, not after)
+            element = self.paths.resolve(tree, path)
             if element is None:
                 continue
             found = _fit_columns(self.document, element, cells)
             if not found:
                 continue
-            identifier = _block_id(self.document, self.main, path) or path
-            pages = sorted({n for cell in cells.values() for n in cell["pages"]})
-            if not self.shown(pages):
-                continue
+            identifier = _block_id(self.document, self.main, path, self.paths) or path
             for entry in found:
                 entry = {"table": identifier, **entry, "pages": pages}
                 entry["fix"] = {"tool": "word_format_table", "calls": [
@@ -900,7 +908,7 @@ class _Facts:
                 past = _past(box.x, box.x + box.width, box.y, box.y + box.height, page.column, vertical)
                 if not past:
                     continue
-                element = resolve_path(tree, box.path)
+                element = self.paths.resolve(tree, box.path)
                 identifier = _drawing_id(element, by_frame) or box.path
                 entry = {"drawing": identifier, "page": number, "past": past}
                 if inline and list(past) == ["right"] and identifier.startswith("d:") and box.x < right:
@@ -927,7 +935,7 @@ class _Facts:
                 # half (and the last cell's text ending on the right one): only past that.
                 left_allow, right_allow = self._table_allowance(table)
                 past = _past(low + left_allow, high - right_allow, None, None, page.column, False)
-                identifier = _block_id(document, self.main, table) or table
+                identifier = _block_id(document, self.main, table, self.paths) or table
                 if past:
                     drawn = _past(low, high, None, None, page.column, False)
                     past = self._past_body_lines(identifier, past, drawn)
@@ -993,7 +1001,7 @@ class _Facts:
             for entry in coverage.placeholders or ():
                 add(entry.page, "placeholders", {"reason": entry.reason, "at": ids.get(entry.path) or entry.path})
             for entry in coverage.approximations or ():
-                at = (_block_id(self.document, self.main, entry.path) if entry.path and entry.path.startswith("w:body")
+                at = (_block_id(self.document, self.main, entry.path, self.paths) if entry.path and entry.path.startswith("w:body")
                       else None) or entry.path
                 add(entry.page, "approximations", {"reason": entry.reason, "at": at})
             for entry in coverage.story_stops or ():

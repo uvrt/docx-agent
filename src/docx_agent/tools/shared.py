@@ -9,7 +9,6 @@ the session's own (``shared.SESSION_TOOLS``); this module adds docx's ``new_docu
 
 from __future__ import annotations
 
-import hashlib
 from typing import Any
 
 from ooxml_edit.tools import Result, ToolError, shared, tiles, worker_task
@@ -18,7 +17,7 @@ from ooxml_edit.tools.render import png_size
 
 from ..edit.document import Document
 from ..edit.properties import refreshed_app
-from ..layout import font_dirs_of, lay_out_unlocked, locale_of
+from ..layout import font_dirs_of, keep_layout, kept_layout, lay_out_unlocked, locale_of
 from ..layout_facts import CAP, empty_paragraphs, layout_facts, numbering_skips_level
 from .render import RENDERER
 from ._base import outcome, page, reflow_json, remember, resolve, short, validate_delta, wrap
@@ -261,27 +260,24 @@ def draw(call: Any, pages: list[int], width: int, relaid: list | None = None
     document = call.document
     fonts = tuple(font_dirs_of(document))
     locale = locale_of(document)
-    layout_key = []
+    options = {"font_dirs": list(fonts), "locale": locale}
+    snapshot: list = []
 
-    def kept_layout(data: bytes) -> Any:
-        # The layout of these bytes an earlier call made, kept on the document (one: the
-        # latest), so that drawing another page of a version does not lay it out again;
-        # one of an earlier version with the same font folders and locale, so that the
-        # worker lays out again only what the edits since reach.
-        layout_key.append((hashlib.sha256(data).digest(), fonts, locale))
-        kept = getattr(document, "_tool_render_layout", None)
-        if kept is None:
-            return None
-        if kept[0] == layout_key[0]:
-            return kept[1]
-        return ("previous", kept[1]) if kept[0][1:] == layout_key[0][1:] else None
+    def kept(data: bytes) -> Any:
+        # The document's kept layout (one: the latest; round 33, shared with check's,
+        # docx_agent.layout.kept_layout): of these bytes, so that drawing another page of a
+        # version -- or a page after a check of it -- does not lay it out again; else of an
+        # earlier version with the same font folders and locale, so that the worker lays
+        # out again only what the edits since reach.
+        snapshot.append(data)
+        return kept_layout(document, data, options)
 
     def on_facts(facts: dict, alone: bool) -> None:
         if facts.get("laid_out") is not None:
-            document._tool_render_layout = (layout_key[0], facts["laid_out"])
+            keep_layout(document, snapshot[0], options, facts["laid_out"])
 
     drawn, facts = pipeline.draw(call, RENDERER, pages, width, ids={page: page for page in pages},
-                                 fonts=fonts, locale=locale, state=kept_layout, on_facts=on_facts)
+                                 fonts=fonts, locale=locale, state=kept, on_facts=on_facts)
     if not facts:
         return drawn, None, None
     if relaid is not None and facts[0].get("relaid_cause"):
@@ -456,8 +452,8 @@ def check(call: Any, doc: str, slides: list | None = None, pages: list[int] | No
         wanted.append("layout")               # what they measure (round 16, F8)
     report: dict[str, Any] = {}
     if "validate" in wanted:
-        problems = [str(p) for p in document.validate()]
-        report["validate"] = {**validate_delta(entry), "problems": problems[:50]}
+        found = list(document.validate())          # once: the delta reads the same problems
+        report["validate"] = {**validate_delta(entry, found), "problems": [str(p) for p in found][:50]}
     if "reflow" in wanted or "layout" in wanted:
         reflow, layout = _layout_facts(call, pages, seen="reflow" in wanted)
         if "reflow" in wanted:
@@ -513,23 +509,30 @@ def _layout_facts(call: Any, pages: list[int] | None, seen: bool = True) -> tupl
 
 
 def _field_facts(document: Document) -> dict[str, Any]:
-    fields = document.fields()
+    from ..edit.fields import scan
+
+    # Each part's fields read once (round 33: a Field's properties read its part again each,
+    # which made a contents of 500 entries cost seconds a check, under the lock).
+    fields = [(f"fld:{document._story_of(part)}/{found.number}", found)
+              for part in document._parts() for found in scan(part, document.package.tree(part))]
     counts: dict[str, int] = {}
-    for field in fields:
-        counts[field.keyword] = counts.get(field.keyword, 0) + 1
+    for _, found in fields:
+        counts[found.keyword] = counts.get(found.keyword, 0) + 1
     facts: dict[str, Any] = {"counts": counts}
-    empty = document._empty_tocs()
+    empty = document._empty_tocs(found=fields)
     if empty:
         facts["empty_toc"] = empty
     missing = []
-    for field in fields:
-        if field.keyword in ("REF", "PAGEREF", "NOTEREF"):
-            words = field.instruction.split()
+    # The bookmarks read once, found as Document.bookmark finds one (a "bm:" prefix, any case).
+    markers = document._bookmark_markers()
+    folded = {name.casefold() for name in markers}
+    for identifier, found in fields:
+        if found.keyword in ("REF", "PAGEREF", "NOTEREF"):
+            words = found.instruction.split()
             name = words[1] if len(words) > 1 else ""
-            try:
-                document.bookmark(name)
-            except KeyError:
-                missing.append(f"{field.id}: {field.keyword} to a missing bookmark {name!r}")
+            bare = name[3:] if name.startswith("bm:") else name
+            if bare not in markers and bare.casefold() not in folded:
+                missing.append(f"{identifier}: {found.keyword} to a missing bookmark {name!r}")
     if missing:
         facts["missing_bookmarks"] = missing
     facts["note"] = "results are caches: after moving headings or text, word_fields update"

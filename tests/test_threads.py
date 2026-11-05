@@ -1,4 +1,4 @@
-"""The layouts a render worker keeps (``docx_agent.tools.render._RECENT``) used from
+"""The layouts a render worker keeps (``docx_agent.layout._RECENT``) used from
 several threads at once, as an in-process runner's threads use them.
 
 With the GIL off (Python 3.15t) the unlocked dict's eviction raised from two threads at
@@ -14,7 +14,7 @@ import pickle
 import threading
 import time
 
-from docx_agent.tools import render
+from docx_agent import layout as render  # where the kept layouts live (round 33)
 
 THREADS = 8
 SECONDS = 1.0

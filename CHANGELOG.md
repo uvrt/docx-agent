@@ -5,6 +5,37 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.38 -- unreleased
+
+- **Incremental, shared layouts; page-scoped facts** (production round 33, R16). A document
+  is laid out from its last layout (docx2svg's `lay_out_docx(previous=...)`: from the page
+  an edit reaches until the pages line up again, page for page a layout of the new bytes
+  alone), for `check`, `layout_facts`, `update_fields`' passes and the Python API alike
+  (`docx_agent.layout.lay_out_bytes`, the tool layer's worker task); never a stale one --
+  where docx2svg cannot lay out from it (a style, a section, a header changed...) it lays
+  the document out whole. The last layout is kept per document (one, as a pickle: about
+  6 MB for a 79-page report) and is the same one the `render` tool keeps, so a check after
+  a render of the same state lays nothing out, and the other way round. Callers asking for
+  one state while it is laid out wait for that one layout (the lock let go where the call
+  may let it go) instead of laying it out again. A layout is now made with docx2svg's
+  `keep=True`, which keeps its measurements across the passes a body with page-number
+  fields needs (9.1 s against `convert_docx`'s 13.0 s on the report). Page SVGs are drawn from
+  the layout when asked for (`render_svg`), not all with it. `check(pages=...)`'s
+  `direct_formatting` and `column_fit` work only on the blocks and tables drawn on those
+  pages (the same entries as before for them). Less held under the document lock: a
+  check's `validate` ran twice (once now), its field facts read every part again per field
+  (once now); a long table's paths are listed once, not once per paragraph in it
+  (`word_edit_table`'s Markdown, `keep_together`'s rows, the layout's ids, the layout
+  facts: they grew with the square of the rows). On a made-up 79-page report (25 tables,
+  one of 432 rows; tool layer, worker pool): a check after one edit 18-20 s -> 3-4 s; a
+  check after a render of the same state 18 s -> 1.3 s; nine concurrent checks of one
+  state 52 s -> 3.9 s (each); a batch with a check 19 s -> 3.6 s; `word_fields` update
+  past its 30 s deadline -> 4-8 s; the layout facts, whole and for three pages,
+  4.7 s / 0.9 s -> 1.6 s / 0.3 s; `word_edit_table` on the long table 3.6 s -> 1.5-2.2 s.
+  Every page's SVG, signature, warning, coverage and layout fact the same as before on
+  the 151-document corpus, and an incremental layout the same as a whole one there (278
+  layouts from an earlier version). Tool definitions unchanged.
+
 ## 0.1.37 -- unreleased
 
 - **`read_batch` in the core: many reads in one call, a reader's too** (production round 32,

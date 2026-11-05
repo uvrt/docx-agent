@@ -13,7 +13,7 @@ from ooxml_edit.tools import Toolbox
 from ooxml_edit.tools.worker import task_reference
 
 from docx_agent import Document
-from docx_agent.layout import convert_bytes
+from docx_agent.layout import convert_bytes, lay_out_bytes
 from docx_agent.tools import FORMAT, GROUPS, TOOLS
 from docx_agent.tools.shared import render_pages
 
@@ -29,6 +29,7 @@ def _document() -> bytes:
 def test_the_renderer_and_the_layout_are_registered_tasks():
     assert task_reference(render_pages) == "docx_agent.tools.shared:render_pages"
     assert task_reference(convert_bytes) == "docx_agent.layout:convert_bytes"
+    assert task_reference(lay_out_bytes) == "docx_agent.layout:lay_out_bytes"
 
 
 def work_in_a_daemonic_process(queue, data: bytes) -> None:

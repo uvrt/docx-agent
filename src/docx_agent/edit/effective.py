@@ -114,6 +114,9 @@ class _Model:
         self._held: list[Element] = []
         self._mapped = False
         self._by_path: dict[tuple[str, str], _model.Paragraph] | None = None
+        #: What looking paths up lists once per state (round 33): each parent's children by
+        #: name, and each path prefix's element (:class:`PathFinder`).
+        self._paths = PathFinder()
 
     @property
     def paragraphs(self) -> dict[int, _model.Paragraph]:
@@ -152,7 +155,7 @@ class _Model:
     def _map(self, paragraph: _model.Paragraph, part: str | None) -> None:
         if part is None or not paragraph.path:
             return
-        element = resolve_path(self.document.package.tree(part), paragraph.path)
+        element = self._paths.resolve(self.document.package.tree(part), paragraph.path)
         if element is not None and element.tag == _W + "p":
             self._held.append(element)  # one proxy per element while the map lives: stable id()s
             self._paragraphs.setdefault(id(element), paragraph)
@@ -164,7 +167,7 @@ class _Model:
             return self._paragraphs.get(id(element))
         if id(element) in self._paragraphs:
             return self._paragraphs[id(element)]
-        where = _path_of(self.document, element)
+        where = _path_of(self.document, element, self._paths)
         if where is not None:
             if self._by_path is None:
                 self._by_path = {}
@@ -172,7 +175,7 @@ class _Model:
                     if part is not None and block.path:
                         self._by_path.setdefault((part, block.path), block)
             found = self._by_path.get(where)
-            if found is not None and resolve_path(self.document.package.tree(where[0]), found.path) is element:
+            if found is not None and self._paths.resolve(self.document.package.tree(where[0]), found.path) is element:
                 self._held.append(element)
                 self._paragraphs[id(element)] = found
                 self._elements.setdefault(id(found), element)
@@ -224,12 +227,15 @@ class _Model:
 _STEPS = {"p": ("body", "tc", "hdr", "ftr"), "tbl": ("body", "tc"), "tr": ("tbl",), "tc": ("tr",)}
 
 
-def _path_of(document: "Document", element: Element) -> tuple[str, str] | None:
+def _path_of(document: "Document", element: Element, paths: "PathFinder | None" = None) -> tuple[str, str] | None:
     """``(part, path)``: the path docx2svg writes for a paragraph in a body, a header or a
     footer, in tables there too (``w:body/w:tbl[2]/w:tr[1]/w:tc[3]/w:p[1]``: each step the
     k-th child of its local name, a table's rows and a row's cells counted as docx2svg
     counts them, :func:`~docx2svg.paths.row_level`); ``None`` for one anywhere else (a
-    content control, a text box, a note), whose paragraph is found by mapping them all."""
+    content control, a text box, a note), whose paragraph is found by mapping them all.
+    ``paths`` lists each parent's children once (a long table's rows: once, not once per
+    paragraph in it)."""
+    paths = paths if paths is not None else PathFinder()
     steps: list[str] = []
     node = element
     while True:
@@ -247,14 +253,7 @@ def _path_of(document: "Document", element: Element) -> tuple[str, str] | None:
             break
         if outer not in _STEPS.get(name, ()) or not node.tag.startswith(_W) or not parent.tag.startswith(_W):
             return None
-        if name in ("tr", "tc"):
-            siblings = list(row_level(parent, name))
-        else:
-            siblings = [child for child in parent if child.tag == node.tag]
-        if any(isinstance(child.tag, str) and child.tag != node.tag and _local(child.tag) == name
-               for child in parent):
-            return None             # the same local name in another namespace: docx2svg counts it
-        place = next((k for k, child in enumerate(siblings) if child is node), None)
+        place = paths.place(parent, node, name)
         if place is None:
             return None
         steps.append(f"w:{name}[{place + 1}]")
@@ -264,6 +263,84 @@ def _path_of(document: "Document", element: Element) -> tuple[str, str] | None:
     if part is None:
         return None
     return part, "/".join(reversed(steps))
+
+
+class PathFinder:
+    """Looking up docx2svg's paths of one document state's elements without listing a
+    parent's children once per element under it (round 33: every cell paragraph of a
+    432-row table listed the table's rows twice -- once to write its path, once to resolve
+    it -- which made reading the table grow with the square of its rows).
+
+    :meth:`place` is an element's 1-based place among its parent's children of its name,
+    as :func:`_path_of` counts them; :meth:`resolve` is
+    :func:`~docx2svg.paths.resolve_path`, resolving each path prefix once.  Both keep
+    what they listed by the parent element (held, so ids stay its own) and its number of
+    children: a parent changed since is listed again.  Kept on the per-state
+    :class:`_Model`, dropped with it after any change."""
+
+    def __init__(self) -> None:
+        self._places: dict[tuple[int, str], tuple] = {}
+        self._prefixes: dict[tuple[int, str], tuple] = {}
+
+    def place(self, parent: Element, node: Element, name: str) -> int | None:
+        key = (id(parent), name)
+        kept = self._places.get(key)
+        if kept is None or kept[0] is not parent or kept[1] != len(parent):
+            if name in ("tr", "tc"):
+                siblings = self.rows(parent, name)
+            else:
+                siblings = [child for child in parent if child.tag == node.tag]
+            # The same local name in another namespace: docx2svg counts it.
+            clash = any(isinstance(child.tag, str) and child.tag != node.tag and _local(child.tag) == name
+                        for child in parent)
+            kept = (parent, len(parent), None if clash else {id(child): k for k, child in enumerate(siblings)},
+                    siblings)
+            self._places[key] = kept
+        if kept[2] is None:
+            return None
+        return kept[2].get(id(node))
+
+    def rows(self, parent: Element, name: str) -> list:
+        """:func:`~docx2svg.paths.row_level` of ``parent``, listed once."""
+        key = (id(parent), "rows:" + name)
+        kept = self._places.get(key)
+        if kept is None or kept[0] is not parent or kept[1] != len(parent):
+            kept = (parent, len(parent), list(row_level(parent, name)))
+            self._places[key] = kept
+        return kept[2]
+
+    def resolve(self, root: Element | None, path: str) -> Element | None:
+        """:func:`~docx2svg.paths.resolve_path` of ``path`` in ``root``: a path of indexed
+        ``w:`` steps (``w:body/w:tbl[2]/w:tr[5]/w:tc[1]/w:p[1]``) step by step, each prefix
+        resolved once (docx2svg's own resolver for each step, from the element the prefix
+        before it names); any other path whole."""
+        if root is None or not path:
+            return resolve_path(root, path)
+        steps = path.split("/")
+        if len(steps) < 2 or not all(step.startswith("w:") and step.endswith("]") and "@" not in step
+                                     for step in steps[1:]) or steps[0] != "w:body":
+            return resolve_path(root, path)
+        node = resolve_path(root, steps[0])
+        prefix = steps[0]
+        for step in steps[1:]:
+            if node is None:
+                return None
+            prefix = f"{prefix}/{step}"
+            key = (id(root), prefix)
+            kept = self._prefixes.get(key)
+            if kept is not None and kept[0] is root and kept[1] is node and kept[2] == len(node):
+                node = kept[3]
+                continue
+            name, _, index = step[2:-1].partition("[")
+            if name in ("tr", "tc") and index.isdigit():
+                # resolve_path's own rule for a row or cell step, its rows listed once.
+                rows = self.rows(node, name)
+                found = rows[int(index) - 1] if 0 < int(index) <= len(rows) else None
+            else:
+                found = resolve_path(node, step)
+            self._prefixes[key] = (root, node, len(node), found)
+            node = found
+        return node
 
 
 def _local(tag) -> str:
@@ -309,12 +386,13 @@ def row_leads(document: "Document", table: Element) -> list[Element | None]:
         return []
     leads = (lead_paragraph(row) for row in found.rows)
     root = table.getroottree().getroot()
-    return [_drawn(root, lead) for lead in leads]
+    return [_drawn(root, lead, state._paths) for lead in leads]
 
 
-def _drawn(root: Element, paragraph: _model.Paragraph | None) -> Element | None:
+def _drawn(root: Element, paragraph: _model.Paragraph | None, paths: PathFinder | None = None) -> Element | None:
     """Our ``w:p`` of docx2svg's ``paragraph`` in the part ``root`` is the root of."""
-    found = resolve_path(root, paragraph.path) if paragraph is not None and paragraph.path else None
+    resolve = paths.resolve if paths is not None else resolve_path
+    found = resolve(root, paragraph.path) if paragraph is not None and paragraph.path else None
     return found if found is not None and found.tag == _W + "p" else None
 
 

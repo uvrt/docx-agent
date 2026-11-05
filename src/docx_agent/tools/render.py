@@ -14,11 +14,12 @@ them itself); their PNGs are ``render_pages``' byte for byte (:mod:`.shared`: do
 from __future__ import annotations
 
 import re
-import threading
 from typing import Any
 
 from ooxml_edit.tools import render, worker_task
 from ooxml_edit.tools.render import Layout, RendererBase, View
+
+from ..layout import _RECENT, _RECENT_LOCK, _RECENT_SIZE, _light, _remember, _taken  # noqa: F401
 
 #: The ``data-docx-*`` attributes of a page's SVG: where its elements come from (paths,
 #: ids), which the rasteriser never reads -- left out of the key, so the ids an edit gives
@@ -32,7 +33,8 @@ class PageRenderer(RendererBase):
 
     The ``state`` a task is handed is a layout of these very bytes, font folders and locale
     that an earlier task returned as its facts' ``"laid_out"`` (pickled: the layout and the
-    faces it was measured with, :func:`docx2svg.lay_out_docx`); given, the document is not
+    faces it was measured with and its warnings, :func:`docx_agent.layout.lay_out_bytes`'s
+    pickle, which a check's layout of the same state hands over too); given, the document is not
     laid out again -- the same pages, byte for byte, for the cost of unpickling it.
     Without it, the layout is made and returned so, for the caller to hand the next call.
     ``("previous", laid_out)`` is such a layout of an **earlier version** of the document
@@ -75,11 +77,12 @@ class PageRenderer(RendererBase):
             previous = _taken(state[1])[0]
             state = None
         if state is not None:
-            layout, fonts = _taken(state)
+            layout, fonts, warnings = _taken(state)
             kept = state
         else:
             layout, _, fonts = docx2svg.lay_out_docx(data, options, previous=previous)
-            fresh = kept = pickle.dumps((_light(layout), fonts), protocol=pickle.HIGHEST_PROTOCOL)
+            warnings = list(options.warnings)
+            fresh = kept = pickle.dumps((_light(layout), fonts, warnings), protocol=pickle.HIGHEST_PROTOCOL)
         count = len(layout.pages)
         svgs = docx2svg.page_svgs(layout, data, options, device_size=True, fonts=fonts)
         numbers = [page for page in items if 1 <= page <= count]
@@ -114,7 +117,7 @@ class PageRenderer(RendererBase):
         fingerprint = render.fingerprint(self, skip, sans, file_stamps(plain, dirs), files,
                                          [(name, content_key(blob)) for name, blob in embedded],
                                          system)
-        _remember(kept, (layout, fonts))  # this task is done with them: the next may take them
+        _remember(kept, (layout, fonts, warnings))  # this task is done with them: the next may take them
         return Layout([View(page, svg) for page, svg in zip(numbers, svgs)], fingerprint,
                       raster={"files": files, "embedded": embedded, "dirs": dirs, "skip": skip,
                               "sans": sans},
@@ -324,59 +327,9 @@ class _locked:
             self.handle.close()
 
 
-#: The layouts this process made or read last, by a digest of their pickle (``laid_out``):
-#: the next call handing one back to the same process does not read it again, and finds
-#: what the layout's flow measured, which the pickle leaves out (:func:`_light`).
-#:
-#: A task takes its layout out (:func:`_taken`) and puts it back when it is done
-#: (:func:`_remember`), so no two tasks running at once hold the same layout and the same
-#: ``InstalledFonts``: laying out and drawing pages write to both, and with the GIL off
-#: (Python 3.15t) two threads of an in-process runner would write at once.  A second task
-#: asking for a layout another holds reads its own from the pickle.  Every use of the dict
-#: holds :data:`_RECENT_LOCK`.
-_RECENT: dict = {}
-_RECENT_SIZE = 2
-_RECENT_LOCK = threading.Lock()
-
-
-def _light(layout):
-    """``layout`` to pickle: without what its flow measured (``layout.state.memo``, which
-    a layout of the next version reuses for the blocks that did not change -- most of a
-    long document's pickle).  The process that made it keeps it (:data:`_RECENT`); a layout
-    read in another is laid out again from without it: the same pages, measured again."""
-    import dataclasses
-
-    state = getattr(layout, "state", None)
-    if state is None or not getattr(state, "memo", None):
-        return layout
-    return dataclasses.replace(layout, state=dataclasses.replace(state, memo={}))
-
-
-def _remember(blob: bytes, laid: tuple) -> None:
-    """``laid``, ``(layout, fonts)``, kept as the newest under ``blob``'s digest, for the
-    next task that brings ``blob`` back."""
-    import hashlib
-
-    key = hashlib.sha256(blob).digest()
-    with _RECENT_LOCK:
-        _RECENT.pop(key, None)
-        _RECENT[key] = laid
-        while len(_RECENT) > _RECENT_SIZE:
-            del _RECENT[next(iter(_RECENT))]
-
-
-def _taken(blob: bytes) -> tuple:
-    """``(layout, fonts)`` of a ``laid_out`` pickle, this task's alone: the one this
-    process holds, taken out of :data:`_RECENT` until :func:`_remember` puts it back, else
-    read from the pickle."""
-    import hashlib
-    import pickle
-
-    with _RECENT_LOCK:
-        found = _RECENT.pop(hashlib.sha256(blob).digest(), None)
-    if found is None:
-        found = pickle.loads(blob)
-    return found
+# The layouts this process keeps for the next version -- the render's and the layout's alike,
+# so that a check and a render in one worker take over each other's -- are
+# :mod:`docx_agent.layout`'s (``_RECENT``, ``_taken``, ``_remember``, ``_light``).
 
 
 #: The document's renderer, handed to the pipeline's worker tasks.

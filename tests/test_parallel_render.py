@@ -223,7 +223,7 @@ def test_a_layout_read_in_another_process_lays_out_again_without_its_measurement
     data = _pages(3)
     first = lay_out_views(RENDERER, data, [1, 2, 3], 300, [])
     # What another process reads: the layout without what its flow measured.
-    layout, _ = pickle.loads(first["facts"]["laid_out"])
+    layout, _, _ = pickle.loads(first["facts"]["laid_out"])
     assert layout.state is not None and layout.state.memo == {}
     render._RECENT.clear()
     document = Document.open(data)

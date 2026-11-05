@@ -1114,10 +1114,26 @@ doc.render_svg(pages=diff.changed)     # or render_png; ids on every paragraph g
   style has a stop of its own (measured: `tools/toc_numbers_probe.py`).
   `word_follow_sample`'s `not_followed` entries say their `kind` (`own`, `changed_by_copy`,
   `structure`, shared with pptx-agent) and `report: "actionable"` leaves the copies' own out.
-- **Cost.** One full layout per document state, cached by the bytes' hash: `layout()` and
-  `render_svg()` of the same state read one `docx2svg.convert_docx` (every page laid out
-  and written as SVG; writing the SVG costs little beside the layout), tested by counting
-  the calls. **Incremental layout (round 19, R1)** is docx2svg's now
+- **Round 33 (R16):** layouts are incremental and shared. A document is laid out from its
+  last layout (`docx_agent.layout.lay_out_bytes`, docx2svg's `previous`) for `check`,
+  `update_fields`' passes and the Python API, as `render` already was; the last layout is
+  kept per document as one pickle (about 5 MB for a 79-page report), shared by `render` and
+  `check`, and a process keeps two whole ones with their measurements (about 80 MB each at
+  79 pages; the render worker kept them before), which the next layout in that process
+  reuses -- from the pickle alone, every block is measured again (63 pages, one paragraph
+  edited: 6 s against 9 s whole, 1 s with the measurements). Callers asking for a state
+  while it is laid out wait for that layout, unlocked where the call may let its lock go.
+  `check(pages=...)`'s `direct_formatting` and `column_fit` do only those pages' work, and
+  a long table's paths are listed once (they grew with the square of the rows). Measured on
+  a made-up 79-page report with 25 tables, one of 432 rows, through the tool layer: see the
+  0.1.38 changelog entry. Still under the lock: a check inside a batch, and
+  `word_fields` update, which lay out the state they hold (incremental now, so seconds);
+  letting the lock go there needs ooxml-edit (a batch's reads after its last change run
+  after the batch; a changing call laying out before it changes anything).
+- **Cost.** One layout per document state, cached by the bytes' hash: `layout()` and
+  `render_svg()` of the same state read one `docx2svg.lay_out_docx` (every page laid out;
+  a page's SVG drawn from it when asked for), tested by counting the calls; since round 33
+  each state is laid out from the one before. **Incremental layout (round 19, R1)** is docx2svg's now
   (`lay_out_docx(previous=...)`: from the page the first changed block is on until the pages
   line up again, byte for byte a full layout's, with the cases it lays out whole -- styles,
   sections, page-number fields in the body... -- said); the `render` tool's worker uses it,
