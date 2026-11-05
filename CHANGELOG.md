@@ -5,6 +5,40 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.39 -- unreleased
+
+- **No layout under the lock** (production round 33, R16c; ooxml-edit 0.79.0). A `check`
+  inside a batch and `word_fields` update laid the document out holding its lock, so
+  every other call on it waited.
+  - A `check` after a batch's last change now runs once the batch is done, as a check
+    alone does: it lets the document go while it lays out (ooxml-edit runs a batch's
+    reads after its last change after its undo step). A check *between* a batch's changes
+    still holds the document, since it reads the state between them, and says so with
+    the way out (`check laid the document out between the batch's changes, holding it:
+    ... Put check after the batch's last change (or call it alone)`).
+  - `word_fields` update does its work *ahead* of its change (ooxml-edit's `Tool.aheads`):
+    every pass and its layout runs on a copy opened from the document's bytes, with the
+    lock let go, and the copy's layouts become the document's
+    (`docx_agent.layout.twin`/`adopt`, each layout kept under the bytes it is of). The
+    update under the lock then writes what the copy wrote and finds each pass's layout
+    cached. If another call changed the document meanwhile, the work ahead is done again
+    from there (at most twice); after that the update lays out what changed, under the
+    lock.
+  - A page cross-reference (`insert_cross_reference` with `kind: "page"`) and
+    `word_template` `upgrade_to_modern` lay the document out ahead the same way.
+  - The work ahead never changes what a call does: anything that fails there is left to
+    the call, which meets it again and reports it.
+  - The layout engine is taken with the bytes, before the lock is let go: another call
+    ending meanwhile pointed the document's converter elsewhere.
+  - On the made-up 79-page report (tool layer, worker pool), with a one-paragraph read
+    started 0.3 s into each call:
+    - batch `[edit, check]`: the document held 3.8-5.9 s -> 0.7-0.8 s, the read waited
+      3.5-5.6 s -> 0.3-0.5 s;
+    - `word_fields` update after one edit: held 8.9-11.2 s -> 1.9-2.3 s, the read waited
+      8.6-10.9 s -> 0 s. The update itself takes about as long as before (9-12 s), since
+      it now works on the copy as well.
+  - Tool definitions unchanged.
+
 ## 0.1.38 -- unreleased
 
 - **Incremental, shared layouts; page-scoped facts** (production round 33, R16). A document

@@ -27,7 +27,7 @@ from typing import Any, Callable, Iterable, Iterator, Mapping, Sequence
 
 from ooxml_edit.tools import Result, ToolError, page_list, tool as _tool
 
-from ..layout import cache_key, convert_bytes, lay_out_bytes, layout_options
+from ..layout import adopt, cache_key, convert_bytes, lay_out_bytes, lay_out_unlocked, layout_options, twin, twin_of
 
 #: A Word document of this many pages or fewer gets its reflow in every edit's checks.
 REFLOW_PAGES = 20
@@ -84,6 +84,77 @@ def release(entries: Iterable[Any]) -> None:
     for entry in entries:
         if getattr(entry, "kind", None) == "docx":
             entry.document.converter = None
+
+
+#: How many times a changing call lays its document out ahead of its change (round 33,
+#: R16c) when another call changed it meanwhile: each time from the layout before, so a few
+#: seconds; past them the change lays out what is left under the lock (from the last one).
+AHEAD_TRIES = 2
+
+
+def lay_out_ahead(call: Any) -> bool:
+    """Lay the call's document out with its lock let go, ahead of a change that reads the
+    layout first (``word_fields`` update: page numbers; a page cross-reference; the upgrade's
+    reflow) -- ooxml-edit's ``Tool.aheads`` (0.79.0), run before the call's undo step.
+
+    The layout is of the version the lock was let go at, kept as every layout is
+    (:func:`docx_agent.layout.convert`); when another call changed the document meanwhile,
+    it is laid out again from that one, at most :data:`AHEAD_TRIES` times in all.  The
+    handler, run after under the lock, finds the layout of the state it holds cached, or
+    lays out what changed since from the last one.  Whether the layout ahead was of the
+    state the call then holds.  A layout that fails is left to the handler, which meets it
+    again and says so: the work ahead never changes what the call does."""
+    if call.entry is None or not call.may_unlock:
+        return False
+    entry, document = call.entry, call.document
+    for _ in range(AHEAD_TRIES):
+        version = entry.version
+        # The engine again, under the lock: a call that ran while the lock was let go
+        # pointed the document's converter at its own engine, or at none, as it ended.
+        engage(call)
+        try:
+            lay_out_unlocked(document, call.unlocked, lambda: entry.version == version)
+        except Exception:  # noqa: BLE001 -- the handler lays out again and reports it
+            return False
+        if entry.version == version:
+            return True
+    return False
+
+
+def update_fields_ahead(call: Any, ids: list[str] | None) -> bool:
+    """``word_fields`` update's work ahead (round 33, R16c): the whole update -- every pass
+    and its layout -- on a copy of the document opened from its bytes, with the lock let go;
+    then the copy's layouts are the document's (:func:`docx_agent.layout.adopt`).  The
+    update under the lock, writing what the copy's wrote, finds each pass's layout of those
+    very bytes cached, and lays nothing out; where another call changed the document
+    meanwhile, it is done again from there (at most :data:`AHEAD_TRIES` times in all), and
+    past that the update lays out what changed since under the lock.  Whether the copy's
+    update was of the state the call then holds.  Anything that fails is left to the update
+    under the lock, which meets it again and says so."""
+    if call.entry is None or not call.may_unlock:
+        return False
+    entry, document = call.entry, call.document
+    for _ in range(AHEAD_TRIES):
+        engage(call)
+        version = entry.version
+        try:
+            wanted = resolve(call, ids) if ids else None
+        except Exception:  # noqa: BLE001 -- the update refuses it, under the lock
+            return False
+        data, like, date = entry.snapshot(), twin_of(document), call.now().date()
+        copy = None
+        with call.unlocked():
+            try:
+                copy = twin(data, like)
+                copy.update_fields(wanted, date=date)
+            except Exception:  # noqa: BLE001 -- the update lays out again and reports it
+                copy = None
+        if copy is None:
+            return False
+        adopt(document, copy)
+        if entry.version == version:
+            return True
+    return False
 
 
 def cached_layout(document: Any) -> Any:
@@ -338,7 +409,8 @@ def word_tool(name: str, description: str, params: Mapping[str, Any], *, group: 
               action_roles: Mapping[str, str] | None = None,
               call_role: Callable[[Mapping[str, Any]], str | None] | None = None,
               review_core: bool = False,
-              action_fields: Mapping[str, Sequence[str]] | None = None
+              action_fields: Mapping[str, Sequence[str]] | None = None,
+              ahead: Callable[..., Any] | None = None
               ) -> Callable[[Callable[..., Any]], Any]:
     """A Word tool (kind ``docx``): ``handler(call, **arguments) -> Result | data``.
 
@@ -354,7 +426,9 @@ def word_tool(name: str, description: str, params: Mapping[str, Any], *, group: 
     actions that are not ``edit``'s (``Tool.action_roles``: a ``list`` action is
     ``review``'s); ``review_core`` loads it in the core of a role set without ``edit``
     (``Tool.review_core``); ``action_fields`` the parameters only some actions take, not sent
-    to a role set offered none of them (``Tool.action_fields``, ooxml-edit 0.69.0)."""
+    to a role set offered none of them (``Tool.action_fields``, ooxml-edit 0.69.0);
+    ``ahead`` what a changing call does before its change, its lock let go
+    (``Tool.aheads``, ooxml-edit 0.79.0: :func:`lay_out_ahead`), with the layout engine."""
 
     def make(handler: Callable[..., Any]) -> Any:
         return _tool(name, description, params, group=group, mutates=mutates, kind="docx",
@@ -362,9 +436,24 @@ def word_tool(name: str, description: str, params: Mapping[str, Any], *, group: 
                      batchable=batchable, reads=reads, sources=sources, facts=facts,
                      aliases=aliases, action_roles=action_roles,
                      call_role=call_role, review_core=review_core,
-                     action_fields=action_fields)(wrap(handler, mutates=mutates, track=track))
+                     action_fields=action_fields,
+                     ahead=_engaged(ahead) if ahead is not None else None)(
+                         wrap(handler, mutates=mutates, track=track))
 
     return make
+
+
+def _engaged(work: Callable[..., Any]) -> Callable[..., Any]:
+    """``work`` with the layout engine, as a handler has it (:func:`wrap`)."""
+    @functools.wraps(work)
+    def run(call: Any, **arguments: Any) -> Any:
+        engage(call)
+        try:
+            return work(call, **arguments)
+        finally:
+            release(call.entries.values())
+
+    return run
 
 
 def wrap(handler: Callable[..., Any], *, mutates: bool, track: bool = True) -> Callable[..., Any]:
