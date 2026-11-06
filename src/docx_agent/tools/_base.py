@@ -502,6 +502,11 @@ def wrap(handler: Callable[..., Any], *, mutates: bool, track: bool = True) -> C
                 else:
                     returned = handler(call, **arguments)
                     spaced = _space_written(call)
+                if getattr(call, "facts", None):
+                    # Round 36: what was written by reference is kept on its paragraph.
+                    from .textfacts import keep_written
+
+                    keep_written(call, returned, arguments)
                 if spaced and isinstance(returned, Result):
                     returned.warnings.append(SPACED.format(spaced))
                 keep = True  # the checks hook lays out after the call, then releases

@@ -1414,6 +1414,8 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
                 yield
                 if recording is not None:
                     self._space_written(_typography.recorder())
+                # Round 36: values written by reference follow their text, edit by edit.
+                self._follow_text_facts()
                 if outermost:
                     self._sync_text_boxes(boxes)
                     self._unique_revision_ids(before)
@@ -2290,6 +2292,7 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
                 yield
                 if recording is not None:
                     self._space_written(_typography.recorder())
+                self._follow_text_facts()     # round 36: as each edit does
                 if outermost:
                     self._prune_provenance()  # a deleted table's record goes with it
         finally:
