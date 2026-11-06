@@ -100,7 +100,7 @@ def _held(call: Any, scope: Mapping[str, Any]) -> Any:
             return False
         if layout is not None:
             on = sorted({n for p in ids for n in layout.pages_of(p)})
-            if not set(on) & set(pages):
+            if not set(on) & set(pages or ()):
                 return False
             if on:
                 value.where = {"page": on[0]}
@@ -391,6 +391,7 @@ def _apply(document: Any, value: ScaleValue, step: _scales.Step, style_id: str) 
 
     def styled(owner: Any) -> None:
         properties = _formatting.properties_of(owner, "w:rPr", create=True)
+        assert properties is not None
         for tag in _HIDING:
             for node in properties.findall(_W + tag):
                 remove(node)
