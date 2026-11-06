@@ -77,6 +77,19 @@ How to use them:
   paragraph it keeps that paragraph's lines. `check(range=[span])` says per span
   `one_page`, `kept`, the `breaks` in it and the `fix`; `taller_than_page` where no keep
   can hold it. Nothing is stored: name the spans each check.
+- **A heading's range** (`h:p:A`): the heading and every block under it, to the next
+  heading of its level or higher -- what `describe`'s `headings` count in `blocks` (with the
+  `section` each is in, when there are several). Give it wherever a span is taken:
+  `word_read`, `check` and `render` `range`, `word_format` `targets`, `word_delete`,
+  `word_move` `blocks`, `copies`. A heading is a paragraph of the body itself with an outline
+  level (a heading style's, or one it or its style states); a Title has none unless the
+  template gives it one, and a heading inside a table or text box owns nothing.
+- **Headings keep their content:** `word_delete` of a heading whose content would stay is
+  refused (it would go under the heading before): delete `h:<heading>`, or `force` to keep
+  the content. Changing a heading's level (`word_format` `paragraph_style`) warns which
+  headings and blocks now go under which. `word_lists` `remove` on a paragraph its style
+  numbers is refused, naming styles like it that number nothing: give one of those
+  (`word_format` `paragraph_style`), or `force` to override the style.
 - **`check`'s `layout.settings`** holds what the document is set to do (the tables kept
   together), not facts to act on: a summary counts none of it. A table kept together that
   is taller than a page is said there and, once, in `keep_with_next_at_foot`

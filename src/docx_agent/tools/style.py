@@ -45,14 +45,20 @@ STYLE_FIELDS["shading"] = string("Fill: RRGGBB, theme colour, 'accent1 lighter 8
             "number_at": number("format: number's position.", minimum=-1584, maximum=1584, optional=True),
             "text_at": number("format: text indent.", minimum=-1584, maximum=1584, optional=True),
             "follow": string("format: after the number.", enum=["tab", "space", "nothing"], optional=True),
-            "tab_at": number("format: tab stop.", minimum=-1584, maximum=1584, optional=True)},
+            "tab_at": number("format: tab stop.", minimum=-1584, maximum=1584, optional=True),
+            "force": boolean("remove: also where the style numbers. Default false.", optional=True)},
            refs=('targets[]',), group="word_style", mutates=True)
 def word_lists(call: Any, doc: str, targets: list[str], action: str, kind: str = "bullet",
                level: int | None = None, start: int | None = None, number_format: str | None = None,
                label: str | None = None, number_at: float | None = None, text_at: float | None = None,
-               follow: str | None = None, tab_at: float | None = None) -> Result:
+               follow: str | None = None, tab_at: float | None = None, force: bool = False) -> Result:
+    """Round 36, R33: ``remove`` refuses a paragraph its style numbers -- taking it out writes
+    a direct override the template's style no longer decides -- naming the styles that fit
+    and number nothing; ``force`` writes the override (``numId`` 0) as before."""
     document = call.document
     paragraphs = [p for address in resolve(call, targets) for p in paragraphs_of(document, address)]
+    if action == "remove" and not force:
+        _refuse_style_numbered(document, paragraphs)
     edits = []
     listless = []
     for k, paragraph in enumerate(paragraphs):
@@ -89,6 +95,78 @@ def word_lists(call: Any, doc: str, targets: list[str], action: str, kind: str =
         named = ", ".join(listless[:10]) + (f" and {len(listless) - 10} more" if len(listless) > 10 else "")
         result.warnings.append(f"{len(listless)} paragraph(s) were not in a list, left as they were: {named}")
     return result
+
+
+def _refuse_style_numbered(document: Any, paragraphs: list[Any]) -> None:
+    """The refusal of ``remove`` for paragraphs whose style numbers them (rule 2: which, and
+    the styles to give them instead, or ``force``)."""
+    from ..edit.numbering import style_list
+
+    numbered: dict[str, list[str]] = {}
+    for paragraph in paragraphs:
+        style_id = _paragraph_style_id(document, paragraph)
+        if style_id is not None and style_list(document, style_id) is not None:
+            numbered.setdefault(style_id, []).append(paragraph.id)
+    if not numbered:
+        return
+    names = {s.id: s.name or s.id for s in document.styles}
+    parts, options = [], []
+    for style_id, ids in list(numbered.items())[:5]:
+        fits = unnumbered_styles_like(document, style_id)
+        shown = ", ".join(ids[:5]) + (f" and {len(ids) - 5} more" if len(ids) > 5 else "")
+        parts.append(f"{shown}: style {names.get(style_id, style_id)!r} numbers them"
+                     + (f" (styles like it that number nothing: {', '.join(fits)})" if fits else
+                        " (no style like it numbers nothing: word_styles add one based on it)"))
+        options += [f for f in fits if f not in options]
+    raise ToolError("invalid_arguments", "; ".join(parts) + ". Taking them out of the list would override "
+                    "their style: give them a style that numbers nothing (word_format paragraph_style), "
+                    "or force true to override", field="targets", valid_options=(options + ["force"])[:50])
+
+
+def _paragraph_style_id(document: Any, paragraph: Any) -> str | None:
+    from ..edit.document import _OutlineLevels
+
+    _, entry = document._resolve(paragraph.id)
+    return _OutlineLevels(document).style_id(entry.element)
+
+
+def unnumbered_styles_like(document: Any, style_id: str, limit: int = 6) -> list[str]:
+    """Names of paragraph styles that number nothing and fit where ``style_id`` stands, best
+    first: one based on it, one at its outline level (a heading's), one it is based on, one
+    beside it (the same base), the default paragraph style."""
+    from ..edit.numbering import style_list
+
+    styles = [s for s in document.styles if s.kind == "paragraph"]
+    by_id = {s.id: s for s in styles}
+    numbered = by_id.get(style_id)
+    if numbered is None:
+        return []
+    chain, current = [], numbered.based_on
+    while current and current in by_id and current not in chain:
+        chain.append(current)
+        current = by_id[current].based_on
+
+    def rank(style: Any) -> int | None:
+        if style.based_on == style_id:
+            return 0
+        if numbered.outline_level is not None and style.outline_level == numbered.outline_level:
+            return 1
+        if style.id in chain:
+            return 2
+        if numbered.based_on and style.based_on == numbered.based_on:
+            return 3
+        if style.default:
+            return 4
+        return None
+
+    ranked = sorted((r, k, s) for k, s in enumerate(styles) if s.id != style_id and (r := rank(s)) is not None)
+    out = []
+    for _, _, style in ranked:
+        if style_list(document, style.id) is None:
+            out.append(style.name or style.id)
+        if len(out) >= limit:
+            break
+    return out
 
 
 # -- W21 word_styles ---------------------------------------------------------------------------

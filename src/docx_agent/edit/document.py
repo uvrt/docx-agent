@@ -35,6 +35,7 @@ from . import effective as _effective
 from . import inline as _inline
 from . import formatting as _formatting
 from .addresses import AddressOps, span_ends
+from .outline import OutlineOps
 from .annotations import AnnotationOps
 from .formatops import FormatOps
 from .links import Bookmark, Hyperlink, LinkOps  # noqa: F401 -- Bookmark: edit/__init__.py imports it from here
@@ -751,7 +752,7 @@ STAMPING = ("document", "paragraph")
 
 class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, PictureOps, CommentOps, TableOps,
                TableFormatOps, DrawingOps, ControlOps, SectionOps, NoteOps, FieldOps, AnnotationOps, AuthoringOps, LanguageOps,
-               PropertyOps, ImportOps, ChartOps, ProvenanceOps, AddressOps):
+               PropertyOps, ImportOps, ChartOps, ProvenanceOps, AddressOps, OutlineOps):
     """An open Word document, editable, undoable and re-renderable.
 
     ``stamping`` says what the first edit stamps.  ``"document"`` (the default): every
@@ -2047,6 +2048,7 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
     def _blocks_of(self, blocks: "str | list[str]") -> tuple[list[Element], str]:
         """The block elements ``blocks`` names, in document order, and their part."""
         if isinstance(blocks, str):
+            blocks = self._expand_heading(blocks)          # h:p:A, a heading's range (round 36)
             ends = span_ends(blocks)
             if ends is None:
                 part, entry = self._resolve_block(blocks)

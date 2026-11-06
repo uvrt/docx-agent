@@ -216,7 +216,7 @@ def _blocks(document: Any, address: Any, where: str) -> list[tuple[str, Any]]:
     except (KeyError, IndexError, EditError) as error:
         raise ToolError("not_found", f"{where} {address!r} names no block of the body "
                         f"({error.args[0] if error.args else error}); give a block or a span p:A..t:B, "
-                        "e.g. a heading's section", field="copies",
+                        "or a heading's range h:p:A", field="copies",
                         valid_options=headings_as_ranges(document)[:50]) from None
     if not found:
         raise ToolError("not_found", f"{where} {address!r} holds no paragraph or table", field="copies",

@@ -213,10 +213,15 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 #: paragraph its lines, as the Python API's name read before) +38, word_design_facts'
 #: ``table_frames`` kind +5: +43 to every definition (14,224 -> 14,267), none to the core
 #: (2,871).  The guard rises to 14,270.  Neither tool is strict: the strict set is unchanged.
+#: Round 36, R32/R33: word_read's ``range`` names a heading's range ``h:p:A`` (+2 to the core:
+#: 2,871 -> 2,873); word_delete's and word_lists' ``force`` (a heading deleted though its
+#: content stays; unnumbering a paragraph its style numbers): +58 to every definition
+#: (14,267 -> 14,325).  The guard rises to 14,330.  Neither is strict: the strict set is
+#: unchanged (6 tools, 23 optional parameters).
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 6500
-ALL_GUARD = 14270
+ALL_GUARD = 14330
 
 
 @pytest.fixture(scope="module")

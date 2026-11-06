@@ -89,6 +89,7 @@ def blocks_of(document: "Document", address: str) -> list[tuple[str, Any]]:
 
     main = document.package.document_part()
     elements = None
+    address = document._expand_heading(address)
     if span_ends(address) is not None:
         elements, part = document._blocks_of(address)
     else:

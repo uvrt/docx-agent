@@ -12,6 +12,9 @@ same words:
 * **a bookmark** -- ``bm:Name``, or the plain name;
 * **a story** -- ``body``, ``header1``, ``footnotes``...;
 * **a text range** -- ``p:A@4:11``, a position ``p:A@5``, ``p:A@3..p:B@8``;
+* **a heading's range** -- ``h:p:A``, the heading and every block under it to the next
+  heading of its level or higher (:mod:`.outline`), read as the span it is; ``h:`` may
+  stand at a span's end (``h:p:A..h:p:B``);
 * **a span of blocks** -- ``p:A..t:B``, the blocks from the first through the last, both
   in one container (the body, a cell, a header).  An end may be left open: ``p:A..`` runs
   from ``p:A`` to the last block of its container (the end of the body, for a body
@@ -125,6 +128,7 @@ class AddressOps:
         if not isinstance(address, str) or not address.strip():
             raise AddressError("an address is empty: give a block id (p:..., t:...), a cell (t:X/c1,1), "
                                "a section (s:1), a bookmark or a span (" + SPAN_SYNTAX + ")")
+        address = self._expand_heading(address)             # h:p:A, a heading's range (round 36)
         part = self._part_for_story(address)
         if part is not None:
             return part, list(self._index(part).paragraphs)
@@ -254,6 +258,12 @@ class AddressOps:
             self._refuse_inside_table(identifier, "a paragraph or table")
         except AddressError as error:
             return error
+        if identifier.startswith("h:"):
+            try:
+                span = self.heading_span(identifier)
+            except AddressError as error:
+                return error
+            return AddressError(f"{identifier} is a heading's range ({span}); give one block here", span.split(".."))
         if identifier.startswith(("s:", "s@")):
             try:
                 self._section_record(identifier)

@@ -183,10 +183,13 @@ def inserted_range(place: str, where: str, text: str, renamed: dict[str, str]) -
             "target": string("Range, block (a control cc: too), span p:A..t:B, picture d:, note fn:/en:.",
                              optional=True),
             "collapse_space": boolean("Also delete the space the deletion would leave doubled. "
-                                      "Default false.", optional=True)},
+                                      "Default false.", optional=True),
+            "force": boolean("Delete a heading though its content stays. Default false.", optional=True)},
            refs=('target', 'within'), group="word_text", mutates=True)
 def word_delete(call: Any, doc: str, find: str | None = None, within: str | None = None,
-                target: str | None = None, collapse_space: bool = False) -> Result:
+                target: str | None = None, collapse_space: bool = False, force: bool = False) -> Result:
+    """Round 36, R33: a heading deleted while blocks under it stay is refused -- they would go
+    under the heading before it -- unless ``force``; ``h:<heading>`` deletes it with them."""
     document = call.document
     if find is None and target is None:
         raise ToolError("invalid_arguments", "give find (text to delete) or target (what to delete)",
@@ -215,8 +218,37 @@ def word_delete(call: Any, doc: str, find: str | None = None, within: str | None
     if ".." in target:
         elements, part = document._blocks_of(target)
         ids = [document._block_id(part, element) for element in elements]
-        return outcome([document.delete_block(i) for i in ids], f"Deleted {len(ids)} block(s)")
-    return outcome([document.delete_block(target)], f"Deleted {target}")
+        moved = _headings_kept(document, ids, force)
+        result = outcome([document.delete_block(i) for i in ids], f"Deleted {len(ids)} block(s)")
+    else:
+        moved = _headings_kept(document, [target], force)
+        result = outcome([document.delete_block(target)], f"Deleted {target}")
+    result.warnings += moved
+    return result
+
+
+def _headings_kept(document: Any, ids: list[str], force: bool) -> list[str]:
+    """Round 36, R33: the refusal of deleting a heading whose content stays (it would go under
+    the heading before), with the ways out: the heading's range ``h:``, or ``force`` -- the
+    warnings saying where it went, when forced."""
+    from ..edit.outline import content_left, label
+
+    try:
+        canonical = [document._resolve_block(i)[1].id for i in ids]
+    except (KeyError, EditError, AttributeError):
+        return []                          # delete_block refuses it, in its own words
+    left = content_left(document, canonical)
+    if not left:
+        return []
+    lines = [f"{label(found.heading)} is a heading: its {found.kept} block(s) from {found.first} (to "
+             f"{found.heading.last}) would go under {label(found.under)}" for found in left]
+    if force:
+        return [line.replace("would go", "now go") for line in lines]
+    raise ToolError("invalid_arguments", "; ".join(lines[:5]) + (f"; and {len(lines) - 5} more" if len(lines) > 5 else "")
+                    + ". To delete a heading with everything under it, target its range "
+                    + ", ".join(found.heading.range for found in left[:3])
+                    + "; to delete the heading alone and keep its content, force true",
+                    field="target", valid_options=[found.heading.range for found in left][:50] + ["force"])
 
 
 # -- W8 word_insert_markdown -------------------------------------------------------------------
@@ -454,6 +486,10 @@ def word_format(call: Any, doc: str, targets: list[str], paragraph_style: str | 
     # The blocks kept together, and the layout they are measured in before the change.
     kept = [] if keep_together is None else [a for a in addresses if _keeps_blocks(document, a)]
     before = cached_layout(document) if kept and keep_together else None
+    # Round 36, R33: a style or a cleared outline level may change a heading's level.
+    from ..edit.outline import headings, moves
+
+    outline = headings(document) if paragraph_style is not None or clear_direct or clear else None
     try:
         for address in addresses:
             is_range = "@" in address and not address.startswith("p@")
@@ -491,7 +527,13 @@ def word_format(call: Any, doc: str, targets: list[str], paragraph_style: str | 
                         field="character_style" if kind else "paragraph_style",
                         valid_options=[s.name for s in document.styles if kind is None
                                        or getattr(s, "kind", None) == kind][:50]) from None
-    return outcome(edits, f"Formatted {len(targets)} target(s)")
+    result = outcome(edits, f"Formatted {len(targets)} target(s)")
+    if outline is not None:
+        renamed: dict[str, str] = {}
+        for edit in edits:
+            renamed.update(getattr(edit, "renamed", None) or {})
+        result.warnings += moves(outline, headings(document), renamed)
+    return result
 
 
 def _keeps_blocks(document: Any, address: str) -> bool:
