@@ -1148,6 +1148,15 @@ doc.render_svg(pages=diff.changed)     # or render_png; ids on every paragraph g
   three words or twenty characters outside its header rows; each comparison kept by the
   digests of both sides' blocks and styles, not the version. The definitions are
   ooxml-edit's shared ones (`range`, `copies` to be added there).
+- **Round 35 (R26, R27):** a range's extent in `check(range=...)` (`DocumentLayout.extent`:
+  per page the top and bottom of the body content, the page's body -- its height less its
+  section's margins -- and, where a header or footer pushes the body in, the area docx2svg
+  lays it out in; a block's own by naming it as a range). The live view
+  (`docx_agent.liveview`): `view` and `page_svg` from the layout the tools share, one per
+  version -- pages with their blocks, the pages changed since a token (by docx2svg's
+  `relayout.drawing`, pages equal in the layout not drawn to tell), one page of a token's
+  version as SVG, pictures by name, outlines in one glyph set. `view` lets the document's
+  lock go to wait for a layout in progress (round 34's rule), `page_svg` takes none.
 - **Round 35 (R21):** spacing around punctuation by the text's language
   (`docx_agent.edit.typography`). Writing: `text._spell` records the characters a call
   writes into each `w:t` (a context variable, carried through run splits and joins); the

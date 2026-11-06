@@ -5,6 +5,43 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.45 -- unreleased
+
+- **A range's extent on its pages** (production round 35, R26). `check(range=[...])` gives
+  each range, on each page it is drawn on, `extent`: `{"page", "top", "bottom", "body"}` in
+  points -- the top of its first line and the bottom of its last there, from the page's top
+  edge, as `DocumentLayout.where` measures a block, and the page's height less the top and
+  bottom margins its section sets -- with `area: [top, bottom]` only on a page whose header
+  or footer reaches past its margin and pushes the body in (docx2svg lays the body out
+  there; `area` is the room it has), `columns` only where it is drawn in more than one; and
+  `height`, `bottom - top` summed over its pages. At most 12 pages listed, the rest counted
+  in `extent_more`. A block's own extent: name it as its own range beside the span
+  (`range=["p:A..p:C", "p:A", "t:B", "p:C"]`) -- no new field. Python API:
+  `DocumentLayout.extent(ids, pages=None)` -> `Extent(page, top, bottom, lines, columns,
+  body, area)`.
+- **The live view from the shared layout** (R27; `docx_agent.liveview`, an application API,
+  not a tool). `view(session, doc, since=token)` (or `view(document)`) -> every page in
+  order with the ids of the blocks it draws and its size, the pages whose drawing changed
+  since `since` (all on a first call; `stale` with a note, and all, for a token no longer
+  kept), a new token. `page_svg(session, doc, page, token, text="text"|"outlines",
+  images="external"|"embedded", glyphs=None)` draws one page of the token's version -- even
+  after the document moved on -- as `render_svg` draws it, pictures by name
+  (`externalise_images`, pptx2svg's names), outlined text in one glyph set. Both read the
+  layout the tools made of that version: `view` takes the document's lock for the bytes,
+  lets it go while the version is laid out (waiting for a check's layout in progress there),
+  and lays out on its own instead when its thread holds the lock already; `page_svg` holds
+  no document lock. Changed pages are docx2svg's `changed_pages` for the same versions
+  (tested over six kinds of edit).
+- `DocumentLayout.blocks_on` maps the body's keys from one listing of the body (each key
+  resolved alone listed it again: 0.7 s -> 0.09 s for 79 pages). A layout's pages are drawn
+  under its own lock (the fourth in `docx_agent.layout`'s order).
+- Measured on a made-up 79-page report, in process: a first view after a check 0.67 s, no
+  layout (a third layout of their own: 12.4 s); after one edit and a check, view plus the
+  changed page's SVG 0.27 s, no layout, against 1.49 s for docx2svg's layout from the
+  previous one, its SVG and the blocks per page.
+- Offline tokens: definitions unchanged (0). `check` with a range: +38 for one range over
+  two pages (292 in all), +143 for a span and its four blocks (450).
+
 ## 0.1.44 -- unreleased
 
 - **`set_language` retags the template's own language** (production round 35, R25;

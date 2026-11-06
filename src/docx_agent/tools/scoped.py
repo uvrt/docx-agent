@@ -49,15 +49,48 @@ _CACHE_LOCK = threading.Lock()
 # -- ranges ------------------------------------------------------------------------------------
 
 
-def range_pages(scope: Scope, layout: Any) -> tuple[list[dict[str, Any]], list[int]]:
-    """Each range as reported -- ``{"range", "blocks", "pages"}`` -- and every page any of
-    them is on."""
+#: Pages a range's ``extent`` lists (rule 4); the rest are counted in ``extent_more``.
+EXTENT_PAGES = 12
+
+
+def range_pages(scope: Scope, layout: Any, extent: bool = False) -> tuple[list[dict[str, Any]], list[int]]:
+    """Each range as reported -- ``{"range", "blocks", "pages"}``, with ``extent``
+    (:func:`range_extent`) -- and every page any of them is on."""
     out = []
     every: set[int] = set()
     for found, pages in zip(scope.ranges, scope.pages(layout)):
-        out.append({"range": found.address, "blocks": len(found.blocks), "pages": pages})
+        reported = {"range": found.address, "blocks": len(found.blocks), "pages": pages}
+        if extent and pages:
+            reported.update(range_extent(layout, found.paragraphs, pages))
+        out.append(reported)
         every.update(pages)
     return out, sorted(every)
+
+
+def range_extent(layout: Any, paragraphs: list[str], pages: list[int]) -> dict[str, Any]:
+    """How much of its pages a range's body content takes (round 35, R26;
+    :meth:`docx_agent.layout.DocumentLayout.extent`): ``extent``, per page ``{"page",
+    "top", "bottom", "body"}`` in points -- the top of its first line and the bottom of
+    its last there, from the page's top edge, and the page's height less its section's
+    top and bottom margins -- with ``area`` (``[top, bottom]``: where the body may be
+    drawn) only on a page whose header or footer reaches past its margin and pushes the
+    body in, and ``columns`` only where it is drawn in more than one; ``height``, its
+    ``bottom - top`` summed over every page.  At most :data:`EXTENT_PAGES` pages are
+    listed; ``extent_more`` counts the rest (each block or a shorter span as its own range
+    lists them)."""
+    extents = layout.extent(paragraphs, pages)
+    listed = []
+    for found in extents[:EXTENT_PAGES]:
+        entry: dict[str, Any] = {"page": found.page, "top": found.top, "bottom": found.bottom, "body": found.body}
+        if found.area[1] - found.area[0] < found.body - 0.01:
+            entry["area"] = list(found.area)
+        if found.columns > 1:
+            entry["columns"] = found.columns
+        listed.append(entry)
+    out: dict[str, Any] = {"extent": listed, "height": round(sum(e.bottom - e.top for e in extents), 2)}
+    if len(extents) > EXTENT_PAGES:
+        out["extent_more"] = len(extents) - EXTENT_PAGES
+    return out
 
 
 def problems_in_scope(document: Any, scope: Scope, problems: list) -> tuple[list, int]:
