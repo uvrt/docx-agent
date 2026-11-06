@@ -942,7 +942,7 @@ def test_check_is_sent_without_a_decks_parameters_and_still_refuses_them(box, se
     older prompt that passes one gets the refusal it always got (slides: read as pages)."""
     sent = next(d for d in box.definitions("anthropic", defer=False) if d["name"] == "check")
     assert set(sent["input_schema"]["properties"]) == {"doc", "pages", "include", "min_size", "styles",
-                                                         "range", "copies"}
+                                                         "range", "copies", "scale"}
     d = open_doc(session)
     refused = fails(box, session, "check", "invalid_arguments", doc=d, boxes=True)
     assert refused.field == "boxes" and refused.message == "boxes is for decks; for a document use include"

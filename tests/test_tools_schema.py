@@ -222,10 +222,17 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 #: content stays; unnumbering a paragraph its style numbers): +58 to every definition
 #: (14,270 -> 14,328).  The guard rises to 14,330; a reviewer's core is 2,750, at its guard.  Neither is strict: the strict set is
 #: unchanged (6 tools, 23 optional parameters).
+#: Round 36, R31 (ooxml-edit 0.85.0): check's ``scale`` (values styled with the wrong step of a
+#: scale the caller gives, or none; its steps' fields undescribed) +158 to the core (2,876 ->
+#: 3,034, about 4,490 counted by the proxy) and to every definition; style_by_value (a scale's
+#: steps written once: a character style per step, cell shading), deferred in shared_misc,
+#: +464 (14,328 -> 14,950).  The guard rises to 14,950.  style_by_value is listed last and
+#: does not fit Claude's strict limits beside the others: the strict set is unchanged (6
+#: tools, 23 optional parameters).
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 6500
-ALL_GUARD = 14330
+ALL_GUARD = 14950
 
 
 @pytest.fixture(scope="module")

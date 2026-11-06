@@ -781,7 +781,21 @@ def set_properties(call: Any, doc: str, title: str | None = None, author: str | 
                    data={k: properties.get(k) for k in ("title", "author", "language", "subject")})
 
 
+# -- style_by_value (round 36, R31) -------------------------------------------------------------
+
+
+def _style_by_value(call: Any, doc: str, scale: Any, preview: bool | None = None) -> Result:
+    from .scales import style_by_value as run
+
+    return run(call, doc, scale, preview)
+
+
+style_by_value = handler("style_by_value", mutates=True)(_style_by_value)
+
+
 #: ``read_batch`` (ooxml-edit 0.78.0; round 32, R15): many reads in one call, each with its
-#: own budget; a reader's tool, in the core.
+#: own budget; a reader's tool, in the core.  ``style_by_value`` (round 36, R31) is listed
+#: in ``TOOLS`` after every Word tool: the strict plan tries tools in order, and the ones
+#: before it keep their places.
 TOOLS = [new_document, save_document, describe, find_text, replace_text, render, check, edit_chart,
          edit_smartart, set_properties, *shared.SESSION_TOOLS, shared.READ_BATCH]

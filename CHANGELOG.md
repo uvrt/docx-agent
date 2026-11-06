@@ -5,6 +5,30 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.49 -- unreleased
+
+- **Values styled by a scale, applied once** (production round 36, R31; ooxml-edit 0.85.0):
+  `style_by_value(doc, scale)` gives each value of the scale's `targets` its step's style --
+  a paragraph, a range (`p:A@4:5`), a cell, a table's column (`t:X/col1`: its body cells, a
+  repeated header row, or the first where the table's look has a header row, left out), or
+  the values written by reference (`{{t:checks/*/rating}}`, `Document.text_facts()`: the
+  value's characters, or its cell where it is the cell's whole text). One character style
+  per step, named from the scale (`Score 1 Low`), made once and reused, as Word writes one
+  made with a font colour and shading (measured in Word for Mac 16.106: a made-up document,
+  the style made and applied by script and saved -- `w:customStyle`, the id without spaces,
+  based on Default Paragraph Font, `w:color` and `w:shd w:val="clear" w:color="auto"` in its
+  `w:rPr`, no `w:qFormat`; Word keeps ours as written on a save and draws them, as docx2svg
+  does); a cell is shaded as Word shades one and its text gets the style; a run's own colour,
+  shading and highlight are taken off. A style whose colours are not the step's any more is
+  set to them, with a warning (its uses follow). One undo step, tracked as formatting where
+  tracking is on; `preview` says which styles it would make. `check(scale=...)` lists the
+  values styled with another step (a value changed after styling), with none, or with the
+  step but other colours, and the fix (`docx_agent.tools.scales`).
+- Tokens (offline estimate): check's `scale` +158 in the core (2,876 -> 3,034, about 4,490
+  counted by the proxy); `style_by_value` (deferred, `shared_misc`) +464: every definition
+  14,328 -> 14,950 (guard 14,950); a reviewer's core 2,750 -> 2,908 (guard 2,910), all 8,096
+  -> 8,256 (guard 8,260). The strict set unchanged (6 tools, 23 optional parameters).
+
 ## 0.1.48 -- unreleased
 
 - **The outline: what each heading owns** (production round 36, R32). `Document.outline()`
