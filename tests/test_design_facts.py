@@ -212,7 +212,7 @@ def test_word_design_facts(box, doc):
     d1 = session.open(doc.to_bytes(), "template.docx")
     result = box.dispatch(session, "word_design_facts", {"doc": d1})
     assert result.ok, result.error and result.error.to_json()
-    assert result.summary == "Design facts: 9 styles, 1 table styles, 2 sections, 1 patterns"
+    assert result.summary == "Design facts: 9 styles, 1 table styles, 3 table frames, 2 sections, 1 patterns"
     # The Python API's paragraph keep_together is keep_lines to a model (round 25, W4).
     assert result.data == tool_names(doc.design_facts(), "look")
     assert '"keep_together"' not in json.dumps(result.data) and '"keep_lines"' in json.dumps(result.data)

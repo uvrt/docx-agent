@@ -59,10 +59,11 @@ def test_keep_lines_is_set_turned_off_and_cleared(box, session):
     ok(box, session, "word_format", doc=d, targets=[target], clear=["keep_lines"])
     assert _element(session, d).find(f"{_W}pPr/{_W}keepLines") is None
 
-    # The Python API's name is read as word_format's, and the call says so.
+    # The Python API's name: on one paragraph, word_format's keep_together (round 36, R30:
+    # a span's blocks on one page) keeps its lines together.
     result = ok(box, session, "word_format", doc=d, targets=[target], keep_together=True)
     assert _element(session, d).find(f"{_W}pPr/{_W}keepLines") is not None
-    assert result.warnings[0] == "keep_together read as keep_lines"
+    assert result.warnings == []
 
     refused = box.dispatch(session, "word_format", {"doc": d, "targets": [target], "keep_lines": True,
                                                     "clear": ["keep_lines"]})
