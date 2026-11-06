@@ -316,7 +316,7 @@ def word_template(call: Any, doc: str, action: str) -> Result:
 # -- F9 word_design_facts ---------------------------------------------------------------------
 
 
-@word_tool("word_design_facts", "Measured design facts for template analysis, no verdicts: styles in use per role with usage and effective look, table styles by place (header row, bands, label column), page grid per section, theme, repeated block shapes; or every declared style resolved.",
+@word_tool("word_design_facts", "Measured design facts for template analysis, no verdicts: styles in use per role with usage and look, table styles by place (header, bands, label column), table frames, page grid per section, theme, repeated block shapes; or every declared style resolved.",
            {"doc": DOC,
             "include": array(string(enum=list(ALL_KINDS)), "Facts to report. Default all but declared_styles.",
                              optional=True),
@@ -340,7 +340,8 @@ def word_design_facts(call: Any, doc: str, include: list[str] | None = None, cur
                 or max(caps.values()) <= 1:
             break
         caps = {k: max(1, v // 2) for k, v in caps.items()}
-    counts = [f"{len(data[k])} {k.replace('_', ' ')}" for k in ("styles", "table_styles", "sections", "patterns")
+    counts = [f"{len(data[k])} {k.replace('_', ' ')}" for k in ("styles", "table_styles", "table_frames", "sections",
+                                                               "patterns")
               if k in data]
     total, next_cursor = None, None
     if declared:

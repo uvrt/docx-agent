@@ -28,6 +28,9 @@ from ooxml_edit.tools import ToolError
 from ..edit import copies as _copies
 from ..scope import Scope, headings_as_ranges
 
+_W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+_P = _W + "p"
+
 #: Comparisons kept per document (each a few kilobytes: a copy's differences and example text).
 COPY_CACHE = 128
 
@@ -62,6 +65,7 @@ def range_pages(scope: Scope, layout: Any, extent: bool = False) -> tuple[list[d
         reported = {"range": found.address, "blocks": len(found.blocks), "pages": pages}
         if extent and pages:
             reported.update(range_extent(layout, found.paragraphs, pages))
+            reported.update(range_keeps(scope.document, found, layout))
         out.append(reported)
         every.update(pages)
     return out, sorted(every)
@@ -91,6 +95,78 @@ def range_extent(layout: Any, paragraphs: list[str], pages: list[int]) -> dict[s
     if len(extents) > EXTENT_PAGES:
         out["extent_more"] = len(extents) - EXTENT_PAGES
     return out
+
+
+#: Page breaks a range's ``breaks`` lists (rule 4); the rest are counted in ``breaks_more``.
+BREAKS_LISTED = 10
+
+
+def range_keeps(document: Any, found: Any, layout: Any) -> dict[str, Any]:
+    """Whether a range of whole body blocks is drawn on one page and set to stay so (round
+    36, R30: the caller's spans, nothing stored in the document): ``one_page``; ``kept``
+    -- every block holds the keeps ``word_format`` ``keep_together`` writes
+    (:meth:`~docx_agent.Document.keep_blocks_together`); and where it is not on one page,
+    ``breaks`` -- each page break in it: ``{"after", "before", "page"}`` between two
+    blocks (``page_break``: the later one starts a page anyway -- a page break, a section
+    start -- which no keep undoes), ``{"inside", "pages"}`` within one (at most
+    :data:`BREAKS_LISTED`, ``breaks_more`` the rest) -- and ``fix`` (that call) where its
+    height fits the body of a page and a keep would close a break, else
+    ``taller_than_page`` (it cannot be kept: Word starts it on a new page and breaks it
+    where the page is full).  ``{}`` for a range that is not whole blocks (a
+    cell, a text range) or not drawn whole."""
+    from ..edit.copies import blocks_of
+
+    try:
+        blocks = blocks_of(document, found.address)
+    except (KeyError, ValueError):
+        return {}
+    held = {id(element) for element in found.elements}
+    for _, element in blocks:
+        inside = [element] if element.tag == _P else list(element.iter(_P))
+        if not all(id(paragraph) in held for paragraph in inside):
+            return {}
+    drawn = [layout.pages_of(identifier) for identifier, _ in blocks]
+    if not blocks or not all(drawn):
+        return {}
+    changes, _ = document._keep_changes(blocks, True)
+    out: dict[str, Any] = {"one_page": len({p for pages in drawn for p in pages}) == 1, "kept": not changes}
+    if out["one_page"]:
+        return out
+    breaks: list[dict[str, Any]] = []
+    for k, ((identifier, element), pages) in enumerate(zip(blocks, drawn)):
+        if k and max(drawn[k - 1]) < min(pages):
+            gap = {"after": blocks[k - 1][0], "before": identifier, "page": min(pages)}
+            if _starts_page(document, blocks[k - 1][1], element):
+                gap["page_break"] = True
+            breaks.append(gap)
+        if len(pages) > 1:
+            breaks.append({"inside": identifier, "pages": pages})
+    out["breaks"] = breaks[:BREAKS_LISTED]
+    if len(breaks) > BREAKS_LISTED:
+        out["breaks_more"] = len(breaks) - BREAKS_LISTED
+    extents = layout.extent(found.paragraphs)
+    height = sum(e.bottom - e.top for e in extents)
+    room = min((e.area[1] - e.area[0] for e in extents), default=0.0)
+    if extents and height > room + 0.5:
+        out["taller_than_page"] = True
+    elif not out["kept"] and not all(b.get("page_break") for b in breaks):
+        out["fix"] = {"tool": "word_format", "calls": [{"targets": [found.address], "keep_together": True}]}
+    return out
+
+
+def _starts_page(document: Any, before: Any, element: Any) -> bool:
+    """Whether a block starts a page whatever keeps it: a page break before it (its style's
+    or its own), a page break at its start or at the end of the paragraph before it, or a
+    section break there."""
+    from ..edit import effective as _effective
+    from ..layout_facts import _page_break_at
+
+    if element.tag == _P and (_effective.paragraph(document, element).page_break_before
+                              or _page_break_at(element, start=True)):
+        return True
+    if before.tag == _P and (_page_break_at(before, start=False) or before.find(f"{_W}pPr/{_W}sectPr") is not None):
+        return True
+    return False
 
 
 def problems_in_scope(document: Any, scope: Scope, problems: list) -> tuple[list, int]:

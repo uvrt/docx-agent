@@ -46,7 +46,9 @@ with Toolbox(TOOLS, formats=[FORMAT], groups=GROUPS) as toolbox:
 - **`check` and `render` take `range`** (round 35): one or several blocks, spans
   (`p:A..t:B`), cells or sections; `check` reports the facts about those blocks on the
   pages they fall on, the problems found in them and each range's pages, `render` draws
-  those pages. **`check` takes `copies`**: each copy (a block or span) compared with the
+  those pages; each range of whole blocks says whether it is on one page (`one_page`),
+  set to stay so (`kept`, as `word_format` `keep_together` keeps a span), where it breaks
+  and the call that keeps it. **`check` takes `copies`**: each copy (a block or span) compared with the
   reference it was made from, here or in another open document -- whether it follows,
   what differs with its fix and kind, where the reference's example text is still in it,
   and one `word_follow_sample` call per reference to make the copies follow. A comparison

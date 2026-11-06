@@ -209,10 +209,14 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 #: existing document, or of a style) +56 to every definition (14,168 -> 14,224), none to the
 #: core (2,871).  The guard rises to 14,225.  word_styles is not strict (deferred, in
 #: word_style): the strict set is unchanged.
+#: Round 36, R30/R34: word_format's ``keep_together`` (a span's blocks on one page; on one
+#: paragraph its lines, as the Python API's name read before) +38, word_design_facts'
+#: ``table_frames`` kind +5: +43 to every definition (14,224 -> 14,267), none to the core
+#: (2,871).  The guard rises to 14,270.  Neither tool is strict: the strict set is unchanged.
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 6500
-ALL_GUARD = 14225
+ALL_GUARD = 14270
 
 
 @pytest.fixture(scope="module")
