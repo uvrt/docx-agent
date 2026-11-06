@@ -1,8 +1,7 @@
 """Text facts in a Word document (round 5, T4): ``{{d:scores/Beta/rating}}`` in a text tool's
 argument is written as the value, in the session's locale, and the result lists it with its
-sources -- as in pptx-agent.  A Word document does not keep text facts in the file yet (the
-deck does): a paragraph's id changes when it is edited, so the key a table's record uses
-does not carry over.  A deck's slide-number reference (``{{slide:s:262}}``) is refused
+sources -- as in pptx-agent.  From round 36 the document keeps it on its paragraph
+(:mod:`test_numbers`).  A deck's slide-number reference (``{{slide:s:262}}``) is refused
 (round 6, R8).
 
 The data is made up: the toy dataset and grid of :mod:`test_tables_from_data`.

@@ -5,6 +5,37 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.47 -- unreleased
+
+- **Numbers in text no value holds** (production round 36, R28; ooxml-edit 0.84.0): `check`
+  with `include: ["numbers"]` reads each body paragraph's and table cell's text
+  (`FORMAT.number_texts`, `docx_agent.tools.textfacts`) as `find_text` reads it -- deleted
+  text left out, a note's or drawing's mark a space -- and lists the decimals and
+  percentages no value of the session's datasets or open workbooks' tables matches within
+  the rounding the text shows (`unverified`, with the nearest values), and the typed
+  numbers a value matches (`typed`, with the `replace_text` call that writes each by
+  reference, scoped to its paragraph or cell). `range` narrows it as `check` resolves a
+  range, `pages` by the layout (laid out with the lock let go, as `check` does); each text
+  says its `page`. Left out: tables placed with `from`, a table of contents, headers,
+  footers and notes, and the text written by reference. Opt in, capped; whole numbers and
+  the ignore list are the application's (`Toolbox(numbers=NumberRules(...))`).
+- **Text written by reference is kept in the file** (R28): a value a text tool writes by
+  reference (`{{d:...}}`, `{{t:...}}` in `word_set_text`, `word_insert_text`,
+  `replace_text`, `word_insert_markdown`) is kept on its paragraph in the provenance item
+  (`kind="text"`, keyed by the paragraph's id, its text and each value's place, source,
+  format and sources; `Document.text_facts()`, `Document.keep_text_facts()`), found by the
+  text around it in the argument; `replace_text` keeps every place it wrote. It follows its
+  text: every edit keeps the values it did not touch, moved, and drops those it touched or
+  borders; a paragraph renamed keeps them, one deleted or left without any drops its
+  entry; undo brings them back. Read after an edit made elsewhere (Word keeps the
+  paragraph's id through an edit and a save), the values the changed span left alone stay.
+  A split keeps the part with the paragraph's id; copies and joined paragraphs' second
+  halves keep none.
+- Offline tokens: check's include gains `numbers`: the core 2,871 -> 2,874 (about 4,254
+  counted by the proxy), every definition 14,267 -> 14,270 (guard 14,270 -> 14,275); a
+  reviewer's core 2,746 -> 2,748, all 8,095 -> 8,096 (guards unchanged). No parameter added:
+  the strict set and its optional count are unchanged.
+
 ## 0.1.46 -- unreleased
 
 - **A table parted from the line that introduces it or the line after it** (production

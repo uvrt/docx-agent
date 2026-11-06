@@ -39,7 +39,8 @@ from test_tools_word import AGREEMENT, CLOCK_AT
 #: (check, find_text, replace_text and render without a deck's parameters and values)
 #: 2,328; round 28, W9 (word_read's ``range`` names a cell and an open span, +5) 2,333;
 #: round 32, R15 (read_batch, ooxml-edit 0.78.0, +183) 2,516; round 35, R18/R19 (check's
-#: ``range`` and ``copies``, render's ``range``, ooxml-edit 0.81.0, +230) 2,746.
+#: ``range`` and ``copies``, render's ``range``, ooxml-edit 0.81.0, +230) 2,746; round
+#: 36, R28 (check's include ``numbers``, ooxml-edit 0.84.0) 2,748.
 REVIEW_CORE_GUARD = 2750
 #: Every definition a reviewer is sent, estimated.  Measured 6,820 (6,813 before); round 9,
 #: N1, 6,884; round 12, Q1, 6,919; round 15, T2, 6,955; round 16, F11, 6,997; F8, 7,064; F9
@@ -57,7 +58,8 @@ REVIEW_CORE_GUARD = 2750
 #: (read_batch) 7,808; round 35, R18/R19 (check's ``range`` and ``copies``, render's
 #: ``range``, ooxml-edit 0.81.0, +229) 8,037; R24 (word_styles' ``set_language`` and
 #: ``language``, +52, as ``shading``: its list and describe are a reviewer's) 8,089; round 36,
-#: R34 (word_design_facts' ``table_frames``, a reading tool, deferred) 8,095.
+#: R34 (word_design_facts' ``table_frames``, a reading tool, deferred) 8,095; R28
+#: (check's include ``numbers``) 8,096.
 REVIEW_ALL_GUARD = 8100
 
 REVIEW_CORE = {"save_document", "describe", "find_text", "render", "check", "open_document",

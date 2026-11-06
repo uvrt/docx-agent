@@ -37,6 +37,29 @@ what is gone), so undoing it brings the object back with its record; a save writ
 document as it is and prunes nothing.  A table deleted as a tracked change is still in
 the file: its entry stays, ignored on reading, and rejecting the deletion brings it back.
 
+**Text written by reference** (round 36).  A value written into a paragraph by reference
+(``{{d:by_topic/door/mean}}``, :mod:`ooxml_edit.tools.textfacts`) is kept in the same item,
+one entry per paragraph, keyed by the paragraph's id (``p:<paraId>``, ``header1/p:...``):
+``kind="text"`` and the record ``{"v":1,"paragraph":<its text>,"facts":[...]}`` -- each
+fact an :mod:`ooxml_edit.provenance` fact (``source``, ``format``, ``text``, ``document``,
+``version``, ``sources``, ``p`` 0 and ``at``, the character in the paragraph's text as
+``find_text`` reads it: insertions in, deletions out), and ``paragraph`` the text the
+places count in.  So a fact is true while its characters are its text:
+
+* every edit here ends by following them (:meth:`ProvenanceOps._follow_text_facts`, in
+  its undo step): a paragraph whose text changed keeps the facts the change did not touch,
+  moved with the text before them (:func:`ooxml_edit.provenance.facts_after_edit`), and
+  loses the ones it touched or borders; a paragraph renamed keeps its entry under its new
+  id; a paragraph gone, or left with no fact, takes its entry away;
+* reading (:meth:`ProvenanceOps.text_facts`) applies the same rule between the text kept
+  and the text now, for a change made elsewhere -- Word keeps a paragraph's ``w14:paraId``
+  through an edit of it and a save (measured, ROADMAP.md "Paragraphs"); one edit in
+  between is one changed span, so a value with changes on both sides of it in one
+  session elsewhere is dropped, never kept wrongly;
+* a paragraph split keeps the facts of the part that keeps its id; text copied or moved
+  to new paragraphs (a copy, a paste) takes no fact along; two paragraphs joined keep the
+  first one's.
+
 Everything is written in the caller's undo step (:meth:`~docx_agent.Document._edit`): the
 item, its properties and the relationship come and go together, and the last record
 removed takes all three away.
@@ -52,6 +75,7 @@ from ooxml_edit import provenance as _records
 from ooxml_edit.xml import serialize
 
 from . import ids as _ids
+from . import text as _text
 from .controls import DS, REL_CUSTOM_XML, REL_CUSTOM_XML_PROPS
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -76,13 +100,20 @@ class Provenance(dict):
 
 
 def kind_of(key: str) -> str | None:
-    """``table`` for a durable table id, ``chart`` for a durable drawing id, else ``None``."""
+    """``table`` for a durable table id, ``chart`` for a durable drawing id, ``text`` for a
+    durable paragraph id (its text facts), else ``None``."""
     local = key.rpartition("/")[2] if not key.startswith("d:") else key
     if local.startswith("t:") and "#" not in local and _ids.valid_long_hex(local[2:]):
         return "table"
     if key.startswith("d:") and "#" not in key:
         return "chart"
+    if local.startswith("p:") and _ids.valid_long_hex(local[2:]):
+        return TEXT
     return None
+
+
+#: An entry's kind for a paragraph's text facts.
+TEXT = "text"
 
 
 class ProvenanceOps:
@@ -103,6 +134,8 @@ class ProvenanceOps:
             return out
         for node in _entries(self.package.tree(item)):
             key = node.get("key") or ""
+            if node.get("kind") == TEXT:
+                continue                       # a paragraph's text facts: text_facts()
             try:
                 found = _records.loads(node.text or "")
             except _records.RecordError:
@@ -149,6 +182,143 @@ class ProvenanceOps:
                 self.package.mark_dirty(item)
             self._prune_provenance()
         return key is not None
+
+    # -- text written by reference (round 36) -----------------------------------------------
+
+    def text_facts(self: "Document") -> dict[str, list[dict[str, Any]]]:
+        """The values written into paragraphs by reference that are still their text, as
+        kept in the file: ``{paragraph id: facts}``, each fact an :mod:`ooxml_edit.provenance`
+        fact (``source``, ``text``, ``p`` 0, ``at`` its character in the paragraph's text,
+        ``sources``...), in order.  A paragraph whose text changed since -- edited elsewhere
+        -- keeps the facts the change left alone (see the module's notes)::
+
+            for paragraph, facts in doc.text_facts().items():
+                for fact in facts:
+                    print(paragraph, fact["at"], fact["text"], fact["source"])"""
+        out: dict[str, list[dict[str, Any]]] = {}
+        item = self._provenance_item()
+        if item is None:
+            return out
+        for node in _entries(self.package.tree(item)):
+            if node.get("kind") != TEXT:
+                continue
+            key = node.get("key") or ""
+            found = self._text_entry(node)
+            element = self._text_paragraph(key)
+            if found is None or element is None:
+                continue
+            kept, facts = found
+            now = _text.paragraph_text(element)
+            facts = _records.facts_after_edit(facts, kept, now)
+            if facts:
+                out.setdefault(self._text_key(key), []).extend(facts)
+        return out
+
+    def keep_text_facts(self: "Document", paragraph: str, facts: list[Mapping[str, Any]]) -> bool:
+        """Keep ``facts`` -- :mod:`ooxml_edit.provenance` facts whose ``p`` is 0 and ``at``
+        their place in the paragraph's text now -- for the paragraph ``paragraph``, with the
+        facts it kept that they do not overlap; one undo step (or part of the caller's).  A
+        fact whose text is not where it says is left out.  ``False`` when nothing could be
+        kept: the paragraph has no durable id (a positional ``p@...`` one)."""
+        try:
+            _part, entry = self._resolve(paragraph)
+        except KeyError:
+            return False
+        if not isinstance(entry, _ids.ParagraphEntry) or kind_of(entry.id) != TEXT:
+            return False
+        now = _text.paragraph_text(entry.element)
+        new = _records.facts_found([{**dict(f), "p": 0} for f in facts], now)
+        with self._edit():
+            item = self._provenance_item()
+            root = self.package.tree(item) if item is not None else None
+            node = next((n for n in _entries(root) if n.get("key") == entry.id
+                         and n.get("kind") == TEXT), None)
+            old: list[dict[str, Any]] = []
+            if node is not None:
+                found = self._text_entry(node)
+                if found is not None:
+                    old = _records.facts_after_edit(found[1], found[0], now)
+            spans = [(f["at"], f["at"] + len(f["text"])) for f in new]
+            kept = [f for f in old if not any(f["at"] < end and start < f["at"] + len(f["text"])
+                                              for start, end in spans)]
+            merged = sorted(kept + new, key=lambda f: f["at"])
+            if not merged:
+                if node is not None and root is not None and item is not None:
+                    root.remove(node)
+                    self.package.mark_dirty(item)
+                return True
+            if root is None:
+                item, root = self._add_provenance_item(entry.id)
+            if node is None:
+                node = etree.SubElement(root, _P + "source")
+                node.set("kind", TEXT)
+                node.set("key", entry.id)
+            text = _records.dumps({"v": _records.VERSION, "paragraph": now, "facts": merged})
+            if node.text != text and item is not None:
+                node.text = text
+                self.package.mark_dirty(item)
+        return True
+
+    def _text_entry(self: "Document", node: Any) -> tuple[str, list[dict[str, Any]]] | None:
+        """A text entry's paragraph text and facts, ``None`` when it holds no record."""
+        try:
+            found = _records.loads(node.text or "")
+        except _records.RecordError:
+            return None
+        kept, facts = found.get("paragraph"), found.get("facts")
+        if not isinstance(kept, str) or not isinstance(facts, list):
+            return None
+        return kept, facts
+
+    def _text_paragraph(self: "Document", key: str) -> Any:
+        """The paragraph element a text entry's key names now (a renamed one followed), or
+        ``None``."""
+        try:
+            _part, entry = self._resolve(key)
+        except KeyError:
+            return None
+        return entry.element if isinstance(entry, _ids.ParagraphEntry) else None
+
+    def _text_key(self: "Document", key: str) -> str:
+        """The id a text entry's paragraph has now (its key, or the id it was renamed to)."""
+        try:
+            return self._resolve(key)[1].id
+        except KeyError:
+            return key
+
+    def _follow_text_facts(self: "Document") -> None:
+        """Inside an edit: every paragraph's text facts after it (see the module's notes) --
+        moved with their text, dropped where the edit touched them, the entry under the id
+        its paragraph has now, or gone with its paragraph or its last fact."""
+        item = self._provenance_item()
+        if item is None:
+            return
+        root = self.package.tree(item)
+        nodes = [node for node in _entries(root) if node.get("kind") == TEXT]
+        if root is None or not nodes:
+            return
+        self._invalidate()  # the edit may have left the indexes stale
+        changed = False
+        for node in nodes:
+            key = node.get("key") or ""
+            found = self._text_entry(node)
+            element = self._text_paragraph(key)
+            if found is None or element is None:
+                continue                       # gone: pruned with the other records
+            kept, facts = found
+            now = _text.paragraph_text(element)
+            name = self._text_key(key)
+            if now == kept and name == key:
+                continue
+            facts = _records.facts_after_edit(facts, kept, now)
+            changed = True
+            if not facts or kind_of(name) != TEXT:
+                root.remove(node)
+                continue
+            node.set("key", name)
+            node.text = _records.dumps({"v": _records.VERSION, "paragraph": now, "facts": facts})
+        if changed:
+            self.package.mark_dirty(item)
 
     def _prune_provenance(self: "Document") -> None:
         """Inside an edit: drop the entries whose table or chart is no longer in the file
@@ -241,9 +411,11 @@ class ProvenanceOps:
         return entry.id if kind_of(entry.id) == "table" else None
 
     def _provenance_target(self: "Document", key: str, *, accepted: bool) -> bool:
-        """Whether the table or chart ``key`` is in the document -- with its tracked
-        changes accepted (``accepted``), or in the file at all."""
+        """Whether the table, chart or paragraph ``key`` is in the document -- with its
+        tracked changes accepted (``accepted``), or in the file at all."""
         kind = kind_of(key)
+        if kind == TEXT:
+            return self._text_paragraph(key) is not None
         if kind == "table":
             found = self._direct(key)
             if found is None or not isinstance(found[1], _ids.TableEntry):
@@ -301,5 +473,5 @@ def count(rows: str) -> int:
     return total
 
 
-__all__ = ["ITEM_TYPE", "NS", "PROPS_TYPE", "Provenance", "ProvenanceOps", "accepted_rows", "count",
-           "kind_of", "pending_rows"]
+__all__ = ["ITEM_TYPE", "NS", "PROPS_TYPE", "Provenance", "ProvenanceOps", "TEXT", "accepted_rows",
+           "count", "kind_of", "pending_rows"]
