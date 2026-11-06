@@ -91,7 +91,9 @@ def test_a_range_reports_its_blocks_facts_and_pages(box, made):
     assert [e["para"] for e in scoped_facts["direct_formatting"]] == [chapters[1][2]]
     layout = session.entry(d1).document.layout()
     pages = sorted({p for b in chapters[1] for p in layout.pages_of(b)})
-    assert result.data["range"] == [{"range": _span(chapters[1]), "blocks": len(chapters[1]), "pages": pages}]
+    reported = dict(result.data["range"][0])
+    reported.pop("extent"), reported.pop("height")          # R26's (tests/test_range_extent.py)
+    assert [reported] == [{"range": _span(chapters[1]), "blocks": len(chapters[1]), "pages": pages}]
     assert "in 1 range(s)" in result.summary
     assert "layout" in result.data and "reflow" in result.data          # range adds layout to the default
 

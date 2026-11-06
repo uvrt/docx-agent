@@ -527,7 +527,7 @@ def check(call: Any, doc: str, slides: list | None = None, pages: list[int] | No
         scoped_pages = pages
         if scope is not None:
             if layout is not None:
-                report["range"], on = range_pages(scope, layout)
+                report["range"], on = range_pages(scope, layout, extent=True)
                 scoped_pages = on if pages is None else [p for p in on if p in pages]
                 if pages is not None and not scoped_pages:
                     call.warn(f"pages {pages} hold none of the range's blocks (on pages {on}): no layout facts")

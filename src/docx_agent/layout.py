@@ -23,7 +23,11 @@ lock*.  In order, each taken only with those before it held, never the other way
    the one kept for the next version; held only for a lookup or to map a layout to ids --
    never while laying out or waiting) -- one document's at a time (:func:`adopt` takes the
    copy's, lets it go, then the document's), and :data:`_KEEPERS_LOCK` only to make one;
-3. :data:`_RECENT_LOCK` (taken in :func:`lay_out_bytes`, with neither of the above held).
+3. :data:`_RECENT_LOCK` (taken in :func:`lay_out_bytes`, with neither of the above held);
+4. a layout's drawing lock (``_Conversion.drawing``: :func:`render_svg` and
+   :mod:`docx_agent.liveview` drawing a page, or a page's digest, from a layout made
+   already), taken with nothing held but -- in :func:`render_svg` -- the document's lock, and
+   nothing taken or waited for under it.
 
 A layout in progress (:class:`_Flight`) is waited for only by a caller that let the
 document's lock go to wait (``unlocked`` given and not yielding ``False``: a lone check, the
@@ -78,6 +82,8 @@ if TYPE_CHECKING:  # pragma: no cover
 PX_PER_PT = Fraction(300, 72)
 
 _W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+#: A key naming one of the body's children (:meth:`DocumentLayout._top_level`).
+_TOP_KEY = re.compile(r"^w:body/w:([A-Za-z]+)\[(\d+)\]$")
 
 
 @dataclass(frozen=True)
@@ -94,6 +100,34 @@ class Placement:
     lines: int
     story: str = "body"
     column: int = 0
+
+
+@dataclass(frozen=True)
+class Extent:
+    """How much of one page some blocks' body content takes (round 35, R26): the 1-based
+    ``page``; ``top`` and ``bottom`` in points from the page's top edge -- the first of
+    their lines' tops and the last of their lines' bottoms there, as :meth:`DocumentLayout.where`
+    measures a block (a line's top to its top plus its pitch; a table by its cells' lines),
+    across the page's text columns (``columns``: how many they are drawn in); how many
+    ``lines``; ``body`` -- the page's height less the top and bottom margins its section
+    sets, in points (``w:pgSz``, ``w:pgMar``; a negative margin by its magnitude) -- and
+    ``area``, ``(top, bottom)``: where docx2svg lays the body out on that page, which is
+    the margins unless the page's header or footer reaches past its margin and pushes the
+    body in (Word does: docx2svg's ``paginate._geometry``, measured), so ``area[1] -
+    area[0]`` is the room the body really has there."""
+
+    page: int
+    top: float
+    bottom: float
+    lines: int
+    columns: int
+    body: float
+    area: tuple[float, float]
+
+    @property
+    def height(self) -> float:
+        """``bottom - top``."""
+        return round(self.bottom - self.top, 2)
 
 
 @dataclass(frozen=True)
@@ -316,6 +350,50 @@ class DocumentLayout:
             return out
         return self._unknown(identifier)
 
+    def extent(self, identifiers: "str | Any", pages: "Any" = None) -> list[Extent]:
+        """How much of each page the body content of some blocks takes (round 35, R26):
+        one :class:`Extent` per page any of them is drawn on, in page order --
+        ``identifiers`` one id or several (paragraphs, tables: a table's cells' paragraphs;
+        a span's blocks given one by one), ``pages`` the 1-based pages to look on (default
+        every page).  Only the body's lines count (not a header's, a footer's or a note's).
+        ``[]`` for blocks nothing of which is drawn."""
+        if isinstance(identifiers, str):
+            identifiers = [identifiers]
+        wanted: set[str] = set()
+        for identifier in identifiers:
+            wanted |= self._wanted(identifier)
+        numbers = range(1, len(self.pages) + 1) if pages is None else sorted(
+            {n for n in pages if 1 <= n <= len(self.pages)})
+        out = []
+        for number in numbers:
+            mine = [line for key, line in self._lines[number - 1]
+                    if key is not None and _in_body(line) and self._canon(key) in wanted]
+            if not mine:
+                continue
+            top = min(line.top for line in mine)
+            bottom = max(line.top + line.pitch for line in mine)
+            body, area = self._body_of(number)
+            out.append(Extent(number, round(float(top / PX_PER_PT), 2), round(float(bottom / PX_PER_PT), 2),
+                              len(mine), len({line.column or 0 for line in mine}), body, area))
+        return out
+
+    def _body_of(self, number: int) -> tuple[float, tuple[float, float]]:
+        """``(body, area)`` of a 1-based page (:class:`Extent`)."""
+        page = self.pages[number - 1]
+        area = (round(float(Fraction(page.column[2]) / PX_PER_PT), 2),
+                round(float(Fraction(page.column[3]) / PX_PER_PT), 2))
+        body = None
+        info = getattr(page, "info", None)
+        if info is not None:
+            sections = self.__dict__.get("_section_heights")
+            if sections is None:
+                sections = self.__dict__["_section_heights"] = _section_bodies(self._document)
+            if 0 <= info.section < len(sections):
+                body = sections[info.section]
+        if body is None:                        # a section with no size or margins stated
+            body = round(area[1] - area[0], 2)
+        return body, area
+
     def page_of(self, identifier: str) -> "int | tuple[int, int] | Unknown":
         """The 1-based page a block is on, or ``(first, last)`` when it spans pages."""
         placements = self.where(identifier)
@@ -382,7 +460,9 @@ class DocumentLayout:
         if key not in keys:
             document = self._document
             part = document.package.document_part()
-            element = resolve_path(document.package.tree(part), key)
+            element = self._top_level(key)
+            if element is False:
+                element = resolve_path(document.package.tree(part), key)
             identifier = None
             if element is not None and element.tag in (_W + "p", _W + "tbl"):
                 entry = document._index(part).entry_for(element)
@@ -391,6 +471,38 @@ class DocumentLayout:
                 identifier = self._row_ids().get(element)
             keys[key] = (identifier, element)
         return keys[key]
+
+    def _top_level(self, key: str) -> Any:
+        """The body's child a key ``w:body/w:p[3]`` names, from the body's children listed
+        once (a live view maps every page's blocks: each key resolved alone listed the body
+        again); ``False`` for another kind of key, or where the body holds a child of the
+        same local name in another namespace (docx2svg counts those too)."""
+        found = _TOP_KEY.match(key)
+        if found is None:
+            return False
+        table = self.__dict__.get("_top_table")
+        if table is None:
+            document = self._document
+            root = document.package.tree(document.package.document_part())
+            body = root.find(_W + "body")
+            table = {}
+            counts: dict[str, int] = {}
+            locals_: dict[str, set] = {}
+            for child in (body if body is not None else ()):
+                if not isinstance(child.tag, str):
+                    continue
+                local = child.tag.rpartition("}")[2]
+                locals_.setdefault(local, set()).add(child.tag)
+                if child.tag.startswith(_W):
+                    counts[local] = counts.get(local, 0) + 1
+                    table[(local, counts[local])] = child
+            clashes = {local for local, tags in locals_.items() if len(tags) > 1}
+            table = self.__dict__["_top_table"] = (table, clashes)
+        elements, clashes = table
+        name, index = found.group(1), int(found.group(2))
+        if name in clashes:
+            return False
+        return elements.get((name, index))
 
     def _row_ids(self) -> dict:
         """Each body table row's and cell's element -> its id (``tr:...``; a cell's
@@ -537,6 +649,24 @@ class DocumentLayout:
         return out
 
 
+def _section_bodies(document: "Document") -> list[float | None]:
+    """Each section's page height less its top and bottom margins, in points (``None``
+    where its ``w:sectPr`` states no page height or margins), in document order -- the
+    order docx2svg's ``PageInfo.section`` counts them in."""
+    out: list[float | None] = []
+    for section in document.sections():
+        sect = section._sectPr
+        size, margins = sect.find(_W + "pgSz"), sect.find(_W + "pgMar")
+        try:
+            height = int(size.get(_W + "h"))
+            top, bottom = abs(int(margins.get(_W + "top"))), abs(int(margins.get(_W + "bottom")))
+        except (AttributeError, TypeError, ValueError):
+            out.append(None)
+            continue
+        out.append(round((height - top - bottom) / 20, 2))
+    return out
+
+
 def _in_body(line) -> bool:
     return line.story is None and _story_kind(line.path) == "body"
 
@@ -619,6 +749,12 @@ class _Conversion:
     #: Each page's SVG as docx2svg draws it (the old protocol of a ``converter``: all of
     #: them, drawn with the layout).
     svgs: dict[int, str] = field(default_factory=dict)
+    #: Held while a page is drawn from this layout (its faces are written to as pages are
+    #: drawn): lock 4 of the module's order.
+    drawing: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
+    #: Per 0-based page, the digest of what it draws (docx2svg's ``relayout.drawing``):
+    #: what :mod:`docx_agent.liveview` compares versions by, made once.
+    digests: dict[int, bytes] = field(default_factory=dict, repr=False, compare=False)
 
 
 def check_options(options: dict, method: str) -> None:
@@ -855,7 +991,12 @@ def keep_layout(document: "Document", data: bytes, options: dict, laid_out: byte
         document._layout_kept = (layout_key(data, options), laid_out)
 
 
-def convert(document: "Document", *, unlocked=None, current=None, **options) -> _Conversion:
+#: :func:`convert`'s ``converter`` left out: the document's own.
+_DOCUMENTS = object()
+
+
+def convert(document: "Document", *, unlocked=None, current=None, converter: Any = _DOCUMENTS,
+            **options) -> _Conversion:
     """The document now, laid out once -- every page, so the layout answers for all of
     them -- and cached by its bytes and the options.  Both :func:`lay_out` and
     :func:`render_svg` read it, so a render and a layout of the same state cost one layout.
@@ -877,7 +1018,10 @@ def convert(document: "Document", *, unlocked=None, current=None, **options) -> 
     lets the document's lock go there; :func:`lay_out_unlocked`).  The bytes and options are
     taken first; after, the layout is mapped to ids on ``document`` if ``current()`` says it
     has not changed meanwhile, else on a copy opened from those bytes (the same ids).
-    Either way it is the layout of the state the bytes were taken from, cached under them."""
+    Either way it is the layout of the state the bytes were taken from, cached under them.
+    ``converter``: who lays it out, in place of the document's (:attr:`~docx_agent.Document.converter`,
+    which a tool call points at its own engine while it runs): ``None`` is docx2svg in this
+    process -- an application's own thread (:mod:`docx_agent.liveview`)."""
     if "pages" in options:
         raise TypeError("convert() lays out every page; select pages when rendering")
     options = layout_options(document, options)
@@ -891,7 +1035,8 @@ def convert(document: "Document", *, unlocked=None, current=None, **options) -> 
     outside = unlocked if unlocked is not None else _held
     # Taken with the bytes, before the lock is let go: another call on the document points
     # ``converter`` at its own engine, or back at none, when it ends (round 33, R16c).
-    converter = document.converter
+    if converter is _DOCUMENTS:
+        converter = document.converter
     with outside() as entered:
         # Round 34 (R17): only a caller that let the document's lock go waits for a layout in
         # progress (``unlocked()`` given, and not yielding ``False``: ooxml-edit's
@@ -1036,32 +1181,55 @@ def render_svg(document: "Document", pages: list[int] | None = None, **options) 
     count = len(conversion.raw.pages)
     selected = list(range(1, count + 1)) if pages is None else [n for n in pages if 1 <= n <= count]
     missing = [n for n in selected if n not in conversion.tagged and n not in conversion.svgs]
-    if missing:
-        # Drawn from the layout as docx2svg's convert_docx draws them (page_svgs), only the
-        # pages asked for.
-        drawing = docx2svg.ConvertOptions(**{**conversion.options, "pages": missing})
-        for number, svg in zip(missing, docx2svg.page_svgs(conversion.raw, conversion.data, drawing,
-                                                           fonts=conversion.fonts)):
-            conversion.svgs[number] = svg
     out = []
-    for number in selected:
-        if number not in conversion.tagged:
-            conversion.tagged[number] = _tag(document, conversion.layout, conversion.svgs.pop(number))
-        out.append(conversion.tagged[number])
+    with conversion.drawing:
+        missing = [n for n in selected if n not in conversion.tagged and n not in conversion.svgs]
+        if missing:
+            # Drawn from the layout as docx2svg's convert_docx draws them (page_svgs), only the
+            # pages asked for.
+            drawing = docx2svg.ConvertOptions(**{**conversion.options, "pages": missing})
+            for number, svg in zip(missing, docx2svg.page_svgs(conversion.raw, conversion.data, drawing,
+                                                               fonts=conversion.fonts)):
+                conversion.svgs[number] = svg
+        for number in selected:
+            if number not in conversion.tagged:
+                conversion.tagged[number] = _tag(document, conversion.layout, conversion.svgs.pop(number))
+            out.append(conversion.tagged[number])
     return out
 
 
 def _tag(document: "Document", layout: DocumentLayout, svg: str) -> str:
     """``data-docx-agent-id`` on every paragraph group of one page's SVG."""
+    return tag_with(svg, lambda path, part: layout.id_for_path(_part_of(document, path, part), path))
+
+
+def tag_with(svg: str, id_of: Any) -> str:
+    """``data-docx-agent-id`` on every paragraph group of one page's SVG, the id
+    ``id_of(path, part)`` gives for its ``data-docx-path`` and ``data-docx-part`` (``None``
+    for a group of the body)."""
 
     def tag(match: re.Match) -> str:
-        path, part = match.group(1), match.group(4)
-        identifier = layout.id_for_path(_part_of(document, path, part), path)
+        identifier = id_of(match.group(1), match.group(4))
         if identifier is None:
             return match.group(0)
         return match.group(0)[:-1] + f' data-docx-agent-id="{_escape(identifier)}">'
 
     return _GROUP.sub(tag, svg)
+
+
+def group_ids(document: "Document", conversion: _Conversion) -> dict:
+    """``(path, part) -> id`` for every paragraph group the layout's pages draw, as
+    :func:`_tag` would tag it (``part`` the group's ``data-docx-part``, ``None`` in the
+    body): read once from the document the layout is of, under its lock, so that pages
+    drawn later -- the document changed meanwhile -- are tagged with that version's ids."""
+    layout = conversion.layout
+    out: dict = {}
+    for page in conversion.raw.pages:
+        for line in page.text_lines():
+            key = (line.path, getattr(line, "part", None) if getattr(line, "story", None) else None)
+            if key not in out:
+                out[key] = layout.id_for_path(_part_of(document, *key), key[0])
+    return out
 
 
 def _escape(value: str) -> str:
