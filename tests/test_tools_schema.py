@@ -213,10 +213,14 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 #: paragraph its lines, as the Python API's name read before) +38, word_design_facts'
 #: ``table_frames`` kind +5: +43 to every definition (14,224 -> 14,267), none to the core
 #: (2,871).  The guard rises to 14,270.  Neither tool is strict: the strict set is unchanged.
+#: Round 36, R28 (ooxml-edit 0.84.0): check's include takes ``numbers`` (numbers in text no
+#: value holds, opt in): +3 to the core (2,871 -> 2,874, about 4,254 counted by the proxy)
+#: and to every definition (14,267 -> 14,270).  The guard rises to 14,275.  No parameter
+#: added: the strict set and its optional count are unchanged.
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 6500
-ALL_GUARD = 14270
+ALL_GUARD = 14275
 
 
 @pytest.fixture(scope="module")

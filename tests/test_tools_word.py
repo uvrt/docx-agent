@@ -949,7 +949,7 @@ def test_check_is_sent_without_a_decks_parameters_and_still_refuses_them(box, se
         assert fails(box, session, "check", "invalid_arguments", doc=d, **{name: value}).message == (
             f"{name} is for decks; for a document use include")
     include = sent["input_schema"]["properties"]["include"]
-    assert include["items"]["enum"] == ["validate", "reflow", "fields", "layout", "app"]
+    assert include["items"]["enum"] == ["validate", "reflow", "fields", "layout", "app", "numbers"]
     assert include["description"] == "Default: validate, reflow, fields."
     assert fails(box, session, "check", "invalid_arguments", doc=d, include=["fit"]).field == "include"
 
