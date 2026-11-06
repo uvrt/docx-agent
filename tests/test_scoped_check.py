@@ -93,6 +93,8 @@ def test_a_range_reports_its_blocks_facts_and_pages(box, made):
     pages = sorted({p for b in chapters[1] for p in layout.pages_of(b)})
     reported = dict(result.data["range"][0])
     reported.pop("extent"), reported.pop("height")          # R26's (tests/test_range_extent.py)
+    for key in ("one_page", "kept", "breaks", "fix"):         # round 36, R30's (tests/test_keep_spans.py)
+        reported.pop(key, None)
     assert [reported] == [{"range": _span(chapters[1]), "blocks": len(chapters[1]), "pages": pages}]
     assert "in 1 range(s)" in result.summary
     assert "layout" in result.data and "reflow" in result.data          # range adds layout to the default

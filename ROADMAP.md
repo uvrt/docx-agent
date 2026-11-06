@@ -1157,6 +1157,16 @@ doc.render_svg(pages=diff.changed)     # or render_png; ids on every paragraph g
   `relayout.drawing`, pages equal in the layout not drawn to tell), one page of a token's
   version as SVG, pictures by name, outlines in one glyph set. `view` lets the document's
   lock go to wait for a layout in progress (round 34's rule), `page_svg` takes none.
+- **Round 36 (R29, R30, R34):** keeps measured in Word (made-up probe): a lead-in kept
+  with the next goes with the table's first row; a table on one page kept together and
+  with the next goes whole with the line after; a last row kept alone takes only itself;
+  a span stays on one page with every paragraph keeping its lines and (but the last) with
+  the next, and every row keeping with the next -- a row that keeps is not split in Word.
+  `check`'s `table_parted` (layout facts) and each range's `one_page`, `kept`, `breaks`,
+  `fix` (`docx_agent.tools.scoped.range_keeps`); `Document.keep_blocks_together` behind
+  `word_format`'s `keep_together`; `word_design_facts`' `table_frames` (stated widths, not
+  drawn: `past_margins` measures those). Open: docx2svg splits a kept row (Word does not)
+  and breaks a chain taller than a page inside a kept table (Word before it).
 - **Round 35 (R21):** spacing around punctuation by the text's language
   (`docx_agent.edit.typography`). Writing: `text._spell` records the characters a call
   writes into each `w:t` (a context variable, carried through run splits and joins); the

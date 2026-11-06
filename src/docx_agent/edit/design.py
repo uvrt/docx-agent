@@ -24,6 +24,11 @@ Each kind (:data:`KINDS`):
   when the options turn them on -- with its fill, its four borders after the conflicts
   between neighbours, and its text, all from docx2svg's table resolver and cascade, the
   conditional formats it applies there listed.
+* ``table_frames`` (round 36, R34) -- each top-level body table's frame: its width against
+  the body between its section's margins (``over_body`` where it reaches past the right
+  margin), its indent, its columns' widths, the width most body tables share
+  (``usual_table_width``; ``narrower_than_usual`` on a narrower one), and the rows whose
+  last cell is empty, with the height each states (:func:`_table_frames`).
 * ``sections`` -- the page grid of each section: size, orientation, margins, text columns,
   where it starts, and the header and footer each variant shows (``first`` only where the
   section has a title page, ``even`` only where the document has even and odd headers).
@@ -69,13 +74,17 @@ _W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 _A = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
 
 #: The facts reported by default, in the order they are reported.
-KINDS = ("styles", "table_styles", "sections", "theme", "patterns")
+KINDS = ("styles", "table_styles", "table_frames", "sections", "theme", "patterns")
 
 #: Every kind there is: :data:`KINDS` and ``declared_styles``, reported only when asked for.
 ALL_KINDS = (*KINDS, "declared_styles")
 
 #: How many entries of each list are reported; ``omitted`` counts the rest.
-CAPS = {"styles": 60, "table_styles": 12, "sections": 20, "patterns": 12, "declared_styles": 300}
+CAPS = {"styles": 60, "table_styles": 12, "table_frames": 30, "sections": 20, "patterns": 12,
+        "declared_styles": 300}
+
+#: Rows with an empty last cell listed per table (``table_frames``); the rest counted.
+EMPTY_ROWS_LISTED = 10
 
 #: Roles in the order they are listed.
 ROLES = ("title", "subtitle", *(f"heading {n}" for n in range(1, 10)), "body", "list", "caption",
@@ -103,8 +112,8 @@ def design_facts(document: "Document", include=None, caps: dict | None = None) -
     limits = {**CAPS, **(caps or {})}
     out: dict[str, Any] = {}
     omitted: dict[str, int] = {}
-    builders = {"styles": _styles, "table_styles": _table_styles, "sections": _sections,
-                "patterns": _patterns, "declared_styles": _declared_styles}
+    builders = {"styles": _styles, "table_styles": _table_styles, "table_frames": _table_frames,
+                "sections": _sections, "patterns": _patterns, "declared_styles": _declared_styles}
     for kind in kinds:
         if kind == "theme":
             out["theme"] = _theme(document)
@@ -116,6 +125,10 @@ def design_facts(document: "Document", include=None, caps: dict | None = None) -
         out[kind] = items[:limit]
     if "sections" in out:
         out["even_and_odd_headers"] = document.even_and_odd_headers
+    if out.get("table_frames"):
+        usual = _usual_width(out["table_frames"])
+        if usual is not None:
+            out["usual_table_width"] = usual
     if omitted:
         out["omitted"] = omitted
     return out
@@ -733,6 +746,105 @@ def _sections(document: "Document") -> list[dict[str, Any]]:
             item["linked_to_previous"] = linked
         out.append(item)
     return out
+
+
+# -- table frames ------------------------------------------------------------------------------
+
+
+def _table_frames(document: "Document") -> list[dict[str, Any]]:
+    """Each top-level body table's frame as it states it (round 36, R34): ``width`` (pt:
+    ``w:tblW`` in points, or in percent of the body; where it states none or ``auto``, its
+    grid's columns summed -- what Word lays a table out at, give or take an autofit's
+    widening; ``check``'s ``past_margins`` measures the drawn one), ``indent``, ``body``
+    (the width between its section's margins, gutter out), ``over_body`` (how far its
+    indent and width reach past the right margin, where they do), ``columns`` (its grid's
+    widths), ``style``, and ``empty_last_cell``: the rows whose last cell holds no text and
+    nothing drawn (rows left to be filled in) with the height each states (``height``,
+    ``rule``: ``at_least`` or ``exact``; ``None`` where it states none), at most
+    :data:`EMPTY_ROWS_LISTED`, ``empty_last_cell_more`` the rest.  With them,
+    ``usual_table_width`` (:func:`_usual_width`) and, on each narrower table,
+    ``narrower_than_usual``."""
+    from .table_format import grid_widths, own_rows, read_width, row_cells
+
+    main = document.package.document_part()
+    index = document._index(main)
+    names = {style.id: style.name or style.id for style in document.styles}
+    default = document.styles.default("table")
+    out = []
+    for entry in index.tables:
+        element = entry.element
+        if any(ancestor.tag == _W + "tc" for ancestor in element.iterancestors()):
+            continue                                  # a nested table: its cell's
+        try:
+            section = document.section_of(entry.id)
+            body = section.text_width / 20 if section.text_width else None
+        except (KeyError, ValueError):
+            body = None
+        properties = element.find(_W + "tblPr")
+        columns = [width / 20 for width in grid_widths(element)]
+        stated = read_width(properties.find(_W + "tblW")) if properties is not None else None
+        if isinstance(stated, (int, float)) and stated > 0:
+            width = float(stated)
+        elif isinstance(stated, str) and stated.endswith("%") and body is not None:
+            width = body * float(stated[:-1]) / 100
+        else:
+            width = sum(columns)
+        indent_node = properties.find(_W + "tblInd") if properties is not None else None
+        indent = int(indent_node.get(_W + "w") or 0) / 20 if indent_node is not None and \
+            (indent_node.get(_W + "type") or "dxa") == "dxa" else 0.0
+        style_node = properties.find(_W + "tblStyle") if properties is not None else None
+        style_id = style_node.get(_W + "val") if style_node is not None else (default.id if default else None)
+        item: dict[str, Any] = {"table": entry.id, "style": names.get(style_id, style_id), "width": _pt(width)}
+        if indent:
+            item["indent"] = _pt(indent)
+        if body is not None:
+            item["body"] = _pt(body)
+            reach = indent + width - body
+            if reach > 0.5:
+                item["over_body"] = _pt(reach)
+        item["columns"] = [_pt(c) for c in columns]
+        empty = []
+        for number, row in enumerate(own_rows(element)):
+            cells = row_cells(row)
+            if len(cells) < 2 or not _empty_cell(cells[-1][0]):
+                continue
+            height = row.find(f"{_W}trPr/{_W}trHeight")
+            found: dict[str, Any] = {"row": number, "height": None}
+            if height is not None and height.get(_W + "val"):
+                found["height"] = _pt(int(height.get(_W + "val")) / 20)
+                found["rule"] = "exact" if height.get(_W + "hRule") == "exact" else "at_least"
+            empty.append(found)
+        if empty:
+            item["empty_last_cell"] = empty[:EMPTY_ROWS_LISTED]
+            if len(empty) > EMPTY_ROWS_LISTED:
+                item["empty_last_cell_more"] = len(empty) - EMPTY_ROWS_LISTED
+        out.append(item)
+    usual = _usual_width(out)
+    if usual is not None:
+        for item in out:
+            if item["width"] < usual - 0.5:
+                item["narrower_than_usual"] = True
+    return out
+
+
+def _usual_width(frames: list[dict[str, Any]]) -> float | None:
+    """The width most of the body's tables share (within half a point), where at least
+    two do: the document's own body table width."""
+    groups: dict[float, list[float]] = {}
+    for item in frames:
+        groups.setdefault(round(item["width"] * 2) / 2, []).append(item["width"])
+    if not groups:
+        return None
+    widths = max(groups.values(), key=len)
+    return widths[0] if len(widths) >= 2 else None
+
+
+def _empty_cell(cell) -> bool:
+    """A cell with no text and nothing drawn in it."""
+    if any((node.text or "").strip() for node in cell.iter(_W + "t")):
+        return False
+    return not any(True for _ in cell.iter(_W + "drawing", _W + "pict", _W + "object", _W + "sym",
+                                           _W + "fldSimple", _W + "sdt"))
 
 
 # -- theme -------------------------------------------------------------------------------------

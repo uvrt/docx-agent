@@ -488,6 +488,98 @@ class TableFormatOps:
                     changes.append((lead, None))
         return self._write_keeps(part, entry, changes)
 
+    def keep_blocks_together(self: "Document", address: str, on: bool = True) -> "EditResult":
+        """Keep the body's blocks ``address`` names on one page (round 36, R30): a span
+        (``p:A..t:B``), a block, a section or any address :func:`~.copies.blocks_of` reads as
+        the top-level blocks it is in.  Word has no setting for it; what it takes, measured
+        (``feedback-round36/probe-B``): every paragraph keeps its lines together
+        (``w:keepLines``) and keeps with the next (``w:keepNext``) but the span's last, and
+        every row of a table keeps with the next -- the paragraph Word decides a row's keep
+        by (:func:`row_keeps`) -- but the last row of a table that ends the span.  A row that
+        keeps with the next is not broken over a page either (Word moves it whole), so no
+        ``w:cantSplit`` is needed.  A value is written directly only where the styles do not
+        give it (a direct release of a style's keep removed); the span's last block keeps
+        with what follows as it did.  Word then moves the span whole to the next page where
+        it does not fit; a span taller than a page starts a page and breaks where it is full.
+
+        Off (``on`` false) removes what this writes, and only that: each direct keep the
+        styles do not give, on the same paragraphs; the styles' keeps (a heading's) stay.
+        Nothing to change -- already kept, or not kept -- is no error: ``changed`` false, said
+        in ``warnings``."""
+        from . import formatting as _formatting
+        from .copies import blocks_of
+        from .document import EditError, EditResult
+
+        try:
+            blocks = blocks_of(self, address)
+        except KeyError as error:
+            raise EditError(f"{address}: {error.args[0] if error.args else error}") from None
+        if not blocks:
+            raise EditError(f"{address} holds no paragraph or table to keep together")
+        part = self.package.document_part()
+        changes, warnings = self._keep_changes(blocks, on)
+        first = blocks[0][0]
+        if not changes:
+            warnings.append(f"{address} was already kept together" if on else f"{address} was not kept together")
+            return EditResult(first, changed=False, warnings=warnings)
+        index = self._index(part)
+        entries = [found for found in (index.entry_for(node) for node, _ in changes) if found is not None]
+        with self._edit():
+            renames = self._prepare(part, entries)
+            with self._track_properties([part]):
+                for node, values in changes:
+                    _formatting.write_paragraph(node, values)
+            self.package.mark_dirty(part)
+        return EditResult(renames.get(first, first), renamed=renames, warnings=warnings)
+
+    def _keep_changes(self: "Document", blocks: list[tuple[str, Element]],
+                      on: bool) -> tuple[list[tuple[Element, dict]], list[str]]:
+        """What :meth:`keep_blocks_together` writes on ``blocks`` (``(id, element)`` in
+        order): ``(paragraph, values)`` each, and warnings.  None to write, on: the blocks
+        are kept together (``check``'s ``range`` reads it so, round 36)."""
+        changes: list[tuple[Element, dict]] = []
+        warnings: list[str] = []
+        last = len(blocks) - 1
+        for k, (identifier, element) in enumerate(blocks):
+            if element.tag == W_P:
+                wanted = ("keep_together", "keep_with_next") if k < last else ("keep_together",)
+                values = self._keep_values(element, wanted, on)
+                if values:
+                    changes.append((element, values))
+                continue
+            rows = row_keeps(self, element)
+            for r, (lead, keeps, styled, declared) in enumerate(rows):
+                if k == last and r == len(rows) - 1:
+                    continue                      # the span's end keeps with what follows as it did
+                if lead is None:
+                    note = f"{identifier} has a row with no paragraph to keep it by: that row may part"
+                    if note not in warnings:
+                        warnings.append(note)
+                    continue
+                if on and not keeps:
+                    changes.append((lead, {"keep_with_next": None if styled else True}))
+                elif not on and declared and not styled:
+                    changes.append((lead, {"keep_with_next": None}))
+        return changes, warnings
+
+    def _keep_values(self: "Document", paragraph: Element, names: tuple[str, ...], on: bool) -> dict:
+        """The direct keeps (``keep_together``, ``keep_with_next``) to write on a paragraph
+        for :meth:`keep_blocks_together`: on, each it lacks (``None`` where only a direct
+        release keeps the style's from it); off, each direct one its styles do not give."""
+        from . import effective as _effective
+        from .formatting import read_paragraph
+
+        applied = _effective.paragraph(self, paragraph)
+        styled = _effective.paragraph(self, paragraph, direct=False)
+        properties = paragraph.find(_W + "pPr")
+        out: dict = {}
+        for name in names:
+            if on and not getattr(applied, name):
+                out[name] = None if getattr(styled, name) else True
+            elif not on and read_paragraph(properties, name) and not getattr(styled, name):
+                out[name] = None
+        return out
+
     def set_table_keep_with_next(self: "Document", table: str, on: bool) -> "EditResult":
         """Whether a table kept together (:meth:`set_keep_together`) also keeps with the block
         after it (round 25, W5): its last row's deciding paragraph keeps with the next, or is

@@ -5,6 +5,68 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.46 -- unreleased
+
+- **A table parted from the line that introduces it or the line after it** (production
+  round 36, R29). `check` with `layout` lists `table_parted`, beside `keep_with_next_at_foot`:
+  a top-level table drawn on a later page than the paragraph just before it
+  (`{"table", "para", "side": "lead_in", "kind", "para_page", "table_page", "fix"}`), or the
+  paragraph just after it drawn on a later page than its last row (`{"table", "para", "side":
+  "line_after", "kind", "row", "row_page", "para_page", "fix"}`) -- where that paragraph
+  belongs with the table: `kind` `caption` (the Caption style), `colon` (a lead-in ending in
+  a colon) or `one_line` (drawn on one line: a title, a source line). A longer paragraph of
+  text is left out, as are a paragraph or a last row that keeps with the next already
+  (`keep_with_next_at_foot`'s) and a page break or a section start between them. The fixes,
+  measured in Word for Mac 16.106 (made-up probe, 33 cases, all drawn as docx2svg draws
+  them): the lead-in keeps with the next (`word_format`) and goes to the table's page with
+  its first row; a table on one page is kept together and with the next
+  (`word_format_table`) and goes whole to the line's page; a table over several pages keeps
+  its last row's deciding paragraph (the first of its first cell) with the next
+  (`word_format`), and that row alone goes along (every paragraph of the row keeping is the
+  same). Scoped by `pages` and `range`, at most 20, `table_parted_left_out` the rest.
+- **A span of blocks kept on one page** (R30). `word_format(targets=["p:A..t:B"],
+  keep_together=true)` -- also a table, a section or a block-level control -- writes what Word
+  needs on each block (`Document.keep_blocks_together`): every paragraph keeps its lines
+  together and, but the span's last, keeps with the next; every row of a table keeps with
+  the next (its deciding paragraph), but the last row of a table that ends the span. Directly
+  only where the styles do not give it; the span's last block keeps with what follows as it
+  did. Measured in Word: a heading, a paragraph of seven lines, a five-row table and a line
+  after move to the next page whole at every one of seven positions across the page's foot
+  (21 cases with and without the flags: keep with the next alone lets the paragraph split;
+  with its lines kept, whole); the documents the tool writes, 7 of 7 as docx2svg draws them.
+  A row that keeps with the next is not broken over a page (Word moves it whole: 25 cases),
+  so no `cantSplit` is written. `keep_together: false` removes what it writes and only that
+  (a heading style's keep stays). Already kept, or not kept: no change, said in `warnings`.
+  On one paragraph (or a range, a cell) `keep_together` keeps its lines together, as
+  `keep_lines` -- as the Python API's name was read before, now without the warning. Where
+  the document's current layout is at hand and draws the span taller than a page, the call
+  warns: it cannot be kept (Word starts it on a new page and breaks it where the page is
+  full).
+- **Each range in `check(range=[...])` says whether it is on one page and kept** (R30: the
+  caller's spans, nothing stored in the document; no new field): `one_page`, `kept` (every
+  block holds the keeps `keep_together` writes) and, where it is not on one page, `breaks` --
+  `{"after", "before", "page"}` between two blocks (`page_break: true` where the later one
+  starts a page anyway, which no keep undoes), `{"inside", "pages"}` within one; at most 10,
+  `breaks_more` the rest -- and `fix` (the `word_format` `keep_together` call) where its
+  height fits a page's body, else `taller_than_page`. A range that is not whole blocks (a
+  cell, a text range) gets none of these.
+- **A table's frame in `word_design_facts`** (R34): `table_frames`, each top-level body
+  table's stated width against the body between its section's margins (`body`; `over_body`
+  where its indent and width reach past the right margin), its indent, its grid columns'
+  widths, its style, and the rows whose last cell is empty with the height each states
+  (`height`, `rule` `at_least`/`exact`; at most 10 per table); `usual_table_width`, the width
+  most body tables share, and `narrower_than_usual` on a narrower one. Reported by default,
+  after `table_styles`; at most 30 tables, `omitted` the rest.
+- Not matched in docx2svg (measured, open): a row whose deciding paragraph keeps with the
+  next is not split over a page in Word; docx2svg splits it (a kept-together table of tall
+  rows at a page's foot: Word moves it whole). A chain of keeps taller than a page: Word
+  breaks it before a kept table, docx2svg inside it. `check`'s facts follow docx2svg there.
+- Offline tokens: every definition +43 (14,224 -> 14,267: `word_format` +38,
+  `word_design_facts` +5), the core unchanged (2,871); the strict set unchanged.
+  Replies: `check` with one span over two pages 56 -> 106 (its `one_page`, `kept`, one
+  break and the fix; about +8 for a span on one page); `layout` +5 (`table_parted`, empty);
+  `word_design_facts` of a one-table document 633 -> 664.
+
 ## 0.1.45 -- unreleased
 
 - **A range's extent on its pages** (production round 35, R26). `check(range=[...])` gives

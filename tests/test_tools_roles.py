@@ -56,8 +56,9 @@ REVIEW_CORE_GUARD = 2750
 #: (word_styles' ``set_default`` and ``tabs``, +165, the same way) 7,625; round 32, R15
 #: (read_batch) 7,808; round 35, R18/R19 (check's ``range`` and ``copies``, render's
 #: ``range``, ooxml-edit 0.81.0, +229) 8,037; R24 (word_styles' ``set_language`` and
-#: ``language``, +52, as ``shading``: its list and describe are a reviewer's) 8,089.
-REVIEW_ALL_GUARD = 8090
+#: ``language``, +52, as ``shading``: its list and describe are a reviewer's) 8,089; round 36,
+#: R34 (word_design_facts' ``table_frames``, a reading tool, deferred) 8,095.
+REVIEW_ALL_GUARD = 8100
 
 REVIEW_CORE = {"save_document", "describe", "find_text", "render", "check", "open_document",
                "batch", "read_batch", "word_read", "word_comments", "word_changes"}

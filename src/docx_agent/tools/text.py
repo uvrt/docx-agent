@@ -8,13 +8,13 @@ from typing import Any
 from ooxml_edit.tools import (Result, ToolError, array, boolean, number, obj, string)
 
 from ..edit.addresses import is_text_range, span_ends
-from ..edit.document import Cell, EditResult, Paragraph, Table
+from ..edit.document import Cell, EditError, EditResult, Paragraph, Table
 from ..edit.ranges import TextRange
 from ..edit.styles import StyleError
 from ..markdown import model as m
 from ..markdown.stylemap import StyleMap
 from ..markdown.write import insert_blocks
-from ._base import need, note_small_text, one_of, outcome, remember, resolve, short, word_tool
+from ._base import cached_layout, need, note_small_text, one_of, outcome, remember, resolve, short, word_tool
 from .table_data import (DATE_FORMAT, FROM_COLUMNS, HEADER, MAX_COLUMNS, MAX_ROWS, fits, no_source,
                          placed)
 
@@ -412,16 +412,23 @@ def split_formatting(values: dict[str, Any]) -> tuple[dict[str, Any], dict[str, 
             "paragraph_style": string("Paragraph style name.", optional=True),
             "character_style": string("Character style name.", optional=True),
             **RUN_FIELDS, **PARAGRAPH_FIELDS,
+            # Round 36, R30: a span's blocks on one page (Document.keep_blocks_together).
+            "keep_together": boolean("Keep each target whole on one page: a span's blocks, a "
+                                     "table, a paragraph's lines.", optional=True),
             "clear_direct": boolean("First remove direct formatting, keeping styles. Default false.",
                                     optional=True),
             # Round 16, F8: what check's direct_formatting fix clears -- only these.
             "clear": array(string(enum=[*RUN_FIELDS, *PARAGRAPH_FIELDS]),
                            "Direct properties to remove, back to the style's.", optional=True)},
-           refs=('targets[]',), group="word_style", mutates=True,
-           aliases={**SPACING_ALIASES, **{api: name for name, api in _API_NAMES.items()}})
+           refs=('targets[]',), group="word_style", mutates=True, aliases=SPACING_ALIASES)
 def word_format(call: Any, doc: str, targets: list[str], paragraph_style: str | None = None,
                 character_style: str | None = None, clear_direct: bool = False,
-                clear: list[str] | None = None, **values: Any) -> Result:
+                clear: list[str] | None = None, keep_together: bool | None = None, **values: Any) -> Result:
+    """``keep_together`` (round 36, R30): a paragraph -- one alone, or a range's or a cell's
+    -- keeps its lines together (``keep_lines``, the Python API's ``keep_together``); a span,
+    a table, a section or a block-level control keeps its blocks on one page
+    (:meth:`~docx_agent.Document.keep_blocks_together`), with a warning where the last layout
+    shows them taller than a page."""
     document = call.document
     both = [name for name in clear or () if name in values]
     if both:
@@ -435,18 +442,28 @@ def word_format(call: Any, doc: str, targets: list[str], paragraph_style: str | 
             run[name] = None
         else:
             paragraph[_API_NAMES.get(name, name)] = None
-    if not (run or paragraph or paragraph_style or character_style or clear_direct):
+    if not (run or paragraph or paragraph_style or character_style or clear_direct or keep_together is not None):
         raise ToolError("invalid_arguments", "say what to set: a style, a run or a paragraph property",
                         valid_options=["paragraph_style", "character_style", *RUN_FIELDS, *PARAGRAPH_FIELDS,
-                                       "clear_direct", "clear"])
+                                       "keep_together", "clear_direct", "clear"])
     for name, kind in ((paragraph_style, "paragraph"), (character_style, "character")):
         if name is not None:
             known_style(document, name, kind, "paragraph_style" if kind == "paragraph" else "character_style")
     edits = []
+    addresses = resolve(call, targets)
+    # The blocks kept together, and the layout they are measured in before the change.
+    kept = [] if keep_together is None else [a for a in addresses if _keeps_blocks(document, a)]
+    before = cached_layout(document) if kept and keep_together else None
     try:
-        for address in resolve(call, targets):
+        for address in addresses:
             is_range = "@" in address and not address.startswith("p@")
             paragraphs = paragraphs_of(document, address)
+            if keep_together is not None:
+                if address in kept:
+                    edits.append(_keep_blocks(document, address, keep_together, before))
+                else:
+                    edits.extend(document.format_paragraph(p.id, keep_together=keep_together)
+                                 for p in paragraphs)
             if clear_direct:
                 if is_range:
                     edits.append(document.clear_formatting(document.range(address)))
@@ -475,6 +492,49 @@ def word_format(call: Any, doc: str, targets: list[str], paragraph_style: str | 
                         valid_options=[s.name for s in document.styles if kind is None
                                        or getattr(s, "kind", None) == kind][:50]) from None
     return outcome(edits, f"Formatted {len(targets)} target(s)")
+
+
+def _keeps_blocks(document: Any, address: str) -> bool:
+    """Whether ``keep_together`` keeps ``address``'s blocks on one page (a span, a table, a
+    section, a bookmark, a block-level control), not one paragraph's lines (a paragraph, a
+    text range, a cell or a row: its paragraphs')."""
+    if is_text_range(address) or "/" in address:
+        return False
+    if span_ends(address) is not None:
+        return True
+    try:
+        return not isinstance(document.get(address), Paragraph)
+    except (KeyError, ValueError):
+        return True                       # a section, a bookmark: blocks_of reads them
+
+
+def _keep_blocks(document: Any, address: str, on: bool, layout: Any) -> EditResult:
+    try:
+        result = document.keep_blocks_together(address, on)
+    except EditError as error:
+        raise ToolError("invalid_arguments", f"{address}: {error}; keep_together keeps the body's blocks: give "
+                        "a span p:A..t:B, a table or a section", field="targets") from None
+    taller = _taller_than_page(document, address, layout) if on and layout is not None else None
+    if taller is not None:
+        result.warnings.append(
+            f"{address} is {taller[0]} pt tall and a page holds {taller[1]} pt: it cannot be kept on one page "
+            "(Word starts it on a new page and breaks it where the page is full); keep shorter spans together")
+    return result
+
+
+def _taller_than_page(document: Any, address: str, layout: Any) -> tuple[float, float] | None:
+    """``(height, room)`` in points where ``layout`` draws ``address``'s paragraphs taller
+    than the body of its pages holds (:meth:`~docx_agent.layout.DocumentLayout.extent`)."""
+    try:
+        ids = [p.id for p in paragraphs_of(document, address)]
+        extents = layout.extent(ids)
+    except (KeyError, ValueError, ToolError):
+        return None
+    if not extents:
+        return None
+    height = round(sum(e.bottom - e.top for e in extents), 1)
+    room = round(min(e.area[1] - e.area[0] for e in extents), 1)
+    return (height, room) if height > room + 0.5 else None
 
 
 TOOLS = [word_set_text, word_insert_text, word_delete, word_insert_markdown, word_format]

@@ -73,6 +73,22 @@ takes its targets as one list with the values for all, so it is ``calls``, not `
     others not listed).  ``{"table", "row", "page", "next", "next_page"}`` (W5): a table
     whose last row keeps with the next, drawn last on its page, the block after it on a
     later page -- a chain of keeps longer than a page, broken there.
+``table_parted`` (round 36, R29)
+    A top-level table drawn on a later page than the paragraph just before it, or the
+    paragraph just after it drawn on a later page than its last row -- where that paragraph
+    belongs with the table (:data:`PARTED_KINDS`: a caption, a lead-in ending in a colon,
+    a line drawn on one line; a longer paragraph of text is left out: a table may well start
+    or end a page there).  ``{"table", "para", "side": "lead_in", "kind", "para_page",
+    "table_page", "fix"}``: ``fix`` keeps the paragraph with the next (``word_format``
+    ``keep_with_next``) -- Word then moves it to the table's page with the first row (the
+    whole table where the table is kept together; measured).  ``{"table", "para", "side":
+    "line_after", "kind", "row", "row_page", "para_page", "fix"}``: on one page, ``fix``
+    keeps the table together and with the next (``word_format_table``), so the table moves
+    whole to the line's page; over several pages, the last row's deciding paragraph (the
+    first of its first cell) keeps with the next (``word_format``), so that row goes along
+    (measured: the row alone, the rest stays).  Not listed: a paragraph that keeps with the
+    next already, a last row that does (both are ``keep_with_next_at_foot``'s), a page
+    break or a section start between them.
 ``numbering_skips_level`` (round 29, W12)
     ``{"para", "style", "level", "list", "unused_levels", "label", "shows", "paragraphs"}``:
     paragraphs numbered at a list level whose label shows a level above that no paragraph
@@ -169,6 +185,11 @@ _WP = "{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}"
 #: Entries per fact, most telling first (contrast keeps 12 per slide; a document's facts
 #: span many pages).
 CAP = 20
+
+#: Why a paragraph next to a table belongs with it (``table_parted``, round 36, R29): its
+#: style is the Caption style, it introduces the table (ends in a colon; before it only),
+#: or it is drawn on one line (a title or a source line).
+PARTED_KINDS = ("caption", "colon", "one_line")
 
 #: Past a margin by at most this, pt, is on it: the layout's device-pixel rounding.
 MARGIN_TOLERANCE = 0.5
@@ -323,6 +344,7 @@ class _Facts:
                      if self.shown({p for i in e["ids"] for p in self.pages_of(i)})],
                     "empty_paragraphs", out)
         self.capped(self.keep_with_next(), "keep_with_next_at_foot", out)
+        self.capped(self.table_parted(), "table_parted", out)
         self.capped([e for e in numbering_skips_level(self.document) if self.shown(self.pages_of(e["para"]))],
                     "numbering_skips_level", out)
         self.capped([e for e in punctuation_spacing(self.document) if self.shown(self.pages_of(e["para"]))],
@@ -655,6 +677,72 @@ class _Facts:
                             "next": self.top_level[k + 1][2], "next_page": following[0]})
         entries += self._kept_rows()
         return entries
+
+    def table_parted(self) -> list[dict]:
+        """A top-level table drawn on another page than the line that introduces it or
+        the line that follows it (round 36, R29: :data:`PARTED_KINDS`; the module says
+        what and why)."""
+        from .edit.table_format import kept_together, row_keeps
+
+        entries = []
+        blocks = self.top_level
+        for k, (kind, element, identifier) in enumerate(blocks):
+            if kind != "t":
+                continue
+            pages = self._table_pages(identifier)
+            if not pages:
+                continue
+            if k > 0 and blocks[k - 1][0] == "p":
+                _, lead, lead_id = blocks[k - 1]
+                drawn = self.pages_of(lead_id)
+                why = self._parted_kind(lead, lead_id, before=True)
+                if (why and drawn and max(drawn) < pages[0] and self.shown([max(drawn), pages[0]])
+                        and not _effective.paragraph(self.document, lead).keep_with_next
+                        and not self._new_page_after(k - 1)):
+                    entries.append({"table": identifier, "para": lead_id, "side": "lead_in", "kind": why,
+                                    "para_page": max(drawn), "table_page": pages[0],
+                                    "fix": {"tool": "word_format",
+                                            "calls": [{"targets": [lead_id], "keep_with_next": True}]}})
+            if k + 1 < len(blocks) and blocks[k + 1][0] == "p":
+                _, after, after_id = blocks[k + 1]
+                drawn = self.pages_of(after_id)
+                why = self._parted_kind(after, after_id, before=False)
+                if not (why and drawn and min(drawn) > pages[-1] and self.shown([pages[-1], min(drawn)])):
+                    continue
+                if (_effective.paragraph(self.document, after).page_break_before
+                        or _page_break_at(after, start=True)):
+                    continue                      # it starts a page anyway
+                rows = row_keeps(self.document, element)
+                if not rows or rows[-1][1]:
+                    continue                      # kept with it: keep_with_next_at_foot's
+                entry = {"table": identifier, "para": after_id, "side": "line_after", "kind": why,
+                         "row": len(rows) - 1, "row_page": pages[-1], "para_page": min(drawn)}
+                if len(pages) == 1:
+                    # On one page: the whole table goes along (measured), not its last row alone.
+                    call = {"table": identifier, "scope": "table", "keep_with_next": True}
+                    if not kept_together(rows):
+                        call["keep_together"] = True
+                    entry["fix"] = {"tool": "word_format_table", "calls": [call]}
+                elif rows[-1][0] is not None:
+                    found = self.document._index(self.main).entry_for(rows[-1][0])
+                    if found is not None:
+                        entry["fix"] = {"tool": "word_format",
+                                        "calls": [{"targets": [found.id], "keep_with_next": True}]}
+                entries.append(entry)
+        return entries
+
+    def _parted_kind(self, element, identifier: str, *, before: bool) -> str | None:
+        """Why a paragraph next to a table belongs with it (:data:`PARTED_KINDS`), or ``None``."""
+        text = "".join(node.text or "" for node in element.iter(_W + "t")).strip()
+        if not text:
+            return None
+        if is_caption(self.document, element):
+            return "caption"
+        if before and text.endswith(":"):
+            return "colon"
+        if len(self.placed.get(self.layout._canon(identifier), ())) == 1:
+            return "one_line"
+        return None
 
     def _table_end_at_foot(self, line, number: int, position: dict) -> dict | None:
         """``{"table", "row", "page", "next", "next_page"}`` where ``line`` (the last on page
@@ -1388,7 +1476,23 @@ _LEVEL_REF = re.compile(r"%([1-9])")
 
 
 def numbering_skips_level(document: "Document") -> list[dict[str, Any]]:
-    """``check``'s ``numbering_skips_level`` (round 29, W12): paragraphs numbered at a list
+    """``check``'s ``table_parted`` (round 36, R29)
+    A top-level table drawn on a later page than the paragraph just before it, or the
+    paragraph just after it drawn on a later page than its last row -- where that paragraph
+    belongs with the table (:data:`PARTED_KINDS`: a caption, a lead-in ending in a colon,
+    a line drawn on one line; a longer paragraph of text is left out: a table may well start
+    or end a page there).  ``{"table", "para", "side": "lead_in", "kind", "para_page",
+    "table_page", "fix"}``: ``fix`` keeps the paragraph with the next (``word_format``
+    ``keep_with_next``) -- Word then moves it to the table's page with the first row (the
+    whole table where the table is kept together; measured).  ``{"table", "para", "side":
+    "line_after", "kind", "row", "row_page", "para_page", "fix"}``: on one page, ``fix``
+    keeps the table together and with the next (``word_format_table``), so the table moves
+    whole to the line's page; over several pages, the last row's deciding paragraph (the
+    first of its first cell) keeps with the next (``word_format``), so that row goes along
+    (measured: the row alone, the rest stays).  Not listed: a paragraph that keeps with the
+    next already, a last row that does (both are ``keep_with_next_at_foot``'s), a page
+    break or a section start between them.
+``numbering_skips_level`` (round 29, W12): paragraphs numbered at a list
     level whose label shows a level above it that no paragraph of the document is numbered
     at -- a section style's ``1.1`` with no chapter before it (Word counts the level never
     used from its start: ``1.1``, ``1.2``; measured, ``feedback-round29/measurements-W.md``).
