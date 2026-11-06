@@ -51,6 +51,7 @@ from .sections import Section, SectionOps, section_id as _section_id
 from .notes import NoteOps
 from .fields import Field, FieldOps  # noqa: F401  (re-exported)
 from .authoring import AuthoringOps
+from .language import LanguageOps
 from .importing import ImportOps
 from .properties import PropertyOps
 from .provenance import ProvenanceOps
@@ -749,7 +750,7 @@ STAMPING = ("document", "paragraph")
 
 
 class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, PictureOps, CommentOps, TableOps,
-               TableFormatOps, DrawingOps, ControlOps, SectionOps, NoteOps, FieldOps, AnnotationOps, AuthoringOps,
+               TableFormatOps, DrawingOps, ControlOps, SectionOps, NoteOps, FieldOps, AnnotationOps, AuthoringOps, LanguageOps,
                PropertyOps, ImportOps, ChartOps, ProvenanceOps, AddressOps):
     """An open Word document, editable, undoable and re-renderable.
 

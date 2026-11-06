@@ -1158,6 +1158,18 @@ doc.render_svg(pages=diff.changed)     # or render_png; ids on every paragraph g
   wrong language); `check` reports those. Measured (`tools/typography_probe.py`): proofing
   per language, AutoFormat's guillemets, line breaks, the language cascade; AutoFormat as
   you type cannot be scripted.
+- **Round 35 (R24):** an existing document's language (`docx_agent.edit.language`):
+  `Document.set_language` writes `w:docDefaults`' `w:lang` and `w:themeFontLang` (what a new
+  document in the language has; Word's own language commands rewrite neither -- measured,
+  `tools/language_probe.py`), and the styles that restated the old default; never a run's
+  own tag unless asked. Tags checked against the ones Word writes, by attribute. An API
+  call for applications (the application knows the report's language) and a `word_styles`
+  action for the model (a check's fix). Not `docx_format(language=...)` on opening: every
+  document a session opens -- references, samples -- would be retagged, outside any undo
+  step. `check`'s spacing facts in a language that wants no space are `language_mismatch`
+  entries whose fix sets the language, never `replace_text` calls deleting French spaces.
+  Word's Language dialog *Default...* button is not measured (no window is scriptable
+  while the screen is locked).
 - **Cost.** One layout per document state, cached by the bytes' hash: `layout()` and
   `render_svg()` of the same state read one `docx2svg.lay_out_docx` (every page laid out;
   a page's SVG drawn from it when asked for), tested by counting the calls; since round 33

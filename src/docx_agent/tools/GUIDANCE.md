@@ -77,6 +77,11 @@ How to use them:
 - **The template's own table style for new tables:** `word_styles` `set_default` (a table
   style) is Word's Table Design > Set as Default; `word_insert_markdown` and new tables use it
   before the most used one, and `list` marks it `default`.
+- **The document's language** (what its text is proofed and spaced in): `word_styles`
+  `set_language` with `language` (`fr-BE`, `nl-BE`...) sets it where the template states
+  it; with `name`, that style's alone. `check`'s `punctuation_spacing` entries of kind
+  `language_mismatch` (French spacing in text tagged another language) carry that call as
+  their fix: the spaces are the text's, not to be deleted.
 - **Tab stops of a style** (a contents style's right-aligned page numbers): `word_styles`
   `modify` with `tabs` replaces its own stops; `{"position": pt, "alignment": "clear"}` clears
   one it inherits (without that, the inherited stop is the first one the tab reaches). A

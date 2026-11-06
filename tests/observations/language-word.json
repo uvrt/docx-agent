@@ -1,0 +1,426 @@
+{
+ "tags": {
+  "val": [
+   "af-ZA",
+   "am-ET",
+   "az-Cyrl-AZ",
+   "az-Latn-AZ",
+   "be-BY",
+   "bg-BG",
+   "bin-NG",
+   "ca-ES",
+   "chr-Cher-US",
+   "cs-CZ",
+   "cy-GB",
+   "da-DK",
+   "de-AT",
+   "de-CH",
+   "de-DE",
+   "de-LI",
+   "de-LU",
+   "el-GR",
+   "en-029",
+   "en-AU",
+   "en-BZ",
+   "en-CA",
+   "en-GB",
+   "en-ID",
+   "en-IE",
+   "en-JM",
+   "en-NZ",
+   "en-PH",
+   "en-TT",
+   "en-US",
+   "en-ZA",
+   "en-ZW",
+   "es-AR",
+   "es-BO",
+   "es-CL",
+   "es-CO",
+   "es-CR",
+   "es-DO",
+   "es-EC",
+   "es-ES",
+   "es-ES_tradnl",
+   "es-GT",
+   "es-HN",
+   "es-MX",
+   "es-NI",
+   "es-PA",
+   "es-PE",
+   "es-PR",
+   "es-PY",
+   "es-SV",
+   "es-UY",
+   "es-VE",
+   "et-EE",
+   "eu-ES",
+   "ff-NG",
+   "fi-FI",
+   "fil-PH",
+   "fo-FO",
+   "fr-029",
+   "fr-BE",
+   "fr-CA",
+   "fr-CD",
+   "fr-CH",
+   "fr-CI",
+   "fr-CM",
+   "fr-FR",
+   "fr-HT",
+   "fr-LU",
+   "fr-MA",
+   "fr-MC",
+   "fr-ML",
+   "fr-RE",
+   "fr-SN",
+   "fy-NL",
+   "ga-IE",
+   "gl-ES",
+   "gn-PY",
+   "ha-Latn-NG",
+   "haw-US",
+   "hr-HR",
+   "hsb-DE",
+   "hu-HU",
+   "hy-AM",
+   "ibb-NG",
+   "id-ID",
+   "ig-NG",
+   "is-IS",
+   "it-CH",
+   "it-IT",
+   "iu-Cans-CA",
+   "ka-GE",
+   "kk-KZ",
+   "kr-NG",
+   "ky-KG",
+   "la-Latn",
+   "lt-LT",
+   "lv-LV",
+   "mk-MK",
+   "mn-MN",
+   "ms-BN",
+   "ms-MY",
+   "mt-MT",
+   "nb-NO",
+   "nl-BE",
+   "nl-NL",
+   "nn-NO",
+   "om-ET",
+   "pl-PL",
+   "pt-BR",
+   "pt-PT",
+   "rm-CH",
+   "ro-MD",
+   "ro-RO",
+   "ru-MD",
+   "ru-RU",
+   "se-NO",
+   "sk-SK",
+   "sl-SI",
+   "so-SO",
+   "sq-AL",
+   "sr-Cyrl-CS",
+   "sr-Latn-CS",
+   "st-ZA",
+   "sv-FI",
+   "sv-SE",
+   "sw-KE",
+   "tg-Cyrl-TJ",
+   "ti-ER",
+   "ti-ET",
+   "tk-TM",
+   "tn-ZA",
+   "tr-TR",
+   "ts-ZA",
+   "tt-RU",
+   "tzm-Latn-DZ",
+   "uk-UA",
+   "uz-Cyrl-UZ",
+   "uz-Latn-UZ",
+   "ve-ZA",
+   "vi-VN",
+   "xh-ZA",
+   "yo-NG",
+   "zu-ZA"
+  ],
+  "eastAsia": [
+   "ii-CN",
+   "ja-JP",
+   "ko-KR",
+   "zh-CN",
+   "zh-HK",
+   "zh-MO",
+   "zh-SG",
+   "zh-TW"
+  ],
+  "bidi": [
+   "ar-AE",
+   "ar-BH",
+   "ar-DZ",
+   "ar-EG",
+   "ar-IQ",
+   "ar-JO",
+   "ar-KW",
+   "ar-LB",
+   "ar-LY",
+   "ar-MA",
+   "ar-OM",
+   "ar-QA",
+   "ar-SA",
+   "ar-SY",
+   "ar-TN",
+   "ar-YE",
+   "as-IN",
+   "bn-IN",
+   "bo-CN",
+   "dv-MV",
+   "fa-IR",
+   "gu-IN",
+   "he-IL",
+   "hi-IN",
+   "km-KH",
+   "kn-IN",
+   "kok-IN",
+   "ks-Arab",
+   "lo-LA",
+   "ml-IN",
+   "mni-IN",
+   "mr-IN",
+   "my-MM",
+   "ne-NP",
+   "or-IN",
+   "pa-IN",
+   "ps-AF",
+   "sa-IN",
+   "sd-Arab-PK",
+   "sd-Deva-IN",
+   "si-LK",
+   "syr-SY",
+   "ta-IN",
+   "te-IN",
+   "th-TH",
+   "tzm-Arab-MA",
+   "ur-PK",
+   "yi-Hebr"
+  ]
+ },
+ "reads": {
+  "fr-BE": "belgian french",
+  "FR-be": "belgian french",
+  "fr_BE": "belgian french",
+  "fr-Latn-BE": "belgian french",
+  "fr-be-x-test": "belgian french",
+  "fr": "«constant ****\u0002F\u0000\f»",
+  "fr-XX": "«constant ****\u0002F\u0010\u0000»",
+  "nl-BE": "belgian dutch",
+  "nl": "«constant ****\u0002F\u0000\u0013»",
+  "en-US": "english us / English (US)",
+  "en": "«constant ****\u0002F\u0000\t»",
+  "xx-YY": "belgian dutch",
+  "zz": "belgian dutch",
+  "x-none": "language none",
+  "sr-Latn-RS": "«constant ****\u0002F$\u001a» / Servisch (Latijns)",
+  "de-CH-1996": "«constant ****\u0002F\u0010\u0000»"
+ },
+ "actions": {
+  "nothing": {
+   "docDefaults": [
+    {
+     "val": "en-US",
+     "eastAsia": "en-US",
+     "bidi": "ar-SA"
+    }
+   ],
+   "styles": {
+    "heading 1": {
+     "val": "en-GB"
+    },
+    "Body de": {
+     "val": "de-DE",
+     "eastAsia": "ja-JP"
+    },
+    "Tag it": {
+     "val": "it-IT"
+    }
+   },
+   "themeFontLang": [
+    "w:val=\"en-US\""
+   ],
+   "runs": [],
+   "proofed as": [
+    "english us",
+    "english uk",
+    "english us",
+    "german",
+    "italian",
+    "english us"
+   ],
+   "Normal.dotm changed": false
+  },
+  "Normal style": {
+   "docDefaults": [
+    {
+     "val": "en-US",
+     "eastAsia": "en-US",
+     "bidi": "ar-SA"
+    }
+   ],
+   "styles": {
+    "Normal": {
+     "val": "fr-BE"
+    },
+    "heading 1": {
+     "val": "en-GB"
+    },
+    "Body de": {
+     "val": "de-DE",
+     "eastAsia": "ja-JP"
+    },
+    "Tag it": {
+     "val": "it-IT"
+    }
+   },
+   "themeFontLang": [
+    "w:val=\"en-US\""
+   ],
+   "runs": [
+    {
+     "val": "en-US"
+    }
+   ],
+   "proofed as": [
+    "belgian french",
+    "english uk",
+    "english us",
+    "german",
+    "italian",
+    "belgian french"
+   ],
+   "Normal.dotm changed": false
+  },
+  "all text": {
+   "docDefaults": [
+    {
+     "val": "en-US",
+     "eastAsia": "en-US",
+     "bidi": "ar-SA"
+    }
+   ],
+   "styles": {
+    "heading 1": {
+     "val": "en-GB"
+    },
+    "Body de": {
+     "val": "de-DE",
+     "eastAsia": "ja-JP"
+    },
+    "Tag it": {
+     "val": "it-IT"
+    }
+   },
+   "themeFontLang": [
+    "w:val=\"en-US\""
+   ],
+   "runs": [
+    {
+     "val": "fr-BE"
+    },
+    {
+     "val": "fr-BE"
+    },
+    {
+     "val": "fr-BE"
+    },
+    {
+     "val": "fr-BE"
+    },
+    {
+     "val": "fr-BE"
+    },
+    {
+     "val": "fr-BE"
+    },
+    {
+     "val": "fr-BE"
+    },
+    {
+     "val": "fr-BE"
+    },
+    {
+     "val": "fr-BE"
+    },
+    {
+     "val": "fr-BE"
+    },
+    {
+     "val": "fr-BE"
+    },
+    {
+     "val": "fr-BE"
+    }
+   ],
+   "proofed as": [
+    "belgian french",
+    "belgian french",
+    "belgian french",
+    "belgian french",
+    "belgian french",
+    "belgian french"
+   ],
+   "Normal.dotm changed": false
+  },
+  "normal template": {
+   "docDefaults": [
+    {
+     "val": "en-US",
+     "eastAsia": "en-US",
+     "bidi": "ar-SA"
+    }
+   ],
+   "styles": {
+    "heading 1": {
+     "val": "en-GB"
+    },
+    "Body de": {
+     "val": "de-DE",
+     "eastAsia": "ja-JP"
+    },
+    "Tag it": {
+     "val": "it-IT"
+    }
+   },
+   "themeFontLang": [
+    "w:val=\"en-US\""
+   ],
+   "runs": [],
+   "proofed as": [
+    "english us",
+    "english uk",
+    "english us",
+    "german",
+    "italian",
+    "english us"
+   ],
+   "Normal.dotm changed": true,
+   "Normal.dotm": {
+    "docDefaults": [
+     {
+      "val": "nl-BE",
+      "eastAsia": "en-US",
+      "bidi": "ar-SA"
+     }
+    ],
+    "styles": {
+     "Standaard": {
+      "val": "fr-BE"
+     }
+    }
+   }
+  }
+ },
+ "tags_not_written": [
+  "gaelic scotland"
+ ]
+}
