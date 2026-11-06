@@ -21,24 +21,24 @@ _PAGE_MARGIN = 1500
 
 def heading_tree(document: Any) -> list[dict[str, Any]]:
     """The body's headings in order (LW6's tree, composed): id, level, text, how it is
-    numbered (``list`` or typed ``text``), and ``blocks``: how many blocks its section holds,
-    itself and everything up to the next heading at its level or above.  A heading is a
-    top-level paragraph with an outline level, as :meth:`Document.blocks` and a table of
-    contents read it."""
-    blocks = [(b["level"], b["id"]) for b in document.blocks()]   # (outline level or None, id) per body block
+    numbered (``list`` or typed ``text``), and ``blocks``: how many blocks it owns, itself
+    and everything up to the next heading at its level or above -- all ``h:<id>`` names
+    (round 36, R32).  In a document of several sections, ``section`` is the one the
+    heading is in (``s:2``).  Which paragraphs are headings: :mod:`docx_agent.edit.outline`."""
+    from ..edit.outline import headings
+
+    found = headings(document)
+    several = len(document.sections()) > 1
     out = []
-    for k, (level, identifier) in enumerate(blocks):
-        if level is None or identifier is None:
-            continue
-        end = next((j for j in range(k + 1, len(blocks)) if blocks[j][0] is not None and blocks[j][0] <= level),
-                   len(blocks))
-        paragraph = document.paragraph(identifier)
-        text = paragraph.text
-        item: dict[str, Any] = {"id": identifier, "level": level, "text": short(text, 100), "blocks": end - k}
-        if paragraph.list is not None:
+    for heading in found:
+        item: dict[str, Any] = {"id": heading.id, "level": heading.level, "text": short(heading.text, 100),
+                                "blocks": heading.blocks}
+        if document.paragraph(heading.id).list is not None:
             item["numbered"] = "list"
-        elif _TYPED_NUMBER.match(text):
+        elif _TYPED_NUMBER.match(heading.text):
             item["numbered"] = "text"
+        if several:
+            item["section"] = f"s:{heading.section}"
         out.append(item)
     return out
 
@@ -160,7 +160,7 @@ def _drawings(document: Any) -> list[Any]:
 
 @word_tool("word_read", "The document as Markdown with an id comment before each block. Paged: pass next_cursor back. view markup shows tracked changes, comments and fields in place.",
            {"doc": DOC,
-            "range": string("Block, cell, span p:A..t:B (p:A.. to the end) or section s:2. Default the body.", optional=True),
+            "range": string("Block, cell, span p:A..t:B (p:A.. to end), heading h:p:A or section s:2. Default body.", optional=True),
             "view": string("final: changes accepted; markup: changes, comments, fields in place. Default final.",
                            enum=["final", "markup", "original"], optional=True),
             "stories": string("all adds headers, footers, notes. Default body.",

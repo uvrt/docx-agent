@@ -201,27 +201,14 @@ def _refused(document: "Document", message: str, *, code: str = "invalid_argumen
 
     if not options:
         options = headings_as_ranges(document)
-    return ToolError(code, message + "; give a block, a span p:A..t:B, a cell or a section s:2 "
-                     "(word_read's range), e.g. a heading's section", field="range",
+    return ToolError(code, message + "; give a block, a span p:A..t:B, a cell, a section s:2 or a "
+                     "heading's range h:p:A (word_read's range)", field="range",
                      valid_options=options[:50])
 
 
 def headings_as_ranges(document: "Document") -> list[str]:
-    """The body's first headings, each as the span of its section: ``p:A..p:Z  Heading``."""
-    blocks = [(b["level"], b["id"]) for b in document.blocks()]
-    out = []
-    for k, (level, identifier) in enumerate(blocks):
-        if level is None or identifier is None:
-            continue
-        end = next((j for j in range(k + 1, len(blocks)) if blocks[j][0] is not None and blocks[j][0] <= level),
-                   len(blocks))
-        last = blocks[end - 1][1]
-        try:
-            text = " ".join(document.paragraph(identifier).text.split())[:60]
-        except KeyError:
-            text = ""
-        span = identifier if last == identifier or last is None else f"{identifier}..{last}"
-        out.append(f"{span}  {text}".rstrip())
-        if len(out) >= HEADINGS_OFFERED:
-            break
-    return out
+    """The body's first headings, each as its range with its text: ``h:p:A  Heading``
+    (round 36: ``h:`` names a heading with everything under it)."""
+    from .edit.outline import offered
+
+    return offered(document, HEADINGS_OFFERED)

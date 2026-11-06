@@ -1167,6 +1167,15 @@ doc.render_svg(pages=diff.changed)     # or render_png; ids on every paragraph g
   `word_format`'s `keep_together`; `word_design_facts`' `table_frames` (stated widths, not
   drawn: `past_margins` measures those). Open: docx2svg splits a kept row (Word does not)
   and breaks a chain taller than a page inside a kept table (Word before it).
+- **Round 36 (R32, R33):** the outline (`docx_agent.edit.outline`): headings by
+  `_OutlineLevels` (the table of contents' reading, as `blocks()`), top-level body
+  paragraphs only; a heading's range `h:` expanded to its span by the address layer
+  (`_scope_paragraphs`, `_blocks_of`, `markdown.select`, `copies.blocks_of`) and by the
+  tools' `resolve`. Guards in the tools only (the Python API's `delete_block` and
+  `remove_from_list` are unchanged): `content_left` before a delete, `moves` after a
+  level change, `unnumbered_styles_like` for an unnumbering. Open: `section_blocks` (and
+  `word_move`'s `section_heading`) still read headings as Markdown's `#` does
+  (`_HeadingLevels`), which differs only for a heading style stating body text.
 - **Round 35 (R21):** spacing around punctuation by the text's language
   (`docx_agent.edit.typography`). Writing: `text._spell` records the characters a call
   writes into each `w:t` (a context variable, carried through run splits and joins); the

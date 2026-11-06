@@ -216,7 +216,8 @@ def test_a_body_change_names_its_heading_sections(box, session):
     first = ok(box, session, "word_set_text", doc=d, target="p:5FCB534E", text="Draft")
     assert first.touched == [{"doc": d, "part": body, "heading": None, "level": 0,
                               "blocks": ["p:5FCB534E", "p:5FCB534E"]}]
-    removed = ok(box, session, "word_delete", doc=d, target=new)
+    # The heading alone, its "None." kept (round 36, R33: deleting it alone is forced).
+    removed = ok(box, session, "word_delete", doc=d, target=new, force=True)
     assert [t["heading"] for t in removed.touched] == ["p:16425160"]
     setup = ok(box, session, "word_sections", doc=d, action="set", section="s:body", orientation="landscape")
     assert {"doc": d, "part": body} in setup.touched

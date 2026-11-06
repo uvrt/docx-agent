@@ -5,6 +5,37 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.48 -- unreleased
+
+- **The outline: what each heading owns** (production round 36, R32). `Document.outline()`
+  gives every heading of the body in order with its `level`, `text`, `range` (`h:p:A`), its
+  `last` block, how many `blocks` it owns and the `section` it is in (`s:2`; `to_section`
+  where its last block is in another). A heading's range -- the heading and every
+  top-level block after it up to the next heading of its level or higher, tables, content-control blocks,
+  deeper headings and section breaks included -- is `h:<heading>`, taken wherever a span is
+  (`p:A..t:B`): `to_markdown` and `state`, `move_blocks`, `keep_blocks_together`, and the
+  tools' `range`, `target`, `targets` and `blocks` (`word_read`, `word_inspect`, `find_text`,
+  `check` and `render` `range`, `check`'s `copies`, `word_format`, `word_delete`, `word_move`,
+  `word_lists`); a span's end may be one (`h:p:A..h:p:B`). `Document.heading_span` gives it
+  as the span. A heading is a paragraph of the body itself with an outline level as Word
+  reads it for a table of contents (`Document.blocks`' `level`): a Title is one only where
+  the document gives it a level; a heading in a table, text box, content control, header or
+  note owns nothing (`h:` on one is refused, naming the headings). `describe`'s `headings`
+  add `section` in a document of several sections; a range that names nothing is refused
+  with the headings as `h:p:A  Text` (shorter than the spans before).
+- **Guards for a heading's content and a style's numbers** (R33). `word_delete` of a
+  heading whose content stays (a paragraph, or a span that leaves some of what it owns) is
+  refused, saying how many blocks would go under which heading, with the ways out: its
+  range `h:<heading>`, or `force` (the warning then says where they went). `word_format`
+  changing a heading's level (`paragraph_style`, `clear_direct`, `clear`) warns -- it does
+  not refuse -- which headings and blocks now go under which heading
+  (`docx_agent.edit.outline.moves`). `word_lists` `remove` on a paragraph its style numbers
+  is refused (taking it out writes an override the style no longer decides), naming the
+  paragraph styles like it that number nothing -- one based on it, one at its outline level,
+  its base, one beside it, the default -- and `force`, which writes the override as before.
+- Tokens (offline estimate, on 0.1.47): core 2,874 -> 2,876, every definition 14,270 -> 14,328
+  (guard 14,275 -> 14,330), a reviewer's core 2,748 -> 2,750 (its guard); the strict set
+  unchanged (6 tools, 23 optional parameters).
 ## 0.1.47 -- unreleased
 
 - **Numbers in text no value holds** (production round 36, R28; ooxml-edit 0.84.0): `check`

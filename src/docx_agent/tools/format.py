@@ -35,8 +35,10 @@ Word documents
 tables, pages. word_read gives Markdown with an id comment before each block; pass a range \
 to read part of it. Several reads go in one read_batch.
 - Addresses: p:3B212964 a paragraph; p:3B212964@4:11 characters 4-11 of it; p:A@5 a \
-position; p:A..t:B the blocks from A through B; t: table, c: comment, rev: revision, \
-fn:/en: note, d: drawing, cc: content control, fld: field, s:body the last section, \
+position; p:A..t:B the blocks from A through B; h:p:A a heading with every block under it \
+(to the next heading of its level or higher), wherever a span is taken; t: table, \
+c: comment, rev: revision, fn:/en: note, d: drawing, cc: content control, fld: field, \
+s:2 a section (s:body the last), \
 header1/footer1 stories. A paragraph's id can change when it is edited: the result's \
 renamed maps old to new; the old id keeps working.
 - Never paste word_read's Markdown into a text tool: it is escaped. Pass plain text.

@@ -217,10 +217,15 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 #: value holds, opt in): +3 to the core (2,871 -> 2,874, about 4,254 counted by the proxy)
 #: and to every definition (14,267 -> 14,270).  The guard rises to 14,275.  No parameter
 #: added: the strict set and its optional count are unchanged.
+#: Round 36, R32/R33: word_read's ``range`` names a heading's range ``h:p:A`` (+2 to the core:
+#: 2,874 -> 2,876); word_delete's and word_lists' ``force`` (a heading deleted though its
+#: content stays; unnumbering a paragraph its style numbers): +58 to every definition
+#: (14,270 -> 14,328).  The guard rises to 14,330; a reviewer's core is 2,750, at its guard.  Neither is strict: the strict set is
+#: unchanged (6 tools, 23 optional parameters).
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 6500
-ALL_GUARD = 14275
+ALL_GUARD = 14330
 
 
 @pytest.fixture(scope="module")

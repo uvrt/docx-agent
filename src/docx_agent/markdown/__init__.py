@@ -184,6 +184,7 @@ def select(reader: Reader, range: str | None) -> list[tuple[str, list, str]]:
     body = document.package.document_part()
     if range is None:
         return [(body, reader.story(body), "body")]
+    range = document._expand_heading(range)       # h:p:A, a heading's range (round 36)
     if not range.strip():
         raise AddressError("a range is empty: give a block id, a span (" + SPAN_SYNTAX + "), a section or a story")
     ends = span_ends(range)

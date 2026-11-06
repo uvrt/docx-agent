@@ -201,8 +201,27 @@ def resolve(call: Any, value: Any) -> Any:
         return "..".join(call.resolve_ref(end.strip()) if end.strip().startswith("$") else end
                          for end in (first, last))
     if isinstance(value, str) and value.startswith("$"):
-        return call.resolve_ref(value)
-    return value
+        value = call.resolve_ref(value)
+    return _heading_range(call, value)
+
+
+def _heading_range(call: Any, value: Any) -> Any:
+    """A heading's range (``h:p:A``; round 36, R32) as the span of blocks it is, so every
+    parameter taking a span takes it; a refusal names the body's headings."""
+    if not (isinstance(value, str) and (value.startswith("h:") or "..h:" in value)):
+        return value
+    try:
+        document = call.document
+    except Exception:  # noqa: BLE001 -- no document: the handler refuses the address itself
+        return value
+    if document is None or not hasattr(document, "_expand_heading"):
+        return value
+    from ..edit.addresses import AddressError
+
+    try:
+        return document._expand_heading(value)
+    except AddressError as error:
+        raise ToolError("invalid_arguments", str(error), valid_options=list(error.options)[:50]) from None
 
 
 def block_of(where: Any, *args: str) -> str | None:

@@ -184,7 +184,7 @@ def test_problems_in_blocks_by_what_they_carry():
 
 
 def test_a_range_that_names_nothing_is_refused_with_the_headings(box, made):
-    """Rule 2: the way out -- the sections to name, as spans."""
+    """Rule 2: the way out -- the sections to name, as heading ranges (h:)."""
     data, chapters = made
     session = box.session()
     d1 = session.open(data, "report.docx")
@@ -192,7 +192,7 @@ def test_a_range_that_names_nothing_is_refused_with_the_headings(box, made):
     assert not result.ok
     error = result.error.to_json()
     assert error["field"] == "range" and "range[0]" in error["message"]
-    assert error["valid_options"][0].startswith(_span(chapters[0]))
+    assert error["valid_options"][0].startswith("h:" + chapters[0][0])     # round 36: a heading's range
     assert any("Chapter 2" in option for option in error["valid_options"])
 
 

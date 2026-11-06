@@ -72,6 +72,9 @@ from docx_agent import Document
 doc = Document.open("agreement.docx")
 termination = doc.section_blocks("p:058B17C9")  # the heading and everything up to the next ## or #
 print(termination)                             # ['p:058B17C9', 'p:6A70E1A8']
+for heading in doc.outline():                  # every heading: level, range h:p:..., last block, section
+    print(heading["range"], heading["level"], heading["blocks"], heading["section"], heading["text"])
+print(doc.to_markdown("h:p:058B17C9"))         # a heading's range wherever a span is taken
 print([b["id"] for b in doc.blocks() if b["level"] == 1])   # every top-level block: id, kind, style, level...
 print(doc.block_of("c:76FCC91F"))              # the top-level block holding any id (a cell's paragraph, a note...)
 print(doc.blocks_between("c:76FCC91F", "c:22CB2567"))   # the top-level blocks from one id's through the other's
