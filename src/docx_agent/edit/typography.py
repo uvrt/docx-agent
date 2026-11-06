@@ -495,10 +495,12 @@ def problems(document: "Document") -> list[dict[str, Any]]:
     language tag, not stray spaces; deleting them would undo the author's French.  They are
     an entry of their own, ``"kind": "language_mismatch"``, with ``source`` -- where the tag
     comes from (``default``, ``style:<name>``, ``run``) -- and no ``replace_text``: its
-    ``fix`` sets the language (``word_styles`` ``set_language``: the document's default, or
-    the style's) to a French one (:func:`french_guess`), and a run's own tag has none."""
+    ``fix`` sets the language (``word_styles`` ``set_language``: the document's -- its default
+    and the styles in the template's own language -- or, for a style in another language,
+    that style's) to a French one (:func:`french_guess`), and a run's own tag has none."""
     cascade = Cascade(document)
     guess: list[str] = []
+    own: list[list[tuple[str, str]]] = []
     out: list[dict[str, Any]] = []
     for part in document._parts():
         for entry in document._index(part).paragraphs:
@@ -527,7 +529,10 @@ def problems(document: "Document") -> list[dict[str, Any]]:
                                      "French text under the wrong tag; not a spacing fault if so")
                 else:
                     call: dict[str, Any] = {"action": "set_language", "language": guess[0]}
-                    if source.startswith("style:"):
+                    if source.startswith("style:") and not _template_own(document, own, mismatched[0].language):
+                        # A style in a language the template does not otherwise use: that
+                        # style's alone.  In the template's own language (Normal, the headings
+                        # of an English template): the document's, which retags them all.
                         call["name"] = source[len("style:"):]
                     found["note"] = (f"French spacing in text tagged {mismatched[0].language}: likely French "
                                      "under the wrong language; the fix sets it (the text's own region if not "
@@ -535,6 +540,21 @@ def problems(document: "Document") -> list[dict[str, Any]]:
                     found["fix"] = {"tool": "word_styles", "calls": [call]}
                 out.append(found)
     return out
+
+
+def _template_own(document: "Document", own: list, language: str | None) -> bool:
+    """Whether ``language`` is the template's own (``docx_agent.edit.language``'s rule);
+    ``own`` caches the rule's answer across one :func:`problems`."""
+    from .language import own_languages
+
+    if not own:
+        part = document.package.styles_part()
+        own.append(own_languages(document.package.tree(part) if part else None, "val"))
+    return any(_same_tag(language, found) for found, _ in own[0])
+
+
+def _same_tag(a: str | None, b: str | None) -> bool:
+    return a is not None and b is not None and a.replace("_", "-").lower() == b.replace("_", "-").lower()
 
 
 def _entry(identifier: str, spots: list[Spot]) -> dict[str, Any]:

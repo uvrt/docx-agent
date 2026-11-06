@@ -5,6 +5,30 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.44 -- unreleased
+
+- **`set_language` retags the template's own language** (production round 35, R25;
+  `docx_agent.edit.language.own_languages`). `styles="matching"` (still the default) now
+  means the styles stating the template's own language, not only the old default's: in the
+  attribute the new language is written in (`w:val`, `w:eastAsia` or `w:bidi`; the other two
+  are not read), (1) `w:docDefaults`' language, (2) the Normal style's own language (without
+  one, the default's), and (3) only when neither states one, the language more than half the
+  styles stating one carry, when at least two do (a tie or a single style decides nothing).
+  A template made in an English Word with a Dutch default -- Normal, headings, their
+  character styles, footer and date styles in `en-US` -- is retagged whole; a style in
+  another language (a German quotation style, an Italian character style) stays and is
+  named, as are styles based on it. The warnings say which language was taken as the
+  template's own and why when it is more than the default. `runs=True` retags runs in any of
+  those languages. Runs are still untouched by default.
+- `check`'s `punctuation_spacing` `language_mismatch` on a style in the template's own
+  language (`style:Normal` of an English template) proposes the document's `set_language`,
+  not that style's alone; a style in another language keeps its own fix.
+- `word_styles` `set_language`'s summary names the tag written, not the default's other
+  attributes.
+- Offline tokens: definitions unchanged (0). On a made-up English template with French
+  text (characters / 3.5): `set_language`'s reply 307 -> 265 (twelve styles kept became two),
+  `check` (layout) before 289 -> 283, after 289 -> 148 (no `language_mismatch` left).
+
 ## 0.1.43 -- unreleased
 
 - **The language of an existing document** (production round 35, R24;

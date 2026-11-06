@@ -27,10 +27,27 @@
 
 **Writing.**  :meth:`~LanguageOps.set_language` writes what a new document in that language
 has: ``w:docDefaults``' ``w:lang`` and ``w:themeFontLang``, in the place Word writes the
-language, the other two left as they are.  Styles that state the language that was the
-default -- a template restating its own default, which would keep their paragraphs in the
+language, the other two left as they are.  Styles that state the *template's own language*
+(:func:`own_languages`) -- a template restating it, which would keep their paragraphs in the
 old language -- are given the new one too (``styles="matching"``, the default); a style in
 another language is a deliberate exception (an English quotation style, code) and stays.
+
+*The template's own language* (round 35, R25), decided in the one ``w:lang`` attribute the
+new language is written in (``val``, ``eastAsia`` or ``bidi``; the other two are not looked
+at), compared in any case and with ``_`` for ``-``:
+
+1. ``w:docDefaults``' language, when it states one;
+2. the Normal style's language (the default paragraph style's own ``w:lang``; without one it
+   is the default's, rule 1) -- the language of every style based on Normal, directly or
+   not, that does not state another, and of the body text;
+3. only when neither states one: the language more than half the styles that state one
+   carry, when at least two do -- a tie or a single style is no template's language.
+
+A template made in an English Word with a Dutch default (``nl-BE`` in ``w:docDefaults``,
+``en-US`` on Normal, its headings, their linked character styles, footer and date styles)
+has both as its own: all of those follow.  A style stating a language outside that set
+(a German quotation style, an Italian character style) stays and is named; so do styles
+based on it that state nothing.
 Runs keep their own ``w:lang`` unless asked (``runs=True``): a run's own tag is where an
 author marked a passage as another language, and Word's whole-text language command is
 what writes one on every run -- which then outweighs every later default.
@@ -141,6 +158,53 @@ def _same(a: str | None, b: str | None) -> bool:
     return a is not None and b is not None and a.replace("_", "-").lower() == b.replace("_", "-").lower()
 
 
+def _key(tag: str) -> str:
+    return tag.replace("_", "-").lower()
+
+
+def _normal(root: Element) -> Element | None:
+    """The default paragraph style (``w:default="1"``; else the one with id ``Normal``)."""
+    fallback = None
+    for style in root.iter(_W + "style"):
+        if style.get(_W + "type", "paragraph") != "paragraph":
+            continue
+        if style.get(_W + "default") in ("1", "true", "on"):
+            return style
+        if fallback is None and style.get(_W + "styleId") == "Normal":
+            fallback = style
+    return fallback
+
+
+def own_languages(root: Element | None, slot: str = "val") -> list[tuple[str, str]]:
+    """The template's own languages in ``w:lang``'s ``slot`` (the module's rule, round 35,
+    R25): ``[(tag, why)]`` in the rule's order, ``why`` one of ``"default"``, ``"Normal"``,
+    ``"most styles"``; empty when the style sheet states none.  ``root`` is ``styles.xml``'s."""
+    if root is None:
+        return []
+    out: list[tuple[str, str]] = []
+    default = _attributes(_lang_of(root.find(f"{_W}docDefaults/{_W}rPrDefault/{_W}rPr"))).get(slot)
+    if default:
+        out.append((default, "default"))
+    normal = _normal(root)
+    own = _attributes(_lang_of(normal.find(_W + "rPr") if normal is not None else None)).get(slot)
+    if own and not _same(own, default):
+        out.append((own, "Normal"))
+    if out:
+        return out
+    counts: dict[str, int] = {}
+    spelling: dict[str, str] = {}
+    for style in root.iter(_W + "style"):
+        value = _attributes(_lang_of(style.find(_W + "rPr"))).get(slot)
+        if value:
+            counts[_key(value)] = counts.get(_key(value), 0) + 1
+            spelling.setdefault(_key(value), value)
+    stating = sum(counts.values())
+    for key, count in counts.items():
+        if count >= 2 and 2 * count > stating:
+            return [(spelling[key], "most styles")]
+    return []
+
+
 class LanguageOps:
     """:meth:`Document.set_language` and :meth:`Document.languages`."""
 
@@ -198,11 +262,12 @@ class LanguageOps:
             doc.set_language("nl-BE", styles="all")
             doc.set_language("en-GB", styles=["Quote"], default=False)
 
-        ``styles``: ``"matching"`` (default) -- the styles whose own language is the default's
-        before the change get the new one too, the others keep theirs; ``"all"`` -- every
-        style with its own language; ``"none"``; or style names -- those styles (given
-        their own language where they had none).  ``runs``: also the runs' own tags that are
-        the old default's (never another language's).  ``default=False`` leaves the
+        ``styles``: ``"matching"`` (default) -- the styles whose own language is the
+        template's own before the change (:func:`own_languages`: the default's, Normal's, or
+        failing both the one most styles state) get the new one too, the others keep
+        theirs; ``"all"`` -- every style with its own language; ``"none"``; or style names
+        -- those styles (given their own language where they had none).  ``runs``: also the
+        runs' own tags in the template's own language (never another language's).  ``default=False`` leaves the
         defaults as they are (a style's language alone).  The result's warnings say which
         styles keep another language and how many runs carry their own."""
         from .document import EditResult
@@ -227,7 +292,13 @@ class LanguageOps:
         if part is None:
             raise EditError("the document has no style sheet (styles.xml) to hold its default language")
         warnings = [note] if note else []
-        old = _attributes(_lang_of(package.tree(part).find(f"{_W}docDefaults/{_W}rPrDefault/{_W}rPr"))).get(slot)
+        # Decided before anything is written: the template's own language(s) in this slot.
+        own_set = own_languages(package.tree(part), slot)
+        old = [found for found, _ in own_set]
+
+        def is_old(value: str | None) -> bool:
+            return any(_same(value, found) for found in old)
+
         changed: list[str] = []
         kept: dict[str, str] = {}
         with self._edit():
@@ -256,7 +327,7 @@ class LanguageOps:
                 name_node = style.find(_W + "name")
                 name = name_node.get(_W + "val") if name_node is not None else style.get(_W + "styleId")
                 wanted = (mode == "all" and own is not None) \
-                    or (mode == "matching" and _same(own, old)) \
+                    or (mode == "matching" and is_old(own)) \
                     or (mode == "names" and style.get(_W + "styleId") in ids)
                 if wanted:
                     if properties is None:
@@ -286,7 +357,7 @@ class LanguageOps:
                 value = lang.get(_W + slot)
                 if value is None:
                     continue
-                if runs and _same(value, old) and value != tag:
+                if runs and is_old(value) and value != tag:
                     lang.set(_W + slot, tag)
                     rewritten += 1
                     package.mark_dirty(_part_of(self, lang))
@@ -294,20 +365,32 @@ class LanguageOps:
                     own_runs[value] = own_runs.get(value, 0) + 1
             if rewritten:
                 changed.append(f"{rewritten} run(s)")
+        if mode == "matching" and any(why != "default" for _, why in own_set):
+            # Which language was taken as the template's own, and why: the styles that
+            # followed are those; any other kept its own (named below).
+            warnings.append("the template's own language: " + ", ".join(
+                f"{found} ({_WHY[why]})" for found, why in own_set)
+                + ("" if any(why == "default" for _, why in own_set) else "; the document stated no default"))
+        elif mode == "matching" and not own_set and kept:
+            warnings.append("the template states no language of its own (no default, none on Normal, none "
+                            "most of its styles share): every style keeps its own; styles=\"all\" sets them too")
         if kept:
             shown = sorted(kept.items())
             warnings.append("styles keeping their own language: " + ", ".join(f"{n} ({t})" for n, t in shown[:12])
                             + (f" and {len(shown) - 12} more" if len(shown) > 12 else ""))
         if own_runs:
-            stale = sum(n for t, n in own_runs.items() if _same(t, old))
+            stale = sum(n for t, n in own_runs.items() if is_old(t))
             warnings.append("runs keeping their own language tag: " + ", ".join(
                 f"{t} ({n})" for t, n in sorted(own_runs.items(), key=lambda kv: -kv[1])[:8])
-                + (f"; runs=True also sets the {stale} in {old}" if stale and not runs else ""))
+                + (f"; runs=True also sets the {stale} in {' or '.join(old)}" if stale and not runs else ""))
         if not changed:
             warnings.insert(0, f"the document's language was {tag} already" if default
                             else f"the styles named were in {tag} already")
             return EditResult(None, changed=False, warnings=warnings)
         return EditResult(None, count=len(changed), warnings=warnings)
+
+
+_WHY = {"default": "the default", "Normal": "Normal's", "most styles": "most styles'"}
 
 
 def _attributes(lang: Element | None) -> dict[str, str]:
