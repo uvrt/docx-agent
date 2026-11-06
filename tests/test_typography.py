@@ -281,13 +281,14 @@ def test_problems_list_what_is_left_with_fixes_that_clear_them(box):
                                                       f"«{NBSP}non{NBSP}».")
 
 
-def test_check_reports_the_spaces_english_does_not_want():
+def test_check_reports_the_spaces_english_does_not_want_without_deleting_them():
+    """Round 35, R24: French spacing in English text is most often French under the wrong
+    tag -- an entry of its own, whose fix sets the language (tests/test_language.py)."""
     document = french("Note : this! Really ?", "Fine: yes.", language="en-US")
     found = problems(document)
-    assert len(found) == 1 and found[0]["language"] == "en-US"
+    assert len(found) == 1 and found[0]["language"] == "en-US" and found[0]["kind"] == "language_mismatch"
     assert [m["kind"] for m in found[0]["marks"]] == ["space_before", "space_before"]
-    assert found[0]["fix"]["calls"][0] == {"range": document.paragraphs()[0].id, "find": "Note :",
-                                           "replace": "Note:", "expect": "one"}
+    assert found[0]["fix"]["tool"] == "word_styles"
 
 
 def test_check_is_scoped_to_a_range(box):

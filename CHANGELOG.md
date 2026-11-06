@@ -5,6 +5,35 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.43 -- unreleased
+
+- **The language of an existing document** (production round 35, R24;
+  `docx_agent.edit.language`). `Document.set_language("fr-BE")` writes what a new document
+  in that language has -- `w:docDefaults`' `w:lang` and the settings' `w:themeFontLang`, in
+  the attribute Word writes the language in (`w:val`; `w:eastAsia` for Chinese, Japanese,
+  Korean, Yi; `w:bidi` for the complex scripts) -- and the styles whose own language was the
+  old default (`styles="matching"`; `"all"`, `"none"` or style names); styles in another
+  language and runs' own tags stay (`runs=True` also sets the runs tagged with the old
+  default; `default=False` sets the styles named only). One undo step; a no-op says so. The
+  tag is checked against the tags Word writes (any case, `_` for `-`, `fr-Latn-BE` read as
+  `fr-BE`, with a note); a bare language (`fr`), a region Word does not know (`fr-XX`) or an
+  unknown language is refused with the tags that would do. `Document.languages()` says where
+  the document states languages. Text written afterwards gets the language's spacing (R21).
+  For the model: `word_styles` `set_language` with `language` (and `name` for a style's
+  alone). Measured in Word (`tools/language_probe.py`, `tests/observations/language-word.json`):
+  the tag and attribute Word writes for each language of its dictionary; how it reads tags;
+  setting the Normal style's language writes the Normal style's `w:lang`, all the text's
+  writes `w:lang` on every run, the Normal template's writes Normal.dotm only -- none
+  rewrites `w:docDefaults`, `w:themeFontLang` or another style's language.
+- **`check`'s `punctuation_spacing` no longer offers to delete French spaces** in text tagged
+  English, German, Dutch, Spanish, Italian or Portuguese: such a paragraph is an entry of its
+  own, `"kind": "language_mismatch"`, with the tag's `source` (`default`, `style:<name>`,
+  `run`) and a `fix` that sets the language (`word_styles` `set_language`, French: the
+  document's own French tag if it has one, else `fr-FR`); a run's own tag gets a note and no
+  fix. French text keeps its `replace_text` fixes.
+- Offline tokens: `word_styles`' `set_language` and `language` +56 to every definition
+  (14,168 -> 14,224), none to the core (2,871); a reviewer's everything 8,037 -> 8,089.
+
 ## 0.1.42 -- unreleased
 
 - **Spacing around punctuation by the text's language** (production round 35, R21;

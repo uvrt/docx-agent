@@ -34,12 +34,14 @@ where there is none, U+00A0 is put in next to what the call wrote.  An ordinary 
 was there before stays (``check`` reports it).  Nothing is removed: the languages that want
 no space get no change on writing -- text tagged English that holds French spacing is more
 often French with the wrong language than English with stray spaces -- and ``check``
-reports their spaces.  Text in a field's result, in a run Word does not proof
+reports them as that (``language_mismatch``).  Text in a field's result, in a run Word does not proof
 (``w:noProof``), or written as code (Markdown code, the code styles) is not looked at.
 ``Document.typography`` (``docx_format(typography=False)``) turns writing it off.
 
 **Checking** (:func:`problems`): every place in the document where the rule of the text's
-language is not met, per paragraph, with ``replace_text`` calls that fix them.
+language is not met, per paragraph, with ``replace_text`` calls that fix them; spaces a
+language that wants none has are a ``language_mismatch`` whose fix sets the language
+(``Document.set_language``, round 35, R24), never a deletion.
 """
 
 from __future__ import annotations
@@ -209,7 +211,7 @@ class Cascade:
                         self.default_table = identifier
         self._code = {identifier for identifier, style in self.styles.items()
                       if (_name(style) or "").lower() in CODE_STYLES}
-        self._cache: dict[tuple, tuple[str | None, bool, bool]] = {}
+        self._cache: dict[tuple, tuple[str | None, bool, bool, str | None]] = {}
 
     def _chain(self, identifier: str | None) -> list[Element]:
         out: list[Element] = []
@@ -227,6 +229,13 @@ class Cascade:
 
     def of(self, paragraph: Element, run: Element | None) -> tuple[str | None, bool, bool]:
         """``(language, proofed, code)`` of ``run`` in ``paragraph``."""
+        return self.of_with_source(paragraph, run)[:3]  # type: ignore[return-value]
+
+    def of_with_source(self, paragraph: Element,
+                       run: Element | None) -> tuple[str | None, bool, bool, str | None]:
+        """``(language, proofed, code, source)``: :meth:`of` and where the language comes
+        from -- ``"run"`` (the run's own ``w:lang``), ``"style:<name>"`` or ``"default"``
+        (``w:docDefaults``'); ``None`` with no language."""
         properties = paragraph.find(_W + "pPr")
         node = properties.find(_W + "pStyle") if properties is not None else None
         paragraph_style = node.get(_W + "val") if node is not None else self.default_paragraph
@@ -243,33 +252,34 @@ class Cascade:
         key = (paragraph_style, table_style, character_style)
         base = self._cache.get(key)
         if base is None:
-            levels: list[Element | None] = [self.defaults]
+            levels: list[tuple[Element | None, str]] = [(self.defaults, "default")]
             for style_id in (table_style, paragraph_style, character_style):
                 # Each level's chain, its own declaration first.
-                levels.extend(reversed([s.find(_W + "rPr") for s in self._chain(style_id)]))
-            language = None
+                levels.extend(reversed([(s.find(_W + "rPr"), "style:" + (_name(s) or s.get(_W + "styleId") or ""))
+                                        for s in self._chain(style_id)]))
+            language = source = None
             proofed = True
-            for level in levels:
+            for level, where in levels:
                 if level is None:
                     continue
                 found = level.find(_W + "lang")
                 if found is not None and found.get(_W + "val"):
-                    language = found.get(_W + "val")
+                    language, source = found.get(_W + "val"), where
                 found = level.find(_W + "noProof")
                 if found is not None:
                     proofed = not _on(found)
             code = bool(self._code & (self._chain_ids(paragraph_style) | self._chain_ids(character_style)))
-            base = (language, proofed, code)
+            base = (language, proofed, code, source)
             self._cache[key] = base
-        language, proofed, code = base
+        language, proofed, code, source = base
         if direct is not None:
             found = direct.find(_W + "lang")
             if found is not None and found.get(_W + "val"):
-                language = found.get(_W + "val")
+                language, source = found.get(_W + "val"), "run"
             found = direct.find(_W + "noProof")
             if found is not None:
                 proofed = not _on(found)
-        return language, proofed, code
+        return language, proofed, code, source
 
 
 def _name(style: Element) -> str | None:
@@ -378,15 +388,18 @@ class _Paragraph:
         self.atoms = _text.atoms(paragraph)
         self.text = "".join(atom.char for atom in self.atoms)
         self.cascade = cascade
-        self._runs: dict[int, tuple[str | None, bool, bool]] = {}
+        self._runs: dict[int, tuple[str | None, bool, bool, str | None]] = {}
 
-    def _of(self, i: int) -> tuple[str | None, bool, bool]:
+    def _of(self, i: int) -> tuple[str | None, bool, bool, str | None]:
         run = self.atoms[i].run
         key = id(run)
         found = self._runs.get(key)
         if found is None:
-            found = self._runs[key] = self.cascade.of(self.element, run)
+            found = self._runs[key] = self.cascade.of_with_source(self.element, run)
         return found
+
+    def source_at(self, i: int) -> str | None:
+        return self._of(i)[3]
 
     def language_at(self, i: int) -> str | None:
         return self._of(i)[0]
@@ -395,7 +408,7 @@ class _Paragraph:
         atom = self.atoms[i]
         if atom.kind != "text" or atom.in_field:
             return False
-        _, proofed, code = self._of(i)
+        _, proofed, code, _ = self._of(i)
         return proofed and not code
 
 
@@ -462,6 +475,10 @@ def apply_written(document: "Document", record: Recorder,
 MARKS_PER_PARAGRAPH = 10
 
 
+#: The kinds of :class:`Spot` a language that wants no space reports.
+_MISMATCH_KINDS = ("space_before", "space_inside")
+
+
 def problems(document: "Document") -> list[dict[str, Any]]:
     """``check``'s ``punctuation_spacing``: per paragraph of every story, the places the rule
     of the text's language is not met (the module's), in document order.
@@ -471,8 +488,17 @@ def problems(document: "Document") -> list[dict[str, Any]]:
     it), ``kind`` the module's (:class:`Spot`), and the mark's ``language`` where it is not
     the paragraph's first; ``fix``: ``replace_text`` calls in the paragraph, each find the
     shortest text around one or more marks that occurs there once.  Making them (or
-    rewriting the text: written text gets the spacing) clears them."""
+    rewriting the text: written text gets the spacing) clears them.
+
+    Spaces a language that wants none has (``space_before``, ``space_inside``: French
+    spacing in text tagged English, Dutch...) are most often French text under the wrong
+    language tag, not stray spaces; deleting them would undo the author's French.  They are
+    an entry of their own, ``"kind": "language_mismatch"``, with ``source`` -- where the tag
+    comes from (``default``, ``style:<name>``, ``run``) -- and no ``replace_text``: its
+    ``fix`` sets the language (``word_styles`` ``set_language``: the document's default, or
+    the style's) to a French one (:func:`french_guess`), and a run's own tag has none."""
     cascade = Cascade(document)
+    guess: list[str] = []
     out: list[dict[str, Any]] = []
     for part in document._parts():
         for entry in document._index(part).paragraphs:
@@ -483,18 +509,61 @@ def problems(document: "Document") -> list[dict[str, Any]]:
             spots = find(paragraph.text, paragraph.language_at, paragraph.looked_at, check=True)
             if not spots:
                 continue
-            shown = spots[:MARKS_PER_PARAGRAPH]
-            found: dict[str, Any] = {
-                "para": entry.id, "language": spots[0].language,
-                "marks": [{"at": spot.at, "kind": spot.kind, **({"language": spot.language}
-                                                                if spot.language != spots[0].language else {})}
-                          for spot in shown]}
-            if len(spots) > len(shown):
-                found["marks_left_out"] = len(spots) - len(shown)
-            found["fix"] = {"tool": "replace_text",
-                            "calls": _fix_calls(entry.id, paragraph.text, shown)}
-            out.append(found)
+            spacing = [spot for spot in spots if spot.kind not in _MISMATCH_KINDS]
+            mismatched = [spot for spot in spots if spot.kind in _MISMATCH_KINDS]
+            if spacing:
+                found = _entry(entry.id, spacing)
+                found["fix"] = {"tool": "replace_text",
+                                "calls": _fix_calls(entry.id, paragraph.text, spacing[:MARKS_PER_PARAGRAPH])}
+                out.append(found)
+            if mismatched:
+                if not guess:
+                    guess.append(french_guess(document))
+                source = paragraph.source_at(mismatched[0].mark) or "default"
+                found = _entry(entry.id, mismatched)
+                found = {"para": found.pop("para"), "kind": "language_mismatch", **found, "source": source}
+                if source == "run":
+                    found["note"] = (f"French spacing in runs tagged {mismatched[0].language} themselves: likely "
+                                     "French text under the wrong tag; not a spacing fault if so")
+                else:
+                    call: dict[str, Any] = {"action": "set_language", "language": guess[0]}
+                    if source.startswith("style:"):
+                        call["name"] = source[len("style:"):]
+                    found["note"] = (f"French spacing in text tagged {mismatched[0].language}: likely French "
+                                     "under the wrong language; the fix sets it (the text's own region if not "
+                                     f"{guess[0]}: fr-BE, fr-CH, fr-CA...)")
+                    found["fix"] = {"tool": "word_styles", "calls": [call]}
+                out.append(found)
     return out
+
+
+def _entry(identifier: str, spots: list[Spot]) -> dict[str, Any]:
+    shown = spots[:MARKS_PER_PARAGRAPH]
+    found: dict[str, Any] = {
+        "para": identifier, "language": spots[0].language,
+        "marks": [{"at": spot.at, "kind": spot.kind, **({"language": spot.language}
+                                                        if spot.language != spots[0].language else {})}
+                  for spot in shown]}
+    if len(spots) > len(shown):
+        found["marks_left_out"] = len(spots) - len(shown)
+    return found
+
+
+def french_guess(document: "Document") -> str:
+    """The French tag a ``language_mismatch`` fix proposes: the document locale's when it is
+    French, else a French tag the document's defaults or styles state, else ``fr-FR``."""
+    locale = getattr(getattr(document, "locale", None), "language", None)
+    if _primary(locale) == "fr":
+        return str(locale)
+    package = document.package
+    part = package.styles_part()
+    root = package.tree(part) if part else None
+    if root is not None:
+        for lang in root.iter(_W + "lang"):
+            value = lang.get(_W + "val")
+            if _primary(value) == "fr" and "-" in (value or ""):
+                return str(value)
+    return "fr-FR"
 
 
 def _window(text: str, spot: Spot) -> tuple[int, int]:

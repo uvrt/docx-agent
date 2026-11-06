@@ -205,10 +205,14 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 #: Round 35, R18/R19 (ooxml-edit 0.81.0): check's ``range`` and ``copies`` and render's
 #: ``range`` in the shared definitions, +229 to the core (2,642 -> 2,871) and to every
 #: definition (13,939 -> 14,168).  The guard rises to 14,170.
+#: Round 35, R24: word_styles' ``set_language`` action and ``language`` (the language of an
+#: existing document, or of a style) +56 to every definition (14,168 -> 14,224), none to the
+#: core (2,871).  The guard rises to 14,225.  word_styles is not strict (deferred, in
+#: word_style): the strict set is unchanged.
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 6500
-ALL_GUARD = 14170
+ALL_GUARD = 14225
 
 
 @pytest.fixture(scope="module")

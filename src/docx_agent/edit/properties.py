@@ -6,7 +6,8 @@ last modified by, revision, created, modified, category, status and language
 (:meth:`Document.set_properties`); a document without the part gets one, related from the
 package root, as Word writes it.  ``dc:language`` is the metadata's language: the
 language the text is proofed in is the document defaults' ``w:lang``, which
-:meth:`Document.new` sets and :meth:`Document.set_properties` leaves alone.
+:meth:`Document.new` and :meth:`Document.set_language` set and
+:meth:`Document.set_properties` leaves alone.
 
 **Extended properties** (``app.xml``) restate the document's statistics for indexers and
 the Finder: pages, words, characters (with and without spaces), lines and paragraphs.  Word

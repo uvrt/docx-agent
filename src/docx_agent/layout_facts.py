@@ -52,8 +52,12 @@ takes its targets as one list with the values for all, so it is ``calls``, not `
     ``: ; ! ?`` and guillemets -- French: an ordinary space (``breakable``: Word breaks the
     line before the mark) or none (``missing``) where a no-break space belongs; English,
     German, Dutch, Spanish, Italian, Portuguese: a space Word flags (``space_before``,
-    ``space_inside``).  ``fix``: ``replace_text`` calls.  Read from the document, so listed
-    where the layout failed too; :mod:`docx_agent.edit.typography` has the rule.
+    ``space_inside``).  ``fix``: ``replace_text`` calls -- except for those last spaces
+    (round 35, R24): French spacing in text tagged another language is most often French
+    under the wrong tag, an entry of ``"kind": "language_mismatch"`` with the tag's
+    ``source`` and a ``fix`` setting the language (``word_styles`` ``set_language``), never
+    one deleting the spaces.  Read from the document, so listed where the layout failed
+    too; :mod:`docx_agent.edit.typography` has the rule.
 ``keep_with_next_at_foot``
     ``{"para", "style", "page", "next", "next_page"}``: a keep-with-next paragraph drawn
     last on its page, its next block on a later page -- unless that block starts a new page

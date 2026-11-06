@@ -154,16 +154,18 @@ def describe_style(document: Any, style: Any) -> dict[str, Any]:
     return data
 
 
-@word_tool("word_styles", "The style sheet: list, describe (formatting, usage), add, modify, remove (with a replacement while used), purge unused, set_default (the table style new tables get).",
+@word_tool("word_styles", "The style sheet: list, describe (formatting, usage), add, modify, remove (with a replacement while used), purge unused, set_default (the table style new tables get), set_language (the language text is proofed and spaced in: the document's, or name's).",
            {"doc": DOC,
             "action": string("What to do.", enum=["list", "describe", "add", "modify", "remove", "purge_unused",
-                                                  "set_default"]),
+                                                  "set_default", "set_language"]),
             "name": string("Style name.", optional=True),
             "kind": string("Default paragraph.",
                            enum=["paragraph", "character", "table"], optional=True),
             "based_on": string("add: based on this style.", optional=True),
             "next_style": string("add: style of the next paragraph.", optional=True),
             "replacement": string("remove: style its users get instead.", optional=True),
+            # Round 35, R24: the language of an existing document (Document.set_language).
+            "language": string("set_language: a tag such as fr-BE, nl-BE, en-US.", optional=True),
             "in_use_only": boolean("list: only styles in use.", optional=True),
             # Round 29, W12: Word's "Link level to style".
             "numbering": obj({"list": string("A list's number, a style in it, or none to unlink."),
@@ -181,7 +183,7 @@ def describe_style(document: Any, style: Any) -> dict[str, Any]:
            action_roles={"list": REVIEW, "describe": REVIEW})
 def word_styles(call: Any, doc: str, action: str, name: str | None = None, kind: str | None = None,
                 based_on: str | None = None, next_style: str | None = None, replacement: str | None = None,
-                in_use_only: bool = False, numbering: dict | None = None, tabs: list[dict] | None = None,
+                language: str | None = None, in_use_only: bool = False, numbering: dict | None = None, tabs: list[dict] | None = None,
                 **values: Any) -> Result:
     document = call.document
     styles = document.styles
@@ -202,6 +204,10 @@ def word_styles(call: Any, doc: str, action: str, name: str | None = None, kind:
                           data=rows[:200])
         if action == "purge_unused":
             return outcome([styles.purge_unused()], "Purged unused styles")
+        if action == "set_language":
+            return _set_language(document, need(language, "language"), name)
+        if language is not None:
+            raise ToolError("invalid_arguments", f"language is set_language's: {action} takes none", field="language")
         name = need(name, "name")
         if numbering is not None and action != "modify":
             raise ToolError("invalid_arguments", f"numbering is modify's: {action} takes none", field="numbering")
@@ -261,6 +267,29 @@ def word_styles(call: Any, doc: str, action: str, name: str | None = None, kind:
         raise ToolError("not_found", str(error), field="name",
                         valid_options=[s.name for s in styles if s.name and (kind is None or s.kind == kind)][:50]) \
             from None
+
+
+def _set_language(document: Any, language: str, name: str | None) -> Result:
+    """Round 35, R24: :meth:`Document.set_language` -- the document's language (its default,
+    the styles that stated the old one, the theme's), or with ``name`` that style's alone."""
+    from ..edit.language import LanguageError
+
+    try:
+        edit = document.set_language(language, **({"styles": [name], "default": False} if name else {}))
+    except LanguageError as error:
+        raise ToolError("invalid_arguments", str(error), field="language",
+                        valid_options=error.options[:30]) from None
+    found = document.languages()
+    data = {"default": found["default"], "styles": dict(list(found["styles"].items())[:20])}
+    if len(found["styles"]) > 20:
+        data["styles_left_out"] = len(found["styles"]) - 20
+    if found["runs"]:
+        data["runs"] = found["runs"]
+    tag = (found["styles"].get(name) or {}) if name else found["default"]
+    what = f"Style {name}" if name else "The document"
+    summary = (f"{what}: language {', '.join(tag.values())}" if edit.changed
+               else f"No change: {edit.warnings[0]}")
+    return outcome([edit], summary, data=data)
 
 
 # -- W29 word_template -------------------------------------------------------------------------
