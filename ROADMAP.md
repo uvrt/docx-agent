@@ -1170,6 +1170,16 @@ doc.render_svg(pages=diff.changed)     # or render_png; ids on every paragraph g
   entries whose fix sets the language, never `replace_text` calls deleting French spaces.
   Word's Language dialog *Default...* button is not measured (no window is scriptable
   while the screen is locked).
+- **Round 35 (R25):** `set_language`'s default retags the *template's* own language, not
+  only the old default's: the default's, Normal's, or (neither stating one) the one more
+  than half the styles stating one carry (at least two; ties decide nothing), read in the
+  attribute the new language goes in. Kept a name (`"matching"`): it is the default no
+  caller spells out, and the styles still follow by matching a language -- the set it
+  matches grew. Not "every style based on Normal": a style based on Normal stating another
+  language is exactly the deliberate exception to keep, and linked character styles are
+  based on no paragraph style; the language they state decides. Not Word's behaviour (none
+  of its commands retags styles, measured in R24): a convenience for the template that
+  restates its language on every style.
 - **Cost.** One layout per document state, cached by the bytes' hash: `layout()` and
   `render_svg()` of the same state read one `docx2svg.lay_out_docx` (every page laid out;
   a page's SVG drawn from it when asked for), tested by counting the calls; since round 33

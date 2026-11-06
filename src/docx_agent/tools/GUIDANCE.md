@@ -79,7 +79,8 @@ How to use them:
   before the most used one, and `list` marks it `default`.
 - **The document's language** (what its text is proofed and spaced in): `word_styles`
   `set_language` with `language` (`fr-BE`, `nl-BE`...) sets it where the template states
-  it; with `name`, that style's alone. `check`'s `punctuation_spacing` entries of kind
+  it -- its default and the styles in its own language (Normal's, the default's); styles in
+  another language stay and are named -- with `name`, that style's alone. `check`'s `punctuation_spacing` entries of kind
   `language_mismatch` (French spacing in text tagged another language) carry that call as
   their fix: the spaces are the text's, not to be deleted.
 - **Tab stops of a style** (a contents style's right-aligned page numbers): `word_styles`

@@ -271,8 +271,9 @@ def word_styles(call: Any, doc: str, action: str, name: str | None = None, kind:
 
 def _set_language(document: Any, language: str, name: str | None) -> Result:
     """Round 35, R24: :meth:`Document.set_language` -- the document's language (its default,
-    the styles that stated the old one, the theme's), or with ``name`` that style's alone."""
-    from ..edit.language import LanguageError
+    the styles in the template's own language (R25), the theme's), or with ``name`` that
+    style's alone."""
+    from ..edit.language import LanguageError, word_tag
 
     try:
         edit = document.set_language(language, **({"styles": [name], "default": False} if name else {}))
@@ -287,7 +288,9 @@ def _set_language(document: Any, language: str, name: str | None) -> Result:
         data["runs"] = found["runs"]
     tag = (found["styles"].get(name) or {}) if name else found["default"]
     what = f"Style {name}" if name else "The document"
-    summary = (f"{what}: language {', '.join(tag.values())}" if edit.changed
+    # The attribute the language was written in (the others are other scripts' languages).
+    slot = word_tag(language)[1]
+    summary = (f"{what}: language {tag.get(slot) or ', '.join(tag.values())}" if edit.changed
                else f"No change: {edit.warnings[0]}")
     return outcome([edit], summary, data=data)
 
