@@ -217,10 +217,10 @@ def number_texts(call: Any, scope: Mapping[str, Any]) -> list[NumberText]:
         at = members[0][0].id if cell is None else _cell_id(index, cell)
         if at is None:
             continue
-        spans: list[tuple[int, int]] = []
+        marked: list[tuple[int, int]] = []
         offset = 0
         for _, text, own in members:
-            spans += [(offset + a, offset + b) for a, b in own]
+            marked += [(offset + a, offset + b) for a, b in own]
             offset += len(text) + 1
         where: dict[str, Any] = {}
         if layout is not None:
@@ -229,7 +229,7 @@ def number_texts(call: Any, scope: Mapping[str, Any]) -> list[NumberText]:
                 continue
             if on:
                 where["page"] = on[0]
-        out.append(NumberText(at, joined, tuple(spans), {"range": at}, where))
+        out.append(NumberText(at, joined, tuple(marked), {"range": at}, where))
     return out
 
 

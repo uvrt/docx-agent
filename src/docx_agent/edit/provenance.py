@@ -243,7 +243,7 @@ class ProvenanceOps:
                                               for start, end in spans)]
             merged = sorted(kept + new, key=lambda f: f["at"])
             if not merged:
-                if node is not None:
+                if node is not None and root is not None and item is not None:
                     root.remove(node)
                     self.package.mark_dirty(item)
                 return True
@@ -254,7 +254,7 @@ class ProvenanceOps:
                 node.set("kind", TEXT)
                 node.set("key", entry.id)
             text = _records.dumps({"v": _records.VERSION, "paragraph": now, "facts": merged})
-            if node.text != text:
+            if node.text != text and item is not None:
                 node.text = text
                 self.package.mark_dirty(item)
         return True
@@ -295,7 +295,7 @@ class ProvenanceOps:
             return
         root = self.package.tree(item)
         nodes = [node for node in _entries(root) if node.get("kind") == TEXT]
-        if not nodes:
+        if root is None or not nodes:
             return
         self._invalidate()  # the edit may have left the indexes stale
         changed = False
