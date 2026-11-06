@@ -30,7 +30,7 @@ ooxml-edit's Responses round-trip test). Chat Completions has not been run live.
 | Group | Tools |
 | --- | --- |
 | `core` (always loaded) | `open_document`, `new_document`, `save_document`, `undo`, `find_text`, `replace_text`, `render`, `check`, `describe`, `word_read`, `word_set_text`, `batch`, `read_batch` |
-| `shared_misc` | `close_document`, `read_blob`, `set_properties`, `edit_chart`, `edit_smartart` |
+| `shared_misc` | `close_document`, `read_blob`, `set_properties`, `edit_chart`, `edit_smartart`, `style_by_value` |
 | `word_text` | `word_inspect`, `word_insert_text`, `word_delete`, `word_insert_markdown` |
 | `word_review` | `word_set_tracking`, `word_changes`, `word_comments` |
 | `word_structure` | `word_move`, `word_copy_from`, `word_sections`, `word_headers_footers`, `word_fields`, `word_notes`, `word_links` |

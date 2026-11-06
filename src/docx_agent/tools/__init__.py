@@ -55,7 +55,7 @@ WORD_TOOLS = (read.TOOLS + text.TOOLS + review.TOOLS + structure.TOOLS + objects
 
 from . import shared  # noqa: E402  (the Word handlers of the shared definitions)
 
-TOOLS = shared.TOOLS + WORD_TOOLS
+TOOLS = shared.TOOLS + WORD_TOOLS + [shared.style_by_value]
 
 CORE_TOOLS = [t.name for t in TOOLS if t.group == CORE]
 
