@@ -1243,7 +1243,7 @@ doc.render_svg(pages=diff.changed)     # or render_png; ids on every paragraph g
   and its model holds paths and fields open across blocks), a `word_fields` update that stops
   a pass early (the last pass confirms the numbers; skipping it exactly needs docx2svg's
   settled field values in docx-agent's terms).
-- **Round 40 (0.1.62):** a range's keep tried (`docx_agent.tools.keep_trials`, from
+- **Round 40 (0.1.64):** a range's keep tried (`docx_agent.tools.keep_trials`, from
   `check_worker`): the change `keep_blocks_together` would write (its `_keep_changes`, read
   on the document checked) written on a copy of the bytes, laid out with docx2svg's
   `lay_out_docx(previous=<the layout held>, keep=False)` and read by element key

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ooxml_edit.tools import (Result, ToolError, array, boolean, number, obj, string)
+from ooxml_edit.tools import (Result, ToolError, array, boolean, integer, number, obj, string)
 
 from ..edit.addresses import is_text_range, span_ends
 from ..edit.document import Cell, EditError, EditResult, Paragraph, Table
@@ -14,6 +14,7 @@ from ..edit.styles import StyleError
 from ..markdown import model as m
 from ..markdown.stylemap import StyleMap
 from ..markdown.write import insert_blocks
+from . import positions
 from ._base import cached_layout, need, note_small_text, one_of, outcome, remember, resolve, short, word_tool
 from .table_data import (DATE_FORMAT, FROM_COLUMNS, HEADER, MAX_COLUMNS, MAX_ROWS, fits, no_source,
                          placed)
@@ -123,34 +124,46 @@ INSERT_FIELDS = {
     "find": string("Text occurring once, to insert beside.", optional=True),
     "target": string("Or a range, position (p:A@5) or paragraph.", optional=True),
     "where": string("Default after.", enum=["before", "after"], optional=True),
+    # Round 40: the place as every placing tool names it (positions.py).
+    "at": string("Or after:/before: a range, or a position.", optional=True),
     "text": string("Plain text."),
     "ref": REF,
 }
 
+_INSERT_TEXT = {"doc": DOC, **{k: (v if k != "text" else string("Plain text.", optional=True))
+                               for k, v in INSERT_FIELDS.items()},
+                "within": string("Block or span to search for find.", optional=True),
+                "items": array(obj(INSERT_FIELDS), "Or several insertions.", optional=True)}
+
 
 @word_tool("word_insert_text", "Insert text beside words found once, or at a range or position, in the formatting there. Returns the new ranges' ids.",
-           {"doc": DOC, **{k: (v if k != "text" else string("Plain text.", optional=True))
-                           for k, v in INSERT_FIELDS.items()},
-            "within": string("Block or span to search for find.", optional=True),
-            "items": array(obj(INSERT_FIELDS), "Or several insertions.",
-                           optional=True)},
+           _INSERT_TEXT,
            refs=('target', 'within', 'items[].target'), group="word_text", mutates=True,
-           facts=("text", "items[].text"))
+           facts=("text", "items[].text"),
+           aliases={**positions.aliases("word_insert_text", "text", _INSERT_TEXT, find=True),
+                    **positions.aliases("word_insert_text", "text", INSERT_FIELDS, prefix="items[].",
+                                        find=True)})
 def word_insert_text(call: Any, doc: str, items: list[dict] | None = None, **single: Any) -> Result:
-    if items is not None and any(single.get(k) is not None for k in ("find", "target", "text")):
+    if items is not None and any(single.get(k) is not None for k in ("find", "target", "at", "text")):
         raise ToolError("invalid_arguments", "give one insertion's fields or items, not both", field="items")
     if items == []:
         return Result.nothing_given("inserted")
     work = items if items is not None else [single]
     edits, made = [], []
-    for item in work:
+    for k, item in enumerate(work):
         need(item.get("text"), "text")
+        if all(item.get(name) is None for name in ("find", "target", "at")) and positions.is_place(item.get("ref")):
+            raise _ref_as_place(call, "word_insert_text", item if items is not None else {"doc": doc, **item},
+                                k if items is not None else None)
+        key = one_of(item, "find", "target", "at")
         where = item.get("where") or "after"
-        key = one_of(item, "find", "target")
         if key == "find":
             found = find_range(call, item["find"], item.get("within"))
-        else:
+        elif key == "target":
             found = text_range(call.document, resolve(call, item["target"]))
+        else:
+            where, address = _text_at(item["at"], item.get("where"))
+            found = text_range(call.document, resolve(call, address))
         place = found.id
         edit = found.insert_before(item["text"]) if where == "before" else found.insert_after(item["text"])
         edits.append(edit)
@@ -159,6 +172,33 @@ def word_insert_text(call: Any, doc: str, items: list[dict] | None = None, **sin
         remember(call, item.get("ref"), inserted)
     result = outcome(edits, f"Inserted text at {len(edits)} place(s)", data={"ranges": made})
     return result
+
+
+def _text_at(at: str, where: str | None) -> tuple[str, str]:
+    """``word_insert_text``'s ``at``: ``(side, range)`` -- ``after:`` or ``before:`` a range,
+    or a bare range or position, after it unless ``where`` says before."""
+    side = positions.side_of(at)
+    if side is None or side[0] == "end" or at.startswith("replace:"):
+        raise ToolError("invalid_arguments", f"at {at!r}: text goes beside a range: after:<range>, "
+                        "before:<range>, or a position p:<id>@<offset>", field="at")
+    if at.startswith(("after:", "before:")):
+        if where is not None and where != side[0]:
+            raise ToolError("invalid_arguments", f"at says {side[0]} and where says {where}: give one",
+                            field="where", valid_options=[side[0], where])
+        return side
+    return where or "after", side[1]
+
+
+def _ref_as_place(call: Any, tool: str, item: dict, index: int | None) -> ToolError:
+    """A ``ref`` holding an address where the call gives no place: ``ref`` names what the
+    call makes ($name); the place is ``at`` (round 40)."""
+    meant = {k: v for k, v in item.items() if k != "ref"}
+    meant["at"] = item["ref"]
+    details = {"item": meant} if index is not None else {"call": {"tool": tool, "arguments": meant}}
+    return ToolError("invalid_arguments", f"ref {item['ref']!r} is an address: ref names what this call makes, "
+                     f"for $name later; the place is at: write at: {item['ref']!r}",
+                     field="ref" if index is None else f"items[{index}].ref", valid_options=["at"],
+                     details=details)
 
 
 def inserted_range(place: str, where: str, text: str, renamed: dict[str, str]) -> str:
@@ -284,28 +324,42 @@ def images_from(call: Any):
     return image
 
 
+#: Where a placing tool puts new blocks (round 40: the form every placing tool reads).
+AT = string("end, after:<id>, before:<id> or replace:<id>[..<id>].")
+#: A ref for the blocks a call makes: one block's id, or several's span.
+BLOCKS_REF = string("Ref name for the new blocks ($name).", optional=True)
+
+_INSERT_MARKDOWN = {"doc": DOC,
+                    "markdown": string("Markdown.", optional=True),
+                    "blob": string("Or a Markdown blob handle.", optional=True),
+                    "from": string("Or a table of the rows of d:<id> or t:<table>.", optional=True),
+                    "from_columns": FROM_COLUMNS,
+                    "header": HEADER,
+                    "date_format": DATE_FORMAT,
+                    "at": AT,
+                    "style_map": STYLE_MAP,
+                    "key": string("Retry key: a repeat with the same key makes nothing new.", optional=True),
+                    "ref": BLOCKS_REF}
+
+
 @word_tool("word_insert_markdown", "Write Markdown as blocks in the document's styles: headings, lists, tables (empty header row: none), links, footnotes, images ![alt](b1), captions (: text). Returns the new blocks' ids.",
-           {"doc": DOC,
-            "markdown": string("Markdown.", optional=True),
-            "blob": string("Or a Markdown blob handle.", optional=True),
-            "from": string("Or a table of the rows of d:<id> or t:<table>.", optional=True),
-            "from_columns": FROM_COLUMNS,
-            "header": HEADER,
-            "date_format": DATE_FORMAT,
-            "at": string("end, after:<id>, before:<id> or replace:<id>[..<id>]."),
-            "style_map": STYLE_MAP,
-            "key": string("Retry key: a repeat with the same key makes nothing new.", optional=True)},
+           _INSERT_MARKDOWN,
            group="word_text", mutates=True, exactly_one=[("markdown", "blob", "from")],
-           sources=("from",), facts=("markdown",), aliases={"columns": "from_columns"})
+           sources=("from",), facts=("markdown",),
+           aliases={"columns": "from_columns",
+                    **positions.aliases("word_insert_markdown", "blocks", _INSERT_MARKDOWN)})
 def word_insert_markdown(call: Any, doc: str, at: str, markdown: str | None = None,
                          blob: str | None = None, style_map: list[dict] | None = None,
                          key: str | None = None, from_columns: list[str] | None = None,
                          header: list[str] | None = None, date_format: str | None = None,
-                         **given: Any) -> Result:
+                         ref: str | None = None, **given: Any) -> Result:
+    """``ref`` (round 40) names the blocks made, as a creating call's ``ref`` does: the one
+    block's id, or the span from the first to the last."""
+    named(call, "word_insert_markdown", ref, at)
     source = given.get("from")
     if source is not None:
-        return _table_from(call, source, from_columns, header, _at(call, at), style_map,
-                           date_format)
+        return name_blocks(call, ref, _table_from(call, source, from_columns, header, _at(call, at),
+                                                  style_map, date_format))
     no_source(from_columns, header, date_format)
     if blob is not None:
         source = call.blob(blob)
@@ -321,7 +375,23 @@ def word_insert_markdown(call: Any, doc: str, at: str, markdown: str | None = No
         raise ToolError("not_found", str(error), field="style_map",
                         valid_options=[s.name for s in call.document.styles][:50]) from None
     result = outcome([edit], f"Inserted {len(edit.blocks)} block(s)", data={"blocks": edit.blocks})
-    return note_small_text(call, result, edit.blocks)
+    return name_blocks(call, ref, note_small_text(call, result, edit.blocks))
+
+
+def named(call: Any, tool: str, ref: str | None, at: str) -> None:
+    """Refuse a ``ref`` that holds an address: it names the blocks made; the place is ``at``."""
+    if ref is not None and positions.is_place(ref):
+        raise ToolError("invalid_arguments", f"ref {ref!r} is an address: ref names the blocks this call makes, "
+                        f"for $name later; the place is at (now {at!r}): write at: 'after:{ref}' to place them "
+                        "after it", field="ref", valid_options=["at"])
+
+
+def name_blocks(call: Any, ref: str | None, result: Result) -> Result:
+    """``ref`` naming the blocks a call made (``data.blocks``): one's id, or the span of several."""
+    blocks = (result.data or {}).get("blocks") if isinstance(result.data, dict) else None
+    if ref and blocks:
+        remember(call, ref, blocks[0] if len(blocks) == 1 else f"{blocks[0]}..{blocks[-1]}")
+    return result
 
 
 def _table_from(call: Any, source: str, from_columns: list[str] | None,
@@ -366,12 +436,18 @@ def _style_map(entries: list[dict] | None) -> Any:
 
 
 def _at(call: Any, at: str) -> str:
-    """``at`` with any ``$ref`` inside resolved: ``after:$intro``."""
+    """``at`` with any ``$ref`` inside resolved: ``after:$intro``.  A ref naming several
+    blocks (a span, as ``word_insert_markdown``'s ``ref`` names what it made) is after its
+    last block, before its first, or replaced whole."""
     if "$" not in at:
         return at
     head, _, rest = at.partition(":") if at.split(":", 1)[0] in ("after", "before", "replace") else ("", "", at)
     parts = [resolve(call, part) if part.startswith("$") else part for part in rest.split("..")]
-    return (head + ":" if head else "") + "..".join(parts)
+    joined = "..".join(parts)
+    ends = span_ends(joined) if ".." in joined else None
+    if ends is not None and head != "replace":
+        joined = (ends[0] if head == "before" else ends[1]) or joined
+    return (head + ":" if head else "") + joined
 
 
 # -- W9 word_format ----------------------------------------------------------------------------
@@ -437,10 +513,18 @@ def split_formatting(values: dict[str, Any]) -> tuple[dict[str, Any], dict[str, 
     return run, paragraph
 
 
+#: Round 40: text to format found by the call, as replace_text finds it (``find[]``).
+FIND_ITEM = obj({"text": string("Text to format."),
+                 "within": string("Block or span to search.", optional=True),
+                 "occurrence": integer("Which match, from 1.", minimum=1, optional=True),
+                 "expect": string("Default one: exactly one match.", enum=["one", "all"], optional=True)})
+
+
 @word_tool("word_format", "The general setter: styles, run and paragraph formatting on each target. A range formats its characters; a paragraph or span its paragraphs.",
            {"doc": DOC,
             "targets": array(string(), "Paragraph, range (p:A@4:11), span (p:A..p:B) or "
-                             "table ids.", min_items=1),
+                             "table ids.", or_single=True, optional=True),
+            "find": array(FIND_ITEM, "Or text to find and format.", or_single=True, optional=True),
             "paragraph_style": string("Paragraph style name.", optional=True),
             "character_style": string("Character style name.", optional=True),
             **RUN_FIELDS, **PARAGRAPH_FIELDS,
@@ -452,16 +536,27 @@ def split_formatting(values: dict[str, Any]) -> tuple[dict[str, Any], dict[str, 
             # Round 16, F8: what check's direct_formatting fix clears -- only these.
             "clear": array(string(enum=[*RUN_FIELDS, *PARAGRAPH_FIELDS]),
                            "Direct properties to remove, back to the style's.", optional=True)},
-           refs=('targets[]',), group="word_style", mutates=True, aliases=SPACING_ALIASES)
-def word_format(call: Any, doc: str, targets: list[str], paragraph_style: str | None = None,
+           refs=('targets[]', 'find[].within'), group="word_style", mutates=True,
+           aliases={**SPACING_ALIASES, "find[].range": "within"})
+def word_format(call: Any, doc: str, targets: list[str] | None = None, paragraph_style: str | None = None,
                 character_style: str | None = None, clear_direct: bool = False,
-                clear: list[str] | None = None, keep_together: bool | None = None, **values: Any) -> Result:
+                clear: list[str] | None = None, keep_together: bool | None = None,
+                find: list[dict] | None = None, **values: Any) -> Result:
     """``keep_together`` (round 36, R30): a paragraph -- one alone, or a range's or a cell's
     -- keeps its lines together (``keep_lines``, the Python API's ``keep_together``); a span,
     a table, a section or a block-level control keeps its blocks on one page
     (:meth:`~docx_agent.Document.keep_blocks_together`), with a warning where the last layout
-    shows them taller than a page."""
+    shows them taller than a page.
+
+    ``find`` (round 40): text found by the call, each item's ranges formatted as a range
+    target is (:func:`found_ranges`): every one is found before anything changes, so a text
+    that is not there, or matches several without ``occurrence``, refuses the call whole."""
     document = call.document
+    if not targets and not find:
+        if targets is None and find is None:
+            raise ToolError("invalid_arguments", "say what to format: targets (ids) or find (text)",
+                            field="targets", valid_options=["targets", "find"])
+        return Result.nothing_given("formatted", field="targets")   # a trimmed batch's leftover
     both = [name for name in clear or () if name in values]
     if both:
         raise ToolError("invalid_arguments", f"{', '.join(both)} both set and cleared: give a value or "
@@ -482,7 +577,8 @@ def word_format(call: Any, doc: str, targets: list[str], paragraph_style: str | 
         if name is not None:
             known_style(document, name, kind, "paragraph_style" if kind == "paragraph" else "character_style")
     edits = []
-    addresses = resolve(call, targets)
+    found = found_ranges(call, find or [])
+    addresses = resolve(call, list(targets or [])) + found
     # The blocks kept together, and the layout they are measured in before the change.
     kept = [] if keep_together is None else [a for a in addresses if _keeps_blocks(document, a)]
     before = cached_layout(document) if kept and keep_together else None
@@ -527,13 +623,85 @@ def word_format(call: Any, doc: str, targets: list[str], paragraph_style: str | 
                         field="character_style" if kind else "paragraph_style",
                         valid_options=[s.name for s in document.styles if kind is None
                                        or getattr(s, "kind", None) == kind][:50]) from None
-    result = outcome(edits, f"Formatted {len(targets)} target(s)")
+    result = outcome(edits, f"Formatted {len(addresses)} target(s)",
+                     data={"ranges": found[:50]} if found else None)
     if outline is not None:
         renamed: dict[str, str] = {}
         for edit in edits:
             renamed.update(getattr(edit, "renamed", None) or {})
         result.warnings += moves(outline, headings(document), renamed)
     return result
+
+
+def found_ranges(call: Any, items: list[dict]) -> list[str]:
+    """The ranges ``word_format``'s ``find`` items name (round 40): each item's text, in its
+    ``within`` (the body by default, as ``replace_text`` searches), once -- or its
+    ``occurrence`` (from 1), or each match with ``expect`` ``all``.  A text found nowhere is
+    refused with the places it occurs written otherwise (case, spaces) and what ``within``
+    holds; one found more than once with each match, its range and its ``occurrence``."""
+    from .shared import _story_ok
+
+    document = call.document
+    out: list[str] = []
+    for k, item in enumerate(items):
+        text, where = item["text"], f"find[{k}]"
+        within = resolve(call, item["within"]) if item.get("within") else None
+        occurrence, expect = item.get("occurrence"), item.get("expect") or "one"
+        if occurrence is not None and expect == "all":
+            raise ToolError("invalid_arguments", f"{where}: occurrence picks one match and expect all takes each: "
+                            "give one of them", field=f"{where}.occurrence", valid_options=["occurrence", "expect"])
+        matches = [m for m in _found(document, text, within) if within is not None or _story_ok(m.id, "body")]
+        place = f" in {within}" if within else ""
+        if not matches:
+            raise _not_there(document, text, within, where)
+        if occurrence is not None:
+            if occurrence > len(matches):
+                raise ToolError("not_found", f"{where}: {text!r} occurs {len(matches)} time(s){place}; no "
+                                f"occurrence {occurrence}", field=f"{where}.occurrence",
+                                valid_options=_listed(matches))
+            out.append(matches[occurrence - 1].id)
+        elif expect == "one" and len(matches) > 1:
+            raise ToolError("ambiguous", f"{where}: {len(matches)} places match {text!r}{place}: give occurrence "
+                            f"(1-{len(matches)}, in this order), a narrower within, or expect all",
+                            field=f"{where}.occurrence", valid_options=_listed(matches))
+        else:
+            out.extend(m.id for m in matches)
+    return out
+
+
+def _found(document: Any, text: str, within: str | None, **options: Any) -> list[Any]:
+    try:
+        return document.find(text, within=within, **options)
+    except (KeyError, ValueError) as error:
+        raise ToolError("not_found", f"{within}: {error}", field="find") from None
+
+
+def _listed(matches: list[Any]) -> list[str]:
+    """Each match as ``occurrence n: <range> <context>``: the call can name it either way."""
+    return [f"occurrence {n}: {m.id} {m.context()!r}" for n, m in enumerate(matches[:50], start=1)]
+
+
+def _not_there(document: Any, text: str, within: str | None, where: str) -> ToolError:
+    """The refusal of a text found nowhere: where it occurs ignoring case and spaces, and
+    (within one paragraph or cell) the text that is there."""
+    from .shared import _story_ok
+
+    place = f" in {within}" if within else ""
+    near = [m for m in _found(document, text, within, case=False, whitespace="collapse")
+            if within is not None or _story_ok(m.id, "body")]
+    message = f"{where}: {text!r} occurs nowhere{place}"
+    options = []
+    if near:
+        message += f"; written otherwise at {len(near)} place(s): give the text as written there"
+        options = [f"{m.id} {m.text!r}" for m in near[:50]]
+    elif within is not None:
+        try:
+            held = document.range(within).text
+        except Exception:  # noqa: BLE001 -- a block that holds no one text: say nothing of it
+            held = None
+        if held is not None:
+            message += f"; it holds {short(held, 160)!r}"
+    return ToolError("not_found", message, field=f"{where}.text", valid_options=options)
 
 
 def _keeps_blocks(document: Any, address: str) -> bool:

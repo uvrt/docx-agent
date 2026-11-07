@@ -14,14 +14,16 @@ from ooxml_edit.tools import (REVIEW, Result, ToolError, array, boolean, integer
 
 from ..edit import provenance as _provenance
 from ..edit.pictures import PictureError
+from . import positions
 from ._base import engage, need, note_small_text, outcome, remember, resolve, short, word_tool
 from .structure import _position
-from .table_data import DATE_FORMAT, FROM_COLUMNS, HEADER, cell_text, fits, no_source, placed
+from .table_data import DATE_FORMAT, FROM_COLUMNS, HEADER, MAX_COLUMNS, MAX_ROWS, cell_text, fits, no_source, placed
 
 DOC = string("Document id.")
 TABLE = string("Table (t:...).")
 #: A cell's id, ``t:<table>/c<row>,<column>``.
 _CELL = re.compile(r"^t[:@].+/c\d+,\d+$")
+_W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 
 
 def table_json(document: Any, table_id: str, *, markdown: bool = True) -> dict[str, Any]:
@@ -91,6 +93,8 @@ def _text(table: Any, row: int, col: int) -> str:
             "date_format": DATE_FORMAT,
             "index": integer("insert_*, delete_*: row or column from 0. Default the last. "
                              "set_cells from: first row.", minimum=0, optional=True),
+            # Round 40: rows added for the data, each like the last row (insert_row's).
+            "grow": boolean("set_cells from: add rows the data needs.", optional=True),
             "side": string("insert_*: relative to index. Default after.", enum=["after", "before"], optional=True),
             "first": POSITION, "last": POSITION,
             "rows": integer("split: into rows. Default 1.", minimum=1, maximum=63, optional=True),
@@ -101,7 +105,7 @@ def word_edit_table(call: Any, doc: str, table: str, action: str, cells: list[di
                     index: int | None = None, side: str = "after", first: dict | None = None,
                     last: dict | None = None, rows: int = 1, columns: int = 2,
                     from_columns: list[str] | None = None, header: list[str] | None = None,
-                    date_format: str | None = None, **given: Any) -> Result:
+                    date_format: str | None = None, grow: bool | None = None, **given: Any) -> Result:
     document = call.document
     table = resolve(call, table)
     view = document.table(table)
@@ -112,8 +116,15 @@ def word_edit_table(call: Any, doc: str, table: str, action: str, cells: list[di
                             field="from", valid_options=["set_cells"])
         if cells is not None:
             raise ToolError("invalid_arguments", "from replaces cells: give one", field="cells")
-        return _set_from(call, view, source, from_columns, header, index or 0, date_format)
+        asked = {"doc": doc, "table": table, "action": action, "from": source, "from_columns": from_columns,
+                 "header": header, "date_format": date_format, "index": index}
+        return _set_from(call, view, source, from_columns, header, index or 0, date_format,
+                         grow=bool(grow), asked={k: v for k, v in asked.items() if v is not None})
     no_source(from_columns, header, date_format)
+    if grow:
+        raise ToolError("invalid_arguments", "grow adds the rows a source's data needs: it is for set_cells "
+                        "with from; for rows of your own, insert_row", field="grow",
+                        valid_options=["from", "insert_row"])
     kept = _Kept(document, table)
     edits = []
     if action == "set_cells":
@@ -150,30 +161,39 @@ def word_edit_table(call: Any, doc: str, table: str, action: str, cells: list[di
 
 
 def _set_from(call: Any, view: Any, source: str, from_columns: list[str] | None,
-              header: list[str] | None, top: int, date_format: str | None = None) -> Result:
+              header: list[str] | None, top: int, date_format: str | None = None, *,
+              grow: bool = False, asked: dict[str, Any] | None = None) -> Result:
     """``set_cells`` from a source (:mod:`.table_data`): the block written from row ``top``,
-    column 0, each cell's text rewritten as ``set_cells`` rewrites it."""
+    column 0, each cell's text rewritten as ``set_cells`` rewrites it.
+
+    Round 40: with ``grow``, a block longer than the table's rows from ``top`` adds the rows
+    it needs below the last, each as ``insert_row`` makes one (the last row's properties and
+    cells; not a header row), in the call's undo step; ``top`` may then be the row after
+    the last.  Without it the refusal gives the call with ``grow``."""
     document = call.document
     block = placed(call, source, from_columns, header, date_format)
     height, width = len(view.rows), view.column_count
-    if top >= height:
-        raise ToolError("not_found", f"no row {top}; {view.id} has {height}", field="index")
-    fits(block, height - top, width, room=f"{view.id} has {height - top} rows from row {top}")
+    if top > height or (top == height and not grow):
+        raise ToolError("not_found", f"no row {top}; {view.id} has {height}" + (
+            f" (with grow, index {height} adds the rows after the last)" if top == height else ""),
+                        field="index", valid_options=["grow"] if top == height else ())
     need_rows, need_columns = block.size
+    short_by = need_rows - (height - top)
+    if short_by > 0 and not grow:
+        _no_room(block, view.id, height - top, top, short_by, asked or {})
+    if grow:
+        fits(block, need_rows, width, room=f"{view.id} has {width} columns")   # its columns
+        fits(block, MAX_ROWS - top, MAX_COLUMNS)                               # Word's rows
+    else:
+        fits(block, height - top, width, room=f"{view.id} has {height - top} rows from row {top}")
     grid = view.grid()
-    seen: dict[tuple[int, int], tuple[int, int]] = {}
-    for row in range(top, top + need_rows):
-        for col in range(need_columns):
-            cell = grid[row][col] if col < len(grid[row]) else None
-            origin = (cell.row, cell.column) if cell is not None else None
-            if origin is None or origin in seen:
-                what = (f"merged with ({seen[origin][0]}, {seen[origin][1]})" if origin in seen
-                        else "not a cell")
-                raise ToolError("refused", f"({row}, {col}) of {view.id} is {what}: the block "
-                                f"from {block.rows.address} needs one cell per value; split it "
-                                "first", field="from")
-            seen[origin] = (row, col)
-    edits = []
+    _one_cell_each(view.id, block, grid, top, min(need_rows, height - top), need_columns, {})
+    edits: list[Any] = []
+    added: list[str] = []
+    if short_by > 0:
+        # The rows added are the last row's likeness: checked as the block's other rows are.
+        _one_cell_each(view.id, block, [grid[-1]] * short_by, 0, short_by, need_columns, {}, first=height)
+        edits, added = _grow(document, view.id, short_by)
     changed = [view.id]
     for row, values in enumerate(block.lines(), start=top):
         for col, lines in enumerate(values):
@@ -182,14 +202,76 @@ def _set_from(call: Any, view: Any, source: str, from_columns: list[str] | None,
             changed.append(current.cell(row, col).id)
     placed_from = block.provenance(top)
     _keep_placed(call, view.id, block, placed_from, top)
-    result = outcome(edits, f"set_cells on {view.id} from {block.rows.address}",
-                     data={**table_json(document, view.id, markdown=False), "from": placed_from},
-                     changed=changed)
-    if top + need_rows < height or need_columns < width:
-        result.warnings.append(f"from filled rows {top}-{top + need_rows - 1}, columns "
-                               f"0-{need_columns - 1} of a {height}x{width} table; the other "
-                               "cells keep their text")
+    data = {**table_json(document, view.id, markdown=False), "from": placed_from}
+    # The rows added are the result's created ones (tr:...).
+    result = outcome(edits, f"set_cells on {view.id} from {block.rows.address}"
+                     + (f"; {len(added)} row(s) added after row {height - 1}, each like it" if added else ""),
+                     data=data, changed=changed)
+    below = height - (top + need_rows)
+    if below > 0 or need_columns < width:
+        line = (f"from filled rows {top}-{top + need_rows - 1}, columns 0-{need_columns - 1} of a "
+                f"{height}x{width} table; the other cells keep their text")
+        if below > 0:
+            line += (f" (rows {top + need_rows}-{height - 1} below the data: delete_row index "
+                     f"{top + need_rows}, {below} time(s), removes them)")
+        result.warnings.append(line)
     return note_small_text(call, result, [view.id])
+
+
+def _one_cell_each(table: str, block: Any, grid: list, top: int, count: int, columns: int,
+                   seen: dict[tuple[int, int], tuple[int, int]], first: int | None = None) -> None:
+    """Refuse a block over a merged cell, or where a row has no cell: rows ``top`` to
+    ``top + count - 1`` of ``grid`` (named from ``first`` when they are rows to add)."""
+    for k in range(count):
+        row = top + k
+        for col in range(columns):
+            cell = grid[row][col] if col < len(grid[row]) else None
+            origin = (row if first is not None else cell.row, cell.column) if cell is not None else None
+            if origin is None or origin in seen:
+                named = row if first is None else first + k
+                what = (f"merged with ({seen[origin][0]}, {seen[origin][1]})" if origin in seen
+                        else "not a cell")
+                raise ToolError("refused", f"({named}, {col}) of {table} is {what}"
+                                + (" in the rows grow adds (each like the last row)" if first is not None else "")
+                                + f": the block from {block.rows.address} needs one cell per value; split it "
+                                "first", field="from")
+            seen[origin] = (row, col)
+
+
+def _no_room(block: Any, table: str, room: int, top: int, short_by: int, asked: dict[str, Any]) -> None:
+    """The refusal of a block longer than the table's rows from ``top``: the call with
+    ``grow`` that writes it (round 40), or a row range of the source that fits."""
+    from ooxml_edit.tools import sources
+
+    header = " with the header" if block.header else ""
+    fewer = sources.first_rows(block.rows.address, room - (1 if block.header else 0)) if room > 0 else None
+    meant = {**asked, "grow": True}
+    raise ToolError("refused", f"{block.rows.address} gives {block.size[0]:,} rows{header}; {table} has "
+                    f"{room} rows from row {top}: give grow: true to add the {short_by} row(s) it needs, "
+                    "each like the last row" + (f", or place fewer with {fewer}" if fewer else "")
+                    + " (nothing is cut)", field="from", valid_options=["grow"] + ([fewer] if fewer else []),
+                    details={"call": {"tool": "word_edit_table", "arguments": meant}})
+
+
+def _grow(document: Any, table: str, count: int) -> tuple[list[Any], list[str]]:
+    """``count`` rows after the table's last, each as ``insert_row`` makes one -- the last
+    row's properties and cells, empty -- and not a header row where the last is one."""
+    edits, added = [], []
+    for _ in range(count):
+        last = len(document.table(table).rows) - 1
+        edit = document.insert_row(table, last, below=True)
+        edits.append(edit)
+        added.append(edit.id)
+        if _is_header_row(document, table, last + 1):
+            edits.append(document.set_row(table, last + 1, header=False))
+    return edits, added
+
+
+def _is_header_row(document: Any, table: str, row: int) -> bool:
+    entry = _table_entry(document, table)
+    if entry is None or row >= len(entry.rows):
+        return False
+    return entry.rows[row][0].find(f"{_W}trPr/{_W}tblHeader") is not None
 
 
 # -- the table's record, kept true ---------------------------------------------------------------
@@ -685,7 +767,8 @@ def drawings_tool(catalogue: Any = None) -> Any:
 
     @word_tool("word_drawings", "Drawings: list; insert a picture from an image blob" + (" or catalogue asset" if catalogue is not None else "") + " (width keeps the aspect ratio), a text box or a shape, inline or floating; move, resize, float or inline, set wrapping and order.",
                params, refs=('target', 'at'), group="word_objects", mutates=True,
-               action_roles={"list": REVIEW}, aliases={"size_pt": "width"})
+               action_roles={"list": REVIEW},
+               aliases={"size_pt": "width", **positions.aliases("word_drawings", "picture", params, find=True)})
     def word_drawings(call: Any, doc: str, action: str, target: str | None = None, image: str | None = None,
                       at: str | None = None, find: str | None = None, x: float | None = None, y: float | None = None,
                       align: str | None = None, against: str | None = None, width: float | None = None,
@@ -871,7 +954,8 @@ def _insert_picture(call: Any, data: bytes, alt_text: str, at: str | None, find:
             "tag": string("insert: a tag for programs.", optional=True),
             "title": string("insert: the title people see.", optional=True)},
            refs=('control', 'at'), group="word_objects", mutates=True,
-           action_roles={"list": REVIEW})
+           action_roles={"list": REVIEW},
+           aliases=positions.aliases("word_controls", "mark", ("at", "control"), find=True))
 def word_controls(call: Any, doc: str, action: str, control: str | None = None, at: str | None = None,
                   find: str | None = None, type: str = "text", items: list[str] | None = None,
                   value: str | None = None, tag: str | None = None, title: str | None = None) -> Result:
