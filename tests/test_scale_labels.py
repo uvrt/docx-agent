@@ -194,3 +194,34 @@ def test_exact_text_steps_still_style_the_text_as_it_is(toolbox):
     assert result.data["targets"] == [{"target": lone, "value": "Middle", "step": 2}]
     assert _doc(session).paragraph(lone).text == "Middle"
     assert ok(call(toolbox, session, "check", doc="d1", scale=texts)).data["scale"]["right"] == 1
+
+
+def test_a_merged_cell_of_labels_is_unrecorded_and_one_from_a_source_keeps_its_record(toolbox):
+    if not hasattr(scales.Reading, "several"):
+        pytest.skip("needs ooxml-edit 0.90.1 (several labels unrecorded)")
+    session = _session(toolbox)
+    table = _table(session)
+    given = labels(f"{table}/col1")
+    ok(call(toolbox, session, "style_by_value", doc="d1", scale=given))
+    ok(call(toolbox, session, "word_edit_table", doc="d1", table=table, action="merge",
+            first={"row": 1, "col": 1}, last={"row": 2, "col": 1}))
+    found = ok(call(toolbox, session, "check", doc="d1", scale=given)).data["scale"]
+    assert found["unrecorded"] == [{"target": f"{table}/c1,1", "from": f"{table}/col1", "shows": "High\nLow",
+                                    "label_of": [3, 1]}]
+    assert "fix" not in found
+    refused = ok(call(toolbox, session, "style_by_value", doc="d1", scale=given))
+    assert refused.data["targets"][0]["skipped"].startswith("'High Low' holds the labels of steps 3, 1")
+    # Rewritten from a source, a Word cell's paragraph keeps its label's record (an edit of
+    # a label keeps it): a value written there is a value typed over its label.
+    session = _session(toolbox)
+    table = _table(session)
+    ok(call(toolbox, session, "style_by_value", doc="d1", scale=given | {"targets": [f"{table}/col1"]}))
+    session.entry("d2").document.tables["levels"] = (("topic", "level", "a", "b", "c"),
+                                                     [("Door", "4.5", None, None, None), ("Roof", "3", None, None, None)])
+    ok(call(toolbox, session, "word_edit_table", doc="d1", table=table, action="set_cells", index=1, header=[],
+            **{"from": "t:levels", "from_columns": ["topic", "level"]}))
+    found = ok(call(toolbox, session, "check", doc="d1", scale=labels(f"{table}/col1"))).data["scale"]
+    assert [(e["target"], e["shows"], e["label"], e["why"]) for e in found["labels"]] == [
+        (f"{table}/c1,1", "4.5", "High", "shows a value typed over its label"),
+        (f"{table}/c2,1", "3", "Middle", "shows a value typed over its label")]
+    assert found["unrecorded"] == [] and len(found["fix"]["arguments"]["scale"]["targets"]) == 2
