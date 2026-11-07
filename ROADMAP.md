@@ -1189,7 +1189,7 @@ doc.render_svg(pages=diff.changed)     # or render_png; ids on every paragraph g
   facts (cheap already), coalescing a check onto a newer version (its facts would be of
   another version than its validate), worker affinity (ooxml-edit: would save the
   pickle each way, about 0.6 s of 1.7 s a task).
-- **Round 38 (0.1.55, ooxml-edit 0.88.0):** layouts held where they were made
+- **Round 38 (0.1.57, ooxml-edit 0.90.0):** layouts held where they were made
   (`docx_agent.layout`, "layouts held where they were made": `_HELD`, one per lineage, two
   a process; a task is handed `("held", now, kept, lineage)` and takes the layout of `now`,
   of `kept`, or the lineage's newest, else lays out whole), the document's layout tasks

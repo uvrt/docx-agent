@@ -1360,7 +1360,7 @@ def affinity(document: "Document") -> "tuple[tuple, float | None]":
     the worker holding its last layout -- and how long a task waits for that worker while it
     is busy: as long as laying the document out whole took last, what going to another
     worker may cost, so a wait never costs more than going elsewhere would (ooxml-edit
-    0.86.0's rule); ``None`` -- as long as the deadline allows -- before one was timed (the
+    0.90.0's rule); ``None`` -- as long as the deadline allows -- before one was timed (the
     holder is then laying it out whole, which elsewhere would cost as much)."""
     _keeper(document)
     return ("docx-agent layout", document._layout_lineage), document._layout_fresh

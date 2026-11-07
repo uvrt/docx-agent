@@ -49,7 +49,7 @@ class Engine:
     reports ``timeout``.
 
     Round 38: a document's layouts stay in the worker that made them, and its layout tasks
-    go there (ooxml-edit 0.86.0's affinity, keyed by the document's lineage), waiting for
+    go there (ooxml-edit 0.90.0's affinity, keyed by the document's lineage), waiting for
     that worker while busy at most as long as laying the document out whole took
     (:func:`docx_agent.layout.affinity`) -- ``keyed``: the pool takes affinity -- of
     ``document``'s layouts."""
