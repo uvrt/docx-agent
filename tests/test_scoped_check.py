@@ -256,13 +256,20 @@ def test_scoped_checks_lone_and_in_a_read_batch_all_finish(made, monkeypatch):
     data, chapters = made
     started = threading.Event()
     run = _base.Engine.lay_out
+    facts = _base.Engine.check
 
     def slow(engine, data, options, state=None):
         started.set()
         time.sleep(0.4)
         return run(engine, data, options, state)
 
+    def slow_facts(engine, data, options, state, request):     # a lone check's (round 38)
+        started.set()
+        time.sleep(0.4)
+        return facts(engine, data, options, state, request)
+
     monkeypatch.setattr(_base.Engine, "lay_out", slow)
+    monkeypatch.setattr(_base.Engine, "check", slow_facts)
     with Toolbox(TOOLS, formats=[FORMAT], groups=GROUPS, workers=0) as toolbox:
         session = toolbox.session()
         d1 = session.open(data, "report.docx")

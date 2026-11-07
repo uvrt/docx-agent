@@ -152,7 +152,8 @@ def test_the_next_call_on_the_same_version_hands_its_worker_the_layout():
 
     def recording(fn, *args, timeout, **kwargs):
         if fn.__name__ == "lay_out_views":
-            seen.append(args[7] is not None)    # the layout handed over (state)
+            # The layout handed over: named by its token (round 38), held in the worker.
+            seen.append(args[7] is not None and args[7][2] is not None)
         return run(fn, *args, timeout=timeout, **kwargs)
 
     runner.run = recording

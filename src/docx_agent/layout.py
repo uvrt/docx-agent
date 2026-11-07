@@ -64,6 +64,9 @@ import hashlib
 import pickle
 import re
 import threading
+import time
+import uuid
+from collections import OrderedDict
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from fractions import Fraction
@@ -86,6 +89,9 @@ PX_PER_PT = Fraction(300, 72)
 _W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 #: A key naming one of the body's children (:meth:`DocumentLayout._top_level`).
 _TOP_KEY = re.compile(r"^w:body/w:([A-Za-z]+)\[(\d+)\]$")
+#: One step of a path that names a child by its place (``w:tc[2]``): resolved alike from
+#: any element (:meth:`DocumentLayout._element_of`).
+_INDEXED_STEP = re.compile(r"w:[A-Za-z]+\[\d+\]")
 
 
 @dataclass(frozen=True)
@@ -272,6 +278,8 @@ class DocumentLayout:
         self.warnings = list(warnings)
         #: Line paths docx2svg drew that no paragraph of the document answers to.
         self.unmapped: list[str] = []
+        #: The :func:`layout_key` it is of, where :func:`convert` made it (round 38).
+        self.key: tuple | None = None
         #: Per page: [(id or None, line)].
         self._lines: list[list[tuple[str | None, object]]] = []
         resolved: dict[tuple[str, str], str | None] = {}
@@ -455,6 +463,27 @@ class DocumentLayout:
             self._page_ids_index = index
         return index
 
+    def _element_of(self, key: str) -> Any:
+        """The body's element docx2svg's block key names (:func:`docx2svg.paths.resolve_path`),
+        cached: a key one indexed step below another (``.../w:tr[3]/w:tc[2]``) is resolved
+        from that one's element -- resolving a path is step after step, so the same element
+        -- not from the part's root again (round 38: a long report's rows and cells, read
+        from the root each, took most of a scoped check's time)."""
+        elements = self.__dict__.setdefault("_key_elements", {})
+        if key in elements:
+            return elements[key]
+        element = self._top_level(key)
+        if element is False:
+            parent, _, step = key.rpartition("/")
+            if parent and _INDEXED_STEP.fullmatch(step):
+                above = self._element_of(parent)
+                element = None if above is None else resolve_path(above, step)
+            else:
+                document = self._document
+                element = resolve_path(document.package.tree(document.package.document_part()), key)
+        elements[key] = element
+        return element
+
     def _key_id(self, key: str) -> "tuple[str | None, Any]":
         """The id of the body block docx2svg's key names (a paragraph's, a table's, a
         row's or a cell's), and its element, cached."""
@@ -462,9 +491,7 @@ class DocumentLayout:
         if key not in keys:
             document = self._document
             part = document.package.document_part()
-            element = self._top_level(key)
-            if element is False:
-                element = resolve_path(document.package.tree(part), key)
+            element = self._element_of(key)
             identifier = None
             if element is not None and element.tag in (_W + "p", _W + "tbl"):
                 entry = document._index(part).entry_for(element)
@@ -649,6 +676,133 @@ class DocumentLayout:
             for key in self._page_ids(index):
                 out.setdefault(key, index + 1)
         return out
+
+
+#: A whole fraction as ``repr`` writes it, ``Fraction(300, 1)``: read as the integer it
+#: equals (:func:`_digest`).
+_WHOLE_FRACTION = re.compile(r"Fraction\((-?\d+), 1\)")
+
+
+def _digest(value: Any) -> bytes:
+    """A digest of ``value`` -- tuples of strings, numbers, booleans and ``None``, as a
+    layout's drawing is -- equal for values ``==`` calls equal: a whole fraction is written
+    as the integer it equals (``Fraction(300, 1)`` and ``300``); any other fraction's
+    ``repr`` is its value's alone."""
+    return hashlib.blake2b(_WHOLE_FRACTION.sub(r"\1", repr(value)).encode(), digest_size=16).digest()
+
+
+class LayoutSummary:
+    """What :meth:`DocumentLayout.compare` reads of a layout, small enough to keep for every
+    check and to send from the worker that made the layout (round 38): per page, a digest
+    of what it draws besides its lines, and per line its paragraph's id (or path), whether
+    it is the body's, and a digest of what it draws.  Compared with the ids followed through
+    the document's aliases at the time (``canon``), it tells the same pages as ``compare``
+    does on the layouts themselves."""
+
+    def __init__(self, layout: "DocumentLayout") -> None:
+        self.count = len(layout.pages)
+        self.known = layout.stopped.page if layout.stopped else len(layout.pages)
+        self.rest: list[bytes] = []
+        self.lines: list[tuple] = []
+        for index, page in enumerate(layout.pages):
+            rules = tuple((r.kind, r.x, r.y, r.width, r.height, r.color, r.style) for r in page.rules)
+            pictures = tuple((p.relationship, p.part, p.x, p.y, p.width, p.height) for p in page.pictures)
+            floats = tuple((f.x, f.y, f.width, f.height, f.behind, f.story, len(f.primitives))
+                           for f in page.floats)
+            stop = (page.stop.reason, page.stop.y, page.stop.remaining) if page.stop else None
+            self.rest.append(_digest((page.width_px, page.height_px, rules, pictures, floats, stop)))
+            self.lines.append(tuple(
+                (key, line.path, _in_body(line),
+                 _digest((line.story, line.baseline, line.top, line.pitch,
+                          tuple(_span(span) for span in line.spans))))
+                for key, line in layout._lines[index]))
+
+    def _content(self, index: int, which: str, canon: Any) -> tuple:
+        lines = tuple((canon(key) if key else path, drawn) for key, path, body, drawn in self.lines[index]
+                      if which == "all" or (which == "body") == body)
+        return (self.rest[index], lines)
+
+    def _page_ids(self, index: int, canon: Any) -> list[str]:
+        return [canon(key) for key, _, body, _ in self.lines[index] if key is not None and body]
+
+    def _first_pages(self, canon: Any) -> dict[str, int]:
+        out: dict[str, int] = {}
+        for index in range(self.count):
+            for key in self._page_ids(index, canon):
+                out.setdefault(key, index + 1)
+        return out
+
+    def compare(self, before: "LayoutSummary", canon: Any) -> Reflow:
+        """:meth:`DocumentLayout.compare` of the layouts these summarise: which pages of
+        this one differ from ``before``'s, ids followed by ``canon``."""
+        limit = min(before.known, self.known)
+        count = max(before.count, self.count)
+        changed: list[int] = []
+        why: dict[int, str] = {}
+        for number in range(1, min(count, limit) + 1):
+            if number > before.count:
+                changed.append(number)
+                why[number] = "added"
+            elif number > self.count:
+                changed.append(number)
+                why[number] = "removed"
+            elif before._content(number - 1, "all", canon) != self._content(number - 1, "all", canon):
+                changed.append(number)
+                if before._content(number - 1, "body", canon) == self._content(number - 1, "body", canon):
+                    why[number] = "stories"
+                elif set(before._page_ids(number - 1, canon)) != set(self._page_ids(number - 1, canon)):
+                    why[number] = "flow"
+                else:
+                    why[number] = "content"
+        unknown = list(range(limit + 1, count + 1))
+        first_before, first_after = before._first_pages(canon), self._first_pages(canon)
+        moved = {key: (first_before[key], page) for key, page in first_after.items()
+                 if key in first_before and first_before[key] != page}
+        return Reflow(changed=changed, first_changed_page=changed[0] if changed else None,
+                      page_count=(before.count, self.count), moved=moved, unknown=unknown, why=why)
+
+
+def canon_of(document: "Document") -> Any:
+    """The id an id has become in ``document`` now: its aliases followed to their end (as
+    :meth:`DocumentLayout._canon` does on the layout's document)."""
+    aliases = document._aliases
+
+    def canon(identifier: str) -> str:
+        seen = set()
+        while identifier in aliases and identifier not in seen:
+            seen.add(identifier)
+            identifier = aliases[identifier]
+        return identifier
+
+    return canon
+
+
+def summary_for(document: "Document", key: tuple, made: Any) -> LayoutSummary:
+    """The :class:`LayoutSummary` of the layout of ``key`` (:func:`layout_key`), one per
+    layout the document keeps (the same object for the same layout, as a cached
+    :class:`DocumentLayout` is): the one kept, else ``made`` -- a summary, or a
+    :class:`DocumentLayout` to summarise -- kept."""
+    lock = _keeper(document)
+    with lock:
+        found = document._layout_summaries.get(key)
+        if found is not None:
+            document._layout_summaries.move_to_end(key)
+            return found
+    summary = made if isinstance(made, LayoutSummary) else LayoutSummary(made)
+    with lock:
+        found = document._layout_summaries.get(key)
+        if found is not None:
+            return found
+        document._layout_summaries[key] = summary
+        while len(document._layout_summaries) > _CACHE_SIZE:
+            document._layout_summaries.popitem(last=False)
+    return summary
+
+
+def known_summary(document: "Document", key: tuple) -> "LayoutSummary | None":
+    """The summary kept for ``key``'s layout, or ``None``."""
+    with _keeper(document):
+        return document._layout_summaries.get(key)
 
 
 def _section_bodies(document: "Document") -> list[float | None]:
@@ -925,6 +1079,143 @@ def _taken(blob: bytes) -> tuple:
     return found
 
 
+# -- layouts held where they were made (round 38) ----------------------------------------------
+#
+# A layout stays in the process that made it -- a worker, or this process when it lays out
+# itself -- whole, with what its flow measured, and the next task of the document is sent
+# there (ooxml-edit's pool affinity, keyed by the document's lineage): it is never pickled to
+# the caller and back for the next version.  The caller names layouts by their token
+# (:func:`layout_key` of the bytes and options they are of) and hands a task
+# ``("held", now, kept, lineage)`` (:func:`kept_layout`): ``now`` the token of the bytes it
+# hands, ``kept`` the token of the document's last layout (``None``: none yet), ``lineage``
+# the document's own (:func:`lineage`); a fifth item, false, says the caller holds the
+# document's lock (below).  The task takes, in order: the layout of ``now``
+# (nothing to lay out), the one of ``kept``, the newest of the lineage this process holds
+# with the same options (an older version: laid out again from it, as from any earlier
+# version), else none (laid out whole) -- the same pages whichever it found.
+
+class _Held:
+    """A layout a process holds: ``(layout, fonts, warnings)``, and what was read from it
+    since (:attr:`extra`: the document opened from its bytes, its :class:`DocumentLayout`,
+    its summary), all of one state."""
+
+    __slots__ = ("laid", "extra", "lineage")
+
+    def __init__(self, laid: tuple, extra: dict | None = None) -> None:
+        self.laid = laid
+        self.extra: dict = extra if extra is not None else {}
+        self.lineage: str | None = None
+
+
+#: The layouts this process holds, by token, the newest last: one per lineage, at most
+#: :data:`_HELD_SIZE` (a long report's, with what it measured, is about 80 MB in memory).
+#: A task takes its layout out (:func:`_take_held`) and puts the new one back
+#: (:func:`_put_held`), so no two tasks running at once -- threads of one process -- hold one.
+_HELD: "OrderedDict[tuple, _Held]" = OrderedDict()
+_HELD_SIZE = 2
+_HELD_LOCK = threading.Condition()
+#: Per lineage, the tasks of this process that took one of its layouts (or are making the
+#: first): another task of the lineage waits for one of them, at most :data:`_HELD_WAIT`
+#: s, rather than lay the document out whole (threads only: a worker process runs one task)
+#: -- unless its caller holds the document's lock (round 34's rule: it never waits for a
+#: layout in progress; it lays out on its own).
+_HELD_TAKEN: dict[str, int] = {}
+_HELD_WAIT = 5.0
+
+
+def held_state(state: Any) -> bool:
+    """Whether ``state`` names layouts by token (``("held", now, kept, lineage[, may_wait])``)."""
+    return isinstance(state, tuple) and len(state) in (4, 5) and state[0] == "held"
+
+
+def _take_held(now: tuple, kept: "tuple | None", lineage: str, may_wait: bool = True
+               ) -> "tuple[_Held | None, str]":
+    """The layout a task of ``now`` starts from, taken out, and how it was found:
+    ``"same"`` (of ``now``), ``"kept"``, ``"lineage"`` (an older one of the document), or
+    ``"fresh"`` (none: ``None``) -- only the lineage's own.  The lineage is counted as taken
+    either way."""
+    deadline = time.monotonic() + _HELD_WAIT
+    with _HELD_LOCK:
+        while True:
+            found, how = None, "fresh"
+            for token, name in ((now, "same"), (kept, "kept")):
+                # Only the document's own (its lineage): another document of the same bytes
+                # lays out afresh, as it always did.
+                if token is not None and token in _HELD and _HELD[token].lineage == lineage:
+                    found, how = _HELD.pop(token), name
+                    break
+            if found is None:
+                for token in reversed(list(_HELD)):
+                    if _HELD[token].lineage == lineage and token[1] == now[1]:
+                        found, how = _HELD.pop(token), "lineage"
+                        break
+            if found is not None or not _HELD_TAKEN.get(lineage) or not may_wait:
+                _HELD_TAKEN[lineage] = _HELD_TAKEN.get(lineage, 0) + 1
+                return found, how
+            left = deadline - time.monotonic()
+            if left <= 0:
+                _HELD_TAKEN[lineage] = _HELD_TAKEN.get(lineage, 0) + 1
+                return None, "fresh"
+            _HELD_LOCK.wait(left)
+
+
+def _let_go_held(lineage: str) -> None:
+    with _HELD_LOCK:
+        count = _HELD_TAKEN.get(lineage, 0) - 1
+        if count > 0:
+            _HELD_TAKEN[lineage] = count
+        else:
+            _HELD_TAKEN.pop(lineage, None)
+        _HELD_LOCK.notify_all()
+
+
+def _put_held(token: tuple, held: _Held, lineage: str) -> None:
+    """``held``, the layout of ``token``, back as its lineage's newest (the others of the
+    lineage dropped), the oldest of other lineages dropped past :data:`_HELD_SIZE`."""
+    with _HELD_LOCK:
+        held.lineage = lineage
+        for other in [t for t, entry in _HELD.items() if entry.lineage == lineage or t == token]:
+            del _HELD[other]
+        _HELD[token] = held
+        while len(_HELD) > _HELD_SIZE:
+            _HELD.popitem(last=False)
+    _let_go_held(lineage)
+
+
+def held_layout(data: bytes, options: dict, state: tuple, *, changed_pages: bool = False
+                ) -> "tuple[_Held, str, float]":
+    """The layout of ``data`` for a ``("held", ...)`` ``state`` (the section's notes), taken
+    out of this process's layouts or made -- from the one found -- and how (as
+    :func:`_take_held` says; ``"same"`` made nothing) with the seconds it took.  The caller
+    puts it back (:func:`_put_held`) or, failing, lets the lineage go (:func:`_let_go_held`)."""
+    now, kept, lineage = state[1:4]
+    found, how = _take_held(now, kept, lineage, state[4] if len(state) > 4 else True)
+    if how == "same":
+        assert found is not None
+        return found, how, 0.0
+    try:
+        previous = found.laid[0] if found is not None else None
+        convert_options = docx2svg.ConvertOptions(**options)
+        began = time.perf_counter()
+        layout, _, fonts = docx2svg.lay_out_docx(data, convert_options, previous=previous,
+                                                 measures=_MEASURES, changed_pages=changed_pages)
+        seconds = time.perf_counter() - began
+    except BaseException:
+        _let_go_held(lineage)
+        raise
+    return _Held((layout, fonts, list(convert_options.warnings))), how, seconds
+
+
+def made_facts(held: _Held, how: str, seconds: float) -> dict:
+    """What a task says of the layout it used: how it was found or made (:func:`_take_held`),
+    the seconds it took, and -- laid out from another -- ``relaid`` and ``relaid_cause``."""
+    layout = held.laid[0]
+    again = how in ("kept", "lineage")
+    return {"made": how, "seconds": round(seconds, 3),
+            "relaid": getattr(layout, "relaid", None) if again else None,
+            "relaid_cause": getattr(layout, "relaid_cause", None) if again else None}
+
+
 def lay_out_bytes(data: bytes, options: dict, state: Any = None) -> tuple:
     """docx2svg's layout of a document's bytes, kept for the next version: ``(laid_out,
     facts)``, ``laid_out`` the pickle of ``(layout, fonts, warnings)`` (:func:`_light`) and
@@ -941,6 +1232,17 @@ def lay_out_bytes(data: bytes, options: dict, state: Any = None) -> tuple:
     measured of the same document before (:data:`_MEASURES`, round 37), else measured again.  What :func:`convert` runs -- through the
     document's :attr:`~docx_agent.Document.converter`, which may run it in another process
     (an agent tool layer's worker pool, with a deadline)."""
+    if held_state(state):
+        # Round 38: from the layout this process holds; the caller needs it whole.
+        held, how, seconds = held_layout(data, options, state)
+        try:
+            layout, fonts, warnings = held.laid
+            blob = dumps((_light(layout), fonts, warnings))
+        except BaseException:
+            _let_go_held(state[3])
+            raise
+        _put_held(state[1], held, state[3])
+        return blob, {"changed": None, **made_facts(held, how, seconds)}
     if isinstance(state, (bytes, bytearray)):
         return bytes(state), {"changed": None, "relaid": None, "relaid_cause": None}
     previous = None
@@ -1004,17 +1306,28 @@ def _keeper(document: "Document") -> threading.Lock:
                 document._layout_kept = None
                 document._layout_count = 0
                 document._layout_tickets = {}
+                # Round 38: the layouts of this document, wherever they are held, and how
+                # long laying it out whole took last (the wait for its holder, :func:`affinity`).
+                document._layout_lineage = uuid.uuid4().hex
+                document._layout_fresh = None
+                document._layout_summaries = OrderedDict()
+                document._check_facts = OrderedDict()
     return lock
 
 
 _KEEPERS_LOCK = threading.Lock()
 
 
-def kept_layout(document: "Document", data: bytes, options: dict) -> Any:
+def kept_layout(document: "Document", data: bytes, options: dict, *, may_wait: bool = True) -> Any:
     """The state to hand :func:`lay_out_bytes` (or the render pipeline's layout task) for
-    ``data``: the ``laid_out`` of these bytes when it is the one kept, else
-    ``("previous", laid_out)`` of the document's last layout, else ``None``.  Asked as a
-    layout of ``data`` starts: the layout is numbered then (:func:`keep_layout`)."""
+    ``data``: ``("held", now, kept, lineage)`` (round 38: the layouts held where they were
+    made, by token; the section's notes) -- ``kept`` the token of the document's last
+    layout with the same options, or ``None``.  A layout kept as its pickle (a caller's
+    own, :func:`keep_layout`) is handed as before: the ``laid_out`` of these bytes when it
+    is the one kept, else ``("previous", laid_out)``.  Asked as a layout of ``data``
+    starts: the layout is numbered then (:func:`keep_layout`).  ``may_wait`` false: the
+    caller holds the document's lock, so the task never waits for another's layout in
+    progress (in this process's threads, round 34's rule)."""
     lock = _keeper(document)
     key = layout_key(data, options)
     with lock:
@@ -1025,20 +1338,50 @@ def kept_layout(document: "Document", data: bytes, options: dict) -> Any:
         tickets[key] = document._layout_count
         while len(tickets) > _TICKETS:
             del tickets[next(iter(tickets))]
-    if kept is None:
-        return None
-    if kept[0] == key:
-        return kept[1]
-    return ("previous", kept[1]) if kept[0][1] == key[1] else None
+    if kept is not None and isinstance(kept[1], (bytes, bytearray)):
+        if kept[0] == key:
+            return kept[1]
+        return ("previous", kept[1]) if kept[0][1] == key[1] else None
+    token = kept[1] if kept is not None and kept[0][1] == key[1] else None
+    if not may_wait:      # the caller holds the document's lock: it never waits for a layout
+        return ("held", key, token, document._layout_lineage, False)
+    return ("held", key, token, document._layout_lineage)
+
+
+def lineage(document: "Document") -> str:
+    """The document's lineage: what its layouts are held under, wherever they were made
+    (round 38; a copy laid out as the document is, :func:`twin`, has the document's)."""
+    _keeper(document)
+    return document._layout_lineage
+
+
+def affinity(document: "Document") -> "tuple[tuple, float | None]":
+    """The pool's affinity key for ``document``'s layout tasks -- its lineage: they go to
+    the worker holding its last layout -- and how long a task waits for that worker while it
+    is busy: as long as laying the document out whole took last, what going to another
+    worker may cost, so a wait never costs more than going elsewhere would (ooxml-edit
+    0.86.0's rule); ``None`` -- as long as the deadline allows -- before one was timed (the
+    holder is then laying it out whole, which elsewhere would cost as much)."""
+    _keeper(document)
+    return ("docx-agent layout", document._layout_lineage), document._layout_fresh
+
+
+def note_made(document: "Document", facts: Any) -> None:
+    """Remember how long a layout made whole took (``facts``' ``made`` and ``seconds``,
+    :func:`made_facts`): the wait for the document's holder (:func:`affinity`)."""
+    if isinstance(facts, dict) and facts.get("made") == "fresh" and facts.get("seconds") is not None:
+        _keeper(document)
+        document._layout_fresh = float(facts["seconds"])
 
 
 #: How many layouts started are remembered by number (:func:`kept_layout`).
 _TICKETS = 64
 
 
-def keep_layout(document: "Document", data: bytes, options: dict, laid_out: bytes) -> None:
+def keep_layout(document: "Document", data: bytes, options: dict, laid_out: Any) -> None:
     """Keep ``laid_out``, the layout of ``data`` with ``options``, as the document's last:
-    the one its next version is laid out from (one per document: about 5 MB for 79 pages).
+    the one its next version is laid out from -- its token (round 38: the layout stays
+    where it was made) or its pickle (a caller's own, as before).
     Round 37: unless a layout started later -- of a later version, as many callers lay
     out versions at once -- is kept already: the next layout starts from the newest."""
     lock = _keeper(document)
@@ -1113,7 +1456,8 @@ def convert(document: "Document", *, unlocked=None, current=None, converter: Any
             result = None
         elif leader:
             try:
-                flight.result = result = _lay_out(document, data, options, converter)
+                flight.result = result = _lay_out(document, data, options, converter,
+                                                  may_wait=unlocked is not None and entered is not False)
             except BaseException as error:
                 flight.error = error
                 raise
@@ -1127,7 +1471,7 @@ def convert(document: "Document", *, unlocked=None, current=None, converter: Any
         elif unlocked is not None and entered is not False:
             result = flight.wait()
         else:
-            result = _lay_out(document, data, options, converter)
+            result = _lay_out(document, data, options, converter, may_wait=False)
     if cached is not None:
         return cached
     raw, fonts, warnings, svgs = result
@@ -1138,8 +1482,9 @@ def convert(document: "Document", *, unlocked=None, current=None, converter: Any
         if cached is not None:
             return cached
         owner = document if current is None or current() else type(document).open(data)
-        conversion = _Conversion(DocumentLayout(owner, raw, warnings), raw, data, fonts, options,
-                                 svgs=dict(enumerate(svgs or (), start=1)))
+        laid = DocumentLayout(owner, raw, warnings)
+        laid.key = layout_key(data, options)     # what its summary is kept under (round 38)
+        conversion = _Conversion(laid, raw, data, fonts, options, svgs=dict(enumerate(svgs or (), start=1)))
         return keep(document, key, conversion)
 
 
@@ -1148,23 +1493,27 @@ def _held():
     yield
 
 
-def _lay_out(document: "Document", data: bytes, options: dict, converter: Any = None) -> tuple:
+def _lay_out(document: "Document", data: bytes, options: dict, converter: Any = None, *,
+             may_wait: bool = False) -> tuple:
     """``(layout, fonts, warnings, svgs)`` of ``data``: through the document's converter --
     its :func:`lay_out_bytes` (``converter.lay_out``), from the document's last layout --
     or, for a converter of the old protocol (``converter(data, options) -> (layout, svgs,
     warnings)``), whole with every page's SVG.  The layout is this caller's own copy (the
     pickle read): the one kept for the next version is never one a caller holds.
-    ``converter``: the document's when its bytes were taken."""
+    ``converter``: the document's when its bytes were taken; ``may_wait``: the caller let
+    the document's lock go (round 38, :func:`kept_layout`)."""
     if converter is not None and not hasattr(converter, "lay_out"):
         raw, svgs, warnings = converter(data, dict(options))
         return raw, None, warnings, list(svgs)
-    state = kept_layout(document, data, options)
+    state = kept_layout(document, data, options, may_wait=may_wait)
     if isinstance(state, bytes):
         blob = state                         # laid out already (a render of this state)
     else:
         run = converter.lay_out if converter is not None else lay_out_bytes
-        blob, _facts = run(data, dict(options), state)
-        keep_layout(document, data, options, blob)
+        blob, facts = run(data, dict(options), state)
+        # Round 38: the layout stays where it was made; kept by its token.
+        keep_layout(document, data, options, state[1] if held_state(state) else blob)
+        note_made(document, facts)
     raw, fonts, warnings = pickle.loads(blob)
     return raw, fonts, list(warnings), None
 
@@ -1187,7 +1536,8 @@ def twin_of(document: "Document") -> dict:
     pool = document._id_pool()
     return {"stamping": document.stamping, "font_dirs": getattr(document, "font_dirs", None),
             "locale": getattr(document, "locale", None), "converter": document.converter,
-            "kept": kept, "ids": (set(pool), dict(pool.cursors), document._ledger.highest_drawing)}
+            "kept": kept, "ids": (set(pool), dict(pool.cursors), document._ledger.highest_drawing),
+            "lineage": document._layout_lineage, "fresh": document._layout_fresh}
 
 
 def twin(data: bytes, like: dict) -> "Document":
@@ -1202,6 +1552,9 @@ def twin(data: bytes, like: dict) -> "Document":
     copy.converter = like["converter"]
     _keeper(copy)
     copy._layout_kept = like["kept"]
+    if like.get("lineage") is not None:          # round 38: its layouts are the document's
+        copy._layout_lineage = like["lineage"]
+        copy._layout_fresh = like.get("fresh")
     if like["kept"] is not None:
         copy._layout_count = like["kept"][2]   # numbered on from the document's
     if like.get("ids") is not None:
@@ -1229,6 +1582,55 @@ def adopt(document: "Document", copy: "Document") -> None:
             # The copy's last is of the document's bytes now: numbered as started now.
             document._layout_count += 1
             document._layout_kept = (kept[0], kept[1], document._layout_count)
+
+
+#: How many checks' facts a document keeps, by layout and request (:func:`check_facts`).
+_FACTS_SIZE = 16
+
+
+def check_facts(document: "Document", unlocked: Any, request: dict) -> "tuple[dict, LayoutSummary] | None":
+    """``check``'s layout facts of the document now, made in the worker holding its layout
+    (round 38, :func:`docx_agent.tools.check_worker.check_bytes`, through the document's
+    converter, with the lock let go: ``unlocked``) -- ``(facts, summary)``, the summary that
+    of the layout the facts are of (:class:`LayoutSummary`, kept: :func:`summary_for`).  The
+    same check of the same version again is answered here.  ``None`` where the converter
+    cannot (a converter of the old protocol, a layout kept as its pickle): the caller lays
+    the document out here, as before."""
+    import copy
+
+    converter = document.converter
+    if converter is None or not hasattr(converter, "check"):
+        return None
+    options = layout_options(document, {})
+    data = document.to_bytes()
+    key = layout_key(data, options)
+    asked = (key, repr(sorted(request.items())))
+    lock = _keeper(document)
+    with lock:
+        kept = document._layout_kept
+        if kept is not None and isinstance(kept[1], (bytes, bytearray)):
+            return None
+        found = document._check_facts.get(asked)
+    summary = known_summary(document, key)
+    if found is not None and summary is not None:
+        return copy.deepcopy(found), summary
+    with unlocked():
+        state = kept_layout(document, data, options)
+        result = converter.check(data, dict(options), state, {**request, "summary": summary is None})
+        keep_layout(document, data, options, key)
+        note_made(document, result)
+    made = result.pop("summary", None)
+    summary = summary if summary is not None else summary_for(document, key, made)
+    with lock:
+        document._check_facts[asked] = result
+        while len(document._check_facts) > _FACTS_SIZE:
+            document._check_facts.popitem(last=False)
+        if result.get("stats") is not None:
+            stats = document.__dict__.setdefault("_layout_stats", OrderedDict())
+            stats[cache_key(data, options)] = result["stats"]
+            while len(stats) > _CACHE_SIZE:
+                stats.popitem(last=False)
+    return copy.deepcopy(result), summary
 
 
 def lay_out_unlocked(document: "Document", unlocked, current) -> DocumentLayout:

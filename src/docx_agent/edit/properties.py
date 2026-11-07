@@ -340,9 +340,12 @@ def layout_statistics(document: "Document") -> dict:
     made (and laid the whole document out); nothing otherwise."""
     from ..layout import cache_key, layout_options
 
-    conversion = document._layouts.get(cache_key(document.to_bytes(), layout_options(document, {})))
+    key = cache_key(document.to_bytes(), layout_options(document, {}))
+    conversion = document._layouts.get(key)
     if conversion is None:
-        return {}
+        # Round 38: a check made its facts where the layout is held, and kept these.
+        stats = getattr(document, "_layout_stats", {}).get(key)
+        return dict(stats) if stats else {}
     layout = conversion.layout
     if layout.pages_known is None:
         return {}

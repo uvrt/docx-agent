@@ -146,7 +146,8 @@ def test_a_layout_from_the_last_one_answers_as_a_layout_of_the_bytes_alone(made,
         assert calls == []                # the same state: its layout cached
     elif name != "fields":                # (update_fields laid it out itself)
         assert document.to_bytes() != before
-        assert calls and (isinstance(calls[-1], bytes) or calls[-1][0] == "previous")
+        # From the document's last layout: named by its token (round 38).
+        assert calls and calls[-1][0] == "held" and calls[-1][2] is not None
 
 
 def test_a_run_of_edits_each_laid_out_from_the_one_before(made):
@@ -164,22 +165,22 @@ def test_the_kept_layout_is_the_last_and_one_per_document(made):
     _body(document)[3].set_text("Short.")
     document.layout()
     assert document._layout_kept is not first and len(document._layout_kept) == 3
-    assert layout_module.kept_layout(document, document.to_bytes(),
-                                     layout_module.layout_options(document, {})) == document._layout_kept[1]
+    state = layout_module.kept_layout(document, document.to_bytes(), layout_module.layout_options(document, {}))
+    # Round 38: the layout stays where it was made, named by its token -- of these very bytes.
+    assert state == ("held", document._layout_kept[1], document._layout_kept[1], layout_module.lineage(document))
 
 
-def test_a_render_and_a_layout_of_one_state_share_its_layout(made):
+def test_a_render_and_a_layout_of_one_state_share_its_layout(made, monkeypatch):
+    import docx2svg
+
     document = Document.open(made)
     calls = []
-    real = layout_module.lay_out_bytes
-    layout_module.lay_out_bytes = lambda *a: calls.append(1) or real(*a)
-    try:
-        document.render_svg(pages=[2])
-        document.layout()
-        document._layouts.clear()         # the conversion dropped: the kept layout answers
-        document.layout()
-    finally:
-        layout_module.lay_out_bytes = real
+    real = docx2svg.lay_out_docx
+    monkeypatch.setattr(docx2svg, "lay_out_docx", lambda *a, **k: calls.append(1) or real(*a, **k))
+    document.render_svg(pages=[2])
+    document.layout()
+    document._layouts.clear()         # the conversion dropped: the kept layout answers
+    document.layout()
     assert len(calls) == 1
 
 
@@ -420,21 +421,24 @@ def test_concurrent_checks_of_one_version_lay_it_out_once_unlocked(made, monkeyp
     cost one layout."""
     from docx_agent.tools import _base
 
+    import docx2svg
+
     laid = []
     started = threading.Event()
     ended: list = []
-    run = _base.Engine.lay_out
+    run = _base.Engine.check
+    real = docx2svg.lay_out_docx
 
-    def slow(self, data, options, state=None):
-        laid.append(1)
+    def slow(self, data, options, state, request):     # a lone check's facts (round 38)
         started.set()
         time.sleep(1.0)
         try:
-            return run(self, data, options, state)
+            return run(self, data, options, state, request)
         finally:
             ended.append(time.perf_counter())
 
-    monkeypatch.setattr(_base.Engine, "lay_out", slow)
+    monkeypatch.setattr(_base.Engine, "check", slow)
+    monkeypatch.setattr(docx2svg, "lay_out_docx", lambda *a, **k: laid.append(1) or real(*a, **k))
     with _toolbox(workers=0) as box:
         session = box.session()
         doc = session.open(made, "report.docx")
@@ -460,15 +464,15 @@ def test_concurrent_checks_of_one_version_lay_it_out_once_unlocked(made, monkeyp
 
 def test_a_check_after_a_render_of_the_same_version_lays_nothing_out(made, monkeypatch):
     pytest.importorskip("resvg_py", reason="render needs the rasteriser")
-    from docx_agent.tools import _base
+    import docx2svg
 
     laid = []
-    run = _base.Engine.lay_out
-    monkeypatch.setattr(_base.Engine, "lay_out", lambda self, *a: laid.append(1) or run(self, *a))
+    real = docx2svg.lay_out_docx
     with _toolbox(workers=0) as box:
         session = box.session()
         doc = session.open(made, "report.docx")
         assert box.dispatch(session, "render", {"doc": doc, "pages": [2], "width": 300}).ok
+        monkeypatch.setattr(docx2svg, "lay_out_docx", lambda *a, **k: laid.append(1) or real(*a, **k))
         check = box.dispatch(session, "check", {"doc": doc, "include": ["reflow", "layout"]})
     assert check.ok and laid == []
 

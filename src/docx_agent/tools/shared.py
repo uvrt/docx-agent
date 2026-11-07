@@ -17,7 +17,8 @@ from ooxml_edit.tools.render import png_size
 
 from ..edit.document import Document
 from ..edit.properties import refreshed_app
-from ..layout import font_dirs_of, keep_layout, kept_layout, lay_out_unlocked, locale_of
+from ..layout import (affinity, canon_of, check_facts, font_dirs_of, held_state, keep_layout, kept_layout,
+                      lay_out_unlocked, layout_key, layout_options, locale_of, note_made, summary_for)
 from ..layout_facts import CAP, empty_paragraphs, layout_facts, numbering_skips_level, punctuation_spacing
 from ..scope import MAX_RANGES, Scope, ranges_of
 from .render import RENDERER
@@ -270,16 +271,25 @@ def draw(call: Any, pages: list[int], width: int, relaid: list | None = None
         # docx_agent.layout.kept_layout): of these bytes, so that drawing another page of a
         # version -- or a page after a check of it -- does not lay it out again; else of an
         # earlier version with the same font folders and locale, so that the worker lays
-        # out again only what the edits since reach.
+        # out again only what the edits since reach.  Round 38: named by its token, in the
+        # worker holding it (the affinity below).
         snapshot.append(data)
-        return kept_layout(document, data, options)
+        state = kept_layout(document, data, options, may_wait=call.may_unlock)
+        snapshot.append(state)
+        return state
 
     def on_facts(facts: dict, alone: bool) -> None:
-        if facts.get("laid_out") is not None:
+        state = snapshot[1]
+        if held_state(state):
+            keep_layout(document, snapshot[0], options, state[1])
+            note_made(document, facts)
+        elif facts.get("laid_out") is not None:
             keep_layout(document, snapshot[0], options, facts["laid_out"])
 
+    key, wait = affinity(document)
     drawn, facts = pipeline.draw(call, RENDERER, pages, width, ids={page: page for page in pages},
-                                 fonts=fonts, locale=locale, state=kept, on_facts=on_facts)
+                                 fonts=fonts, locale=locale, state=kept, on_facts=on_facts,
+                                 affinity=key, affinity_wait=wait)
     if not facts:
         return drawn, None, None
     if relaid is not None and facts[0].get("relaid_cause"):
@@ -523,10 +533,22 @@ def check(call: Any, doc: str, slides: list | None = None, pages: list[int] | No
         # Round 35, R19: under the lock, on the version validate read.
         report["copies"] = compare_copies(call, copies)
     if "reflow" in wanted or "layout" in wanted:
-        reflow, layout = _layout_facts(call, pages, seen="reflow" in wanted)
+        reflow, layout = _layout_facts(call, pages, seen="reflow" in wanted, scope=scope,
+                                       layout_wanted="layout" in wanted, min_size=min_size, styles=styles)
+        # Round 38: made where the layout is held -- the ranges' pages and the layout facts
+        # came back with the reflow's (a dict); else the layout itself, read here.
+        made = layout if isinstance(layout, dict) else None
         scoped_pages = pages
         if scope is not None:
-            if layout is not None:
+            if made is not None:
+                report["range"], on = made["range"], made["on"]
+                scoped_pages = on if pages is None else [p for p in on if p in pages]
+                if pages is not None and not scoped_pages:
+                    call.warn(f"pages {pages} hold none of the range's blocks (on pages {on}): no layout facts")
+                since = reflow.get("since_last_check")
+                if since is not None:
+                    since["changed"] = [p for p in since["changed"] if p in scoped_pages]
+            elif layout is not None:
                 report["range"], on = range_pages(scope, layout, extent=True)
                 scoped_pages = on if pages is None else [p for p in on if p in pages]
                 if pages is not None and not scoped_pages:
@@ -543,7 +565,8 @@ def check(call: Any, doc: str, slides: list | None = None, pages: list[int] | No
             # Measured on the layout reflow reports and render draws: never a second one.
             # Where the layout failed, the facts read from the document alone (round 18, Q4;
             # round 29, W12).
-            report["layout"] = (layout_facts(layout, pages=scoped_pages, min_size=min_size, styles=styles,
+            report["layout"] = (made["layout"] if made is not None else
+                                layout_facts(layout, pages=scoped_pages, min_size=min_size, styles=styles,
                                              scope=scope)
                                 if layout is not None else
                                 {"error": reflow["error"],
@@ -573,20 +596,33 @@ BATCH_CHECK = ("check laid the document out between the batch's changes, holding
                "while it lays out")
 
 
-def _layout_facts(call: Any, pages: list[int] | None, seen: bool = True) -> tuple[dict[str, Any], Any]:
+def _layout_facts(call: Any, pages: list[int] | None, seen: bool = True, *, scope: Any = None,
+                  layout_wanted: bool = False, min_size: Any = None,
+                  styles: list[str] | None = None) -> tuple[dict[str, Any], Any]:
     """``reflow``'s facts, and the layout they are of (``None`` where it failed); ``seen``:
     the layout a later check's ``since_last_check`` is measured from (not for ``layout``
-    alone, which reports no reflow)."""
+    alone, which reports no reflow).
+
+    Round 38: a lone check's facts are made in the worker holding the document's layout
+    (:func:`docx_agent.layout.check_facts`) -- with the ranges' pages (``scope``) and the
+    layout facts (``layout_wanted``, ``min_size``, ``styles``) -- and the second value is
+    then those, a dict ``{"range", "on", "layout"}``: the layout never comes here."""
     document = call.document
     entry = call.entry
     version = entry.version
+    made = None
     try:
         if call.may_unlock:
             # Laid out with the lock let go (a check outside a batch): of this version, the
             # one validate and fields read and the result reports.
-            layout = lay_out_unlocked(document, call.unlocked, lambda: entry.version == version)
+            request = {"pages": list(pages) if pages is not None else None,
+                       "ranges": scope.spec() if scope is not None else None,
+                       "layout": layout_wanted, "min_size": min_size, "styles": styles}
+            made = check_facts(document, call.unlocked, request)
+            layout = (None if made is not None else
+                      lay_out_unlocked(document, call.unlocked, lambda: entry.version == version))
         else:
-            laid_out = call.in_batch and cached_layout(document) is None
+            laid_out = call.in_batch and cached_layout(document, fetch=False) is None
             layout = document.layout()
             if laid_out:
                 # Between a batch's changes (round 33, R16c): after the last one, a check
@@ -594,22 +630,37 @@ def _layout_facts(call: Any, pages: list[int] | None, seen: bool = True) -> tupl
                 call.warn(BATCH_CHECK)
     except ToolError as error:
         return {"error": f"{error.code}: {error.message}"}, None
-    facts: dict[str, Any] = {"pages": layout.page_count, "complete": layout.pages_known is not None}
-    if layout.stopped is not None:
-        facts["stopped"] = {"page": layout.stopped.page, "reason": layout.stopped.reason, "at": layout.stopped.at}
-    # The whole of it: blocks laid out, header and footer stops, faces substituted or
-    # missing -- so "the check passed" is told from "the check could not see everything".
-    facts["coverage"] = layout.coverage_facts()
+    if made is not None:
+        result, now = made
+        facts: dict[str, Any] = result["reflow"]
+        warnings = result["warnings"]
+    else:
+        assert layout is not None
+        facts = {"pages": layout.page_count, "complete": layout.pages_known is not None}
+        if layout.stopped is not None:
+            facts["stopped"] = {"page": layout.stopped.page, "reason": layout.stopped.reason,
+                                "at": layout.stopped.at}
+        # The whole of it: blocks laid out, header and footer stops, faces substituted or
+        # missing -- so "the check passed" is told from "the check could not see everything".
+        facts["coverage"] = layout.coverage_facts()
+        key = layout.key if layout.key is not None else layout_key(
+            document.to_bytes(), layout_options(document, {}))
+        now = summary_for(document, key, layout)
+        warnings = [short(str(w), 160) for w in layout.warnings[:10]] if layout.warnings else None
     before = getattr(document, "_tool_seen_layout", None)
-    if before is not None and before is not layout:
-        reflow = reflow_json(layout.compare(before))
+    if before is not None and before is not now:
+        # Compared by summaries (round 38), ids followed through the document's aliases now.
+        reflow = reflow_json(now.compare(before, canon_of(document)))
         if pages:
             reflow["changed"] = [p for p in reflow["changed"] if p in pages]
         facts["since_last_check"] = reflow
     if seen:
-        document._tool_seen_layout = layout
-    if layout.warnings:
-        facts["layout_warnings"] = [short(str(w), 160) for w in layout.warnings[:10]]
+        document._tool_seen_layout = now
+    if warnings:
+        facts["layout_warnings"] = warnings
+    if made is not None:
+        result.pop("reflow")
+        return facts, result
     return facts, layout
 
 

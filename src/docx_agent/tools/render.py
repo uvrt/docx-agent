@@ -20,7 +20,7 @@ from ooxml_edit.tools import render, worker_task
 from ooxml_edit.tools.render import Layout, RendererBase, View
 
 from ..layout import (_MEASURES, _RECENT, _RECENT_LOCK, _RECENT_SIZE, _light, _remember,  # noqa: F401
-                      _taken, dumps)
+                      _put_held, _taken, dumps, held_layout, held_state, made_facts)
 
 #: The ``data-docx-*`` attributes of a page's SVG: where its elements come from (paths,
 #: ids), which the rasteriser never reads -- left out of the key, so the ids an edit gives
@@ -57,19 +57,31 @@ class PageRenderer(RendererBase):
 
     def lay_out(self, data: bytes, items: list, width: int, font_dirs: "list[str]",
                 locale: Any, state: Any) -> Layout:
-        import os
-        import tempfile
-
         import docx2svg
-        from docx2svg.fonts import rasteriser_files
-        from ooxml_common.fonts.rasterdb import file_stamps
-        from ooxml_edit.tools import content_key
 
         from ..layout import coverage_facts, locale_of
 
         locale = locale_of(None) if locale is None else locale
         options = docx2svg.ConvertOptions(pages=items, width=width, font_dirs=font_dirs,
                                           locale=locale)
+        if held_state(state):
+            # Round 38: the layout this worker holds, or made here from the one it finds; it
+            # stays here (the caller names it by its token), nothing pickled back.
+            held, how, seconds = held_layout(data, {"font_dirs": font_dirs, "locale": locale}, state,
+                                             changed_pages=True)
+            try:
+                layout, fonts, warnings = held.laid
+                made = self._drawn(layout, fonts, data, options, items)
+            except BaseException:
+                _put_held(state[1], held, state[3])
+                raise
+            _put_held(state[1], held, state[3])
+            views, fingerprint, raster = made
+            facts = made_facts(held, how, seconds)
+            return Layout(views, fingerprint, raster=raster,
+                          facts={"count": len(layout.pages), "coverage": coverage_facts(layout.coverage),
+                                 "laid_out": None, "changed": getattr(layout, "changed_pages", None),
+                                 **facts})
         fresh = None
         previous = None
         if isinstance(state, tuple) and len(state) == 2 and state[0] == "previous":
@@ -85,9 +97,29 @@ class PageRenderer(RendererBase):
             warnings = list(options.warnings)
             fresh = kept = dumps((_light(layout), fonts, warnings))
         count = len(layout.pages)
+        views, fingerprint, raster = self._drawn(layout, fonts, data, options, items)
+        _remember(kept, (layout, fonts, warnings))  # this task is done with them: the next may take them
+        return Layout(views, fingerprint, raster=raster,
+                      facts={"count": count, "coverage": coverage_facts(layout.coverage),
+                             "laid_out": fresh, "changed": getattr(layout, "changed_pages", None),
+                             "relaid": getattr(layout, "relaid", None) if previous is not None else None,
+                             "relaid_cause": getattr(layout, "relaid_cause", None) if previous is not None
+                             else None})
+
+    def _drawn(self, layout: Any, fonts: Any, data: bytes, options: Any, items: list) -> tuple:
+        """The pages asked for drawn from ``layout`` -- ``(views, fingerprint, raster)`` --
+        with the rasteriser's arguments, as docx2svg's convert_docx_to_png makes them."""
+        import os
+        import tempfile
+
+        import docx2svg
+        from docx2svg.fonts import rasteriser_files
+        from ooxml_common.fonts.rasterdb import file_stamps
+        from ooxml_edit.tools import content_key
+
+        count = len(layout.pages)
         svgs = docx2svg.page_svgs(layout, data, options, device_size=True, fonts=fonts)
         numbers = [page for page in items if 1 <= page <= count]
-        # The rasteriser's arguments, as docx2svg's convert_docx_to_png makes them.
         faces = docx2svg.drawn_faces(layout)
         files: list = []
         embedded: list = []
@@ -118,15 +150,8 @@ class PageRenderer(RendererBase):
         fingerprint = render.fingerprint(self, skip, sans, file_stamps(plain, dirs), files,
                                          [(name, content_key(blob)) for name, blob in embedded],
                                          system)
-        _remember(kept, (layout, fonts, warnings))  # this task is done with them: the next may take them
-        return Layout([View(page, svg) for page, svg in zip(numbers, svgs)], fingerprint,
-                      raster={"files": files, "embedded": embedded, "dirs": dirs, "skip": skip,
-                              "sans": sans},
-                      facts={"count": count, "coverage": coverage_facts(layout.coverage),
-                             "laid_out": fresh, "changed": getattr(layout, "changed_pages", None),
-                             "relaid": getattr(layout, "relaid", None) if previous is not None else None,
-                             "relaid_cause": getattr(layout, "relaid_cause", None) if previous is not None
-                             else None})
+        return ([View(page, svg) for page, svg in zip(numbers, svgs)], fingerprint,
+                {"files": files, "embedded": embedded, "dirs": dirs, "skip": skip, "sans": sans})
 
     def key_text(self, svg: str) -> str:
         return _DOCX_DATA.sub("", svg)

@@ -243,7 +243,8 @@ def test_the_layout_in_the_worker_takes_the_locale():
         result = box.dispatch(session, "check", {"doc": "d1", "include": ["reflow"]})
         assert result.ok, result.error
         document = session.entry("d1").document
-        assert any(repr(DUTCH) in key for key in document._layouts)
+        # Kept by the options it was laid out with (round 38: by its token, in the worker).
+        assert repr(DUTCH) in document._layout_kept[0][1]
 
 
 def test_new_document_takes_the_session_locale():

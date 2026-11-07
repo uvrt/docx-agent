@@ -27,7 +27,10 @@ from typing import Any, Callable, Iterable, Iterator, Mapping, Sequence
 
 from ooxml_edit.tools import Result, ToolError, page_list, tool as _tool
 
-from ..layout import adopt, cache_key, convert_bytes, lay_out_bytes, lay_out_unlocked, layout_options, twin, twin_of
+from ooxml_edit.tools.worker import takes_affinity
+
+from ..layout import (adopt, affinity, canon_of, known_summary, layout_key, summary_for, cache_key, convert_bytes, held_state, lay_out_bytes,
+                      lay_out_unlocked, layout_options, twin, twin_of)
 
 #: A Word document of this many pages or fewer gets its reflow in every edit's checks.
 REFLOW_PAGES = 20
@@ -43,12 +46,21 @@ class Engine:
     (:func:`docx_agent.layout.lay_out_bytes` in a worker process), so a layout, a reflow,
     ``update_fields``' passes and a TOC's page numbers share one deadline
     (``Limits.layout_timeout``, 30 s), and a worker still busy at it is killed and the call
-    reports ``timeout``."""
+    reports ``timeout``.
 
-    def __init__(self, run: Callable[..., Any], timeout: float) -> None:
+    Round 38: a document's layouts stay in the worker that made them, and its layout tasks
+    go there (ooxml-edit 0.86.0's affinity, keyed by the document's lineage), waiting for
+    that worker while busy at most as long as laying the document out whole took
+    (:func:`docx_agent.layout.affinity`) -- ``keyed``: the pool takes affinity -- of
+    ``document``'s layouts."""
+
+    def __init__(self, run: Callable[..., Any], timeout: float, *, keyed: bool = False,
+                 document: Any = None) -> None:
         self._run = run
         self.timeout = timeout
         self.deadline = time.monotonic() + timeout
+        self.keyed = keyed
+        self.document = document
 
     def arm(self, timeout: float | None = None) -> "Engine":
         if timeout is not None:
@@ -61,8 +73,25 @@ class Engine:
 
     def lay_out(self, data: bytes, options: dict, state: Any = None) -> tuple:
         """:func:`docx_agent.layout.lay_out_bytes` in a worker process, under the deadline:
-        the layout kept for the next version (round 33)."""
-        return self._run(lay_out_bytes, data, options, state, timeout=self._remaining())
+        the layout kept for the next version (round 33), in the worker holding it (round 38)."""
+        return self._run(lay_out_bytes, data, options, state, timeout=self._remaining(),
+                         **self.keys(state))
+
+    def check(self, data: bytes, options: dict, state: Any, request: dict) -> dict:
+        """``check``'s layout facts made in the worker holding the document's layout (round
+        38, :func:`docx_agent.tools.check_worker.check_bytes`), under the deadline."""
+        from .check_worker import check_bytes
+
+        return self._run(check_bytes, data, options, state, request, timeout=self._remaining(),
+                         **self.keys(state))
+
+    def keys(self, state: Any) -> dict:
+        """The pool's ``affinity`` and ``affinity_wait`` for a task handed ``state``: the
+        document's lineage, and the wait :func:`docx_agent.layout.affinity` says."""
+        if not self.keyed or not held_state(state):
+            return {}
+        wait = affinity(self.document)[1] if self.document is not None else None
+        return {"affinity": ("docx-agent layout", state[3]), "affinity_wait": wait}
 
     def _remaining(self) -> float:
         remaining = self.deadline - time.monotonic()
@@ -75,9 +104,11 @@ class Engine:
 def engage(call: Any) -> None:
     """Point the call's Word documents' layouts at the toolbox's worker pool."""
     timeout = call.limits.layout_timeout
+    pool = call.toolbox.pool
     for entry in call.entries.values():
         if entry.kind == "docx":
-            entry.document.converter = Engine(call.toolbox.pool.run, timeout)
+            entry.document.converter = Engine(pool.run, timeout, keyed=takes_affinity(pool),
+                                              document=entry.document)
 
 
 def release(entries: Iterable[Any]) -> None:
@@ -157,10 +188,32 @@ def update_fields_ahead(call: Any, ids: list[str] | None) -> bool:
     return False
 
 
-def cached_layout(document: Any) -> Any:
-    """The layout of the document's current state if it was laid out already, else ``None``."""
-    conversion = document._layouts.get(cache_key(document.to_bytes(), layout_options(document, {})))
-    return conversion.layout if conversion is not None else None
+def seen_before(document: Any) -> Any:
+    """What a changing call's reflow is measured from: the summary of the layout of the
+    document's current state when it was laid out already -- here, or (round 38) in the
+    worker that made a check's facts -- else ``None``."""
+    options = layout_options(document, {})
+    data = document.to_bytes()
+    key = layout_key(data, options)
+    found = known_summary(document, key)
+    if found is not None:
+        return found
+    conversion = document._layouts.get(cache_key(data, options))
+    return summary_for(document, key, conversion.layout) if conversion is not None else None
+
+
+def cached_layout(document: Any, *, fetch: bool = True) -> Any:
+    """The layout of the document's current state if it was laid out already, else ``None``.
+    Round 38: laid out in the worker that made a check's facts, it is fetched from there
+    (nothing laid out again) -- ``fetch`` false: only whether it was (``True``)."""
+    options = layout_options(document, {})
+    data = document.to_bytes()
+    conversion = document._layouts.get(cache_key(data, options))
+    if conversion is not None:
+        return conversion.layout
+    if known_summary(document, layout_key(data, options)) is None:
+        return None
+    return document.layout() if fetch else True
 
 
 # -- tracking mode -----------------------------------------------------------------------------
@@ -305,14 +358,18 @@ def checks(entry: Any, touched: Sequence[Any]) -> dict[str, Any]:
     out: dict[str, Any] = {"validate": validate_delta(entry), "reflow": None}
     try:
         if before is not None:
-            if before.page_count > REFLOW_PAGES:
+            if before.count > REFLOW_PAGES:
                 out["reflow"] = STALE
             else:
                 engine = document.converter
                 if isinstance(engine, Engine):
                     engine.arm()
                 try:
-                    out["reflow"] = reflow_json(document.layout().compare(before))
+                    # By summaries (round 38), ids followed through the document's aliases now.
+                    after = document.layout()
+                    now = summary_for(document, after.key if after.key is not None else layout_key(
+                        document.to_bytes(), layout_options(document, {})), after)
+                    out["reflow"] = reflow_json(now.compare(before, canon_of(document)))
                 except ToolError as error:
                     out["reflow"] = f"{error.code}: {error.message}"
     finally:
@@ -494,7 +551,7 @@ def wrap(handler: Callable[..., Any], *, mutates: bool, track: bool = True) -> C
         try:
             if mutates and call.entry is not None and call.changing:
                 if not any(isinstance(t, Before) for t in call.context.touched.get(call.entry.doc_id, [])):
-                    call.touch(Before(cached_layout(call.document)))
+                    call.touch(Before(seen_before(call.document)))
                 if track:
                     with tracked(call, call.entry):
                         returned = handler(call, **arguments)
