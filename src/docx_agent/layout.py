@@ -691,6 +691,20 @@ def _digest(value: Any) -> bytes:
     return hashlib.blake2b(_WHOLE_FRACTION.sub(r"\1", repr(value)).encode(), digest_size=16).digest()
 
 
+def _page_digest(page: Any) -> bytes:
+    """What a page draws besides its lines (:class:`LayoutSummary`)."""
+    rules = tuple((r.kind, r.x, r.y, r.width, r.height, r.color, r.style) for r in page.rules)
+    pictures = tuple((p.relationship, p.part, p.x, p.y, p.width, p.height) for p in page.pictures)
+    floats = tuple((f.x, f.y, f.width, f.height, f.behind, f.story, len(f.primitives)) for f in page.floats)
+    stop = (page.stop.reason, page.stop.y, page.stop.remaining) if page.stop else None
+    return _digest((page.width_px, page.height_px, rules, pictures, floats, stop))
+
+
+def _line_digest(line: Any) -> bytes:
+    """What a line draws (:class:`LayoutSummary`)."""
+    return _digest((line.story, line.baseline, line.top, line.pitch, tuple(_span(span) for span in line.spans)))
+
+
 class LayoutSummary:
     """What :meth:`DocumentLayout.compare` reads of a layout, small enough to keep for every
     check and to send from the worker that made the layout (round 38): per page, a digest
@@ -699,23 +713,39 @@ class LayoutSummary:
     the document's aliases at the time (``canon``), it tells the same pages as ``compare``
     does on the layouts themselves."""
 
-    def __init__(self, layout: "DocumentLayout") -> None:
+    def __init__(self, layout: "DocumentLayout", before: "LayoutSummary | None" = None, *,
+                 keep: bool = False) -> None:
+        """``before``: the summary of the layout this one was laid out from, made with
+        ``keep`` -- each page and line docx2svg took over from it (the very object: a layout
+        kept from the previous one keeps the pages the edit did not reach, and a page or line
+        is never changed once laid out) has the digest made of it there (round 39: only what
+        was laid out or drawn again is digested).  ``keep`` holds this summary's digests by
+        page and line for the next, with the pages and lines themselves (not pickled)."""
         self.count = len(layout.pages)
         self.known = layout.stopped.page if layout.stopped else len(layout.pages)
         self.rest: list[bytes] = []
         self.lines: list[tuple] = []
+        taken = getattr(before, "_drawn", None) or {}
+        drawn: dict[int, tuple] = {}
+
+        def digest_of(item: Any, make: Any) -> bytes:
+            found = taken.get(id(item))
+            value = found[1] if found is not None and found[0] is item else make(item)
+            drawn[id(item)] = (item, value)
+            return value
+
         for index, page in enumerate(layout.pages):
-            rules = tuple((r.kind, r.x, r.y, r.width, r.height, r.color, r.style) for r in page.rules)
-            pictures = tuple((p.relationship, p.part, p.x, p.y, p.width, p.height) for p in page.pictures)
-            floats = tuple((f.x, f.y, f.width, f.height, f.behind, f.story, len(f.primitives))
-                           for f in page.floats)
-            stop = (page.stop.reason, page.stop.y, page.stop.remaining) if page.stop else None
-            self.rest.append(_digest((page.width_px, page.height_px, rules, pictures, floats, stop)))
-            self.lines.append(tuple(
-                (key, line.path, _in_body(line),
-                 _digest((line.story, line.baseline, line.top, line.pitch,
-                          tuple(_span(span) for span in line.spans))))
-                for key, line in layout._lines[index]))
+            self.rest.append(digest_of(page, _page_digest))
+            self.lines.append(tuple((key, line.path, _in_body(line), digest_of(line, _line_digest))
+                                    for key, line in layout._lines[index]))
+        #: id -> (page or line, its digest), for the next summary (``keep``), else ``None``.
+        self._drawn: dict[int, tuple] | None = drawn if keep else None
+
+    def __getstate__(self) -> dict:
+        # Sent to the caller without the pages and lines kept for the next summary.
+        state = dict(self.__dict__)
+        state["_drawn"] = None
+        return state
 
     def _content(self, index: int, which: str, canon: Any) -> tuple:
         lines = tuple((canon(key) if key else path, drawn) for key, path, body, drawn in self.lines[index]
@@ -1213,6 +1243,7 @@ def _put_held(token: tuple, held: _Held, lineage: str) -> None:
     """``held``, the layout of ``token``, back as its lineage's newest (the others of the
     lineage dropped), those of other lineages used longest ago dropped while all cost more
     than :data:`LAYOUT_MEMORY` (round 39)."""
+    held.extra.pop("summary before", None)
     with _HELD_LOCK:
         held.lineage = lineage
         for other in [t for t, entry in _HELD.items() if entry.lineage == lineage or t == token]:
@@ -1245,7 +1276,14 @@ def held_layout(data: bytes, options: dict, state: tuple, *, changed_pages: bool
     except BaseException:
         _let_go_held(lineage)
         raise
-    return _Held((layout, fonts, list(convert_options.warnings))), how, seconds
+    made = _Held((layout, fonts, list(convert_options.warnings)))
+    summary = found.extra.get("summary") if found is not None else None
+    if summary is not None:
+        # The summary of the layout this one was made from, for this one's (round 39:
+        # :class:`LayoutSummary` digests only what was laid out again).  Dropped when the
+        # task ends (:func:`_put_held`), so it never keeps the earlier layout's pages.
+        made.extra["summary before"] = summary
+    return made, how, seconds
 
 
 def made_facts(held: _Held, how: str, seconds: float) -> dict:
