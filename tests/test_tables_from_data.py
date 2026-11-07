@@ -423,9 +423,11 @@ def test_set_cells_from_a_source_too_big_for_the_table_is_refused(toolbox, sessi
     table = _table(toolbox, session, 3, 2)
     error = failed(edit(toolbox, session, table, **{"from": "d:scores",
                                                     "from_columns": ["check"]}), "refused")
-    assert "4 rows" in error.message and "insert_row" in error.message
-    # A row range of the source places fewer: the refusal offers the one that fits.
-    assert error.valid_options == ["d:scores/#1:#2"]
+    assert "4 rows" in error.message and "grow: true" in error.message
+    # A row range of the source places fewer: the refusal offers the one that fits, and the
+    # call that adds the rows (round 40).
+    assert error.valid_options == ["grow", "d:scores/#1:#2"]
+    assert error.details["call"]["arguments"]["grow"] is True
     error = failed(edit(toolbox, session, table, header=[], **{"from": "d:scores"}), "refused")
     assert error.field == "from_columns"
     error = failed(edit(toolbox, session, table, index=3, **{"from": "d:scores"}), "not_found")
@@ -450,8 +452,8 @@ def test_set_cells_from_one_keyed_row_with_no_room_offers_no_row_range(toolbox, 
     error = failed(edit(toolbox, session, table, **{"from": "t:checks/Alpha",
                                                     "from_columns": ["check", "note"]}),
                    "refused")
-    assert "2 rows with the header" in error.message and "insert_row first" in error.message
-    assert "place fewer" not in error.message and error.valid_options == []
+    assert "2 rows with the header" in error.message and "grow: true" in error.message
+    assert "place fewer" not in error.message and error.valid_options == ["grow"]
     assert texts(session, table) == [["old", "old"]]
 
 

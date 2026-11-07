@@ -166,8 +166,13 @@ breaks in the cell's one paragraph; the text goes in literally, never read as Ma
 `word_insert_markdown` makes the table the source's size at `at`, in the document's table
 style (`style_map`'s `table` and `table_cell` apply; a Markdown table's centred or right
 column takes `table_cell_center` / `table_cell_right` when named, else direct alignment); `set_cells` writes from row `index`
-(default 0), column 0, and refuses a source the table has no room for, or a block over a
-merged cell. Nothing is cut: past 63 columns, 4,096 rows or 5,000 cells the call is refused
+(default 0), column 0, and refuses a block over a merged cell. A source with more rows than
+the table has from `index` is refused, with the call that writes it: `grow: true` adds the
+rows it needs after the last row, each as `insert_row` makes one (the last row's properties
+and cells, never a header row), in the same undo step -- `index` may then be the row after
+the last, to append; the result's `created` lists the rows added. Fewer rows than the table
+leave the rows below with their text, and the warning names them and the `delete_row` that
+removes them. Nothing is cut: past 63 columns, 4,096 rows or 5,000 cells the call is refused
 (`limit`); a refusal for want of rows offers the row range of the source that fits. To
 place some of a source's rows, name them: `d:checks/#2:` (row 2 to the last),
 `t:Sales/#1:#9` (a workbook's rows 1 to 9). Word flows a long table over pages itself,
@@ -176,6 +181,40 @@ the header row repeated. A whole call is one undo step, and tracked while tracki
 ```json
 {"doc": "d1", "at": "after:p:3B212964", "from": "d:checks",
  "from_columns": ["check", "rating", "due"]}
+```
+
+### Places: one way to name where content goes
+
+Every tool that puts content somewhere takes `at`: `end`, `after:<id>`, `before:<id>`,
+`replace:<id>[..<id>]` (blocks), a position `p:A@5`, or a bare id, read as after it -- a
+range's or paragraph's end for a note, field or control. `word_insert_text` takes it beside
+its `target` and `where` (`after:p:A@4:11`, `before:p:A@4:11`, `p:A@5`); `word_move` and
+`word_sections` keep `after` and `before`, and read an `at` given them as `after`, its side
+kept (`before:p:A`, `end`). Another tool's name for a place is read as the tool's own where
+that says the same thing, with a warning (`after read as at`): `after: X`, a `target` alone,
+`position`, `location`. Where the side is in the name -- `before: X`, `where` with a
+`target` -- renaming would change the place, so the call is refused, the message says how to
+write it, and `details.call` (`details.item` for an item) holds the arguments that work. A
+`ref` holding an address where a tool gives no place says the place is `at`.
+
+`word_insert_markdown` and `word_copy_from` take `ref` as the other creating tools do: it
+names what the call made, one block's id or the span of several (`p:A..p:B`); `after:$ref`
+is after its last block, `before:$ref` before its first, and a span is a `word_format` or
+`word_delete` target as it is.
+
+### Formatting text found
+
+`word_format`'s `find` formats text the call finds, as `replace_text` finds it, so a text and
+its formatting go in one call: each item's `text` in `within` (a block or span; the body by
+default; `range` is read as `within`), once (`expect` `one`, the default), its n-th match
+(`occurrence`, from 1) or every match (`expect` `all`). Every item is found before anything
+changes: a text found nowhere is refused with the places it occurs written otherwise (case,
+spaces) and what `within` holds; one that matches several, with each match's `occurrence`,
+range and context. The result's `data.ranges` are the ranges formatted.
+
+```json
+{"doc": "d1", "character_style": "Strong",
+ "find": [{"text": "36 months", "within": "p:3B212964"}, {"text": "Total", "occurrence": 2}]}
 ```
 
 The result's `data` has the table (`id`, `rows`, `columns`; not its Markdown, which the

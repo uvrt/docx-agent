@@ -237,10 +237,19 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 #: building; the result says so) +40 to the core (3,048 -> 3,088, about 4,570 counted by the
 #: proxy) and to every definition (15,010 -> 15,050).  The guard rises to 15,050.  render is
 #: not strict: the strict set is unchanged (6 tools, 23 optional parameters).
+#: Round 40: word_format's ``find`` (text found and formatted in one call: text, within,
+#: occurrence, expect) +122, word_insert_text's ``at`` (the place as every placing tool names
+#: it, on the call and its items) +46, ``ref`` on word_insert_markdown and word_copy_from (the
+#: blocks made, named) +22 each, word_edit_table's ``grow`` (rows added for set_cells from)
+#: +24: +236 to every definition (15,050 -> 15,286), none to the core (3,088).  The guard
+#: rises to 15,290.  word_insert_markdown is strict: its ``ref`` takes the strict set to 6
+#: tools and 24 optional parameters, Claude's limit -- the next optional parameter on a
+#: strict tool sends one tool non-strict.  The others are not strict.  The other tools'
+#: names for a place are aliases (never sent).
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 6500
-ALL_GUARD = 15050
+ALL_GUARD = 15290
 
 
 @pytest.fixture(scope="module")
