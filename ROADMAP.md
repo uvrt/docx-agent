@@ -1232,6 +1232,17 @@ doc.render_svg(pages=diff.changed)     # or render_png; ids on every paragraph g
   process holding the document's lock never waits for a layout another thread took (round
   34's rule); one that let it go waits at most 5 s. Not moved: validate (the live document
   and its baseline), fields, copies, scales.
+- **Round 39 (0.1.59, docx2svg 0.11.8):** what a process keeps of its layouts is sized by
+  memory, not two documents (`docx_agent.layout.LAYOUT_MEMORY`, 256 MB by default,
+  `DOCX_AGENT_LAYOUT_MEMORY`; `PAGE_COST` a page held, `MEASURE_COST` a measurement kept),
+  least recently used out; docx2svg compares the settings part by what the layout reads of
+  it, and a header or footer change keeps the body's measurements. Measured, not built (the
+  round's hand-back): a new document laid out from another document's layout of the same
+  template (about 0.15 s of CPU a document, under 1%), the parse kept per part (the
+  unchanged parts are about a fifth of the parse, 2% of a check's CPU; the body is the rest,
+  and its model holds paths and fields open across blocks), a `word_fields` update that stops
+  a pass early (the last pass confirms the numbers; skipping it exactly needs docx2svg's
+  settled field values in docx-agent's terms).
 - **Round 35 (R18, R19):** `check` and `render` on some blocks: `range`, one or several
   of `word_read`'s range forms; the facts about the blocks on the pages they fall on
   (`docx_agent.scope`: a fact is about its subject -- `para`, `paras`, `ids`, `table`,
