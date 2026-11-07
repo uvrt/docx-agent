@@ -63,16 +63,24 @@ def _toolbox(**options):
 
 
 def _slowed(monkeypatch) -> threading.Event:
-    """``Engine.lay_out`` stalled by :data:`STALL`; the event is set when the first began."""
+    """``Engine.lay_out`` and ``Engine.check`` (a lone check's facts, made where the layout
+    is held: round 38) stalled by :data:`STALL`; the event is set when the first began."""
     started = threading.Event()
     run = _base.Engine.lay_out
+    facts = _base.Engine.check
 
     def slow(engine, data, options, state=None):
         started.set()
         time.sleep(STALL)
         return run(engine, data, options, state)
 
+    def slow_facts(engine, data, options, state, request):
+        started.set()
+        time.sleep(STALL)
+        return facts(engine, data, options, state, request)
+
     monkeypatch.setattr(_base.Engine, "lay_out", slow)
+    monkeypatch.setattr(_base.Engine, "check", slow_facts)
     return started
 
 

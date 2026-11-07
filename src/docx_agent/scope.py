@@ -62,6 +62,34 @@ class Scope:
     """The body's blocks one or more ranges name (the module says what each set holds)."""
 
     def __init__(self, document: "Document", ranges: list[str]) -> None:
+        main = document.package.document_part()
+        found = []
+        for number, address in enumerate(ranges):
+            part, entries = _paragraphs_of(document, address, number)
+            if part != main:
+                raise _refused(document, f"range[{number}] {address!r} is in {document._story_of(part)}, "
+                               "not the body: a range names the body's blocks")
+            found.append((address, entries))
+        self._build(document, found)
+
+    @classmethod
+    def of_ids(cls, document: "Document", spec: "list[tuple[str, list[str]]]") -> "Scope":
+        """The scope :meth:`spec` describes, on ``document`` -- a copy opened from the bytes
+        of the state the spec was read from (round 38: a check's facts made in the worker
+        holding the layout): the same paragraphs by their ids, so the same scope."""
+        scope = cls.__new__(cls)
+        part = document.package.document_part()
+        index = document._index(part)
+        by_id = {entry.id: entry for entry in index.paragraphs}
+        scope._build(document, [(address, [by_id[identifier] for identifier in ids])
+                                for address, ids in spec])
+        return scope
+
+    def spec(self) -> "list[tuple[str, list[str]]]":
+        """Each range's address and its paragraphs' ids: what :meth:`of_ids` rebuilds it from."""
+        return [(found.address, list(found.paragraphs)) for found in self.ranges]
+
+    def _build(self, document: "Document", found: "list[tuple[str, list]]") -> None:
         from .edit.document import _top_block
 
         self.document = document
@@ -73,11 +101,7 @@ class Scope:
         self.drawings: set[str] = set()
         held: dict[int, Any] = {}               # id(paragraph element) -> element
         tops: dict[int, Any] = {}               # id(top-level block) -> element
-        for number, address in enumerate(ranges):
-            part, entries = _paragraphs_of(document, address, number)
-            if part != main:
-                raise _refused(document, f"range[{number}] {address!r} is in {document._story_of(part)}, "
-                               "not the body: a range names the body's blocks")
+        for address, entries in found:
             blocks: list[str] = []
             mine: set[int] = set()
             for entry in entries:
@@ -87,9 +111,9 @@ class Scope:
                 if top is not None and id(top) not in mine:
                     mine.add(id(top))
                     tops[id(top)] = top
-                    found = index.entry_for(top)
-                    if found is not None:
-                        blocks.append(found.id)
+                    block = index.entry_for(top)
+                    if block is not None:
+                        blocks.append(block.id)
                 for ancestor in entry.element.iterancestors(_TBL):
                     table = index.entry_for(ancestor)
                     if table is not None:

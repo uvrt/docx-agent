@@ -85,7 +85,21 @@ class Slowed:
             finally:
                 self.ended.append(time.perf_counter())
 
+        facts = _base.Engine.check
+
+        def slow_facts(engine, data, options, state, request):     # a lone check's (round 38)
+            self.began.append(time.perf_counter())
+            if self.entry is not None:
+                self.free.append(_free(self.entry.lock))
+            self.started.set()
+            time.sleep(STALL)
+            try:
+                return facts(engine, data, options, state, request)
+            finally:
+                self.ended.append(time.perf_counter())
+
         monkeypatch.setattr(_base.Engine, "lay_out", slow)
+        monkeypatch.setattr(_base.Engine, "check", slow_facts)
 
 
 def _free(lock) -> bool:
