@@ -71,6 +71,7 @@ from typing import TYPE_CHECKING, Any
 
 import docx2svg
 from docx2svg.paths import path_part, resolve_path
+from docx2svg.relayout import MeasureStore
 
 from .edit.effective import PathFinder
 from .edit import ids as _ids
@@ -856,6 +857,41 @@ _RECENT: dict = {}
 _RECENT_SIZE = 2
 _RECENT_LOCK = threading.Lock()
 
+#: What this process measured in its layouts (docx2svg's ``MeasureStore``, round 37): a
+#: layout handed a previous one without its measurements -- made in another worker -- takes
+#: those of the blocks this process measured in an earlier version of the document, instead
+#: of measuring every block again (46 pages, one paragraph edited: 0.6-0.7 s of CPU against
+#: 1.9-2.5 s).  Its own lock; nothing is waited for under it.
+_MEASURES = MeasureStore(lineages=2)
+
+
+def _fraction(numerator: int, denominator: int) -> Fraction:
+    """A :class:`~fractions.Fraction` from its own terms, already in lowest terms: what a
+    layout's pickle (:func:`dumps`) rebuilds each with, without the ``gcd`` the
+    constructor takes."""
+    return _FROM_TERMS(numerator, denominator)
+
+
+_FROM_TERMS = getattr(Fraction, "_from_coprime_ints", Fraction)  # Python 3.12 and later
+
+
+def _reduce_fraction(value: Fraction) -> tuple:
+    return (_fraction, (value.numerator, value.denominator))
+
+
+def dumps(value: Any) -> bytes:
+    """``value`` (a layout, its faces and warnings) pickled, its fractions -- a long
+    document's layout holds hundreds of thousands -- rebuilt from their terms as they are
+    (round 37: a third less time to pickle and read back a 46-page layout)."""
+    import copyreg
+    import io
+
+    buffer = io.BytesIO()
+    pickler = pickle.Pickler(buffer, protocol=pickle.HIGHEST_PROTOCOL)
+    pickler.dispatch_table = {**copyreg.dispatch_table, Fraction: _reduce_fraction}
+    pickler.dump(value)
+    return buffer.getvalue()
+
 
 def _light(layout):
     """``layout`` to pickle: without what its flow measured (``layout.state.memo``, which
@@ -892,16 +928,17 @@ def _taken(blob: bytes) -> tuple:
 def lay_out_bytes(data: bytes, options: dict, state: Any = None) -> tuple:
     """docx2svg's layout of a document's bytes, kept for the next version: ``(laid_out,
     facts)``, ``laid_out`` the pickle of ``(layout, fonts, warnings)`` (:func:`_light`) and
-    ``facts`` -- from an earlier version's layout -- ``changed`` (the pages whose drawing
-    changed), ``relaid`` (why it was laid out whole, docx2svg's
-    :data:`~docx2svg.relayout.FALLBACKS` code, or ``None``) and ``relaid_cause``.
+    ``facts`` -- from an earlier version's layout -- ``relaid`` (why it was laid out whole,
+    docx2svg's :data:`~docx2svg.relayout.FALLBACKS` code, or ``None``) and ``relaid_cause``;
+    ``changed`` is ``None`` (round 37: telling the pages whose drawing changed draws them,
+    every page after an edit that adds one where a footer shows the page count, and
+    nothing reads it here -- a check compares layouts itself, ``DocumentLayout.compare``).
 
     ``state``: ``None``; a ``laid_out`` of these very bytes and options, handed back (not
     laid out again: the same pickle comes back); or ``("previous", laid_out)``, the layout
     of an earlier version, which the document is laid out again from -- with what its flow
-    measured where this process still holds it (:data:`_RECENT`), else measured again
-    (still faster than a whole layout: 63 pages, one paragraph edited, 6 s against 9 s; 1 s
-    with the measurements).  What :func:`convert` runs -- through the
+    measured where this process still holds it (:data:`_RECENT`), else with what this process
+    measured of the same document before (:data:`_MEASURES`, round 37), else measured again.  What :func:`convert` runs -- through the
     document's :attr:`~docx_agent.Document.converter`, which may run it in another process
     (an agent tool layer's worker pool, with a deadline)."""
     if isinstance(state, (bytes, bytearray)):
@@ -911,13 +948,15 @@ def lay_out_bytes(data: bytes, options: dict, state: Any = None) -> tuple:
         # Taken, not handed back: the new layout goes on with its fonts and measurements.
         previous = _taken(state[1])[0]
     convert_options = docx2svg.ConvertOptions(**options)
-    layout, _, fonts = docx2svg.lay_out_docx(data, convert_options, previous=previous)
+    # No ``changed_pages``: nothing here reads them, and telling them draws pages.
+    layout, _, fonts = docx2svg.lay_out_docx(data, convert_options, previous=previous, measures=_MEASURES,
+                                             changed_pages=False)
     laid = (layout, fonts, list(convert_options.warnings))
-    blob = pickle.dumps((_light(layout), fonts, laid[2]), protocol=pickle.HIGHEST_PROTOCOL)
+    blob = dumps((_light(layout), fonts, laid[2]))
     _remember(blob, laid)
     if previous is None:
         return blob, {"changed": None, "relaid": None, "relaid_cause": None}
-    return blob, {"changed": layout.changed_pages, "relaid": layout.relaid, "relaid_cause": layout.relaid_cause}
+    return blob, {"changed": None, "relaid": layout.relaid, "relaid_cause": layout.relaid_cause}
 
 
 # A task ooxml-edit's subprocess workers may run (the mark), as :func:`convert_bytes` is.
@@ -963,6 +1002,8 @@ def _keeper(document: "Document") -> threading.Lock:
                 document._layout_lock = lock
                 document._layout_flights = {}
                 document._layout_kept = None
+                document._layout_count = 0
+                document._layout_tickets = {}
     return lock
 
 
@@ -972,11 +1013,18 @@ _KEEPERS_LOCK = threading.Lock()
 def kept_layout(document: "Document", data: bytes, options: dict) -> Any:
     """The state to hand :func:`lay_out_bytes` (or the render pipeline's layout task) for
     ``data``: the ``laid_out`` of these bytes when it is the one kept, else
-    ``("previous", laid_out)`` of the document's last layout, else ``None``."""
+    ``("previous", laid_out)`` of the document's last layout, else ``None``.  Asked as a
+    layout of ``data`` starts: the layout is numbered then (:func:`keep_layout`)."""
     lock = _keeper(document)
     key = layout_key(data, options)
     with lock:
         kept = document._layout_kept
+        document._layout_count += 1
+        tickets = document._layout_tickets
+        tickets.pop(key, None)
+        tickets[key] = document._layout_count
+        while len(tickets) > _TICKETS:
+            del tickets[next(iter(tickets))]
     if kept is None:
         return None
     if kept[0] == key:
@@ -984,12 +1032,23 @@ def kept_layout(document: "Document", data: bytes, options: dict) -> Any:
     return ("previous", kept[1]) if kept[0][1] == key[1] else None
 
 
+#: How many layouts started are remembered by number (:func:`kept_layout`).
+_TICKETS = 64
+
+
 def keep_layout(document: "Document", data: bytes, options: dict, laid_out: bytes) -> None:
     """Keep ``laid_out``, the layout of ``data`` with ``options``, as the document's last:
-    the one its next version is laid out from (one per document: about 5 MB for 79 pages)."""
+    the one its next version is laid out from (one per document: about 5 MB for 79 pages).
+    Round 37: unless a layout started later -- of a later version, as many callers lay
+    out versions at once -- is kept already: the next layout starts from the newest."""
     lock = _keeper(document)
+    key = layout_key(data, options)
     with lock:
-        document._layout_kept = (layout_key(data, options), laid_out)
+        ticket = document._layout_tickets.get(key, document._layout_count)
+        kept = document._layout_kept
+        if kept is not None and kept[0] != key and kept[2] > ticket:
+            return
+        document._layout_kept = (key, laid_out, ticket)
 
 
 #: :func:`convert`'s ``converter`` left out: the document's own.
@@ -1143,6 +1202,8 @@ def twin(data: bytes, like: dict) -> "Document":
     copy.converter = like["converter"]
     _keeper(copy)
     copy._layout_kept = like["kept"]
+    if like["kept"] is not None:
+        copy._layout_count = like["kept"][2]   # numbered on from the document's
     if like.get("ids") is not None:
         values, cursors, highest = like["ids"]
         copy._ledger.pool = _ids.IdPool(values)
@@ -1165,7 +1226,9 @@ def adopt(document: "Document", copy: "Document") -> None:
             if key not in document._layouts:
                 keep(document, key, conversion)
         if kept is not None:
-            document._layout_kept = kept
+            # The copy's last is of the document's bytes now: numbered as started now.
+            document._layout_count += 1
+            document._layout_kept = (kept[0], kept[1], document._layout_count)
 
 
 def lay_out_unlocked(document: "Document", unlocked, current) -> DocumentLayout:

@@ -19,7 +19,8 @@ from typing import Any
 from ooxml_edit.tools import render, worker_task
 from ooxml_edit.tools.render import Layout, RendererBase, View
 
-from ..layout import _RECENT, _RECENT_LOCK, _RECENT_SIZE, _light, _remember, _taken  # noqa: F401
+from ..layout import (_MEASURES, _RECENT, _RECENT_LOCK, _RECENT_SIZE, _light, _remember,  # noqa: F401
+                      _taken, dumps)
 
 #: The ``data-docx-*`` attributes of a page's SVG: where its elements come from (paths,
 #: ids), which the rasteriser never reads -- left out of the key, so the ids an edit gives
@@ -57,7 +58,6 @@ class PageRenderer(RendererBase):
     def lay_out(self, data: bytes, items: list, width: int, font_dirs: "list[str]",
                 locale: Any, state: Any) -> Layout:
         import os
-        import pickle
         import tempfile
 
         import docx2svg
@@ -80,9 +80,10 @@ class PageRenderer(RendererBase):
             layout, fonts, warnings = _taken(state)
             kept = state
         else:
-            layout, _, fonts = docx2svg.lay_out_docx(data, options, previous=previous)
+            # With the process's measurements (round 37).
+            layout, _, fonts = docx2svg.lay_out_docx(data, options, previous=previous, measures=_MEASURES)
             warnings = list(options.warnings)
-            fresh = kept = pickle.dumps((_light(layout), fonts, warnings), protocol=pickle.HIGHEST_PROTOCOL)
+            fresh = kept = dumps((_light(layout), fonts, warnings))
         count = len(layout.pages)
         svgs = docx2svg.page_svgs(layout, data, options, device_size=True, fonts=fonts)
         numbers = [page for page in items if 1 <= page <= count]

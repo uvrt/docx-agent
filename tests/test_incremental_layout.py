@@ -163,7 +163,7 @@ def test_the_kept_layout_is_the_last_and_one_per_document(made):
     first = document._layout_kept
     _body(document)[3].set_text("Short.")
     document.layout()
-    assert document._layout_kept is not first and len(document._layout_kept) == 2
+    assert document._layout_kept is not first and len(document._layout_kept) == 3
     assert layout_module.kept_layout(document, document.to_bytes(),
                                      layout_module.layout_options(document, {})) == document._layout_kept[1]
 
@@ -471,3 +471,88 @@ def test_a_check_after_a_render_of_the_same_version_lays_nothing_out(made, monke
         assert box.dispatch(session, "render", {"doc": doc, "pages": [2], "width": 300}).ok
         check = box.dispatch(session, "check", {"doc": doc, "include": ["reflow", "layout"]})
     assert check.ok and laid == []
+
+
+# -- round 37: layouts handed between processes, many versions at once ------------------------
+
+
+def test_a_layout_finished_late_does_not_replace_a_newer_one(made):
+    # Two callers lay out two versions at once; the older one's layout, done last, is not
+    # the one the next version is laid out from.
+    document = Document.open(made)
+    options = layout_module.layout_options(document, {})
+    older = document.to_bytes()
+    layout_module.kept_layout(document, older, options)          # the older layout starts
+    _body(document)[3].set_text("Short.")
+    newer = document.to_bytes()
+    layout_module.kept_layout(document, newer, options)          # then the newer one
+    layout_module.keep_layout(document, newer, options, b"newer")
+    layout_module.keep_layout(document, older, options, b"older")
+    assert document._layout_kept[1] == b"newer"
+    # Its own bytes again are kept whatever their number.
+    layout_module.keep_layout(document, newer, options, b"newer again")
+    assert document._layout_kept[1] == b"newer again"
+
+
+def test_a_layout_pickles_and_reads_back_the_same(made):
+    import pickle
+    from fractions import Fraction
+
+    import docx2svg
+
+    layout, _, fonts = docx2svg.lay_out_docx(made, docx2svg.ConvertOptions())
+    value = (layout_module._light(layout), fonts, [Fraction(3, 7), Fraction(-4), Fraction(0)])
+    fast = layout_module.dumps(value)
+    again = pickle.loads(fast)
+    assert again[2] == value[2] and all(type(f) is Fraction for f in again[2])
+    plain = pickle.loads(pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL))
+    assert docx2svg.page_svgs(again[0], made, fonts=again[1]) == docx2svg.page_svgs(plain[0], made, fonts=plain[1])
+
+
+def test_a_layout_from_another_process_reuses_this_process_measurements(made, monkeypatch):
+    # The previous layout comes as a pickle this process does not hold (another worker made
+    # it): what this process measured of the document before is taken, not measured again.
+    import docx2svg.lines as lines
+
+    from docx2svg.relayout import MeasureStore
+
+    store = MeasureStore()
+    monkeypatch.setattr(layout_module, "_MEASURES", store)
+    # This process laid the document out once (another worker, say, made the same layout).
+    blob, _ = layout_module.lay_out_bytes(made, layout_module.layout_options(Document.open(made), {}))
+    document = Document.open(made)
+    _body(document)[5].set_text("Edited, a made-up sentence or two. " * 3)
+    after = document.to_bytes()
+    options = layout_module.layout_options(document, {})
+    counted = []
+    broken = lines.broken
+    monkeypatch.setattr(lines, "broken", lambda *a, **k: counted.append(1) or broken(*a, **k))
+
+    def measured(store) -> tuple:
+        counted.clear()
+        with layout_module._RECENT_LOCK:
+            layout_module._RECENT.clear()                 # the pickle is all this task has
+        monkeypatch.setattr(layout_module, "_MEASURES", store)
+        out, _ = layout_module.lay_out_bytes(after, options, ("previous", blob))
+        return len(counted), out
+
+    with_store, laid = measured(store)
+    without, plain = measured(MeasureStore())
+    assert with_store < without / 4, (with_store, without)
+    assert _pages_of(laid, after) == _pages_of(plain, after) == _alone_svgs(after)
+
+
+def _pages_of(blob: bytes, data: bytes) -> list:
+    import pickle
+
+    import docx2svg
+
+    layout, fonts, _ = pickle.loads(blob)
+    return docx2svg.page_svgs(layout, data, fonts=fonts)
+
+
+def _alone_svgs(data: bytes) -> list:
+    import docx2svg
+
+    layout, data, fonts = docx2svg.lay_out_docx(data, docx2svg.ConvertOptions(), keep=False)
+    return docx2svg.page_svgs(layout, data, fonts=fonts)

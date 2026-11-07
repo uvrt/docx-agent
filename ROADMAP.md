@@ -1175,6 +1175,20 @@ doc.render_svg(pages=diff.changed)     # or render_png; ids on every paragraph g
   pages or fewer gets its reflow in every edit's checks (fast at that size), and the
   first read of a new version projects the whole document to Markdown (`word_read` of one
   paragraph: 2-3 s on the 79-page report).
+- **Round 37 (0.1.51, docx2svg 0.11.7):** a layout handed to whichever worker is free came
+  without its measurements, so that worker measured every block again (most of the cost
+  of a check after an edit under many callers). Each worker keeps what it measured
+  (`docx_agent.layout._MEASURES`, docx2svg's `MeasureStore`, by lineage, two documents'
+  worth) and measures only changed blocks; a check's layout skips docx2svg's
+  `changed_pages`; layouts pickle their fractions from their terms; the layout kept for
+  the next version is the newest started. Already so before: edits never wait for a
+  layout (check and render let the document go), and docx2svg keeps the body of pages an
+  added page only moves on, drawing only their headers and footers again. Not built,
+  with numbers in the round's hand-back: a check that stops at its last page (a layout
+  from a previous one stops where pages line up already: 0.6-0.8 s of CPU), per-page
+  facts (cheap already), coalescing a check onto a newer version (its facts would be of
+  another version than its validate), worker affinity (ooxml-edit: would save the
+  pickle each way, about 0.6 s of 1.7 s a task).
 - **Round 35 (R18, R19):** `check` and `render` on some blocks: `range`, one or several
   of `word_read`'s range forms; the facts about the blocks on the pages they fall on
   (`docx_agent.scope`: a fact is about its subject -- `para`, `paras`, `ids`, `table`,
