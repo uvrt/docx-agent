@@ -5,6 +5,36 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.55 -- unreleased
+
+- **A document's layout stays in the worker that made it; a check's facts are made there**
+  (production round 38; ooxml-edit 0.88.0). Every layout task pickled the layout back to the
+  calling process, which read it (about 0.4 s of its CPU on a 46-page report), mapped it to
+  ids and made the facts there, in the one interpreter every caller shares; the next task
+  was handed it again. Now a layout is held in the process that made it (one per document,
+  two documents a worker, as before) and named by its token; the document's layout tasks go
+  to that worker (ooxml-edit's pool affinity, keyed by the document's lineage); a task
+  waits for that worker, while it is busy, at most as long as laying the document out whole
+  took last (going elsewhere costs at most that: the other worker lays out from the older
+  layout it holds, or whole), then takes another. A lone check's layout facts -- page count,
+  coverage, each range's pages and extent, the layout facts of the pages asked for -- are
+  made in that worker on a copy of the document opened from the very bytes laid out (ids
+  are the bytes' own), and only they come back; `since_last_check` compares small summaries
+  of the two layouts here, ids followed through the document's aliases (as before). A
+  render's layout task is the same: nothing pickled back. What stays here: validate, the
+  fields, copies, a scale's values, and the reads that need the layout itself (word_inspect,
+  a reflow in a short document's edits, update_fields), which fetch it from the worker
+  holding it. Saving still writes the pages and lines of the layout checked last. Facts
+  are the same, byte for byte: 131 documents compared through both paths (checks whole, by
+  page, by range, after an edit), and a test replays checks, edits and ranges through both.
+  Scoped facts resolve a table's row and cell keys from their row's element (half a
+  scoped check's time went to resolving each from the root). Made-up 46-page report, two
+  workers, 11 threads each editing its chapter, checking it and rendering a page, 4 rounds,
+  4 CPUs with half a core of other load: check median 10-13 s -> 4-6 s, longest 31-36 s
+  -> 11-30 s, wall 115-121 s -> 67-86 s, this process's CPU 48-51 s -> 13 s, workers' CPU
+  196-204 s -> 124-160 s, layouts pickled 105-129 MB -> none; one writer: check 1.6-1.7 s
+  -> 1.1-1.2 s.
+
 ## 0.1.51 -- unreleased
 
 - **Layouts after an edit cost a third as much in a worker pool** (production round 37; docx2svg

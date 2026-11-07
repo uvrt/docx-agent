@@ -1189,6 +1189,17 @@ doc.render_svg(pages=diff.changed)     # or render_png; ids on every paragraph g
   facts (cheap already), coalescing a check onto a newer version (its facts would be of
   another version than its validate), worker affinity (ooxml-edit: would save the
   pickle each way, about 0.6 s of 1.7 s a task).
+- **Round 38 (0.1.55, ooxml-edit 0.88.0):** layouts held where they were made
+  (`docx_agent.layout`, "layouts held where they were made": `_HELD`, one per lineage, two
+  a process; a task is handed `("held", now, kept, lineage)` and takes the layout of `now`,
+  of `kept`, or the lineage's newest, else lays out whole), the document's layout tasks
+  sent to their holder (ooxml-edit's affinity; wait: the last whole layout's time, the
+  deadline before one was timed), a lone check's layout facts made there
+  (`docx_agent.tools.check_worker`, `layout.check_facts`; `LayoutSummary` for
+  `since_last_check`), row and cell keys resolved from their parents. A thread of this
+  process holding the document's lock never waits for a layout another thread took (round
+  34's rule); one that let it go waits at most 5 s. Not moved: validate (the live document
+  and its baseline), fields, copies, scales.
 - **Round 35 (R18, R19):** `check` and `render` on some blocks: `range`, one or several
   of `word_read`'s range forms; the facts about the blocks on the pages they fall on
   (`docx_agent.scope`: a fact is about its subject -- `para`, `paras`, `ids`, `table`,
