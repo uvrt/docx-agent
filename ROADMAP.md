@@ -503,14 +503,46 @@ ids; docx-agent keeps them deterministic and skips every id the document has had
   "was replaced with p:4B50F4CD ..., or use p:4B50F4CD" (and offers it). The tool and its
   caller come from the session's record of who made each version (the format's
   `configure` sets `Document.describe_step`); the library alone says the version.
-* **Saved and opened again** -- a resumed run reopening its document under its old id --
-  nothing is kept but the file. The sequence then goes on after the *last* of its values the
-  file still has (looking `REACH`, 4,096 values, past it): a value before that one the file
-  lacks was written and deleted, and is skipped. What this cannot know is an id deleted
-  after the last surviving one of its sequence (the most recent blocks, all deleted, then a
-  save): such an id may be given again after the reopen, and naming one says not found
-  rather than deleted. Writing the ledger into the file was not chosen: it would change
-  every document's bytes for a record Word does not need.
+* **Saved and opened again, with its id state** (round 38). `Document.id_state()` exports
+  the ledger as a short opaque string the application keeps beside the bytes; `Document.open
+  (data, ids=state)` takes it back. Then no value the document ever had is generated again,
+  naming a deleted id says which change deleted it and who made it, as before, adding
+  "before the document was saved and opened again" (`DeletedId.earlier`), and versions go on:
+  the document opens at the version it was saved at and the next change gets one more than
+  the highest the earlier session gave (`History.continue_from`), so "version N" names one
+  state across every reopen. Renames kept as aliases come back too (an id held from before
+  the first edit stamped the document still resolves). The tool layer: `Session.save(doc)`
+  gives the bytes and the state at one version under the document's lock, a
+  `save_document` output carries its own (`Output.state`, never shown to the model), and
+  `Session.open(data, name, doc_id=..., state=...)` takes it back.
+  - *Form*: `docx-ids.1.` and url-safe base64 of zlib-compressed JSON. A seed's generated
+    values are its sequence up to where it got (one number); the values in the file now
+    are not written (opening reads them); the other retired values (ids Word wrote that
+    edits replaced or deleted) as sorted differences; each deleted block id by its place
+    along its seed's sequence, with its change's version, both as differences; who made a
+    change once per wording. Measured: a document written by docx-agent, 300 paragraphs, 1,500
+    text edits, 600 blocks deleted and 600 added, one change each: 294 bytes; 2,000
+    paragraphs, every other one edited, 1,000 deleted by 11 callers (2,100 versions): 427
+    bytes. Ids Word wrote cost about 5 bytes each once retired (random values): the same 300
+    paragraphs with Word's ids, 3.3 KB. Export 3 ms, opening with it a few milliseconds
+    more than without.
+  - *Checked*: the state names the bytes it belongs to by a digest of their ids (every
+    paraId, textId, drawing id and drawing number: the same however the package is zipped
+    or cleaned, different after any edit). A state of other bytes, damaged, or of a later
+    form is refused (`IdStateError`, an `ArgumentError`; the tool layer's `StateRefused`)
+    with the way out: the state saved with these bytes, or none. Refused rather than
+    ignored with a warning: a state that does not match means the application stored the
+    wrong pair, and opening anyway would give back exactly the ids the state exists to
+    keep retired -- silently, in a log line no one reads. The fix is one argument away.
+  - *Without a state* nothing changes: nothing is kept but the file. The sequence then goes
+    on after the *last* of its values the file still has (looking `REACH`, 4,096 values, past
+    it): a value before that one the file lacks was written and deleted, and is skipped.
+    What this cannot know is an id deleted after the last surviving one of its sequence (the
+    most recent blocks, all deleted, then a save): such an id may be given again after the
+    reopen, and naming one says not found rather than deleted.
+  - Writing the ledger into the file (a custom XML part, settings) was not chosen: it would
+    change every document's bytes for a record Word does not need, and the application
+    keeps its own state beside the file anyway (`doc_id`).
 
 ### Everything else
 

@@ -45,6 +45,13 @@ it and the first agent would edit a block it never read.  So:
 * across a save and a reopen nothing is kept but the file, so the sequence goes on after the
   last of its values the file still uses (:func:`generate`, :data:`REACH`): a value of it
   before that one that the file lacks was used and deleted, and is not taken again.
+
+**Opened again with its state** (round 38).  The file alone cannot say which ids were deleted
+after the last surviving one of a sequence.  :meth:`Document.id_state` exports the ledger as a
+short opaque string (:func:`export_state`) that the application keeps beside the bytes, and
+``Document.open(data, ids=state)`` takes it back (:func:`load_state`): then no value the
+document ever had is generated again, a deleted id still says by which change, and versions
+go on from the saved one.  Word's bytes are not touched: the state is kept apart from them.
 """
 
 from __future__ import annotations
@@ -56,6 +63,7 @@ import threading
 from dataclasses import dataclass, field
 
 from lxml import etree
+from ooxml_edit.errors import ArgumentError
 
 from ..oxml.xml import MC, W14, Element
 
@@ -241,14 +249,18 @@ class DeletedId(KeyError):
     """An id that named a block (or a drawing) this session and names nothing now: deleted,
     or replaced.  A ``KeyError``, as any id the document lacks; ``version`` is the version of
     the change that removed it (``None`` when not known), ``replaced_by`` the id of the one
-    block that took its place, when one did."""
+    block that took its place, when one did, ``earlier`` whether that change was made before
+    the document was last opened (with its id state, round 38)."""
 
     def __init__(self, message: str, identifier: str, version: int | None = None,
-                 replaced_by: str | None = None) -> None:
+                 replaced_by: str | None = None, *, earlier: bool = False) -> None:
         super().__init__(message)
         self.identifier = identifier
         self.version = version
         self.replaced_by = replaced_by
+        #: Whether the change was made before the document was saved and opened again
+        #: (with its id state, round 38): no undo of this session reaches it.
+        self.earlier = earlier
 
     def __str__(self) -> str:
         return str(self.args[0])
@@ -279,6 +291,19 @@ class Ledger:
         self.highest_drawing = 0
         #: Block id value -> the id of the one block that replaced it, in its change.
         self.replaced: dict[int, str] = {}
+        #: The changes made before the document was saved and opened again with its id
+        #: state (round 38), by version: who made each, in words (``None``: not known).
+        self.earlier: dict[int, str | None] = {}
+
+    def restore(self, loaded: "LoadedState") -> None:
+        """Take back what a state saved beside the bytes held (:func:`load_state`), before
+        any state of this session is read."""
+        self.pool = loaded.pool
+        self.gone = dict(loaded.gone)
+        self.drawings_gone = dict(loaded.drawings_gone)
+        self.highest_drawing = max(self.highest_drawing, loaded.highest_drawing)
+        self.replaced = dict(loaded.replaced)
+        self.earlier = dict(loaded.steps)
 
     def note(self, roots: list[Element], version: int) -> None:
         """Read the state ``roots`` are, as version ``version``: what is gone since the last
@@ -454,3 +479,221 @@ def ensure_w14(root: Element, *, drawings: bool = False, extra: dict[str, str] |
 def stamp(element: Element, para_id: str, text_id: str) -> None:
     element.set(PARA_ID, para_id)
     element.set(TEXT_ID, text_id)
+
+
+# -- the state kept beside the bytes (round 38) ------------------------------------------------
+
+#: What every id state starts with: the format's name and number.  A later docx-agent that
+#: writes another form changes the number and still reads this one.
+STATE_PREFIX = "docx-ids.1."
+
+
+class IdStateError(ArgumentError):
+    """``Document.open(..., ids=state)`` refused the state: not one docx-agent wrote, or not
+    the state of these bytes.  An :class:`~ooxml_edit.errors.ArgumentError` (so a
+    ``ValueError``); the message says what to pass instead."""
+
+
+#: The way out every refusal of a state ends with.
+_WAY_OUT = ("Pass the state saved together with these bytes (Session.save gives both at one "
+            "version; a save_document output carries its own, Output.state), or open the bytes "
+            "without ids=: the ids are then read from the file alone, and one deleted after the "
+            "last surviving id of its sequence may be given again")
+
+
+def drawing_numbers(roots: list[Element]) -> set[int]:
+    """Every drawing number (``wp:docPr/@id``) written in ``roots``."""
+    out: set[int] = set()
+    for root in roots:
+        for node in root.iter(WP_DOC_PR):
+            raw = node.get("id")
+            if raw is not None and raw.isdigit():
+                out.add(int(raw))
+    return out
+
+
+def footprint(used: set[int], drawings: set[int]) -> str:
+    """The digest of a document's ids -- every paraId, textId and drawing id
+    (:func:`used_long_hex`) and drawing number -- that a state names the bytes it belongs
+    to by: the same for the same ids however the package is zipped, and different after any
+    edit that writes one (an edit of a paragraph's text renews its textId)."""
+    digest = hashlib.sha256()
+    digest.update(b"".join(value.to_bytes(4, "big") for value in sorted(used)))
+    digest.update(b"|" + ",".join(str(number) for number in sorted(drawings)).encode())
+    return digest.hexdigest()[:24]
+
+
+def _deltas(values) -> list[int]:
+    """Sorted values as their differences: small numbers, which compress well."""
+    out: list[int] = []
+    previous = 0
+    for value in sorted(values):
+        out.append(value - previous)
+        previous = value
+    return out
+
+
+def _steps(values: list[int]) -> list[int]:
+    """Values in the order given as their differences (which may be negative)."""
+    out: list[int] = []
+    previous = 0
+    for value in values:
+        out.append(value - previous)
+        previous = value
+    return out
+
+
+def _sums(deltas) -> list[int]:
+    out: list[int] = []
+    running = 0
+    for delta in deltas:
+        running += int(delta)
+        out.append(running)
+    return out
+
+
+def export_state(ledger: Ledger, roots: list[Element], *, version: int, last: int,
+                 aliases: dict[str, str], describe=None) -> str:
+    """The ledger of a document whose parts are ``roots``, at ``version`` (``last`` the
+    highest version its history gave), as one short string: :data:`STATE_PREFIX` and the
+    url-safe base64 of compressed JSON.  Read the ledger's state first (``Ledger.note``).
+
+    Compact: a seed's generated values are the members of its sequence up to where it got
+    (one number per seed); values in the file now are not written (opening reads them);
+    a deleted block's id is its place along its seed's sequence where it has one, in order,
+    with its change's version; who made a change (``describe(version)``) once per wording."""
+    import base64
+    import json
+    import zlib
+
+    pool = ledger.pool if ledger.pool is not None else IdPool()
+    used = used_long_hex(roots)
+    drawings = drawing_numbers(roots)
+    seeds = sorted((seed, k) for seed, k in pool.cursors.items() if k > 0)
+    place: dict[int, tuple[int, int]] = {}
+    covered: set[int] = set()
+    for number, (seed, k) in enumerate(seeds):
+        members = _sequence(seed, k)[:k]
+        for index, value in enumerate(members):
+            place.setdefault(value, (number, index))
+        covered.update(members)
+    extra = set(pool) - used - covered
+
+    # Each deleted id: its seed's number (-1: none) and place, and the version that deleted
+    # it; written per seed in order of place, places and versions as differences.
+    groups: dict[int, list[tuple[int, int]]] = {}
+    for value, step in ledger.gone.items():
+        number, index = place.get(value, (-1, value))
+        groups.setdefault(number, []).append((index, step))
+    gone = []
+    for number, entries in sorted(groups.items()):
+        entries.sort()
+        gone.append([number, _deltas(index for index, _ in entries), _steps([step for _, step in entries])])
+    drawn = sorted(ledger.drawings_gone.items())
+    # Who made each change that deleted something, once per distinct wording.
+    words: list[str] = []
+    by: list[tuple[int, int]] = []
+    for step in sorted({*ledger.gone.values(), *ledger.drawings_gone.values()}):
+        text = ledger.earlier[step] if step in ledger.earlier else (describe(step) if describe is not None else None)
+        if text is None:
+            continue
+        if text not in words:
+            words.append(text)
+        by.append((step, words.index(text)))
+    record = {
+        "digest": footprint(used, drawings), "version": version, "last": last,
+        "seeds": [[seed, k] for seed, k in seeds], "extra": _deltas(extra), "gone": gone,
+        "drawings": [_deltas(value for value, _ in drawn), _steps([step for _, step in drawn])],
+        "who": words, "by": [_deltas(step for step, _ in by), [word for _, word in by]],
+        "highest": ledger.highest_drawing,
+        "replaced": {f"{value:08X}": new for value, new in sorted(ledger.replaced.items())
+                     if value in ledger.gone},
+        "aliases": dict(sorted(aliases.items())),
+    }
+    packed = zlib.compress(json.dumps(record, separators=(",", ":")).encode(), 9)
+    return STATE_PREFIX + base64.urlsafe_b64encode(packed).decode("ascii").rstrip("=")
+
+
+@dataclass
+class LoadedState:
+    """An id state read back (:func:`load_state`): what :meth:`Ledger.restore` takes."""
+
+    version: int
+    last: int
+    pool: IdPool
+    gone: dict[int, int]
+    drawings_gone: dict[int, int]
+    steps: dict[int, str | None]
+    highest_drawing: int
+    replaced: dict[int, str]
+    aliases: dict[str, str]
+
+
+def load_state(state, roots: list[Element]) -> LoadedState:
+    """Read ``state`` (:func:`export_state`'s string; its bytes too) for the document whose
+    parts are ``roots``: an :class:`IdStateError` when it is not a state or not these ids'."""
+    import base64
+    import binascii
+    import json
+    import zlib
+
+    if isinstance(state, (bytes, bytearray)):
+        try:
+            state = bytes(state).decode("ascii")
+        except UnicodeDecodeError:
+            state = None
+    if not isinstance(state, str) or not state.startswith("docx-ids."):
+        shown = type(state).__name__ if not isinstance(state, str) else repr(state[:24])
+        raise IdStateError(f"ids= takes the string Document.id_state() gave (it starts {STATE_PREFIX!r}), "
+                           f"not {shown}. {_WAY_OUT}")
+    if not state.startswith(STATE_PREFIX):
+        raise IdStateError(f"this id state is of another form ({state.split('.', 2)[1]!r}) than this "
+                           f"docx-agent reads (1): a later docx-agent wrote it -- upgrade docx-agent. {_WAY_OUT}")
+    body = state[len(STATE_PREFIX):]
+    try:
+        record = json.loads(zlib.decompress(base64.urlsafe_b64decode(body + "=" * (-len(body) % 4))))
+        version, last = int(record["version"]), int(record["last"])
+        seeds = [(str(seed), int(k)) for seed, k in record["seeds"]]
+        digest = str(record["digest"])
+    except (binascii.Error, zlib.error, ValueError, KeyError, TypeError) as error:
+        raise _damaged(error) from None
+    used = used_long_hex(roots)
+    drawings = drawing_numbers(roots)
+    found = footprint(used, drawings)
+    if found != digest:
+        raise IdStateError(f"this id state is of other bytes: it was saved with a document whose ids' "
+                           f"digest is {digest}, and these bytes' is {found} -- the state of another "
+                           f"version of this document, or of another document. {_WAY_OUT}")
+    try:
+        pool = IdPool(used)
+        members: list[list[int]] = []
+        for seed, k in seeds:
+            values = _sequence(seed, k)[:k]
+            members.append(values)
+            pool.update(values)
+            pool.cursors[seed] = k
+        pool.update(_sums(record.get("extra", ())))
+        gone: dict[int, int] = {}
+        for number, deltas, steps in record.get("gone", ()):
+            for index, step in zip(_sums(deltas), _sums(steps), strict=True):
+                gone[members[number][index] if number >= 0 else index] = step
+        values, steps = record.get("drawings", ((), ()))
+        drawings_gone = dict(zip(_sums(values), _sums(steps), strict=True))
+        words = [str(word) for word in record.get("who", ())]
+        versions, said = record.get("by", ((), ()))
+        known = {step: words[word] for step, word in zip(_sums(versions), said, strict=True)}
+        earlier = {step: known.get(step) for step in {*gone.values(), *drawings_gone.values()}}
+        pool.update(gone)
+        return LoadedState(
+            version=version, last=last, pool=pool, gone=gone, drawings_gone=drawings_gone,
+            steps=earlier,
+            highest_drawing=max(int(record.get("highest", 0)), max(drawings, default=0)),
+            replaced={int(value, 16): str(new) for value, new in record.get("replaced", {}).items()},
+            aliases={str(old): str(new) for old, new in record.get("aliases", {}).items()})
+    except (ValueError, KeyError, TypeError, IndexError, AttributeError) as error:
+        raise _damaged(error) from None
+
+
+def _damaged(error: BaseException) -> IdStateError:
+    return IdStateError(f"this id state is damaged ({type(error).__name__}): it is not the whole string "
+                        f"Document.id_state() gave. {_WAY_OUT}")

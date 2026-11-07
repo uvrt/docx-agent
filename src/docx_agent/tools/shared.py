@@ -141,7 +141,9 @@ def save_document(call: Any, doc: str, name: str, format: str, clean: bool = Fal
         from ..edit.cleaning import clean as clean_bytes
 
         data, cleaned = clean_bytes(data)
-    result = Result(summary=f"Saved {name} for the application", data=call.output(name, format, data))
+    # Round 38: the output carries the document's id state, for opening these bytes again.
+    result = Result(summary=f"Saved {name} for the application",
+                    data=call.output(name, format, data, state=True))
     if cleaned is not None:
         # What clean took out (round 16, F11): counts and bytes per kind, the file's sizes.
         result.data["cleaned"] = cleaned
