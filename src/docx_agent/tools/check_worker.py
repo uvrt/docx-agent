@@ -87,7 +87,7 @@ def _facts(held: Any, data: bytes, options: dict, request: dict) -> dict:
     if request.get("summary"):
         summary = held.extra.get("summary")
         if summary is None:
-            summary = held.extra["summary"] = LayoutSummary(layout)
+            summary = held.extra["summary"] = LayoutSummary(layout, held.extra.get("summary before"), keep=True)
         out["summary"] = summary
     pages = request.get("pages")
     scoped_pages = pages
