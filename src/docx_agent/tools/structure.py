@@ -9,8 +9,9 @@ from typing import Any
 from ooxml_edit.tools import REVIEW, Result, ToolError, array, number, obj, string
 
 from ..edit.sections import STARTS
+from . import positions
 from ._base import lay_out_ahead, need, update_fields_ahead, one_of, outcome, remember, resolve, short, word_tool
-from .text import find_range, text_range
+from .text import AT, BLOCKS_REF, find_range, name_blocks, named, text_range
 
 DOC = string("Document id.")
 CURSOR = string("next_cursor of the previous page.", optional=True)
@@ -18,7 +19,9 @@ CURSOR = string("next_cursor of the previous page.", optional=True)
 
 def _place(call: Any, after: str | None, before: str | None, after_section: str | None = None) -> dict:
     """``after=``/``before=`` for the library, an ``after_section`` heading resolved to the
-    last block of its section."""
+    last block of its section.  Round 40: ``after`` may say its side as ``at`` does (an
+    ``at`` is read as ``after``: :mod:`.positions`) -- ``before:X``, ``after:X``, ``end``
+    (after the body's last block)."""
     given = {k: v for k, v in (("after", after), ("before", before), ("after_section", after_section)) if v}
     if len(given) != 1:
         raise ToolError("invalid_arguments", "give exactly one of after, before" +
@@ -27,8 +30,23 @@ def _place(call: Any, after: str | None, before: str | None, after_section: str 
     if after_section:
         return {"after": call.document.section_blocks(resolve(call, after_section))[-1]}
     if after:
-        return {"after": resolve(call, after)}
-    return {"before": resolve(call, before)}
+        side, anchor = positions.side_of(after)
+        if side == "end":
+            ids = [b["id"] for b in call.document.blocks() if b["id"]]
+            return {"after": ids[-1]}
+        return {side: _end(call, anchor, side)}
+    return {"before": _end(call, before, "before")}
+
+
+def _end(call: Any, anchor: str, side: str) -> str:
+    """The block beside which: a span's last block (after it) or first (before it)."""
+    from ..edit.addresses import span_ends
+
+    anchor = resolve(call, anchor)
+    ends = span_ends(anchor) if isinstance(anchor, str) and ".." in anchor else None
+    if ends is None:
+        return anchor
+    return (ends[0] if side == "before" else ends[1]) or anchor
 
 
 # -- W11 word_move -----------------------------------------------------------------------------
@@ -41,7 +59,10 @@ def _place(call: Any, after: str | None, before: str | None, after_section: str 
             "after": string("Move after this block.", optional=True),
             "before": string("Move before this block.", optional=True),
             "after_section": string("Move after this heading's section.", optional=True)},
-           refs=('section_heading', 'blocks', 'after', 'before', 'after_section'), group="word_structure", mutates=True, exactly_one=[("section_heading", "blocks")])
+           refs=('section_heading', 'blocks', 'after', 'before', 'after_section'), group="word_structure", mutates=True, exactly_one=[("section_heading", "blocks")],
+           # Round 40: at (after:X, before:X) read as after; target is what moves, so no place.
+           aliases=positions.aliases("word_move", "sides", ("section_heading", "blocks", "after", "before",
+                                                         "after_section", "target", "where")))
 def word_move(call: Any, doc: str, section_heading: str | None = None, blocks: str | None = None,
               after: str | None = None, before: str | None = None, after_section: str | None = None) -> Result:
     document = call.document
@@ -62,20 +83,24 @@ def word_move(call: Any, doc: str, section_heading: str | None = None, blocks: s
             "source_doc": string("Open document to copy from, e.g. d2."),
             "range": string("Source block or span p:A..t:B.", optional=True),
             "section_heading": string("Or a source heading: its whole section.", optional=True),
-            "at": string("end, after:<id>, before:<id> or replace:<id>[..<id>]."),
+            "at": AT,
             "styles": string("Default use_destination.", enum=["use_destination", "keep_source", "merge"],
                              optional=True),
             "style_map": array(obj({"source": string(),
                                     "destination": string()}),
                                "Source style -> this document's style.", optional=True),
             "unmapped": string("Source styles this document lacks: import them (default) or use body.",
-                               enum=["import", "body"], optional=True)},
+                               enum=["import", "body"], optional=True),
+            "ref": BLOCKS_REF},
            group="word_structure", mutates=True, documents=("doc", "source_doc"),
-           exactly_one=[("range", "section_heading")])
+           exactly_one=[("range", "section_heading")],
+           aliases=positions.aliases("word_copy_from", "blocks", ("at", "range", "section_heading")))
 def word_copy_from(call: Any, doc: str, source_doc: str, at: str, range: str | None = None,
                    section_heading: str | None = None, styles: str = "use_destination",
-                   style_map: list[dict] | None = None, unmapped: str = "import") -> Result:
+                   style_map: list[dict] | None = None, unmapped: str = "import", ref: str | None = None) -> Result:
     from .text import _at
+
+    named(call, "word_copy_from", ref, at)
 
     # source_doc may be doc: copy_blocks then copies from the document as it was before the call.
     source = call.entries[source_doc].document
@@ -84,8 +109,8 @@ def word_copy_from(call: Any, doc: str, source_doc: str, at: str, range: str | N
     edit = call.document.copy_blocks(source, ids, at=_at(call, at), styles=styles, style_map=mapping,
                                      unmapped=unmapped)
     copied = dict(list(edit.copied.items())[:60])
-    return outcome([edit], f"Copied {len(edit.blocks) or len(edit.copied)} block(s) from {source_doc}",
-                   data={"blocks": edit.blocks, "copied": copied})
+    return name_blocks(call, ref, outcome([edit], f"Copied {len(edit.blocks) or len(edit.copied)} block(s) from "
+                                          f"{source_doc}", data={"blocks": edit.blocks, "copied": copied}))
 
 
 # -- W16 word_sections -------------------------------------------------------------------------
@@ -109,7 +134,8 @@ MARGINS = obj({side: number(minimum=0, maximum=1584, optional=True)
             "margins": MARGINS,
             "columns": number("set: text columns.", minimum=1, maximum=45, optional=True)},
            refs=('after', 'before', 'section'), group="word_structure", mutates=True,
-           action_roles={"list": REVIEW})
+           action_roles={"list": REVIEW},
+           aliases=positions.aliases("word_sections", "sides", ("after", "before", "section", "target", "where")))
 def word_sections(call: Any, doc: str, action: str, after: str | None = None, before: str | None = None,
                   section: str | None = None, start: str | None = None, orientation: str | None = None,
                   page_width: float | None = None, page_height: float | None = None,
@@ -269,7 +295,8 @@ def _fields_ahead(call: Any, doc: str, action: str, kind: str | None = None,
             "instruction": string("insert_field: the instruction, e.g. NUMPAGES.", optional=True),
             "ids": array(string(), "update: only these fields (fld:...).", optional=True)},
            refs=('after', 'before', 'at', 'ids[]'), group="word_structure", mutates=True,
-           action_roles={"list": REVIEW}, ahead=_fields_ahead)
+           action_roles={"list": REVIEW}, ahead=_fields_ahead,
+           aliases=positions.aliases("word_fields", "mark", ("after", "before", "at"), find=True))
 def word_fields(call: Any, doc: str, action: str, after: str | None = None, before: str | None = None,
                 at: str | None = None, find: str | None = None, levels: str | None = None,
                 bookmark: str | None = None, kind: str = "text", label: str | None = None,
@@ -288,11 +315,18 @@ def word_fields(call: Any, doc: str, action: str, after: str | None = None, befo
             if not match or int(match.group(1)) > int(match.group(2)):
                 raise ToolError("invalid_arguments", "levels is first-last, e.g. 1-3", field="levels")
             first, last = int(match.group(1)), int(match.group(2))
-        edit = document.insert_toc(**_place(call, after, before), levels=(first, last))
+        edit = document.insert_toc(**_place(call, *_beside(after, before, at)), levels=(first, last))
         return outcome([edit], f"Inserted a table of contents {edit.id}")
     if action == "insert_caption":
-        edit = document.insert_caption(**_place(call, after, before), label=label or "Figure", text=text or "")
+        edit = document.insert_caption(**_place(call, *_beside(after, before, at)), label=label or "Figure",
+                                       text=text or "")
         return outcome([edit], "Inserted a caption")
+    if at is None and find is None and (after or before):
+        # Round 40: a field after a block goes at its end; before it, at its start.
+        at = positions._write("mark", "after" if after else "before", after or before)
+        if at is None:
+            raise ToolError("invalid_arguments", f"{action} goes at a position: at p:<id>@<offset>, or a range "
+                            "(at its end)", field="at")
     where = _position(call, at, find)
     if action == "insert_cross_reference":
         edit = document.insert_cross_reference(where, need(bookmark, "bookmark"), kind=kind)
@@ -301,6 +335,14 @@ def word_fields(call: Any, doc: str, action: str, after: str | None = None, befo
     else:
         edit = document.insert_field(where, need(instruction, "instruction"))
     return outcome([edit], f"Inserted field {edit.id}")
+
+
+def _beside(after: str | None, before: str | None, at: str | None) -> tuple[str | None, str | None]:
+    """``word_fields``' blocks (a TOC, a caption) beside a block: ``after``/``before``, or
+    (round 40) ``at`` as the placing tools write it, read as ``after`` -- ``before:X`` too."""
+    if at is not None and after is None and before is None:
+        return at, None
+    return after, before
 
 
 def _position(call: Any, at: str | None, find: str | None) -> Any:
@@ -328,7 +370,8 @@ def _position(call: Any, at: str | None, find: str | None) -> Any:
             "text": string("insert, edit: the text.", optional=True),
             "ref": string("insert: ref name for the note.", optional=True)},
            refs=('at', 'note'), group="word_structure", mutates=True,
-           action_roles={"list": REVIEW})
+           action_roles={"list": REVIEW},
+           aliases=positions.aliases("word_notes", "mark", ("at", "note"), find=True))
 def word_notes(call: Any, doc: str, action: str, kind: str = "footnote", at: str | None = None,
                find: str | None = None, note: str | None = None, text: str | None = None,
                ref: str | None = None) -> Result:

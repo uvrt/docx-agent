@@ -5,6 +5,37 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.63 -- unreleased
+
+- **`word_format` formats text it finds** (production round 40). `find` takes items of
+  `text`, `within` (a block or span; the body by default; `range` read as `within`),
+  `occurrence` (from 1) and `expect` (`one`, the default, or `all`), as `replace_text` finds
+  text, so a text and its character style go in one call instead of a search for offsets
+  first. Every item is found before anything changes: a text found nowhere is refused with
+  where it occurs written otherwise (case, spaces) and what `within` holds; one matching
+  several, with each match's `occurrence`, range and context. `targets` is optional now (one
+  of `targets` or `find`), and either takes one value in place of a list.
+- **One way to name a place** (`docx_agent.tools.positions`). `at` -- `end`, `after:<id>`,
+  `before:<id>`, `replace:<id>`, a position `p:A@5`, or a bare id read as after it -- is the
+  form six of the nine placing tools took; `word_insert_text` takes it too, beside `target`
+  and `where`, and `word_move`, `word_sections` and `word_fields`' TOC and caption read an
+  `at` (`before:p:A`, `end`) as their `after`/`before`. Each placing tool reads another's
+  name for a place as its own where that says the same thing (`after`, a `target` alone,
+  `position`, `location`; a warning says so), and refuses one whose side is in its name
+  (`before`, `where` with a `target`) with the arguments that work in `details.call`
+  (`details.item` for an item). `word_insert_markdown` and `word_copy_from` take `ref`, the
+  blocks made named as one id or a span; `after:$ref` is after a span's last block,
+  `before:$ref` before its first. A `ref` holding an address says the place is `at`.
+- **`word_edit_table` `set_cells` `from` adds the rows the data needs** with `grow: true`:
+  after the last row, each as `insert_row` makes one (the last row's properties and cells,
+  never a header row), in the call's undo step, tracked while tracking is on; `index` may be
+  the row after the last, to append. Without it the refusal gives that call in
+  `details.call`. A source with fewer rows than the table leaves the rows below as they
+  were, and the warning now names them and the `delete_row` that removes them.
+- Definitions: +236 estimated tokens to every definition (15,050 -> 15,286), none to the
+  core; the strict set is 6 tools and 24 optional parameters (`word_insert_markdown`'s
+  `ref`), Claude's limit.
+
 ## 0.1.60 -- unreleased
 
 - **`render`'s `fast`: a page for about a third of the CPU while building** (production round
