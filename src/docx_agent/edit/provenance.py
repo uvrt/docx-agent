@@ -60,6 +60,15 @@ places count in.  So a fact is true while its characters are its text:
   to new paragraphs (a copy, a paste) takes no fact along; two paragraphs joined keep the
   first one's.
 
+**Labels** (round 38).  A step's label written in place of a value (``style_by_value``
+with a scale that shows labels, :mod:`ooxml_edit.tools.scales`) is kept in the same entry,
+under ``labels``: each an :mod:`ooxml_edit.provenance` label -- ``p`` 0, ``at``, ``text``
+the label as it reads now, ``value`` the value it stands for, ``source`` its reference --
+followed edit by edit as the facts are, but by :func:`ooxml_edit.provenance.labels_after_edit`:
+an edit of the label's own text keeps it (stretched over the new text; a paragraph's whole
+text stays its whole text), so a label edited by hand is still seen against its value
+(:meth:`ProvenanceOps.text_labels`, :meth:`ProvenanceOps.keep_text_label`).
+
 Everything is written in the caller's undo step (:meth:`~docx_agent.Document._edit`): the
 item, its properties and the relationship come and go together, and the last record
 removed takes all three away.
@@ -207,12 +216,44 @@ class ProvenanceOps:
             element = self._text_paragraph(key)
             if found is None or element is None:
                 continue
-            kept, facts = found
+            kept, facts, _labels = found
             now = _text.paragraph_text(element)
             facts = _records.facts_after_edit(facts, kept, now)
             if facts:
                 out.setdefault(self._text_key(key), []).extend(facts)
         return out
+
+    def text_labels(self: "Document") -> dict[str, list[dict[str, Any]]]:
+        """The labels written in place of values (round 38, see the module's notes) still
+        in their paragraphs, as kept in the file: ``{paragraph id: labels}``, each an
+        :mod:`ooxml_edit.provenance` label (``at`` its character in the paragraph's text,
+        ``text`` the label as it reads now, ``value``, ``source``...), in order.  A label
+        edited elsewhere since is followed as an edit here follows it."""
+        out: dict[str, list[dict[str, Any]]] = {}
+        item = self._provenance_item()
+        if item is None:
+            return out
+        for node in _entries(self.package.tree(item)):
+            if node.get("kind") != TEXT:
+                continue
+            key = node.get("key") or ""
+            found = self._text_entry(node)
+            element = self._text_paragraph(key)
+            if found is None or element is None or not found[2]:
+                continue
+            kept, _facts, labels = found
+            labels = _records.labels_after_edit(labels, kept, _text.paragraph_text(element))
+            if labels:
+                out.setdefault(self._text_key(key), []).extend(labels)
+        return out
+
+    def keep_text_label(self: "Document", paragraph: str, label: Mapping[str, Any]) -> bool:
+        """Keep ``label`` -- an :mod:`ooxml_edit.provenance` label, ``at`` its place in the
+        paragraph's text now and ``text`` its text there -- for the paragraph ``paragraph``,
+        in place of the labels and facts it overlaps; one undo step (or part of the
+        caller's).  ``False`` when nothing could be kept: the paragraph has no durable id, or
+        the label's text is not where it says."""
+        return self._keep_text(paragraph, [], [label])
 
     def keep_text_facts(self: "Document", paragraph: str, facts: list[Mapping[str, Any]]) -> bool:
         """Keep ``facts`` -- :mod:`ooxml_edit.provenance` facts whose ``p`` is 0 and ``at``
@@ -220,6 +261,12 @@ class ProvenanceOps:
         facts it kept that they do not overlap; one undo step (or part of the caller's).  A
         fact whose text is not where it says is left out.  ``False`` when nothing could be
         kept: the paragraph has no durable id (a positional ``p@...`` one)."""
+        return self._keep_text(paragraph, facts, [])
+
+    def _keep_text(self: "Document", paragraph: str, facts: list[Mapping[str, Any]],
+                   labels: list[Mapping[str, Any]]) -> bool:
+        """:meth:`keep_text_facts` and :meth:`keep_text_label`: the new facts and labels
+        kept, with the ones the paragraph kept that they do not overlap."""
         try:
             _part, entry = self._resolve(paragraph)
         except KeyError:
@@ -228,21 +275,29 @@ class ProvenanceOps:
             return False
         now = _text.paragraph_text(entry.element)
         new = _records.facts_found([{**dict(f), "p": 0} for f in facts], now)
+        new_labels = _records.labels_found([{**dict(f), "p": 0} for f in labels], now)
+        if labels and not new_labels:
+            return False
         with self._edit():
             item = self._provenance_item()
             root = self.package.tree(item) if item is not None else None
             node = next((n for n in _entries(root) if n.get("key") == entry.id
                          and n.get("kind") == TEXT), None)
             old: list[dict[str, Any]] = []
+            old_labels: list[dict[str, Any]] = []
             if node is not None:
                 found = self._text_entry(node)
                 if found is not None:
                     old = _records.facts_after_edit(found[1], found[0], now)
-            spans = [(f["at"], f["at"] + len(f["text"])) for f in new]
-            kept = [f for f in old if not any(f["at"] < end and start < f["at"] + len(f["text"])
-                                              for start, end in spans)]
-            merged = sorted(kept + new, key=lambda f: f["at"])
-            if not merged:
+                    old_labels = _records.labels_after_edit(found[2], found[0], now)
+            spans = [(f["at"], f["at"] + len(f["text"])) for f in new + new_labels]
+
+            def clear(f: Mapping[str, Any]) -> bool:
+                return not any(f["at"] < end and start < f["at"] + len(f["text"]) for start, end in spans)
+
+            merged = sorted([f for f in old if clear(f)] + new, key=lambda f: f["at"])
+            merged_labels = sorted([f for f in old_labels if clear(f)] + new_labels, key=lambda f: f["at"])
+            if not merged and not merged_labels:
                 if node is not None and root is not None and item is not None:
                     root.remove(node)
                     self.package.mark_dirty(item)
@@ -253,22 +308,23 @@ class ProvenanceOps:
                 node = etree.SubElement(root, _P + "source")
                 node.set("kind", TEXT)
                 node.set("key", entry.id)
-            text = _records.dumps({"v": _records.VERSION, "paragraph": now, "facts": merged})
+            text = _records.dumps(_text_record(now, merged, merged_labels))
             if node.text != text and item is not None:
                 node.text = text
                 self.package.mark_dirty(item)
         return True
 
-    def _text_entry(self: "Document", node: Any) -> tuple[str, list[dict[str, Any]]] | None:
-        """A text entry's paragraph text and facts, ``None`` when it holds no record."""
+    def _text_entry(self: "Document", node: Any) -> tuple[str, list[Any], list[Any]] | None:
+        """A text entry's paragraph text, facts and labels, ``None`` when it holds no
+        record."""
         try:
             found = _records.loads(node.text or "")
         except _records.RecordError:
             return None
-        kept, facts = found.get("paragraph"), found.get("facts")
-        if not isinstance(kept, str) or not isinstance(facts, list):
+        kept, facts, labels = found.get("paragraph"), found.get("facts"), found.get("labels", [])
+        if not isinstance(kept, str) or not isinstance(facts, list) or not isinstance(labels, list):
             return None
-        return kept, facts
+        return kept, facts, labels
 
     def _text_paragraph(self: "Document", key: str) -> Any:
         """The paragraph element a text entry's key names now (a renamed one followed), or
@@ -305,18 +361,19 @@ class ProvenanceOps:
             element = self._text_paragraph(key)
             if found is None or element is None:
                 continue                       # gone: pruned with the other records
-            kept, facts = found
+            kept, facts, labels = found
             now = _text.paragraph_text(element)
             name = self._text_key(key)
             if now == kept and name == key:
                 continue
             facts = _records.facts_after_edit(facts, kept, now)
+            labels = _records.labels_after_edit(labels, kept, now)
             changed = True
-            if not facts or kind_of(name) != TEXT:
+            if (not facts and not labels) or kind_of(name) != TEXT:
                 root.remove(node)
                 continue
             node.set("key", name)
-            node.text = _records.dumps({"v": _records.VERSION, "paragraph": now, "facts": facts})
+            node.text = _records.dumps(_text_record(now, facts, labels))
         if changed:
             self.package.mark_dirty(item)
 
@@ -426,6 +483,15 @@ class ProvenanceOps:
                 if identifier == key:
                     return what == "chart" and not (accepted and _inside_deletion(frame))
         return False
+
+
+def _text_record(paragraph: str, facts: list[dict[str, Any]],
+                 labels: list[dict[str, Any]]) -> dict[str, Any]:
+    """A paragraph's text entry: its text, facts and (when it has any) labels."""
+    out: dict[str, Any] = {"v": _records.VERSION, "paragraph": paragraph, "facts": facts}
+    if labels:
+        out["labels"] = labels
+    return out
 
 
 def _entries(root: Any) -> list[Any]:
