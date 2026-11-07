@@ -862,7 +862,7 @@ _RECENT_LOCK = threading.Lock()
 #: those of the blocks this process measured in an earlier version of the document, instead
 #: of measuring every block again (46 pages, one paragraph edited: 0.6-0.7 s of CPU against
 #: 1.9-2.5 s).  Its own lock; nothing is waited for under it.
-_MEASURES = MeasureStore()
+_MEASURES = MeasureStore(lineages=2)
 
 
 def _fraction(numerator: int, denominator: int) -> Fraction:

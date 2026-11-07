@@ -5,6 +5,25 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.51 -- unreleased
+
+- **Layouts after an edit cost a third as much in a worker pool** (production round 37; docx2svg
+  0.11.7). A document is laid out from its last layout in whichever worker is free, handed
+  over as a pickle without what its flow measured (most of it); the worker then measured
+  every block again, about a whole layout. Each worker process now keeps what it measured
+  of the document (docx2svg's `MeasureStore`, by lineage: two documents' worth, about 25 MB
+  for a 46-page report) and measures only the blocks that changed: one paragraph edited,
+  1.9-2.5 s of CPU -> 0.6-0.7 s. A check no longer has docx2svg find the pages whose drawing
+  changed (nothing read them; after an edit that adds a page under a "Page X of Y" footer it
+  drew every page: 2.65 -> 0.77 s). Layouts are pickled with their fractions rebuilt from
+  their terms (a third less time each way). Many versions laid out at once: the layout
+  the next version starts from is the newest started, not the last finished.
+  Made-up 46-page report, 11 threads each editing its chapter then checking and rendering
+  its page, 4 rounds, 4 CPUs: wall 164 -> 103 s, check median 18.1 -> 11.7 s (longest 43 ->
+  29), render median 13.9 -> 10.0 s, workers' CPU 466 -> 276 s. Edits never wait for a
+  layout (median 0.2 s throughout): a check and a render let the document go while they
+  lay out. Pages, facts and renders are unchanged.
+
 ## 0.1.50 -- unreleased
 
 - **An id is never given to another block** (production round 37, R36). A deleted block's
