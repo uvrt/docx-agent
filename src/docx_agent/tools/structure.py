@@ -34,19 +34,8 @@ def _place(call: Any, after: str | None, before: str | None, after_section: str 
         if side == "end":
             ids = [b["id"] for b in call.document.blocks() if b["id"]]
             return {"after": ids[-1]}
-        return {side: _end(call, anchor, side)}
-    return {"before": _end(call, before, "before")}
-
-
-def _end(call: Any, anchor: str, side: str) -> str:
-    """The block beside which: a span's last block (after it) or first (before it)."""
-    from ..edit.addresses import span_ends
-
-    anchor = resolve(call, anchor)
-    ends = span_ends(anchor) if isinstance(anchor, str) and ".." in anchor else None
-    if ends is None:
-        return anchor
-    return (ends[0] if side == "before" else ends[1]) or anchor
+        return {side: resolve(call, anchor)}
+    return {"before": resolve(call, before)}
 
 
 # -- W11 word_move -----------------------------------------------------------------------------
