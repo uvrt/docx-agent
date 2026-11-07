@@ -961,7 +961,7 @@ def test_find_replace_and_render_are_sent_without_a_decks_parameters(box, sessio
     sent = {d["name"]: d["input_schema"]["properties"] for d in box.definitions("anthropic", defer=False)}
     assert set(sent["find_text"]) == {"doc", "text", "regex", "range", "stories", "cursor"}
     assert set(sent["replace_text"]) == {"doc", "find", "replace", "expect", "regex", "range", "stories"}
-    assert set(sent["render"]) == {"doc", "pages", "width", "sheet", "range"}
+    assert set(sent["render"]) == {"doc", "pages", "width", "sheet", "range", "fast"}
     assert sent["find_text"]["stories"]["enum"] == ["body", "all"]
     assert "scope" not in sent["undo"] and "clean" in sent["save_document"]
     d = open_doc(session)
