@@ -23,7 +23,10 @@ CALLS = 20_000
 
 def test_no_two_tasks_hold_the_same_layout(monkeypatch):
     monkeypatch.setattr(render, "_RECENT", {})
-    blobs = [pickle.dumps((f"layout {k}", {"fonts": k})) for k in range(render._RECENT_SIZE + 2)]
+    # Round 39: kept within a quarter of the budget -- here two one-page layouts' worth.
+    monkeypatch.setattr(render, "LAYOUT_MEMORY", 8 * render.PAGE_COST)
+    kept = 2
+    blobs = [pickle.dumps((f"layout {k}", {"fonts": k})) for k in range(kept + 2)]
     guard = threading.Lock()
     held: set[int] = set()
     errors: list[str] = []
@@ -58,4 +61,4 @@ def test_no_two_tasks_hold_the_same_layout(monkeypatch):
     for thread in threads:
         thread.join()
     assert errors == []
-    assert len(render._RECENT) <= render._RECENT_SIZE
+    assert len(render._RECENT) <= kept

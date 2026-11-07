@@ -19,7 +19,7 @@ from typing import Any
 from ooxml_edit.tools import render, worker_task
 from ooxml_edit.tools.render import Layout, RendererBase, View
 
-from ..layout import (_MEASURES, _RECENT, _RECENT_LOCK, _RECENT_SIZE, _light, _remember,  # noqa: F401
+from ..layout import (_MEASURES, _RECENT, _RECENT_LOCK, _light, _remember,  # noqa: F401
                       _put_held, _taken, dumps, held_layout, held_state, made_facts)
 
 #: The ``data-docx-*`` attributes of a page's SVG: where its elements come from (paths,

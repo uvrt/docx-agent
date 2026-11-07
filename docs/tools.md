@@ -71,6 +71,11 @@ with Toolbox(TOOLS, formats=[FORMAT], groups=GROUPS) as toolbox:
   workers stop as they start and the toolbox lays out in subprocess workers instead, with
   a warning that says why (ooxml-edit 0.58.0); `Toolbox(workers=0)` lays out in the
   script's own process.
+  Each worker keeps the layouts it made, with what it measured, for the documents' next
+  versions, within a memory budget: `DOCX_AGENT_LAYOUT_MEMORY` (MB, in the environment the
+  workers start with; 256 by default) for the layouts held -- about a megabyte a page -- and
+  up to 1.75 times it with the measurements and pickled layouts kept beside them, the least
+  recently used dropped first (`docx_agent.layout.LAYOUT_MEMORY`, round 39).
 - **Saving refuses new validation problems**; only the application may allow them
   (`Toolbox(allow_new_problems=True)`). `save_document` with `clean: true` takes out of
   the file saved what Word keeps but never draws -- orphaned parts (`[trash]/0000.dat`, a
