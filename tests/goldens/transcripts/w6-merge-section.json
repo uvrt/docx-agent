@@ -165,9 +165,6 @@
     "ok": true,
     "summary": "Copied 11 block(s) from d2",
     "created": [
-     "p:4C32E1FB",
-     "p:16425160",
-     "p:3B212964",
      "p:439BA4A8",
      "p:70439822",
      "p:11698B22",
@@ -176,12 +173,15 @@
      "p:43450195",
      "p:78481EA1",
      "p:20C1ECE5",
+     "p:41D60541",
+     "p:6FCDB881",
+     "p:0E520C6F",
      "footnotes/p:1B7C9837"
     ],
     "warnings": [
      "style 'List Number' added as Word writes it"
     ],
-    "data_sha": "49da904d50eecdff",
+    "data_sha": "7413651158aada4d",
     "data_keys": [
      "blocks",
      "copied",
@@ -198,7 +198,7 @@
      "copied.p:70439822",
      "copied.p:78481EA1"
     ],
-    "data_sha_core": "49da904d50eecdff"
+    "data_sha_core": "7413651158aada4d"
    }
   },
   {
@@ -209,8 +209,8 @@
    "expect": {
     "ok": true,
     "summary": "Read the document (final)",
-    "data_sha": "e00ee79d68f03aa4",
-    "data_sha_core": "e00ee79d68f03aa4"
+    "data_sha": "38ad81470adc33df",
+    "data_sha_core": "38ad81470adc33df"
    }
   },
   {
@@ -268,7 +268,7 @@
    "expect": {
     "ok": true,
     "summary": "Saved field-handbook.docx for the application",
-    "data_sha": "390431d08b1247a9",
+    "data_sha": "00185e242cbfcdb3",
     "data_keys": [
      "coverage",
      "coverage.blocks_laid_out",
@@ -290,6 +290,6 @@
  ],
  "output": {
   "name": "field-handbook.docx",
-  "sha256": "960b0b8dec4c7e6e0bab79d7a98fb5c133cdd461521981563f62189d26b80bf1"
+  "sha256": "8baa451cf356616f99d2a317de88369780f9f772cbb4364af4418a5c56ca99ac"
  }
 }

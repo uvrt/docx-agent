@@ -5,6 +5,7 @@ codes, and the Word system-prompt fragment (mechanics only: no house style)."""
 from __future__ import annotations
 
 import io
+import weakref
 import zipfile
 from typing import Any
 
@@ -17,6 +18,7 @@ from ..edit.charts import DiagramDrawingDropped, UntrackedChartEdit
 from ..edit.document import Document, NoCell
 from ..edit.errors import EditError
 from ..edit.formatting import FormattingError
+from ..edit.ids import DeletedId
 from ..edit.inline import SpanError
 from ..edit.pictures import PictureError
 from ..edit.ranges import AmbiguousAnchor, AnchorNotFound
@@ -82,6 +84,32 @@ def configure(document: Document, session: Any) -> None:
     its locale (``Toolbox(locale=...)``; en-US unless given)."""
     document.font_dirs = session.font_dirs
     document.locale = session.locale
+    # Round 37: an id that is gone names the call that removed it, and how to read again.
+    document.describe_step = _StepOwner(session, document)
+    document.read_hint = "word_read"
+
+
+class _StepOwner:
+    """``document.describe_step``: the tool, and its caller's context, whose change made a
+    version of the document -- the session's record (``DocumentEntry.owners``).  Holds both
+    weakly: a closed document or an ended session says nothing."""
+
+    def __init__(self, session: Any, document: Document) -> None:
+        self._session = weakref.ref(session)
+        self._document = weakref.ref(document)
+
+    def __call__(self, version: int) -> str | None:
+        session, document = self._session(), self._document()
+        if session is None or document is None:
+            return None
+        for entry in list(getattr(session, "documents", {}).values()):
+            if entry.document is document:
+                owner = entry.owners.get(version)
+                if owner is None:
+                    return None
+                context = ", ".join(f"{key}={value}" for key, value in owner.caller.items())
+                return f"{owner.tool} ({context})" if context else owner.tool
+        return None
 
 
 def store_provenance(document: Document, address: str, record: Any) -> None:
@@ -126,8 +154,10 @@ def summary(document: Document) -> dict[str, Any]:
 def restored(document: Document) -> None:
     """Parts were put back behind the document's back -- a ``batch`` op that failed, rolled
     back inside the batch's open undo step: the trees were reparsed, so every index is
-    stale (what the document's own ``undo`` does after the history's)."""
+    stale (what the document's own ``undo`` does after the history's).  A scoped undo or
+    redo too: what it removed or brought back is read, as an undo's is (round 37)."""
     document._invalidate()
+    document._note_ids()
 
 
 def _candidates(error: AmbiguousAnchor) -> list[str]:
@@ -142,6 +172,8 @@ def _candidates(error: AmbiguousAnchor) -> list[str]:
 
 ERRORS = {
     AddressError: ("invalid_arguments", lambda error: error.options),
+    # Round 37: an id that is gone says so, which call removed it, and what replaced it.
+    DeletedId: ("not_found", lambda error: [error.replaced_by] if error.replaced_by else []),
     # Round 31, R5c: a cell the table lacks, with the cells it has.
     NoCell: ("not_found", lambda error: error.options),
     AmbiguousAnchor: ("ambiguous", _candidates),

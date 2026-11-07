@@ -207,7 +207,7 @@ def locate(document: "Document", identifier: str) -> tuple[str, Element]:
                 if member == identifier:
                     return part, element
             break
-    raise KeyError(f"no drawing {identifier!r}")
+    raise document._deleted(identifier) or KeyError(f"no drawing {identifier!r}")
 
 
 def default_language(document: "Document") -> str:

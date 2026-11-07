@@ -152,7 +152,7 @@ class Picture:
         for part, identifier, frame in self.document._drawings():
             if identifier == self.id:
                 return part, frame
-        raise KeyError(f"no picture {self.id}")
+        raise self.document._deleted(self.id) or KeyError(f"no picture {self.id}")
 
     @property
     def name(self) -> str | None:
@@ -269,13 +269,17 @@ class PictureOps:
         return found
 
     def _next_doc_pr(self: "Document") -> int:
-        largest = 0
+        """A new drawing's number, its ``d:`` id: past every one the document has and every
+        one it had this session (round 37: a drawing's id is never another drawing's)."""
+        self._id_pool()
+        largest = self._ledger.highest_drawing
         for part in self._parts():
             for node in self.package.tree(part).iter(_WP + "docPr"):
                 try:
                     largest = max(largest, int(node.get("id")))
                 except (TypeError, ValueError):
                     pass
+        self._ledger.highest_drawing = largest + 1
         return largest + 1
 
     def _svg_picture(self: "Document", data: bytes, color: str | None) -> tuple[bytes, bytes, tuple[float, float]]:

@@ -74,6 +74,7 @@ from docx2svg.paths import path_part, resolve_path
 from docx2svg.relayout import MeasureStore
 
 from .edit.effective import PathFinder
+from .edit import ids as _ids
 from .edit.ids import ParagraphEntry, TableEntry
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -1182,9 +1183,11 @@ def twin_of(document: "Document") -> dict:
     lock = _keeper(document)
     with lock:
         kept = document._layout_kept
+    # Round 37: the ids the document had, so the copy generates the ones it would.
+    pool = document._id_pool()
     return {"stamping": document.stamping, "font_dirs": getattr(document, "font_dirs", None),
             "locale": getattr(document, "locale", None), "converter": document.converter,
-            "kept": kept}
+            "kept": kept, "ids": (set(pool), dict(pool.cursors), document._ledger.highest_drawing)}
 
 
 def twin(data: bytes, like: dict) -> "Document":
@@ -1201,6 +1204,11 @@ def twin(data: bytes, like: dict) -> "Document":
     copy._layout_kept = like["kept"]
     if like["kept"] is not None:
         copy._layout_count = like["kept"][2]   # numbered on from the document's
+    if like.get("ids") is not None:
+        values, cursors, highest = like["ids"]
+        copy._ledger.pool = _ids.IdPool(values)
+        copy._ledger.pool.cursors.update(cursors)
+        copy._ledger.highest_drawing = highest
     return copy
 
 

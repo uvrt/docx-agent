@@ -171,12 +171,16 @@ def _paragraphs_of(document: "Document", address: str, number: int) -> tuple[str
     naming the range and the ways in where it names nothing."""
     from .edit.addresses import AddressError
     from .edit.errors import EditError
+    from .edit.ids import DeletedId
 
     try:
         part, entries = document._scope_paragraphs(address)
     except AddressError as error:
         raise _refused(document, f"range[{number}] {address!r}: {_message(error)}", code="invalid_arguments",
                        options=list(error.options or [])) from None
+    except DeletedId as error:                   # round 37: gone, and by which change
+        raise _refused(document, f"range[{number}] {_message(error)}", code="not_found",
+                       options=[error.replaced_by] if error.replaced_by else None) from None
     except (KeyError, IndexError) as error:
         raise _refused(document, f"range[{number}] {address!r} names nothing in the document ({_message(error)})",
                        code="not_found") from None
