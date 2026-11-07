@@ -5,6 +5,26 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.52 -- unreleased
+
+- **Retired ids stay retired across a save and a reopen** (production round 38; ooxml-edit
+  0.88.0). Opened from its file alone, a document could give again an id deleted after the
+  last surviving one of its sequence (the round 37 limit). `Document.id_state()` exports what
+  the document's ids have been -- every value it had, each deleted id with the change that
+  deleted it and who made it, drawing numbers, renames, the version -- as a short opaque
+  string to keep beside the bytes; `Document.open(data, ids=state)` takes it back: no id is
+  given again, naming a deleted one says `... was deleted by word_delete (agent=writer-2),
+  the change that made version 7, before the document was saved and opened again`
+  (`DeletedId.earlier`), and versions go on from the saved one (the next change gets one
+  more than the highest the earlier session gave). Word's bytes are not touched. The tools:
+  `Session.save(doc)` gives `data` and `state` at one version, `save_document`'s output
+  carries `Output.state`, `Session.open(data, name, doc_id=..., state=...)` takes it back.
+  A state of other bytes (a digest of their ids), damaged or of a later form is refused
+  (`IdStateError`; the tool layer's `StateRefused`) with the way out; without a state,
+  nothing changes. Size: 294 bytes for a 300-paragraph document after 1,500 edits and 600
+  deletions; 427 bytes for 2,000 paragraphs and 1,000 deletions by 11 callers; about 5
+  bytes per retired id Word wrote. No tool definition changed: offline tokens unchanged.
+
 ## 0.1.51 -- unreleased
 
 - **Layouts after an edit cost a third as much in a worker pool** (production round 37; docx2svg

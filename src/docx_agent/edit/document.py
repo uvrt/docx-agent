@@ -834,7 +834,7 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
 
     @classmethod
     def open(cls, source: str | os.PathLike[str] | bytes | BinaryIO, *,
-             stamping: str = "document") -> "Document":
+             stamping: str = "document", ids: str | None = None) -> "Document":
         """Open a ``.docx`` (or ``.docm``, ``.dotx``...) from a path, bytes or a binary
         file.  Nothing is changed until you edit: ``Document.open("report.docx")``.
 
@@ -845,7 +845,14 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
 
         ``stamping`` decides when paragraphs without Word's ``w14:paraId`` get one
         (``"document"``: all of them, on the first edit; ROADMAP.md, "Addressing and stable
-        ids")."""
+        ids").
+
+        ``ids`` is the state :meth:`id_state` gave when these bytes were saved (round 38):
+        the document goes on from where it was -- no id it ever had is given again, naming a
+        deleted one says which change deleted it, and versions continue from the saved one.
+        An :class:`~docx_agent.edit.ids.IdStateError` (an ``ArgumentError``) refuses a
+        state that is not these bytes', saying what to pass instead; ``None`` (or ``""``)
+        reads the ids from the file alone, as before."""
         package = WordPackage.open(source)
         package.document_part()  # refuse a package that is not a Word document
         if package.kind in ("dotx", "dotm"):
@@ -858,7 +865,10 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
                 f"{name} is a template (.{package.kind}): editing it edits the template. To make a document "
                 f"from it use Document.new(template=...); save('x.docx') writes a document either way"),
                 stacklevel=2)
-        return cls(package, stamping=stamping)
+        document = cls(package, stamping=stamping)
+        if ids is not None and ids not in ("", b""):
+            document._restore_ids(ids)
+        return document
 
     @classmethod
     def new(cls, *, page=None, orientation: str | None = None, language: str | None = None, locale=None,
@@ -1294,6 +1304,32 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
             return
         ledger.note(self._roots(), self.history.version)
 
+    def id_state(self) -> str:
+        """What this document's ids have been, as a short opaque string to keep beside its
+        bytes (round 38): every id it ever had, which change deleted each block id that is
+        gone (with who made it, in the tool layer), the drawing numbers used, the renames,
+        and the version.  ``Document.open(data, ids=state)`` takes it back.
+
+        It describes the document as it is now: take it with the bytes it goes with, at one
+        version (``to_bytes()`` and ``id_state()`` together, no edit between; the tool
+        layer's ``Session.save`` does both under the document's lock).  Nothing is written
+        into the document: Word's bytes stay as they are.  Size: a few hundred bytes for a
+        document written by docx-agent, growing with the ids deleted (about a byte or two
+        each when docx-agent made them, four or five when Word did) and the ids Word wrote
+        that edits replaced (ROADMAP.md, "Addressing and stable ids")."""
+        self._note_ids()
+        return _ids.export_state(self._ledger, self._roots(), version=self.history.version,
+                                 last=self.history.last_version, aliases=self._aliases,
+                                 describe=self.describe_step)
+
+    def _restore_ids(self, state) -> None:
+        """Take back :meth:`id_state`'s string, before anything is read or edited."""
+        loaded = _ids.load_state(state, self._roots())
+        self.history.continue_from(loaded.version, loaded.last)
+        self._ledger.restore(loaded)
+        self._aliases.update(loaded.aliases)
+        self._note_ids()
+
     def _remember_ids(self, values: set[int]) -> None:
         """Ids written other than by generating them (a copy's own, kept): never again."""
         self._id_pool().update(values)
@@ -1313,8 +1349,9 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
         if found is not None and ledger.drawings_gone:
             number = int(found.group(1))
             if number in ledger.drawings_gone:
-                return _ids.DeletedId(_deleted_message(self, found.group(0), ledger.drawings_gone[number]),
-                                      found.group(0), ledger.drawings_gone[number])
+                version = ledger.drawings_gone[number]
+                return _ids.DeletedId(_deleted_message(self, found.group(0), version),
+                                      found.group(0), version, earlier=version in ledger.earlier)
         if not ledger.gone:
             return None
         for match in _GONE_BLOCK.finditer(identifier):
@@ -1325,7 +1362,7 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
             version = ledger.gone[value]
             replaced_by = ledger.replaced.get(value)
             return _ids.DeletedId(_deleted_message(self, named, version, replaced_by, identifier),
-                                  named, version, replaced_by)
+                                  named, version, replaced_by, earlier=version in ledger.earlier)
         return None
 
     def _note_replaced(self, old: list[str], new: list[str]) -> None:
@@ -2539,11 +2576,19 @@ _GONE_DRAWING = re.compile(r"d:(\d+)(?![\d#])")
 
 def _deleted_message(document: "Document", named: str, version: int, replaced_by: str | None = None,
                      identifier: str | None = None) -> str:
-    """What naming a removed id says: which change removed it, and the way on (round 37)."""
-    describe = document.describe_step
-    who = describe(version) if describe is not None else None
+    """What naming a removed id says: which change removed it, and the way on (round 37).
+    A change made before the document was saved and opened again with its id state is
+    described by the state's words, and says so (round 38)."""
+    earlier = document._ledger.earlier
+    if version in earlier:
+        who = earlier[version]
+    else:
+        describe = document.describe_step
+        who = describe(version) if describe is not None else None
     what = f"replaced with {replaced_by}" if replaced_by else "deleted"
     by = f" by {who}, the change that made version {version}" if who else f" in the change that made version {version}"
+    if version in earlier:
+        by += ", before the document was saved and opened again"
     head = f"{identifier}: " if identifier and identifier != named else ""
     tool = document.read_hint or "to_markdown"
     return (f"{head}{named} was {what}{by}. An id is never given to another block: read that part of "

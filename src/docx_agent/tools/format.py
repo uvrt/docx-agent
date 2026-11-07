@@ -78,6 +78,18 @@ def open_docx(data: bytes) -> Document:
     return Document.open(data)
 
 
+def open_docx_with_state(data: bytes, state: Any) -> Document:
+    """Bytes and the id state saved beside them (``Session.open(..., state=...)``, round 38):
+    the document's retired ids stay retired (:meth:`Document.open`'s ``ids``)."""
+    return Document.open(data, ids=state)
+
+
+def id_state(document: Document) -> str:
+    """The state kept beside a Word document's bytes (``Session.save``, ``Output.state``):
+    :meth:`Document.id_state`."""
+    return document.id_state()
+
+
 def configure(document: Document, session: Any) -> None:
     """A document joining a session lays out and renders with the session's font folders
     (``Toolbox(font_dirs=...)``; ``None``: ``OOXML_FONT_DIRS``) and is drawn and edited in
@@ -235,4 +247,4 @@ FORMAT = DocumentFormat(
     configure=configure, source_hint=source_hint, store_provenance=store_provenance,
     read_provenance=read_provenance, restored=restored, own_facts=dict(OWN_REFUSED),
     tool_hints=TOOL_HINTS, warm_up=warm_up, touched=touched, number_texts=number_texts,
-    scale_values=scale_values)
+    scale_values=scale_values, state=id_state, open_with_state=open_docx_with_state)
