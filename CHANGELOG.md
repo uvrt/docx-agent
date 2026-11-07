@@ -5,6 +5,25 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.54 -- unreleased
+
+- **A step's label in place of its value** (production round 38; ooxml-edit 0.87.0): a scale
+  with `"show": "label"` makes `style_by_value` replace each value's characters with its
+  step's label (a cell reads `High`, not `4.5`): the label takes the value's first character's
+  formatting, then the step's character style (and a cell its shading), and the paragraph's
+  entry in the provenance item keeps it beside its text facts with the value it stands for and
+  its reference (`Document.text_labels`, `Document.keep_text_label`) -- through a save, a
+  reopen and Word, as text facts are. An edit of a label keeps its record, stretched over the
+  new text (a paragraph's or cell's whole text stays whole), so `check(scale=...)` can list the
+  `labels` that are not their value's -- the value changed at its source, the label edited by
+  hand, a value typed over it -- and the `unrecorded` ones (a step's label with no value kept),
+  with the one fix. A value written by reference (`{{t:...}}`, `{{d:...}}`) found as a label
+  is read again from its source where the session can. Exact text steps are unchanged; a cell
+  takes a label in one paragraph of text. Tracked, the label is a deletion and an insertion.
+- Tokens (offline estimate): the scale's `show` +14 in the core (3,034 -> 3,048) and +60 in
+  every definition (14,950 -> 15,010, guard 15,010); a reviewer's core 2,908 -> 2,923, all
+  8,256 -> 8,270. The strict set unchanged (6 tools, 23 optional parameters).
+
 ## 0.1.51 -- unreleased
 
 - **Layouts after an edit cost a third as much in a worker pool** (production round 37; docx2svg
