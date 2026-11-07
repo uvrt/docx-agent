@@ -930,7 +930,7 @@ def lay_out_bytes(data: bytes, options: dict, state: Any = None) -> tuple:
     facts)``, ``laid_out`` the pickle of ``(layout, fonts, warnings)`` (:func:`_light`) and
     ``facts`` -- from an earlier version's layout -- ``relaid`` (why it was laid out whole,
     docx2svg's :data:`~docx2svg.relayout.FALLBACKS` code, or ``None``) and ``relaid_cause``;
-    ``changed`` is ``None`` (round 37: finding the pages whose drawing changed draws them,
+    ``changed`` is ``None`` (round 37: telling the pages whose drawing changed draws them,
     every page after an edit that adds one where a footer shows the page count, and
     nothing reads it here -- a check compares layouts itself, ``DocumentLayout.compare``).
 
@@ -948,7 +948,7 @@ def lay_out_bytes(data: bytes, options: dict, state: Any = None) -> tuple:
         # Taken, not handed back: the new layout goes on with its fonts and measurements.
         previous = _taken(state[1])[0]
     convert_options = docx2svg.ConvertOptions(**options)
-    # No ``changed_pages``: nothing here reads them, and finding them draws pages.
+    # No ``changed_pages``: nothing here reads them, and telling them draws pages.
     layout, _, fonts = docx2svg.lay_out_docx(data, convert_options, previous=previous, measures=_MEASURES,
                                              changed_pages=False)
     laid = (layout, fonts, list(convert_options.warnings))
