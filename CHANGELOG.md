@@ -5,6 +5,30 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.59 -- unreleased
+
+- **A worker keeps as many documents' layouts as its memory budget holds** (production
+  round 39; docx2svg 0.11.8). A process held two layouts (`_HELD`), two pickled ones
+  (`_RECENT`) and two documents' measurements (`_MEASURES`): with six documents built at once
+  on two workers, nearly every check laid its document out whole. They are now bounded by
+  `docx_agent.layout.LAYOUT_MEMORY` -- 256 MB a process by default,
+  `DOCX_AGENT_LAYOUT_MEMORY` (MB) to set it -- at a megabyte a page held (`PAGE_COST`,
+  measured: 1.05 MB a page on a made-up 11-page document, 0.95 MB on a 46-page report):
+  held layouts up to the budget (about 23 ten-page documents, or five 46-page reports), the
+  measurements kept by lineage up to half of it (`MEASURE_COST`, 96 kB a block measured), a
+  caller's own pickled layouts up to a quarter; the least recently used dropped first, the
+  newest kept whatever its size. At most 1.75 times the budget in all, plus the layouts the
+  tasks running at that moment hold. The study's made-up documents, two workers, half a core
+  of other load (on a machine busy with other work, so absolute times are high): six
+  builders 32.7 -> 18.2 s of CPU a document (worker CPU halved; documents per CPU-minute
+  1.84 -> 3.30), twelve builders 31.2 -> 17.7; one builder and the 11-writer report on one
+  document unchanged. Workers' largest resident memory with twelve builders 144 -> 250 MB.
+- With docx2svg 0.11.8, a document's first save (a settings part written again, revision
+  ids) no longer lays it out whole, and `word_fields` writing the page count into a footer
+  lays the document out whole with the body's measurements (where its headers and footers
+  hold no drawing, picture, object or frame).
+- Pages and facts are the same, byte for byte.
+
 ## 0.1.58 -- unreleased
 
 - A table cell merged with another after its values were labelled (a scale's `show: label`)
