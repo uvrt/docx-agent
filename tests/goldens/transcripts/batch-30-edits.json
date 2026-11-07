@@ -480,7 +480,7 @@
    "expect": {
     "ok": true,
     "summary": "Saved sample-10pages-reviewed.docx for the application",
-    "data_sha": "3060fef3b44cef11",
+    "data_sha": "c301d95a269761c4",
     "data_keys": [
      "coverage",
      "coverage.blocks_laid_out",
@@ -502,6 +502,6 @@
  ],
  "output": {
   "name": "sample-10pages-reviewed.docx",
-  "sha256": "40cc74492600bfb3548da993f037a3b138d5b62e87c187fac5f5c13c3c37647a"
+  "sha256": "0c689b9b8b5050fdcf6d06a222d9546c6f808820d420c184e0779cfb753d09d4"
  }
 }

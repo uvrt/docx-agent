@@ -247,6 +247,9 @@ class AddressOps:
         if not isinstance(identifier, str) or not identifier.strip():
             return AddressError(f"an id is empty ({identifier!r}): give a block id (p:..., t:...)"
                                 + (", or " + SPAN_SYNTAX if identifier == "" else ""))
+        deleted = self._deleted(identifier)
+        if deleted is not None:
+            return deleted
         try:
             ends = span_ends(identifier)
         except AddressError as error:

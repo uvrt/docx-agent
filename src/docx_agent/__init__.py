@@ -53,16 +53,17 @@ from .edit.annotations import Comment, ContentControl, Drawing, Note
 from .edit.charts import (Chart, ChartDataWarning, ChartEditError, Diagram, DiagramDrawingDropped, Member,
                           UntrackedChartEdit)
 from .edit.fields import Field
+from .edit.ids import DeletedId
 from .edit.importing import copy_blocks
 from .markdown.stylemap import DEFAULT as DEFAULT_STYLE_MAP, Rule, StyleMap
 from .revisions.changes import Change
 from .revisions.review import Revision
 from .revisions.stamp import Tracking
 
-__version__ = "0.1.49"
+__version__ = "0.1.50"
 
 __all__ = ["AmbiguousAnchor", "AnchorNotFound", "Bookmark", "Cell", "Change", "Chart", "ChartDataWarning", "ChartEditError",
-           "Comment", "ContentControl", "DEFAULT_STYLE_MAP", "Diagram", "DiagramDrawingDropped", "Document", "Drawing", "EditError",
+           "Comment", "ContentControl", "DEFAULT_STYLE_MAP", "DeletedId", "Diagram", "DiagramDrawingDropped", "Document", "Drawing", "EditError",
            "EditResult", "Field", "Hyperlink", "ListMembership", "Member", "Note", "Paragraph", "Picture", "Revision", "Row",
            "Rule", "Run", "Section", "Story", "StyleMap", "Table", "TextRange", "Tracking", "UntrackedChartEdit",
            "__version__", "copy_blocks"]

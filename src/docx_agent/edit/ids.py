@@ -29,9 +29,22 @@ comments, new ones throughout).  A repeat it replaces, keeping the first.  ``sta
 "paragraph"`` stamps only what an edit touches, for callers who want fewer bytes changed and
 do not need ids to outlive a Word save.
 
-Generated paraIds are deterministic: the first values of a sequence seeded by the part's
-name that no paraId or textId anywhere in the document uses, so the same edit on the same
-document writes the same bytes, and undoing and redoing it writes them again.
+Generated paraIds are deterministic: values of a sequence seeded by the part's name that no
+paraId or textId anywhere in the document uses, so the same edit on the same document writes
+the same bytes, and undoing and redoing it writes them again.
+
+**An id is never given to another block** (round 37).  An agent holds ids for many turns, and
+another may delete the block meanwhile; were the id free again, the next new block would get
+it and the first agent would edit a block it never read.  So:
+
+* a document keeps, beside the ids in use, every id it has had this session -- in any part,
+  in any state its history went through (:class:`Ledger`) -- and generates none of them
+  again.  Undoing a deletion brings the block back with its id: that is the same block.
+* a call naming a block id that is gone fails as *deleted*, saying which change deleted it
+  (:class:`DeletedId`), never reaching another block;
+* across a save and a reopen nothing is kept but the file, so the sequence goes on after the
+  last of its values the file still uses (:func:`generate`, :data:`REACH`): a value of it
+  before that one that the file lacks was used and deleted, and is not taken again.
 """
 
 from __future__ import annotations
@@ -39,6 +52,7 @@ from __future__ import annotations
 import functools
 import hashlib
 import re
+import threading
 from dataclasses import dataclass, field
 
 from lxml import etree
@@ -200,24 +214,108 @@ def _owner_table(row: Element) -> Element | None:
 
 def used_long_hex(roots: list[Element]) -> set[int]:
     """Every paraId and textId, and every drawing's anchorId and editId, written anywhere in
-    ``roots``."""
+    ``roots``.
+
+    lxml's walk over the four elements (``iter``, in C), the attributes read by name: a
+    quarter of the time of the XPath it replaced (round 37; that one walked the tree once
+    per element and attribute), read before every edit that renews a textId (round 28, W8)."""
     used: set[int] = set()
     for root in roots:
-        # The values read by XPath, in C (round 28, W8: read before every edit that renews
-        # a textId, over the whole document).
-        for raw in _USED(root):
-            if _HEX.fullmatch(raw):
-                used.add(int(raw, 16))
+        for node in root.iter(W_P, W_TR, WP_INLINE, WP_ANCHOR):
+            for name in _USED_NAMES:
+                raw = node.get(name)
+                if raw is not None and _HEX.fullmatch(raw):
+                    used.add(int(raw, 16))
     return used
 
 
-#: The ids :func:`used_long_hex` reads: the four attributes, on a paragraph, a row or a
-#: drawing (the root among them).
-_USED = etree.XPath(" | ".join(
-    f"descendant-or-self::{element}/@{attribute}"
-    for element in ("w:p", "w:tr", "wp:inline", "wp:anchor")
-    for attribute in ("w14:paraId", "w14:textId", "wp14:anchorId", "wp14:editId")),
-    namespaces={"w": _W[1:-1], "wp": _WP[1:-1], "w14": W14, "wp14": WP14})
+#: The attributes :func:`used_long_hex` reads.
+_USED_NAMES = (PARA_ID, TEXT_ID, ANCHOR_ID, EDIT_ID)
+
+
+#: A drawing's number, its ``d:`` id, is its ``wp:docPr``'s ``id``.
+WP_DOC_PR = _WP + "docPr"
+
+
+class DeletedId(KeyError):
+    """An id that named a block (or a drawing) this session and names nothing now: deleted,
+    or replaced.  A ``KeyError``, as any id the document lacks; ``version`` is the version of
+    the change that removed it (``None`` when not known), ``replaced_by`` the id of the one
+    block that took its place, when one did."""
+
+    def __init__(self, message: str, identifier: str, version: int | None = None,
+                 replaced_by: str | None = None) -> None:
+        super().__init__(message)
+        self.identifier = identifier
+        self.version = version
+        self.replaced_by = replaced_by
+
+    def __str__(self) -> str:
+        return str(self.args[0])
+
+
+class Ledger:
+    """What a document's ids have been this session, beside what they are now.
+
+    ``pool`` holds every ``ST_LongHexNumber`` value any state had -- paraIds, textIds,
+    drawing ids -- and every one :func:`generate` gave, so none is generated again.
+    ``gone`` maps each block id value no longer in the document to the version of the change
+    that removed it, ``drawings_gone`` the same for drawing numbers, for the error that says
+    so.  :meth:`note` reads a state: once per version, at the edges of edits, undo and redo.
+
+    Memory: one int per value ever written (a paragraph's paraId and textId, each textId an
+    edit of its text renews), about 60 bytes each in a set, plus a dict entry for each
+    deleted block -- some hundred kilobytes for a long report written and rewritten all day.
+    """
+
+    def __init__(self) -> None:
+        self.pool: IdPool | None = None
+        self.version: int | None = None
+        self.blocks: set[int] = set()
+        self.gone: dict[int, int] = {}
+        self.drawings: set[int] = set()
+        self.drawings_gone: dict[int, int] = {}
+        #: The highest drawing number any state had or an insertion took.
+        self.highest_drawing = 0
+        #: Block id value -> the id of the one block that replaced it, in its change.
+        self.replaced: dict[int, str] = {}
+
+    def note(self, roots: list[Element], version: int) -> None:
+        """Read the state ``roots`` are, as version ``version``: what is gone since the last
+        state read went in ``version``; what is back (an undone deletion) is no longer gone."""
+        if self.version == version and self.pool is not None:
+            return
+        blocks: set[int] = set()
+        drawings: set[int] = set()
+        for root in roots:
+            for node in root.iter(W_P, W_TR, WP_DOC_PR):
+                if node.tag == WP_DOC_PR:
+                    raw = node.get("id")
+                    if raw is not None and raw.isdigit():
+                        drawings.add(int(raw))
+                else:
+                    raw = node.get(PARA_ID)
+                    if raw is not None and _HEX.fullmatch(raw):
+                        blocks.add(int(raw, 16))
+        if self.pool is None:
+            # The state as opened: every value in it.  Later states add only what generate
+            # gave (into the pool itself), what a copy kept (Document._remember_ids) and
+            # what Document._used finds in use.
+            self.pool = IdPool(used_long_hex(roots))
+        else:
+            for value in self.blocks - blocks:
+                self.gone[value] = version
+            for value in self.drawings - drawings:
+                self.drawings_gone[value] = version
+        for value in blocks & self.gone.keys():
+            del self.gone[value]
+        for value in drawings & self.drawings_gone.keys():
+            del self.drawings_gone[value]
+        self.pool |= blocks
+        self.blocks = blocks
+        self.drawings = drawings
+        self.highest_drawing = max(self.highest_drawing, max(drawings, default=0))
+        self.version = version
 
 
 def drawings_needing_ids(root: Element) -> list[Element]:
@@ -227,20 +325,87 @@ def drawings_needing_ids(root: Element) -> list[Element]:
             if not (valid_long_hex(node.get(ANCHOR_ID)) and valid_long_hex(node.get(EDIT_ID)))]
 
 
+#: How far :func:`generate` looks along a seed's sequence past the last value in use before it
+#: takes new ones: a run of values the document lacks shorter than this, followed by one it
+#: has, is one this sequence wrote and an edit deleted (a deleted table of a thousand cells is
+#: two thousand values: two per paragraph or row).  Found once per seed and document
+#: (:class:`IdPool`), from cached values: a set lookup each.
+REACH = 4096
+
+#: Each seed's sequence as far as it has been needed, shared by every document (the seeds are
+#: part names, so few): ``seed -> values``.  Replaced, never changed in place, under the lock.
+_SEQUENCES: dict[str, list[int]] = {}
+_SEQUENCES_LOCK = threading.Lock()
+
+
+def _sequence(seed: str, length: int) -> list[int]:
+    """The first ``length`` (or more) values of ``seed``'s sequence, in ``0 .. 0x7FFFFFFF``."""
+    found = _SEQUENCES.get(seed)
+    if found is not None and len(found) >= length:
+        return found
+    with _SEQUENCES_LOCK:
+        found = _SEQUENCES.get(seed) or []
+        if len(found) < length:
+            more = [int.from_bytes(hashlib.sha256(f"{seed}\0{counter}".encode()).digest()[:4], "big")
+                    & 0x7FFFFFFF for counter in range(len(found), max(length, 2 * len(found)))]
+            found = found + more
+            _SEQUENCES[seed] = found
+        return found
+
+
+class IdPool(set):
+    """A document's ids, in use and retired (:meth:`Ledger.pool`): a set of ints that
+    :func:`generate` adds to, and where along each seed's sequence it got to -- every value
+    before that point is in the set, so the next call starts there."""
+
+    __slots__ = ("cursors",)
+
+    def __init__(self, values=()) -> None:
+        super().__init__(values)
+        self.cursors: dict[str, int] = {}
+
+
+def _after_last(seed: str, used: set[int]) -> int:
+    """Where along ``seed``'s sequence new values start: after the last one ``used`` holds
+    with no later one within :data:`REACH` -- 0 for a document none of whose ids it wrote."""
+    last = -1
+    k = 0
+    values = _sequence(seed, REACH + 1)
+    while k - last <= REACH:
+        if k >= len(values):
+            values = _sequence(seed, 2 * k)
+        if values[k] in used:
+            last = k
+        k += 1
+    return last + 1
+
+
 def generate(seed: str, used: set[int], count: int = 1) -> list[str]:
     """``count`` new ``ST_LongHexNumber`` values, deterministic in ``seed`` and ``used``:
-    the first members of the seed's sequence that ``used`` does not hold, in ``1 ..
-    0x7FFFFFFF``, upper-case and eight digits wide as Word writes them.  ``used`` gains them."""
+    the next members of the seed's sequence that ``used`` does not hold, in ``1 ..
+    0x7FFFFFFF``, upper-case and eight digits wide as Word writes them.  ``used`` gains them.
+
+    *Next* is after the last member ``used`` holds (:func:`_after_last`), not the first free
+    one: a member before it that ``used`` lacks was written once and deleted -- in a document
+    saved and opened again, whose session no longer knows it -- and a block id is never
+    given to another block.  An :class:`IdPool` remembers where each seed got to."""
+    cursors = getattr(used, "cursors", None)
+    k = cursors.get(seed) if cursors is not None else None
+    if k is None:
+        k = _after_last(seed, used)
+    values = _sequence(seed, k + 2 * count + 16)
     out: list[str] = []
-    counter = 0
     while len(out) < count:
-        digest = hashlib.sha256(f"{seed}\0{counter}".encode()).digest()
-        counter += 1
-        value = int.from_bytes(digest[:4], "big") & 0x7FFFFFFF
+        if k >= len(values):
+            values = _sequence(seed, 2 * k + 16)
+        value = values[k]
+        k += 1
         if value == 0 or value in used:
             continue
         used.add(value)
         out.append(f"{value:08X}")
+    if cursors is not None:
+        cursors[seed] = k
     return out
 
 

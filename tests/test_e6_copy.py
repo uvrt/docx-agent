@@ -401,11 +401,14 @@ def test_a_copy_within_a_document_reads_the_blocks_as_they_were():
     table = _tables(within)[0]
     before = ([p.text for p in within.paragraphs()], _grid(within, table))
     result = within.copy_blocks(within, table, at=f"replace:{table}")
-    # The copy keeps the ids the blocks it replaced had, as a copy from another document
-    # keeps those nothing here uses, and the result names the ids it has.
+    # The copy has ids of its own (round 37: the replaced blocks' ids are never another
+    # block's), the result names them, and the old id says what replaced it.
     copy = result.copied[table]
-    assert _tables(within)[0] == copy == table and result.blocks == [copy]
-    assert ([p.text for p in within.paragraphs()], _grid(within, copy)) == before
+    assert _tables(within)[0] == copy != table and result.blocks == [copy]
+    with pytest.raises(KeyError, match=f"{table} was replaced with {copy}"):
+        within.table(table)
+    texts = [p.text for p in within.paragraphs()]
+    assert (texts, _grid(within, copy)) == before
     assert check(within.package) == []
 
 

@@ -175,7 +175,7 @@
     "ok": true,
     "summary": "Inserted a caption",
     "created": [
-     "p:78688CBC",
+     "p:6A70E1A8",
      "fld:body/0"
     ]
    }
@@ -240,7 +240,7 @@
    "expect": {
     "ok": true,
     "summary": "Saved supplier-assessment.docx for the application",
-    "data_sha": "ee744e3f31d85413",
+    "data_sha": "708a38549f2d7147",
     "data_keys": [
      "coverage",
      "coverage.blocks_laid_out",
@@ -262,6 +262,6 @@
  ],
  "output": {
   "name": "supplier-assessment.docx",
-  "sha256": "726eece228fea60b69e87b9b2d089df2de71b55e4a3f6b01e1b4b3404e462114"
+  "sha256": "1cadfb54a27d28ab992e2a1857cc35a48449a8e975123cd5427b62446877d5a4"
  }
 }

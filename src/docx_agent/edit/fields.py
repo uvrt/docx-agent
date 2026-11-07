@@ -1044,6 +1044,10 @@ class FieldOps:
                 paragraph.append(run)
             paragraph.append(_text.make_run(EMPTY_TOC, None))
             new_paragraphs.append(paragraph)
+        # Round 37: a rebuilt entry keeps the ids of the old entry in its place -- the
+        # table's k-th line is still its k-th line -- so updating twice writes the same
+        # bytes; only lines beyond the old ones get new ids.
+        previous = [(p, p.get(_ids.PARA_ID), p.get(_ids.TEXT_ID)) for p in entries_place[:-1]]
         # Take the old entries out: everything from the begin to the end's paragraph.
         end_paragraph = _paragraph_of(item.end)
         begin_paragraph = _paragraph_of(item.begin)
@@ -1072,8 +1076,10 @@ class FieldOps:
             for paragraph in new_paragraphs:
                 end_paragraph.addprevious(paragraph)
         used = self._used()
+        kept = iter([(para_id, text_id) for old, para_id, text_id in previous
+                     if old.getparent() is None and _ids.valid_long_hex(para_id) and _ids.valid_long_hex(text_id)])
         for paragraph in new_paragraphs:
-            para_id, text_id = _ids.generate(part + "\0toc", used, 2)
+            para_id, text_id = next(kept, None) or _ids.generate(part + "\0toc", used, 2)
             _ids.stamp(paragraph, para_id, text_id)
         _ids.ensure_w14(self.package.tree(part))
         self.package.mark_dirty(part)
