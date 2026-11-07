@@ -165,15 +165,16 @@ def test_a_range_on_one_page_or_taller_than_a_page_is_not_tried(box, session):
 
 
 def _many(count: int) -> tuple[bytes, list[int]]:
-    """``count`` pages, each ending in a two-block span that the page parts: filler to the
-    page's foot, then a heading and a long paragraph (its lines over the break)."""
+    """``count`` times :func:`_span_doc`'s page -- filler, then a span of four blocks that a
+    page break parts -- each from a new page: the spans' first blocks' places."""
     body, starts, at = "", [], 0
-    for _ in range(count):
-        body += _fill(17)
+    for k in range(count):
+        first = p(f"{FILLER} start", ppr="<w:pageBreakBefore/>" if k else "")
+        body += first + _fill(16)
         at += 17
         starts.append(at)
-        body += p("Head") + p(WORDS) + p("Gap", ppr="<w:pageBreakBefore/>")
-        at += 3
+        body += p("Head") + p(WORDS) + grid(5) + p("Closing line")
+        at += 4
     return docx(body + p("End")), starts
 
 
@@ -182,7 +183,7 @@ def test_each_range_is_tried_alone_and_past_the_cap_the_rest_say_how_to_ask(box,
     data, starts = _many(3)
     d = session.open(data, "many.docx")
     ids = _ids(session, d)
-    spans = [f"{ids[k]}..{ids[k + 1]}" for k in starts]
+    spans = [f"{ids[k]}..{ids[k + 3]}" for k in starts]
     entries = _range(box, session, d, *spans)
     assert all("fix" in e for e in entries)
     assert ["if_kept" in e for e in entries] == [True, True, False]
@@ -201,7 +202,7 @@ def test_past_the_time_budget_no_further_trial_starts(box, session, monkeypatch)
     data, starts = _many(2)
     d = session.open(data, "budget.docx")
     ids = _ids(session, d)
-    first, second = _range(box, session, d, *[f"{ids[k]}..{ids[k + 1]}" for k in starts])
+    first, second = _range(box, session, d, *[f"{ids[k]}..{ids[k + 3]}" for k in starts])
     assert "if_kept" in first and "effect_left_out" in second
 
 
