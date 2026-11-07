@@ -53,7 +53,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install --pre "lxml>=7.0.0b1"
           python -m pip install "ooxml-common @ git+https://github.com/uvrt/ooxml-common@main"
-          # TEMPORARY (r38): ooxml-edit 0.88.0 (state kept beside the bytes) is on its r38-reopen
+          # TEMPORARY (r38): ooxml-edit 0.89.0 (state kept beside the bytes) is on its r38-reopen
           # branch until uvrt/ooxml-edit#104 is merged; point this line back at @main then.
           python -m pip install "ooxml-edit @ git+https://github.com/uvrt/ooxml-edit@r38-reopen"
           python -m pip install "docx2svg[png] @ git+https://github.com/uvrt/docx2svg@main"

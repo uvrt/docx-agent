@@ -5,10 +5,10 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
-## 0.1.52 -- unreleased
+## 0.1.56 -- unreleased
 
 - **Retired ids stay retired across a save and a reopen** (production round 38; ooxml-edit
-  0.88.0). Opened from its file alone, a document could give again an id deleted after the
+  0.89.0). Opened from its file alone, a document could give again an id deleted after the
   last surviving one of its sequence (the round 37 limit). `Document.id_state()` exports what
   the document's ids have been -- every value it had, each deleted id with the change that
   deleted it and who made it, drawing numbers, renames, the version -- as a short opaque
