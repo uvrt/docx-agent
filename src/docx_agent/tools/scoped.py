@@ -26,6 +26,7 @@ from typing import Any
 from ooxml_edit.tools import ToolError
 
 from ..edit import copies as _copies
+from ..edit.ids import DeletedId
 from ..scope import Scope, headings_as_ranges
 
 _W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
@@ -213,6 +214,10 @@ def _blocks(document: Any, address: Any, where: str) -> list[tuple[str, Any]]:
         raise ToolError("invalid_arguments", f"{where} {address!r}: {error.args[0] if error.args else error}",
                         field="copies", valid_options=list(error.options or headings_as_ranges(document))[:50]) \
             from None
+    except DeletedId as error:                   # round 37: gone, and by which change
+        raise ToolError("not_found", f"{where}: {error}", field="copies",
+                        valid_options=[error.replaced_by] if error.replaced_by else
+                        headings_as_ranges(document)[:50]) from None
     except (KeyError, IndexError, EditError) as error:
         raise ToolError("not_found", f"{where} {address!r} names no block of the body "
                         f"({error.args[0] if error.args else error}); give a block or a span p:A..t:B, "

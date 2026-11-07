@@ -198,6 +198,15 @@ def _insert(document, place, blocks, notes, options, pictures, style_map, tracki
     lone_properties = None
     with document._edit():
         renames = document._prepare(place.part, [], place.position)
+        # Writing into a document's one empty paragraph is typing into it: the first new
+        # paragraph keeps its paraId and textId, as Word keeps a paragraph's id (round 37:
+        # the same paragraph, so no id goes to another block).
+        continued = None
+        if place.lone and place.replaced and blocks and not isinstance(blocks[0], m.Table):
+            old = document._resolve(place.replaced[0])[1].element
+            continued = (old.get(_ids.PARA_ID), old.get(_ids.TEXT_ID))
+            if not all(_ids.valid_long_hex(value) for value in continued):
+                continued = None
         if place.lone and place.replaced and tracking is not None:
             # Typing into a new document's empty paragraph, tracked (Word's form at a
             # container's end, E3): the new paragraphs' marks are inserted but the last
@@ -242,7 +251,9 @@ def _insert(document, place, blocks, notes, options, pictures, style_map, tracki
             trailing = writer.paragraph([], None)
             elements[-1].addnext(trailing)
             elements.append(trailing)
-        created = writer.stamp(elements)
+        created = writer.stamp(elements, continued=continued if elements and elements[0].tag == W_P else None)
+        if place.replaced and tracking is None and continued is None:
+            document._note_replaced(place.replaced, writer.top_ids)
         if tracking is not None and elements:
             writer.track(elements, tracking, old_mark=lone_properties)
         writer.finish()
@@ -1099,9 +1110,11 @@ class Writer:
 
     # -- after placing ----------------------------------------------------------------------
 
-    def stamp(self, elements: list[Element]) -> list[str]:
+    def stamp(self, elements: list[Element], *, continued: tuple[str, str] | None = None) -> list[str]:
         """Give every new paragraph and row its paraId and textId; the ids, in document
-        order (a table, then its cells' paragraphs), and :attr:`top_ids`."""
+        order (a table, then its cells' paragraphs), and :attr:`top_ids`.  ``continued``:
+        the paraId and textId the first element, a paragraph, keeps (the empty paragraph
+        it was written into)."""
         document = self.document
         used = document._used()
         story = document._story_of(self.part)
@@ -1113,7 +1126,8 @@ class Writer:
         rows = [n for e in elements if e.tag != W_P for n in e.iter(_W + "tr")]
         paragraphs = [n for e in elements for n in ([e] if e.tag == W_P else e.iter(W_P))]
         drawn = {self.part + "\0row": iter(_ids.generate(self.part + "\0row", used, 2 * len(rows))),
-                 self.part: iter(_ids.generate(self.part, used, 2 * len(paragraphs)))}
+                 self.part: iter(([*continued] if continued else [])
+                                 + _ids.generate(self.part, used, 2 * len(paragraphs) - (2 if continued else 0)))}
 
         def next_ids(seed: str) -> tuple[str, str]:
             return next(drawn[seed]), next(drawn[seed])

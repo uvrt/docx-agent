@@ -800,6 +800,15 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
         self.history = History(package)
         #: Old id -> new id, for every paragraph stamped or re-issued this session.
         self._aliases: dict[str, str] = {}
+        #: Every id this session's states had, and which change removed each block's
+        #: (round 37): none is generated again, and naming one says it was deleted.
+        self._ledger = _ids.Ledger()
+        #: Who made the change that made a version, in words, for the error naming a deleted
+        #: id: ``describe_step(version) -> str | None``.  The tool layer sets it (the tool and
+        #: its caller); ``None``: the version alone.  ``read_hint``: how to read the document
+        #: again, in that error (the tools' ``word_read``; ``None``: ``to_markdown``).
+        self.describe_step = None
+        self.read_hint: str | None = None
         self._indexes: dict[str, PartIndex] = {}
         #: docx2svg's conversions of recent states, by their bytes' hash (layout.convert).
         self._layouts: dict[str, "_Conversion"] = {}
@@ -1229,7 +1238,7 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
                     for row in table.rows:
                         if row.id == identifier:
                             return row
-            raise KeyError(f"no row {identifier!r}")
+            raise self._deleted(identifier) or KeyError(f"no row {identifier!r}")
         match = re.fullmatch(r"(.+)/(r\d+|c\d+,\d+)", identifier)
         if match is not None:
             base, step = match.groups()
@@ -1261,8 +1270,70 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
     # -- stamping -----------------------------------------------------------------------------
 
     def _used(self) -> set[int]:
+        """Every id in use and every id this session had (round 37), as the one set
+        :func:`~docx_agent.edit.ids.generate` adds to: what it gives is never given again."""
+        roots = self._roots()
+        pool = self._id_pool()
+        pool |= _ids.used_long_hex(roots)
+        return pool
+
+    def _roots(self) -> list[Element]:
         roots = [self.package.tree(p) for p in self._parts()]
-        return _ids.used_long_hex([r for r in roots if r is not None])
+        return [r for r in roots if r is not None]
+
+    def _id_pool(self) -> "_ids.IdPool":
+        if self._ledger.pool is None:
+            self._note_ids()
+        return self._ledger.pool  # type: ignore[return-value]
+
+    def _note_ids(self) -> None:
+        """Read the ids of the state the document is in, once per version: what an edit,
+        undo or redo removed is recorded as gone, by the version that removed it."""
+        ledger = self._ledger
+        if ledger.pool is not None and ledger.version == self.history.version:
+            return
+        ledger.note(self._roots(), self.history.version)
+
+    def _remember_ids(self, values: set[int]) -> None:
+        """Ids written other than by generating them (a copy's own, kept): never again."""
+        self._id_pool().update(values)
+
+    def _known_ids(self) -> set[int]:
+        """The ids this session had, as a copy: before a copy is placed, so its own ids --
+        kept where the document never had them -- are not among them."""
+        return set(self._id_pool())
+
+    def _deleted(self, identifier: object) -> "_ids.DeletedId | None":
+        """The error for a block id (or drawing id) that named something this session and
+        names nothing now; ``None`` for any other id."""
+        if not isinstance(identifier, str):
+            return None
+        ledger = self._ledger
+        found = _GONE_DRAWING.match(identifier)
+        if found is not None and ledger.drawings_gone:
+            number = int(found.group(1))
+            if number in ledger.drawings_gone:
+                return _ids.DeletedId(_deleted_message(self, found.group(0), ledger.drawings_gone[number]),
+                                      found.group(0), ledger.drawings_gone[number])
+        if not ledger.gone:
+            return None
+        for match in _GONE_BLOCK.finditer(identifier):
+            value = int(match.group("hex"), 16)
+            if value not in ledger.gone:
+                continue
+            named = match.group(0).lstrip("/")
+            version = ledger.gone[value]
+            replaced_by = ledger.replaced.get(value)
+            return _ids.DeletedId(_deleted_message(self, named, version, replaced_by, identifier),
+                                  named, version, replaced_by)
+        return None
+
+    def _note_replaced(self, old: list[str], new: list[str]) -> None:
+        """One block replaced by one block: the error naming the old id says which."""
+        if len(old) == 1 and len(new) == 1 and old[0] and new[0]:
+            found = _GONE_BLOCK.search(old[0])
+            if found is not None:
+                self._ledger.replaced[int(found.group("hex"), 16)] = new[0]
 
     def _rename(self, renames: dict[str, str]) -> None:
         for old, new in renames.items():
@@ -1404,6 +1475,8 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
     def _edit(self) -> Iterator[None]:
         """One undo step; on failure everything is rolled back and the caches dropped."""
         outermost = not self.history.in_batch
+        if outermost:
+            self._note_ids()    # the state before, if no edit, undo or redo read it yet
         recording = self._start_recording()
         try:
             with self.history.batch():
@@ -1420,6 +1493,8 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
                     self._sync_text_boxes(boxes)
                     self._unique_revision_ids(before)
                     self._prune_provenance()  # a deleted table's record goes with it
+            if outermost:
+                self._note_ids()    # round 37: what the edit removed, by its version
         finally:
             if recording is not None:
                 _typography.stop(recording)
@@ -2166,7 +2241,7 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
             for part, found, element in self._all_drawings():
                 if found == frame:
                     return part, element
-            raise KeyError(f"no drawing {identifier!r}")
+            raise self._deleted(identifier) or KeyError(f"no drawing {identifier!r}")
         if identifier.startswith(("fn:", "en:")):
             self.note(identifier)
             return self._note_reference(identifier)
@@ -2284,6 +2359,8 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
     def batch(self) -> Iterator[None]:
         """Collapse every edit inside into one undo step; roll all of them back on error."""
         outermost = not self.history.in_batch
+        if outermost:
+            self._note_ids()
         recording = self._start_recording()
         try:
             with self.history.batch():
@@ -2295,6 +2372,8 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
                 self._follow_text_facts()     # round 36: as each edit does
                 if outermost:
                     self._prune_provenance()  # a deleted table's record goes with it
+            if outermost:
+                self._note_ids()
         finally:
             if recording is not None:
                 _typography.stop(recording)
@@ -2303,14 +2382,20 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
     def undo(self) -> bool:
         """Undo the last edit (one step; a :meth:`batch` is one); ``False`` if there is none.
         Undoing every step gives back the original bytes."""
+        self._note_ids()        # the state it leaves, if no edit read it
         changed = self.history.undo()
         self._invalidate()
+        if changed:
+            self._note_ids()    # round 37: an undone deletion is back, a redone one gone again
         return changed
 
     def redo(self) -> bool:
         """Redo the last undone edit; ``False`` if there is none."""
+        self._note_ids()        # the state it leaves, if no edit read it
         changed = self.history.redo()
         self._invalidate()
+        if changed:
+            self._note_ids()    # round 37: an undone deletion is back, a redone one gone again
         return changed
 
     # -- rendering and layout -----------------------------------------------------------------
@@ -2443,6 +2528,27 @@ _MOVABLE = (W_P, W_TBL, _W + "sdt", _W + "customXml")
 #: A text range's id (``p:A@4:11``, ``p:A@5``, ``p:A@3..p:B@8``), not a positional block id
 #: (``p@body/7``, which the ``@`` of a range may follow).
 _RANGE_ID = re.compile(r".+@\d+(?::\d+|\.\..+@\d+)?")
+
+
+#: A block id inside any address (``p:X``, ``header1/p:X``, ``t:X/c1,2``, ``p:X@3:9``,
+#: ``h:p:X``, ``s:X``, ``tr:X``, a span's ends): the eight hex digits of its paraId.
+_GONE_BLOCK = re.compile(r"(?:^|(?<=[/:.]))(?:[A-Za-z0-9_]+/)?(?:p|t|tr|s):(?P<hex>[0-9A-Fa-f]{8})(?![0-9A-Fa-f])")
+#: A drawing's id, ``d:<number>`` (a group's member: its group).
+_GONE_DRAWING = re.compile(r"d:(\d+)(?![\d#])")
+
+
+def _deleted_message(document: "Document", named: str, version: int, replaced_by: str | None = None,
+                     identifier: str | None = None) -> str:
+    """What naming a removed id says: which change removed it, and the way on (round 37)."""
+    describe = document.describe_step
+    who = describe(version) if describe is not None else None
+    what = f"replaced with {replaced_by}" if replaced_by else "deleted"
+    by = f" by {who}, the change that made version {version}" if who else f" in the change that made version {version}"
+    head = f"{identifier}: " if identifier and identifier != named else ""
+    tool = document.read_hint or "to_markdown"
+    return (f"{head}{named} was {what}{by}. An id is never given to another block: read that part of "
+            f"the document again ({tool}) for the ids there now"
+            + (f", or use {replaced_by}" if replaced_by else ""))
 
 
 def _top_block(element: Element) -> Element | None:

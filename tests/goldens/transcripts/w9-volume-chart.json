@@ -197,7 +197,7 @@
     "ok": true,
     "summary": "Inserted a caption",
     "created": [
-     "p:78688CBC",
+     "p:6A70E1A8",
      "fld:body/0"
     ]
    }
@@ -262,7 +262,7 @@
    "expect": {
     "ok": true,
     "summary": "Saved operations-report.docx for the application",
-    "data_sha": "b4d5d687fb6337da",
+    "data_sha": "9483d5e1805dfbc9",
     "data_keys": [
      "coverage",
      "coverage.blocks_laid_out",
@@ -284,6 +284,6 @@
  ],
  "output": {
   "name": "operations-report.docx",
-  "sha256": "d8d62b1ce3817f4561c90d9fc8746d89bd364e60459a6d965b0377314b7e9fdf"
+  "sha256": "8a4f159e0130f451039e24bfe0655b0e16d9620e778b4100785f1619e3af6cc5"
  }
 }

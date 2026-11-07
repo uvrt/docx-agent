@@ -813,4 +813,4 @@ class AnnotationOps:
                 if drawing_kind(frame) == "picture" and any(i == identifier for _, i, _ in self._drawings()):
                     return self.picture(identifier)
                 return Drawing(self, identifier)
-        raise KeyError(f"no drawing {identifier!r}")
+        raise self._deleted(identifier) or KeyError(f"no drawing {identifier!r}")

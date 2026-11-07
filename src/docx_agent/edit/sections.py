@@ -701,7 +701,7 @@ class SectionOps:
                 return record
         if _SECTION_NUMBER.fullmatch(identifier):
             raise KeyError(f"no section {identifier!r}: the document has {len(records)} (s:1 to s:{len(records)})")
-        raise KeyError(f"no section {identifier!r}")
+        raise self._deleted(identifier) or KeyError(f"no section {identifier!r}")
 
     def section(self: "Document", identifier: str) -> Section:
         """A section by its id (``s:<paraId>``, ``s:body``) or its number from 1 (``s:2``);

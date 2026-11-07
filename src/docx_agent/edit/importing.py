@@ -996,6 +996,10 @@ class Importer:
                         self._doc_prs.add(int(node.get("id")))
                     except (TypeError, ValueError):
                         pass
+            # Round 37: nor a number a drawing deleted this session had.
+            self.dest._id_pool()
+            self._doc_prs |= self.dest._ledger.drawings_gone.keys()
+        ledger = self.dest._ledger
         for element in elements:
             for node in element.iter(_WP + "docPr"):
                 try:
@@ -1003,9 +1007,10 @@ class Importer:
                 except (TypeError, ValueError):
                     value = None
                 if value is None or value in self._doc_prs:
-                    value = max(self._doc_prs, default=0) + 1
+                    value = max(max(self._doc_prs, default=0), ledger.highest_drawing) + 1
                     node.set("id", str(value))
                 self._doc_prs.add(value)
+                ledger.highest_drawing = max(ledger.highest_drawing, value)
 
     def _control_ids(self, elements: list[Element]) -> None:
         if self._controls is None:
@@ -1216,6 +1221,7 @@ class ImportOps:
         tracking = self._active_tracking()
         removed: list[str] = []
         with self._edit():
+            known = self._known_ids()
             renames = self._prepare(place.part, [], place.position)
             # What is replaced goes first, so the copy's ids never meet the ids of the blocks
             # it replaces (a copy of them, from this document, has theirs): met, the copy's
@@ -1247,12 +1253,14 @@ class ImportOps:
                 trailing = make("w:p")
                 elements[-1].addnext(trailing)
                 elements.append(trailing)
-            created, per_element = _stamp(self, place.part, elements)
+            created, per_element = _stamp(self, place.part, elements, known)
             for _, _, notes_part, note in importer.notes_created:
                 _stamp_notes(self, notes_part, note, created)
             if tracking is not None:
                 _track(self, place.part, elements, importer, tracking)
             self.package.mark_dirty(place.part)
+            if place.replaced and tracking is None:
+                self._note_replaced(place.replaced, [ids_[0] for ids_ in per_element if ids_ and ids_[0]])
         copied = dict(importer.copied)
         for old_ids, new_ids in zip(source_ids, per_element):
             for old, new in zip(old_ids, new_ids):
@@ -1271,16 +1279,19 @@ class ImportOps:
                           warnings=importer.warnings, blocks=top, copied=copied)
 
 
-def _stamp(document: "Document", part: str, elements: list[Element]) -> tuple[list[str], list[list[str]]]:
+def _stamp(document: "Document", part: str, elements: list[Element],
+           known: set[int] | None = None) -> tuple[list[str], list[list[str]]]:
     """Keep a copy's paraIds, textIds and drawing ids where the destination does not use
-    them; re-issue the rest.  Returns every id created in document order, and per element
+    them and never did (``known``: the ids it had this session, before the copy was placed);
+    re-issue the rest.  Returns every id created in document order, and per element
     its own id followed by its paragraphs' (as :func:`_block_ids` lists the source's)."""
     root = document.package.tree(part)
     # The proxies are kept alive while their ids are compared: lxml makes a new one (with
     # another id) for a node whose proxy has gone.
     nodes = [node for element in elements for node in element.iter()]
     placed = {id(node) for node in nodes}
-    used: set[int] = set()
+    # Round 37: nor an id the document had this session (taken before the copy was placed).
+    used: set[int] = set(known) if known is not None else set()
     for node in root.iter(W_P, _W + "tr", _WP + "inline", _WP + "anchor"):
         if id(node) in placed:
             continue
@@ -1338,6 +1349,7 @@ def _stamp(document: "Document", part: str, elements: list[Element]) -> tuple[li
         per_element.append(ids)
         created += [i for i in ids if i and i not in created]
     _ids.ensure_w14(root, drawings=drawings)
+    document._remember_ids(used)
     return created, per_element
 
 

@@ -5,6 +5,35 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.50 -- unreleased
+
+- **An id is never given to another block** (production round 37, R36). A deleted block's
+  id was free again, so the next new block got it, and a caller holding the old id reached a
+  block it had never read. Now every id a document's session had -- in any part, in any
+  state its history went through -- is kept beside the ids in use (`docx_agent.edit.ids.Ledger`)
+  and never generated again; an undone deletion brings its block back with its id, and redo
+  writes the same bytes. Naming a removed id fails as deleted (`DeletedId`, a `KeyError`;
+  the tools' `not_found`), with the change that removed it -- "p:16425160 was deleted by
+  word_delete (agent=writer-2), the change that made version 7" -- and how to read again;
+  a block replaced by one block names its replacement. Copies keep their own ids only where
+  the document never had them; drawing numbers (`d:`) are never reused either. A document
+  saved and opened again goes on after the last generated id its file still has, so the
+  holes deletions left are not filled (ROADMAP.md, "An id is never given to another block").
+- What stays the same block keeps its id: Markdown written into a new document's one empty
+  paragraph continues it (its paraId and textId, as typing into it in Word), and a table of
+  contents rebuilt by `update_fields` keeps each line's ids in its place (so an update that
+  changes nothing writes the same bytes); lines it drops are retired, lines it adds are new.
+  A copy that replaces the blocks it was copied from (`copy_blocks(self, X, at="replace:X")`)
+  now gets new ids, and `X` says it was replaced with the copy.
+- Generating ids is now linear in the ids drawn: the seed's sequence is cached and each
+  document remembers where it got to (it walked the sequence from its start on every call);
+  reading the ids in use walks the tree once (`used_long_hex`; it walked it sixteen times).
+  Each edit reads the block ids of the state it made once (about 9 ms on a document of 2,100
+  paragraphs and 600 cells, on a loaded machine).
+- Golden transcripts w5, w6, w9, w14 re-recorded for the ids now generated (holes skipped,
+  retired values not reissued); w3 and batch-30-edits for the saved bytes (textIds).
+- Tokens: no definition changed (error text only).
+
 ## 0.1.49 -- unreleased
 
 - **Values styled by a scale, applied once** (production round 36, R31; ooxml-edit 0.85.0):

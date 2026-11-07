@@ -161,22 +161,22 @@
     "ok": true,
     "summary": "Inserted 7 block(s)",
     "created": [
-     "p:0D5C0E97",
-     "p:6E80C291",
      "p:248828D0",
      "p:4D332FBE",
      "p:1234B65C",
      "p:36070FA6",
-     "p:07C803C5"
+     "p:07C803C5",
+     "p:60298A4C",
+     "p:27E7AE38"
     ],
     "warnings": [
      "style added: List Bullet (ListBullet), as Word writes it"
     ],
-    "data_sha": "c23e1559a19392e7",
+    "data_sha": "0350c06d15d5aace",
     "data_keys": [
      "blocks"
     ],
-    "data_sha_core": "c23e1559a19392e7"
+    "data_sha_core": "0350c06d15d5aace"
    }
   },
   {
@@ -188,8 +188,8 @@
    "expect": {
     "ok": true,
     "summary": "Read the document (markup)",
-    "data_sha": "23c41ca6938e023e",
-    "data_sha_core": "23c41ca6938e023e"
+    "data_sha": "3d86756b19066d1a",
+    "data_sha_core": "3d86756b19066d1a"
    }
   },
   {
@@ -228,7 +228,7 @@
    "expect": {
     "ok": true,
     "summary": "Saved remote-working-guideline.docx for the application",
-    "data_sha": "d6329d85702c1650",
+    "data_sha": "b734d751bf8904e6",
     "data_keys": [
      "coverage",
      "coverage.blocks_laid_out",
@@ -250,6 +250,6 @@
  ],
  "output": {
   "name": "remote-working-guideline.docx",
-  "sha256": "e8d9c196a64ec2b7420cafebbd9f04b6ff601aa4499243b618e6352800025e5b"
+  "sha256": "1814f789a78d8f75b2aaed6c2edbb01b9d98eda007e0985cabb3d99e1ba8de32"
  }
 }

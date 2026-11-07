@@ -475,6 +475,43 @@ paraId) loses its paraIds on Word's next save -- re-anchoring by `textId` and te
 an option, would recover from that; it is not built. `w:customXml` markup cannot be used
 as a stamp either way: current Word removes it on open.
 
+### An id is never given to another block (round 37)
+
+An agent holds ids for many turns while others edit. Generating "the first values of the
+sequence no id in use has" made a deleted block's id free again, and the next new block got
+it: an agent naming the id it held reached a block it never read. Word gives fresh random
+ids; docx-agent keeps them deterministic and skips every id the document has had:
+
+* **In a session**, `Document` keeps a ledger (`edit/ids.py`, `Ledger`): every
+  `ST_LongHexNumber` value any state had (paraIds, textIds, drawing ids; read from the
+  document as opened, then every value generated and every one a copy kept) and, for each
+  block id no longer in the document, the version of the change that removed it. States are
+  read once per version, where the version changes: the end of an outermost edit or batch,
+  an undo, a redo, a scoped undo (the format's `restored` hook). Generating skips the whole
+  pool, so a block deleted, replaced, or undone away keeps its id to itself; an undone
+  deletion brings the block back with its own id (the same block), and redo restores the
+  same bytes. Drawing numbers (`d:`) likewise: a new drawing is numbered past every one the
+  session had. Memory: about 60 bytes per value ever written (each edit of a paragraph's
+  text renews its textId: one more), and an entry per deleted block.
+* **Naming a removed id** fails as deleted, a `KeyError` (`DeletedId`), never reaching
+  another block: "p:16425160 was deleted by word_delete (agent=writer-2), the change that
+  made version 7. An id is never given to another block: read that part of the document
+  again (word_read) for the ids there now" -- in every form an id takes (a range
+  `p:A@3:9`, a span end, a cell or row `t:A/c1,2`, a heading's range, a section), in the
+  tools, `batch`, `read_batch`, `check(range=...)` and `render(range=...)`. One block
+  replaced by one (`replace:` of `word_insert_markdown` or `word_copy_from`) says which:
+  "was replaced with p:4B50F4CD ..., or use p:4B50F4CD" (and offers it). The tool and its
+  caller come from the session's record of who made each version (the format's
+  `configure` sets `Document.describe_step`); the library alone says the version.
+* **Saved and opened again** -- a resumed run reopening its document under its old id --
+  nothing is kept but the file. The sequence then goes on after the *last* of its values the
+  file still has (looking `REACH`, 4,096 values, past it): a value before that one the file
+  lacks was written and deleted, and is skipped. What this cannot know is an id deleted
+  after the last surviving one of its sequence (the most recent blocks, all deleted, then a
+  save): such an id may be given again after the reopen, and naming one says not found
+  rather than deleted. Writing the ledger into the file was not chosen: it would change
+  every document's bytes for a record Word does not need.
+
 ### Everything else
 
 | Thing | Id | Durable? | Notes |
