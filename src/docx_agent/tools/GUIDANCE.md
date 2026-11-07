@@ -77,7 +77,11 @@ How to use them:
   to the next page whole where they do not fit; `false` releases what it wrote. On one
   paragraph it keeps that paragraph's lines. `check(range=[span])` says per span
   `one_page`, `kept`, the `breaks` in it and the `fix`; `taller_than_page` where no keep
-  can hold it. Nothing is stored: name the spans each check.
+  can hold it. Nothing is stored: name the spans each check. With the `fix` comes
+  `if_kept` (round 40): the keep laid out -- the page the span then starts on, the share of
+  the page before it left blank, whether the document grows -- and on a kept span that
+  starts a page, `if_released`: what releasing it gives, with that call. Read both and
+  decide once; setting and releasing the same keep in turn costs a layout and a check each.
 - **A heading's range** (`h:p:A`): the heading and every block under it, to the next
   heading of its level or higher -- what `describe`'s `headings` count in `blocks` (with the
   `section` each is in, when there are several). Give it wherever a span is taken:

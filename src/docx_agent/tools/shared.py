@@ -22,6 +22,8 @@ from ..layout import (affinity, canon_of, check_facts, font_dirs_of, held_state,
 from ..layout_facts import CAP, empty_paragraphs, layout_facts, numbering_skips_level, punctuation_spacing
 from ..scope import MAX_RANGES, Scope, ranges_of
 from .render import RENDERER
+from . import keep_trials
+from .keep_trials import left_out
 from .scoped import compare_copies, problems_in_scope, range_pages
 from ._base import cached_layout, outcome, page, reflow_json, remember, resolve, short, validate_delta, wrap
 
@@ -542,6 +544,8 @@ def check(call: Any, doc: str, slides: list | None = None, pages: list[int] | No
     scope = Scope(document, ranges) if ranges else None
     if scope is not None and "layout" not in wanted:
         wanted.append("layout")               # the facts about the blocks are the layout's
+    # Round 40: each range's keep tried (.keep_trials).
+    keeps = scope is not None and (KEEP_TRIALS or "keeps" in wanted)
     report: dict[str, Any] = {}
     if "validate" in wanted:
         found = list(document.validate())          # once: the delta reads the same problems
@@ -559,7 +563,8 @@ def check(call: Any, doc: str, slides: list | None = None, pages: list[int] | No
         report["copies"] = compare_copies(call, copies)
     if "reflow" in wanted or "layout" in wanted:
         reflow, layout = _layout_facts(call, pages, seen="reflow" in wanted, scope=scope,
-                                       layout_wanted="layout" in wanted, min_size=min_size, styles=styles)
+                                       layout_wanted="layout" in wanted, min_size=min_size, styles=styles,
+                                       keeps=keeps)
         # Round 38: made where the layout is held -- the ranges' pages and the layout facts
         # came back with the reflow's (a dict); else the layout itself, read here.
         made = layout if isinstance(layout, dict) else None
@@ -575,6 +580,9 @@ def check(call: Any, doc: str, slides: list | None = None, pages: list[int] | No
                     since["changed"] = [p for p in since["changed"] if p in scoped_pages]
             elif layout is not None:
                 report["range"], on = range_pages(scope, layout, extent=True)
+                if keeps:
+                    # Round 40: a keep is tried only where the layout is held.
+                    left_out(layout, scope, report["range"], KEEPS_NOT_HERE)
                 scoped_pages = on if pages is None else [p for p in on if p in pages]
                 if pages is not None and not scoped_pages:
                     call.warn(f"pages {pages} hold none of the range's blocks (on pages {on}): no layout facts")
@@ -615,6 +623,14 @@ def check(call: Any, doc: str, slides: list | None = None, pages: list[int] | No
     return Result(summary=summary, data=report)
 
 
+#: Whether a check with ranges tries each range's keep by default (round 40, .keep_trials).
+KEEP_TRIALS = True
+#: What a range a keep is not tried for says, where the check read the layout in this process (round 40).
+KEEPS_NOT_HERE = ("not laid out: this check read the layout here, not where it is held (a check in a batch "
+                  "that holds the document); check this range alone, after the batch, for what its keep "
+                  "does to the pages")
+
+
 #: What a check laid out between a batch's changes says (round 33, R16c): the way out.
 BATCH_CHECK = ("check laid the document out between the batch's changes, holding it: other calls waited. "
                "Put check after the batch's last change (or call it alone): there it lets the document go "
@@ -623,7 +639,7 @@ BATCH_CHECK = ("check laid the document out between the batch's changes, holding
 
 def _layout_facts(call: Any, pages: list[int] | None, seen: bool = True, *, scope: Any = None,
                   layout_wanted: bool = False, min_size: Any = None,
-                  styles: list[str] | None = None) -> tuple[dict[str, Any], Any]:
+                  styles: list[str] | None = None, keeps: bool = False) -> tuple[dict[str, Any], Any]:
     """``reflow``'s facts, and the layout they are of (``None`` where it failed); ``seen``:
     the layout a later check's ``since_last_check`` is measured from (not for ``layout``
     alone, which reports no reflow).
@@ -642,7 +658,8 @@ def _layout_facts(call: Any, pages: list[int] | None, seen: bool = True, *, scop
             # one validate and fields read and the result reports.
             request = {"pages": list(pages) if pages is not None else None,
                        "ranges": scope.spec() if scope is not None else None,
-                       "layout": layout_wanted, "min_size": min_size, "styles": styles}
+                       "layout": layout_wanted, "min_size": min_size, "styles": styles,
+                       "keeps": keep_trials.asked() if keeps and scope is not None else None}
             made = check_facts(document, call.unlocked, request)
             layout = (None if made is not None else
                       lay_out_unlocked(document, call.unlocked, lambda: entry.version == version))

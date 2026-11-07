@@ -48,6 +48,7 @@ def check_bytes(data: bytes, options: dict, state: tuple, request: dict) -> dict
     * ``summary`` (asked): the layout's :class:`~docx_agent.layout.LayoutSummary`;
     * ``ranges`` (each range's address and paragraph ids, :meth:`docx_agent.scope.Scope.spec`):
       ``range`` (each as reported, with its extent) and ``on`` (every page they are on);
+      with ``keeps`` (round 40), each range's keep tried (:mod:`.keep_trials`);
     * ``layout`` (asked): the layout facts of ``pages`` -- the ranges' pages among them
       when ranges are given -- with ``min_size`` and ``styles``.
 
@@ -95,6 +96,13 @@ def _facts(held: Any, data: bytes, options: dict, request: dict) -> dict:
         scope = Scope.of_ids(layout._document, request["ranges"])
         out["range"], on = range_pages(scope, layout, extent=True)
         out["on"] = on
+        if request.get("keeps"):
+            # Round 40: what each range's keep would do, laid out from this very layout.
+            from .keep_trials import keep_effects
+
+            caps = request["keeps"]
+            keep_effects(held.laid[0], data, options, layout, scope, out["range"],
+                         trials=caps["trials"], seconds=caps["seconds"])
         scoped_pages = on if pages is None else [p for p in on if p in pages]
     if request.get("layout"):
         out["layout"] = layout_facts(layout, pages=scoped_pages, min_size=request.get("min_size"),
