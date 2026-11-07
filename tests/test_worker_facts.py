@@ -293,6 +293,52 @@ def test_a_summary_compares_as_the_layouts_do(made):
         before = after
 
 
+def test_a_summary_made_from_the_one_before_is_the_one_made_whole(made, monkeypatch):
+    """Round 39: where the layout is held, a check's summary takes the digests of the pages
+    and lines docx2svg kept from the layout before (the same objects) from that layout's
+    summary, and digests only the rest: the summary is the one made whole, field for field,
+    and pickled without the pages it held."""
+    import pickle
+
+    from docx_agent.layout import layout_key, layout_options, lineage
+    from docx_agent.tools.check_worker import check_bytes
+
+    made_whole: list[int] = []
+    digest = layout_module._line_digest
+
+    def counted(line):
+        made_whole.append(1)
+        return digest(line)
+
+    monkeypatch.setattr(layout_module, "_line_digest", counted)
+    rng = random.Random(39)
+    document = Document.open(made)
+    options = layout_options(document, {})
+    token = None
+    lines = []
+    for round_ in range(4):
+        data = document.to_bytes()
+        now = layout_key(data, options)
+        state = ("held", now, token, lineage(document))
+        made_whole.clear()
+        out = check_bytes(data, options, state, {"summary": True})
+        token = now
+        summary = out["summary"]
+        digested = len(made_whole)
+        held = layout_module._HELD[now]
+        whole = layout_module.LayoutSummary(held.extra["layout"])
+        assert (summary.count, summary.known, summary.rest, summary.lines) == \
+            (whole.count, whole.known, whole.rest, whole.lines)
+        assert "summary before" not in held.extra
+        assert pickle.loads(pickle.dumps(summary))._drawn is None
+        lines.append((sum(len(page) for page in summary.lines), digested))
+        ids = _body(document)
+        document.paragraph(ids[-1]).set_text(_text(round_, rng.choice([5, 60])))
+    # The first laid out whole; then only what the edit near the end reached.
+    assert lines[0][1] == lines[0][0]
+    assert all(digested < total / 2 for total, digested in lines[1:]), lines
+
+
 def test_a_digest_reads_a_whole_fraction_as_its_integer():
     from fractions import Fraction
 

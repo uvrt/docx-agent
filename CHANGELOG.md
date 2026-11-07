@@ -34,7 +34,24 @@ snapshot commit; the development history before it is summarised here.
   were, and the warning now names them and the `delete_row` that removes them.
 - Definitions: +236 estimated tokens to every definition (15,050 -> 15,286), none to the
   core; the strict set is 6 tools and 24 optional parameters (`word_insert_markdown`'s
-  `ref`), Claude's limit.
+  `ref`): it is full -- Claude's limit -- so the next optional parameter on a strict tool
+  sends a tool non-strict.
+## 0.1.61 -- unreleased
+
+- **A check's summary digests only what was laid out again** (production round 39). Where
+  the worker holding a document's layout lays the next version out from it, docx2svg keeps
+  the pages and lines the edit did not reach -- the very objects -- and the summary a check
+  compares by (`layout.LayoutSummary`, round 38) took a digest of every page and line again
+  each time: now it takes those of the kept pages and lines from the summary of the layout
+  before (`LayoutSummary(layout, before, keep=True)`) and digests only the rest. The summary
+  is the one made whole, field for field (`tests/test_worker_facts.py`); it is pickled
+  without what it holds for the next, and the summary before is let go when the task ends.
+  Measured on a made-up 46-page report, a paragraph near the middle edited each time: 190
+  to 210 ms of a worker's CPU per check that asks for a summary, now 10 to 12 ms.
+- With docx2svg 0.11.9 (not required): a layout takes about two thirds of the CPU and a
+  page's SVG about two fifths. Every call's result of a made-up build -- two 11-page
+  documents (chapters, checks, a copied section, a table, fields, renders, save) and a
+  46-page report edited and checked -- is 0.1.60's on 0.11.8, byte for byte.
 
 ## 0.1.60 -- unreleased
 
