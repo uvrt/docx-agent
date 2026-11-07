@@ -1005,18 +1005,55 @@ convert_bytes.__ooxml_edit_task__ = True
 #: ``InstalledFonts``: laying out and drawing pages write to both, and with the GIL off
 #: (Python 3.15t) two threads of an in-process runner would write at once.  A second task
 #: asking for a layout another holds reads its own from the pickle.  Every use of the dict
-#: holds :data:`_RECENT_LOCK`.  Two are kept: a long report's, with its measurements, is
-#: about 80 MB in memory (79 pages; ``ROADMAP.md``, "Reflow feedback", round 33).
+#: holds :data:`_RECENT_LOCK`.  Kept within a quarter of :data:`LAYOUT_MEMORY` (round 39;
+#: two before), the newest always: the layouts held by token (below) are what a tool layer's
+#: tasks use, these a caller's own pickles.
 _RECENT: dict = {}
-_RECENT_SIZE = 2
 _RECENT_LOCK = threading.Lock()
+
+
+def _memory_budget() -> int:
+    """:data:`LAYOUT_MEMORY`: ``DOCX_AGENT_LAYOUT_MEMORY`` (MB) where it is set to a
+    positive number, else 256 MB."""
+    import os
+
+    try:
+        value = float(os.environ.get("DOCX_AGENT_LAYOUT_MEMORY", ""))
+    except ValueError:
+        value = 0.0
+    return int(value * 2 ** 20) if value > 0 else 256 * 2 ** 20
+
+
+#: What one process -- a layout worker, or this one where it lays out itself -- keeps of the
+#: layouts it made, in bytes (round 39): the layouts held by token (:data:`_HELD`) up to
+#: this, the measurements kept by lineage (:data:`_MEASURES`) up to half of it, a caller's
+#: own pickled layouts (:data:`_RECENT`) up to a quarter -- at most 1.75 times this in all,
+#: plus the layouts tasks running at that moment have taken out.  The least recently used go
+#: first; the newest of each is kept whatever its size.  ``DOCX_AGENT_LAYOUT_MEMORY`` (in MB)
+#: sets it, read as the process starts (a worker gets the environment its pool starts it
+#: with); 256 MB by default: about 23 ten-page documents' layouts, or five 46-page reports'.
+LAYOUT_MEMORY = _memory_budget()
+#: What a layout kept costs per page, in bytes: the layout, what its flow measured and what
+#: was read from it since (round 39, measured with ``tracemalloc``: 1.05 MB a page on a
+#: made-up 11-page document, 0.95 MB on a 46-page report).
+PAGE_COST = 2 ** 20
+#: What one measurement kept by lineage costs, in bytes (a block's lines; measured: 70 kB
+#: on the 11-page document, 87 kB on the report).
+MEASURE_COST = 96 * 2 ** 10
+
+
+def layout_cost(layout: Any) -> int:
+    """What keeping ``layout`` costs, in bytes: :data:`PAGE_COST` a page (one at least)."""
+    return max(1, len(getattr(layout, "pages", None) or ())) * PAGE_COST
+
 
 #: What this process measured in its layouts (docx2svg's ``MeasureStore``, round 37): a
 #: layout handed a previous one without its measurements -- made in another worker -- takes
 #: those of the blocks this process measured in an earlier version of the document, instead
 #: of measuring every block again (46 pages, one paragraph edited: 0.6-0.7 s of CPU against
-#: 1.9-2.5 s).  Its own lock; nothing is waited for under it.
-_MEASURES = MeasureStore(lineages=2)
+#: 1.9-2.5 s).  Its own lock; nothing is waited for under it.  Round 39: as many lineages as
+#: half of :data:`LAYOUT_MEMORY` holds (:data:`MEASURE_COST` an entry), not two.
+_MEASURES = MeasureStore(lineages=1024, entries=LAYOUT_MEMORY // 2 // MEASURE_COST)
 
 
 def _fraction(numerator: int, denominator: int) -> Fraction:
@@ -1064,7 +1101,8 @@ def _remember(blob: bytes, laid: tuple) -> None:
     with _RECENT_LOCK:
         _RECENT.pop(key, None)
         _RECENT[key] = laid
-        while len(_RECENT) > _RECENT_SIZE:
+        budget = LAYOUT_MEMORY // 4
+        while len(_RECENT) > 1 and sum(layout_cost(kept[0]) for kept in _RECENT.values()) > budget:
             del _RECENT[next(iter(_RECENT))]
 
 
@@ -1099,20 +1137,22 @@ class _Held:
     since (:attr:`extra`: the document opened from its bytes, its :class:`DocumentLayout`,
     its summary), all of one state."""
 
-    __slots__ = ("laid", "extra", "lineage")
+    __slots__ = ("laid", "extra", "lineage", "cost")
 
     def __init__(self, laid: tuple, extra: dict | None = None) -> None:
         self.laid = laid
         self.extra: dict = extra if extra is not None else {}
         self.lineage: str | None = None
+        #: What keeping it costs (:func:`layout_cost`).
+        self.cost = layout_cost(laid[0])
 
 
-#: The layouts this process holds, by token, the newest last: one per lineage, at most
-#: :data:`_HELD_SIZE` (a long report's, with what it measured, is about 80 MB in memory).
-#: A task takes its layout out (:func:`_take_held`) and puts the new one back
+#: The layouts this process holds, by token, the newest last: one per lineage, within
+#: :data:`LAYOUT_MEMORY` (round 39: :func:`layout_cost`, a megabyte a page; two layouts
+#: before -- with six documents built at once on two workers, every check laid its document
+#: out whole).  A task takes its layout out (:func:`_take_held`) and puts the new one back
 #: (:func:`_put_held`), so no two tasks running at once -- threads of one process -- hold one.
 _HELD: "OrderedDict[tuple, _Held]" = OrderedDict()
-_HELD_SIZE = 2
 _HELD_LOCK = threading.Condition()
 #: Per lineage, the tasks of this process that took one of its layouts (or are making the
 #: first): another task of the lineage waits for one of them, at most :data:`_HELD_WAIT`
@@ -1171,14 +1211,16 @@ def _let_go_held(lineage: str) -> None:
 
 def _put_held(token: tuple, held: _Held, lineage: str) -> None:
     """``held``, the layout of ``token``, back as its lineage's newest (the others of the
-    lineage dropped), the oldest of other lineages dropped past :data:`_HELD_SIZE`."""
+    lineage dropped), those of other lineages used longest ago dropped while all cost more
+    than :data:`LAYOUT_MEMORY` (round 39)."""
     with _HELD_LOCK:
         held.lineage = lineage
         for other in [t for t, entry in _HELD.items() if entry.lineage == lineage or t == token]:
             del _HELD[other]
         _HELD[token] = held
-        while len(_HELD) > _HELD_SIZE:
-            _HELD.popitem(last=False)
+        total = sum(entry.cost for entry in _HELD.values())
+        while len(_HELD) > 1 and total > LAYOUT_MEMORY:
+            total -= _HELD.popitem(last=False)[1].cost
     _let_go_held(lineage)
 
 
