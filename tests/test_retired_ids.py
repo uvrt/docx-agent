@@ -172,7 +172,8 @@ def test_an_alias_from_stamping_still_resolves(markup_doc):
 
 def test_the_same_edits_write_the_same_bytes():
     def run() -> bytes:
-        document = Document.new()
+        # The dates pinned: core.xml's created and modified are otherwise the second it ran.
+        document = Document.new(created="2026-11-07T09:00:00Z")
         document.insert_markdown("One.\n\nTwo.\n\nThree.")
         document.delete_block(document.paragraphs()[2].id)
         document.append_paragraph("Four.")
