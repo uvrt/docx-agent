@@ -42,8 +42,9 @@ from test_tools_word import AGREEMENT, CLOCK_AT
 #: ``range`` and ``copies``, render's ``range``, ooxml-edit 0.81.0, +230) 2,746; round
 #: 36, R28 (check's include ``numbers``, ooxml-edit 0.84.0) 2,748; R31 (check's ``scale``,
 #: values styled by a scale's steps or not, ooxml-edit 0.85.0, +158) 2,908; round 38 (the
-#: scale's ``show``, ooxml-edit 0.87.0, +15) 2,923.
-REVIEW_CORE_GUARD = 2925
+#: scale's ``show``, ooxml-edit 0.87.0, +15) 2,923; round 39 (render's ``fast``, approximate
+#: pixels of the same layout, ooxml-edit 0.92.0, +40) 2,963.
+REVIEW_CORE_GUARD = 2963
 #: Every definition a reviewer is sent, estimated.  Measured 6,820 (6,813 before); round 9,
 #: N1, 6,884; round 12, Q1, 6,919; round 15, T2, 6,955; round 16, F11, 6,997; F8, 7,064; F9
 #: (word_design_facts, a reading tool, deferred: +170) 7,234; round 17, P3
@@ -62,8 +63,9 @@ REVIEW_CORE_GUARD = 2925
 #: ``language``, +52, as ``shading``: its list and describe are a reviewer's) 8,089; round 36,
 #: R34 (word_design_facts' ``table_frames``, a reading tool, deferred) 8,095; R28
 #: (check's include ``numbers``) 8,096; R31 (check's ``scale``, +158; style_by_value is an
-#: editor's) 8,256; round 38 (the scale's ``show``, +14) 8,270.
-REVIEW_ALL_GUARD = 8270
+#: editor's) 8,256; round 38 (the scale's ``show``, +14) 8,270; round 39 (render's ``fast``,
+#: +40) 8,310.
+REVIEW_ALL_GUARD = 8310
 
 REVIEW_CORE = {"save_document", "describe", "find_text", "render", "check", "open_document",
                "batch", "read_batch", "word_read", "word_comments", "word_changes"}

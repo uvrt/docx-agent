@@ -5,6 +5,26 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.60 -- unreleased
+
+- **`render`'s `fast`: a page for about a third of the CPU while building** (production round
+  39; ooxml-edit 0.92.0). An exact page is drawn by resvg from its SVG, which shapes each
+  positioned glyph of the page alone (four fifths of a text-heavy page's time), and twice
+  where two faces answer to one name (Aptos and Aptos Display: a page with a heading is drawn
+  in two passes, the second over the first). `fast: true` outlines the text first (docx2svg's
+  `outline_svg`: the faces, fallbacks, shaping and positions resvg would use, every pass at
+  once) and rasterises once: 0.83 s against 2.06 s on a report page with a heading, 0.89 s
+  against 1.37 s a page on average over 28 pages. The layout, page breaks and positions are
+  the same SVG's; the pixels differ along glyph edges only. The result says so:
+  `"approximate": ["pixels"]`, `approximate_pages`, each such image labelled
+  `page 3 (approximate)`, and the summary the way to the exact image (render without
+  `fast`). A fast image is kept apart from the exact ones; a page whose exact image is held
+  gets that one. Exact renders are unchanged, byte for byte.
+- Rendering runs in the pool's render lane (ooxml-edit 0.92.0): it yields to layouts and
+  checks waiting for a worker, its deadline counts from when a worker takes it, and a worker
+  past it finishes the page in the background (kept for the next call) rather than being
+  stopped and started again with its layouts lost.
+
 ## 0.1.59 -- unreleased
 
 - **A worker keeps as many documents' layouts as its memory budget holds** (production

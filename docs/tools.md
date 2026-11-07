@@ -53,6 +53,11 @@ with Toolbox(TOOLS, formats=[FORMAT], groups=GROUPS) as toolbox:
   what differs with its fix and kind, where the reference's example text is still in it,
   and one `word_follow_sample` call per reference to make the copies follow. A comparison
   is kept while neither side's blocks change.
+- **`render` takes `fast`** (round 39): while building, a page for about a third of the CPU:
+  the same layout and page breaks, the text drawn as outlines in one raster pass, the
+  pixels approximate along glyph edges. The result says so (`"approximate": ["pixels"]`,
+  `approximate_pages`, labels `page 3 (approximate)`); render without `fast` for the exact
+  image (a review's, a final one). A page whose exact image is held is returned exact.
 - **Text is spaced as its language wants** (round 35): what a call writes in French gets a
   no-break space before `: ; ! ?` and inside `« »` (measured in Word: an ordinary space lets
   the mark start the next line), and the result says how many; text already there is not
