@@ -13,6 +13,7 @@ import json
 import os
 import random
 import threading
+import time
 
 import pytest
 
@@ -200,7 +201,13 @@ def test_a_holder_killed_lays_the_next_version_out_afresh_with_the_same_facts(ma
         out = []
         for number, step in enumerate(steps):
             if number == 3:                  # the holder dies between two checks
-                os.kill(box.pool.holder(key), getattr(signal, "SIGKILL", signal.SIGTERM))
+                pid = box.pool.holder(key)
+                os.kill(pid, getattr(signal, "SIGKILL", signal.SIGTERM))
+                # Gone before the next call (a kill is asynchronous, on Windows too): the pool
+                # then finds it dead and starts another, as after any death while idle.
+                ends = time.monotonic() + 30
+                while time.monotonic() < ends and any(w.pid == pid and w.alive() for w in list(box.pool._idle)):
+                    time.sleep(0.05)
             kind, arguments = step(document)
             result = box.dispatch(session, kind, {"doc": doc, **arguments})
             assert result.ok, result.to_json()
