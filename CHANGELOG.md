@@ -18,9 +18,11 @@ snapshot commit; the development history before it is summarised here.
   measurements kept by lineage up to half of it (`MEASURE_COST`, 96 kB a block measured), a
   caller's own pickled layouts up to a quarter; the least recently used dropped first, the
   newest kept whatever its size. At most 1.75 times the budget in all, plus the layouts the
-  tasks running at that moment hold. Six builders on two workers, half a core of other load
-  (the study's documents): 44.9 -> 28.5 s of CPU a document on a loaded machine (round
-  39's hand-back has the runs).
+  tasks running at that moment hold. The study's made-up documents, two workers, half a core
+  of other load (on a machine busy with other work, so absolute times are high): six
+  builders 32.7 -> 18.2 s of CPU a document (worker CPU halved; documents per CPU-minute
+  1.84 -> 3.30), twelve builders 31.2 -> 17.7; one builder and the 11-writer report on one
+  document unchanged. Workers' largest resident memory with twelve builders 144 -> 250 MB.
 - With docx2svg 0.11.8, a document's first save (a settings part written again, revision
   ids) no longer lays it out whole, and `word_fields` writing the page count into a footer
   lays the document out whole with the body's measurements (where its headers and footers
