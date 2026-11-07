@@ -218,5 +218,28 @@ def _skip_where_faces_are_absent(request, monkeypatch):
         _skip_if_a_face_is_absent(conversion.layout.warnings, getattr(conversion.layout, "coverage", None))
         return conversion
 
+    from docx_agent.tools import shared as agent_shared
+
+    facts_of = agent_shared.check_facts
+
+    def checked_facts(document, unlocked, request):
+        # Round 38: a lone check's facts are made in the worker holding the layout; read the
+        # coverage and the warnings that came back.
+        made = facts_of(document, unlocked, request)
+        if made is not None:
+            coverage = made[0]["reflow"]["coverage"]
+            if coverage.get("missing_fonts"):
+                pytest.skip("a face this document is laid out in is not installed here: "
+                            + ", ".join(coverage["missing_fonts"]))
+            approximate = [f for f in coverage.get("substituted_fonts", ()) if f.endswith("(approximate)")]
+            if approximate:
+                pytest.skip("a face this document is laid out in is not installed here (laid out with an "
+                            "approximate substitute): " + ", ".join(approximate))
+            for text in made[0].get("warnings") or ():
+                if any(code in text for code in _FACE_ABSENT) or "cannot be measured" in text:
+                    pytest.skip(f"a face this document is laid out in is not installed here: {text}")
+        return made
+
     monkeypatch.setattr(docx2svg, "lay_out_docx", checked_lay_out)
     monkeypatch.setattr(agent_layout, "convert", checked_convert)
+    monkeypatch.setattr(agent_shared, "check_facts", checked_facts)
