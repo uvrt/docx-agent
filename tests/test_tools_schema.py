@@ -233,10 +233,14 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 #: value, the value kept) +14 to the core (3,034 -> 3,048) and +60 to every definition
 #: (14,950 -> 15,010).  The guard rises to 15,010.  The strict set is unchanged (6 tools, 23
 #: optional parameters).
+#: Round 39 (ooxml-edit 0.92.0): render's ``fast`` (approximate pixels of the same layout while
+#: building; the result says so) +40 to the core (3,048 -> 3,088, about 4,570 counted by the
+#: proxy) and to every definition (15,010 -> 15,050).  The guard rises to 15,050.  render is
+#: not strict: the strict set is unchanged (6 tools, 23 optional parameters).
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 6500
-ALL_GUARD = 15010
+ALL_GUARD = 15050
 
 
 @pytest.fixture(scope="module")

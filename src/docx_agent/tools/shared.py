@@ -243,13 +243,15 @@ def render_pages(data: bytes, pages: list[int], width: int, font_dirs: list[str]
     return list(pngs), count, coverage_facts(options.coverage)
 
 
-def draw(call: Any, pages: list[int], width: int, relaid: list | None = None
+def draw(call: Any, pages: list[int], width: int, relaid: list | None = None, fast: bool = False
          ) -> tuple[dict, int | None, dict | None]:
-    """``{page: (png, meta, cached)}`` for the pages the document has among ``pages``, drawn
-    ``width`` px wide; the page count when the document was laid out (``None`` when every
-    page was held already); and the layout's coverage facts then.  ``relaid``, a list,
-    is given why the document was laid out whole where a layout of the version before was
-    handed over (:func:`docx_agent.layout.relaid_facts`).
+    """``{page: (png, meta, cached, approximate)}`` for the pages the document has among
+    ``pages``, drawn ``width`` px wide; the page count when the document was laid out
+    (``None`` when every page was held already); and the layout's coverage facts then.
+    ``relaid``, a list, is given why the document was laid out whole where a layout of the
+    version before was handed over (:func:`docx_agent.layout.relaid_facts`).  ``fast``
+    (round 39): pages without an exact image held drawn approximately, for about a third of
+    the CPU (:meth:`.render.PageRenderer.rasterise_fast`), ``approximate`` then true.
 
     ooxml-edit's render pipeline draws them (:func:`ooxml_edit.tools.render.draw`, with the
     document's :data:`.render.RENDERER`): an image is kept by its content in the toolbox's
@@ -291,7 +293,7 @@ def draw(call: Any, pages: list[int], width: int, relaid: list | None = None
     key, wait = affinity(document)
     drawn, facts = pipeline.draw(call, RENDERER, pages, width, ids={page: page for page in pages},
                                  fonts=fonts, locale=locale, state=kept, on_facts=on_facts,
-                                 affinity=key, affinity_wait=wait)
+                                 affinity=key, affinity_wait=wait, fast=fast)
     if not facts:
         return drawn, None, None
     if relaid is not None and facts[0].get("relaid_cause"):
@@ -304,7 +306,9 @@ def draw(call: Any, pages: list[int], width: int, relaid: list | None = None
 
 @handler("render")
 def render(call: Any, doc: str, slides: list | None = None, pages: list[int] | None = None,
-           width: int | None = None, sheet: dict | None = None, range: Any = None) -> Result:
+           width: int | None = None, sheet: dict | None = None, range: Any = None,
+           fast: bool | None = None) -> Result:
+    fast = bool(fast)
     ranges = ranges_of(resolve(call, range))
     if ranges:
         # Round 35, R18: the pages some blocks fall on -- one image, or a sheet of them.
@@ -313,16 +317,32 @@ def render(call: Any, doc: str, slides: list | None = None, pages: list[int] | N
             call.warn(f"the range is on {len(pages)} pages, more than {call.limits.max_images_per_call} "
                       "images a call: drawn as one sheet")
             sheet = {}
-        result = (_render_sheet(call, pages, width, sheet) if sheet is not None
-                  else _render_pages(call, pages, width))
+        result = (_render_sheet(call, pages, width, sheet, fast) if sheet is not None
+                  else _render_pages(call, pages, width, fast))
         result.data["range"] = scoped
         return result
     if sheet is not None:
-        return _render_sheet(call, _pages_of(call, slides, pages), width, sheet)
-    return _render_pages(call, _pages_of(call, slides, pages), width)
+        return _render_sheet(call, _pages_of(call, slides, pages), width, sheet, fast)
+    return _render_pages(call, _pages_of(call, slides, pages), width, fast)
 
 
-def _render_pages(call: Any, pages: list[int] | None, width: int | None) -> Result:
+#: What a render's result says of its fast images (round 39): which facts are approximate.
+APPROXIMATE = ["pixels"]
+
+
+def _approximate(result: Result, pages: list[int]) -> Result:
+    """``result`` saying which of its images are approximate (``render`` with ``fast``):
+    ``approximate`` names what is (the pixels: text drawn as outlines, the layout and page
+    breaks exact), and the summary the pages and the way to the exact image."""
+    if pages:
+        result.data["approximate"] = list(APPROXIMATE)
+        result.data["approximate_pages"] = pages
+        result.summary += (f"; fast: page(s) {', '.join(map(str, pages))} approximate (pixels: text as "
+                           "outlines; layout and page breaks exact). Render without fast for the exact image")
+    return result
+
+
+def _render_pages(call: Any, pages: list[int] | None, width: int | None, fast: bool = False) -> Result:
     """``render`` of ``pages`` (default the first), each its own image."""
     pages = list(dict.fromkeys(pages or [1]))
     width = width or DEFAULT_WIDTH
@@ -334,7 +354,7 @@ def _render_pages(call: Any, pages: list[int] | None, width: int | None) -> Resu
     fonts = tuple(font_dirs_of(call.document))
     locale = locale_of(call.document)
     relaid: list = []
-    drawn, count, coverage = draw(call, pages, width, relaid)
+    drawn, count, coverage = draw(call, pages, width, relaid, fast)
     if len(drawn) < len(pages):
         raise ToolError("not_found", f"the document has {count} page(s)", field="pages",
                         valid_options=list(range(1, count + 1))[:50])
@@ -344,7 +364,8 @@ def _render_pages(call: Any, pages: list[int] | None, width: int | None) -> Resu
     for number in pages:
         png = drawn[number][0]
         w, h = png_size(png)
-        images.append(call.image(png, w, h, label=f"page {number}").describe())
+        label = f"page {number}" + (" (approximate)" if drawn[number][3] else "")
+        images.append(call.image(png, w, h, label=label).describe())
     result = Result(summary=f"Rendered page(s) {', '.join(map(str, pages))} (final view: changes accepted, "
                     "comments hidden)", data={"pages": pages,
                                               "cached": [p for p in pages if drawn[p][2]]})
@@ -356,7 +377,7 @@ def _render_pages(call: Any, pages: list[int] | None, width: int | None) -> Resu
         # what caused it (a styles change, an edited section break, a field one block opens
         # and another closes...), to explain a slow refresh.
         result.data["relaid"] = relaid[0]
-    return result
+    return _approximate(result, [p for p in pages if drawn[p][3]])
 
 
 def _range_pages(call: Any, ranges: list[str], pages: list[int] | None) -> tuple[list[int], list[dict]]:
@@ -385,7 +406,8 @@ def _range_pages(call: Any, ranges: list[str], pages: list[int] | None) -> tuple
     return on, scoped
 
 
-def _render_sheet(call: Any, pages: list[int] | None, width: int | None, sheet: dict) -> Result:
+def _render_sheet(call: Any, pages: list[int] | None, width: int | None, sheet: dict,
+                  fast: bool = False) -> Result:
     """``render`` with ``sheet``: the pages tiled into one image, in order, each labelled
     ``page 3`` (:mod:`ooxml_edit.tools.tiles`); ``pages`` left out is the first
     ``tiles.MAX_TILES``, or all there are.  ``sheet.width`` is each tile's, ``width``
@@ -420,12 +442,12 @@ def _render_sheet(call: Any, pages: list[int] | None, width: int | None, sheet: 
     call.check_images(1)                 # before drawing: a refused call costs nothing
     entry = call.entry
     key = ("sheet", version, tuple(pages) if named else None, tiling.columns, tiling.width,
-           fonts, locale)
+           fonts, locale) + (("fast",) if fast else ())
     made = entry.render_cache.get(key)
     cached = made is not None
     tiles_cached = None
     if made is None:
-        drawn, count, coverage = draw(call, pages, tiling.width)
+        drawn, count, coverage = draw(call, pages, tiling.width, fast=fast)
         if len(drawn) < len(pages) and named:
             raise ToolError("not_found", f"the document has {count} page(s)", field="pages",
                             valid_options=list(range(1, count + 1))[:50])
@@ -439,17 +461,18 @@ def _render_sheet(call: Any, pages: list[int] | None, width: int | None, sheet: 
         if named and tiling.width > drawn_as.width:
             tiling = drawn_as            # drawn a pixel narrower than needed: kept
         elif tiling.width != drawn_as.width:     # taller pages, or fewer than the first 30
-            drawn, _, again = draw(call, pages, tiling.width)
+            drawn, _, again = draw(call, pages, tiling.width, fast=fast)
             coverage = coverage if again is None else again
         tiles_cached = [p for p in pages if drawn[p][2]]
+        rough = [p for p in pages if drawn[p][3]]
         # The snapshot is taken (the tiles); the worker draws the sheet from it.
         png, w, h = pipeline.draw_tiles(call, RENDERER, [(drawn[p][0], f"page {p}") for p in pages],
                                         tiling, name="sheet", what="pages", fonts=fonts)
         if coverage is not None:
             call.document._tool_render_coverage = ((version, fonts, locale), coverage)
-        made = (png, w, h, pages, tiling)
+        made = (png, w, h, pages, tiling, rough)
         entry.render_cache.put(key, made)
-    png, w, h, pages, tiling = made
+    png, w, h, pages, tiling, rough = made
     call.image(png, w, h, label=f"sheet of pages {pages[0]}-{pages[-1]}" if len(pages) > 1
                else f"sheet of page {pages[0]}")
     data = {"pages": pages, "sheet": {"columns": tiling.columns, "width": tiling.width},
@@ -464,7 +487,7 @@ def _render_sheet(call: Any, pages: list[int] | None, width: int | None, sheet: 
     render_version, coverage = getattr(call.document, "_tool_render_coverage", (None, None))
     if coverage is not None and render_version == (version, fonts, locale):
         result.data["coverage"] = coverage
-    return result
+    return _approximate(result, rough)
 
 
 def _shortest_ratio(document: Document) -> float | None:
