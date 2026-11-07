@@ -5,6 +5,15 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.58 -- unreleased
+
+- A table cell merged with another after its values were labelled (a scale's `show: label`)
+  holds both labels, one per paragraph, and at most one record: `check(scale=...)` now lists
+  it under `unrecorded` (its steps in `label_of`; ooxml-edit 0.90.1), no longer skips it as
+  "2 paragraphs of text"; `style_by_value` still writes nothing there. A cell rewritten from a
+  source keeps its label's record, as any edit of a label does: a value written there is
+  listed as a value typed over its label, with the fix.
+
 ## 0.1.57 -- unreleased
 
 - **A document's layout stays in the worker that made it; a check's facts are made there**

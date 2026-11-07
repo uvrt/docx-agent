@@ -276,6 +276,10 @@ def _cell_value(document: Any, scale: _scales.Scale, cell: Cell, given: str | No
         return ScaleValue(cell.id, given=given, skip=f"{cell.id} is empty")
     holding = [p for p, t in zip(paragraphs, texts) if t.strip()]
     if scale.labels and len(holding) > 1:
+        if all(scale.step_of_label(t) is not None for t in texts if t.strip()):
+            # Labels, one per paragraph (a cell merged with another): no one value is kept
+            # for them, which the check reports as such (unrecorded); never written.
+            return ScaleValue(cell.id, text, given=given, handle=("cell", cell.id, [p.id for p in paragraphs]))
         return ScaleValue(cell.id, given=given, skip=f"{cell.id} holds {len(holding)} paragraphs of text: "
                           "a label takes the place of one value, in one paragraph")
     label = None
