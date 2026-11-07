@@ -30,6 +30,16 @@ value's runs are taken off: they would hide the step.
 the scale's name and the step's number, whatever label follows); ``exact`` where every run
 carries it, the style holds the step's colours, no run overrides them and a cell's fill is the
 step's.
+
+**Labels** (round 38; a scale with ``"show": "label"``): the value's characters are replaced
+by its step's label -- the label takes the formatting of the value's first character, then
+the step's style over it -- and the label is kept in the document with the value it stands for
+and its reference (:meth:`docx_agent.Document.keep_text_label`; the paragraph's entry beside
+its text facts, so it survives a save, a reopen and Word, and follows edits: one of the label
+itself keeps it).  A target that holds a label reads it as its text and the label's record as
+:attr:`~ooxml_edit.tools.ScaleValue.kept`: a paragraph or a cell whose whole text is a label,
+a range starting where one does (its address then the label's), and ``{{...}}`` targets the
+labels written from a matching reference.  A cell takes a label in one paragraph of text.
 """
 
 from __future__ import annotations
@@ -60,10 +70,11 @@ def scale_values(call: Any, scale: _scales.Scale, scope: Mapping[str, Any]) -> l
     document = call.document
     held = _held(call, scope)
     styles = _style_names(document)
+    labels = document.text_labels()
     out: list[ScaleValue] = []
     for target in scale.targets:
         try:
-            found = _read_target(document, scale, target, styles)
+            found = _read_target(document, scale, target, _Reader(styles, labels))
         except ToolError as error:
             found = [ScaleValue(target, skip=error.message)]
         for value in found:
@@ -113,13 +124,30 @@ def _style_names(document: Any) -> dict[str, str]:
     return {style.id: style.name or style.id for style in document.styles if style.kind == "character"}
 
 
-def _read_target(document: Any, scale: _scales.Scale, target: str, styles: dict[str, str]) -> list[ScaleValue]:
+class _Reader:
+    """What reading every target needs once: the character styles' names by id, the
+    labels kept by paragraph id."""
+
+    def __init__(self, styles: dict[str, str], labels: dict[str, list[dict[str, Any]]]) -> None:
+        self.styles = styles
+        self.labels = labels
+
+    def label_at(self, paragraph: str, start: int, end: int | None = None) -> dict[str, Any] | None:
+        """The label kept in ``paragraph`` starting at ``start`` (and, with ``end``, ending
+        there), or ``None``."""
+        for label in self.labels.get(paragraph, ()):
+            if label["at"] == start and (end is None or label["at"] + len(label["text"]) == end):
+                return label
+        return None
+
+
+def _read_target(document: Any, scale: _scales.Scale, target: str, reader: _Reader) -> list[ScaleValue]:
     column = _scales.column_target(target)
     if column is not None:
-        return _column(document, scale, target, *column, styles)
+        return _column(document, scale, target, *column, reader)
     wanted = _scales.reference_target(target)
     if wanted is not None:
-        return _referenced(document, scale, target, wanted, styles)
+        return _referenced(document, scale, target, wanted, reader)
     if "@" in target and not target.startswith("p@"):
         try:
             where = document.range(target)
@@ -132,16 +160,18 @@ def _read_target(document: Any, scale: _scales.Scale, target: str, styles: dict[
             raise ToolError("invalid_arguments", f"{target} is a position, not characters: give "
                             "p:A@<start>:<end>")
         paragraph = document.paragraph(where.start_id)
-        return [_text_value(document, scale, target, None, paragraph, where.start, where.end, styles)]
+        label = reader.label_at(paragraph.id, where.start)
+        end = where.end if label is None else where.start + len(label["text"])
+        return [_text_value(document, scale, target, None, paragraph, where.start, end, reader, label)]
     try:
         found = document.get(target)
     except (KeyError, ValueError, IndexError) as error:
         raise ToolError("not_found", f"no {target}: {_said(error)}; a target is a paragraph, a range "
                         "p:A@4:5, a cell t:X/c1,2, a column t:X/col2 or {{d:...}} values") from None
     if isinstance(found, Paragraph):
-        return [_text_value(document, scale, target, None, found, 0, None, styles)]
+        return [_text_value(document, scale, target, None, found, 0, None, reader)]
     if isinstance(found, Cell):
-        return [_cell_value(document, scale, found, None, styles)]
+        return [_cell_value(document, scale, found, None, reader)]
     if isinstance(found, Table):
         raise ToolError("invalid_arguments", f"{target} is a table: name its column ({target}/col1) "
                         "or its cells")
@@ -216,20 +246,24 @@ def _colours_of(document: Any, style_id: str) -> tuple[str | None, str | None]:
 
 
 def _text_value(document: Any, scale: _scales.Scale, target: str, given: str | None, paragraph: Any,
-                start: int, end: int | None, styles: dict[str, str]) -> ScaleValue:
+                start: int, end: int | None, reader: _Reader, label: dict[str, Any] | None = None,
+                source: str | None = None) -> ScaleValue:
     element = paragraph._element
     text, runs = _runs_over(element, start, end)
     if not text.strip():
         return ScaleValue(target, given=given, skip=f"{target} holds no text")
-    now, exact, differs = _now(document, scale, runs, styles)
+    now, exact, differs = _now(document, scale, runs, reader.styles)
     stop = len(_text.atoms(element)) if end is None else end
+    if label is None and start == 0 and end is None:
+        label = reader.label_at(paragraph.id, 0, stop)          # the paragraph's whole text
     address = paragraph.id if start == 0 and end is None else f"{paragraph.id}@{start}:{stop}"
     return ScaleValue(address, text.strip(), given=given, now=now, exact=exact, differs=differs,
-                      handle=("range", (paragraph.id, start, stop), [paragraph.id]))
+                      handle=("range", (paragraph.id, start, stop), [paragraph.id]), kept=label,
+                      source=source)
 
 
 def _cell_value(document: Any, scale: _scales.Scale, cell: Cell, given: str | None,
-                styles: dict[str, str]) -> ScaleValue:
+                reader: _Reader, source: str | None = None) -> ScaleValue:
     element = cell._element
     paragraphs = cell.paragraphs
     texts, runs = [], []
@@ -240,20 +274,28 @@ def _cell_value(document: Any, scale: _scales.Scale, cell: Cell, given: str | No
     text = "\n".join(texts).strip()
     if not text:
         return ScaleValue(cell.id, given=given, skip=f"{cell.id} is empty")
+    holding = [p for p, t in zip(paragraphs, texts) if t.strip()]
+    if scale.labels and len(holding) > 1:
+        return ScaleValue(cell.id, given=given, skip=f"{cell.id} holds {len(holding)} paragraphs of text: "
+                          "a label takes the place of one value, in one paragraph")
+    label = None
+    if len(holding) == 1:
+        whole = len(_text.atoms(holding[0]._element))
+        label = reader.label_at(holding[0].id, 0, whole)
     shading = element.find(f"{_W}tcPr/{_W}shd")
     fill = shading.get(_W + "fill") if shading is not None else None
     fill = None if fill in (None, "auto") else fill.upper()
-    now, exact, differs = _now(document, scale, runs, styles, fill, cell=True)
+    now, exact, differs = _now(document, scale, runs, reader.styles, fill, cell=True)
     if now is None and fill is not None:
         match = next((s for s in scale.steps if s.fill == fill), None)
         if match is not None:              # shaded as a step, its text not styled
             now, exact, differs = match.index, False, "text not in the step's style"
     return ScaleValue(cell.id, text, given=given, now=now, exact=exact, differs=differs,
-                      handle=("cell", cell.id, [p.id for p in paragraphs]))
+                      handle=("cell", cell.id, [p.id for p in paragraphs]), kept=label, source=source)
 
 
 def _column(document: Any, scale: _scales.Scale, target: str, table_id: str, column: int,
-            styles: dict[str, str]) -> list[ScaleValue]:
+            reader: _Reader) -> list[ScaleValue]:
     try:
         table = document.table(table_id)
         table.id                                   # resolves it
@@ -277,14 +319,14 @@ def _column(document: Any, scale: _scales.Scale, target: str, table_id: str, col
         seen.add(cell.id)
         if cell.row != r:                           # merged from a row above
             continue
-        out.append(_cell_value(document, scale, cell, target, styles))
+        out.append(_cell_value(document, scale, cell, target, reader))
     if not out:
         raise ToolError("not_found", f"{target}: no body cells ({header} header row(s) of {len(grid)})")
     return out
 
 
 def _referenced(document: Any, scale: _scales.Scale, target: str, wanted: str,
-                styles: dict[str, str]) -> list[ScaleValue]:
+                reader: _Reader) -> list[ScaleValue]:
     from .textfacts import _cell_id
 
     facts = document.text_facts()
@@ -292,28 +334,35 @@ def _referenced(document: Any, scale: _scales.Scale, target: str, wanted: str,
     index = document._index(main)
     order = {entry.id: k for k, entry in enumerate(index.paragraphs)}
     out: list[tuple[int, int, ScaleValue]] = []
+    found_by: list[tuple[str, dict[str, Any], dict[str, Any] | None]] = []
     for paragraph_id, found in facts.items():
-        for fact in found:
-            if not isinstance(fact.get("source"), str) or not _scales.reference_matches(wanted, fact["source"]):
-                continue
-            try:
-                paragraph = document.paragraph(paragraph_id)
-                element = paragraph._element
-            except (KeyError, ValueError):
-                continue
-            at, written = int(fact["at"]), str(fact.get("text") or "")
-            cell = next(element.iterancestors(_TC), None)
-            value = None
-            if cell is not None:
-                address = _cell_id(index, cell)
-                if address is not None:
-                    found_cell = document.get(address)
-                    if isinstance(found_cell, Cell) and found_cell.text.strip() == written.strip():
-                        value = _cell_value(document, scale, found_cell, target, styles)
-            if value is None:
-                value = _text_value(document, scale, f"{paragraph.id}@{at}:{at + len(written)}", target,
-                                    paragraph, at, at + len(written), styles)
-            out.append((order.get(paragraph.id, len(order)), at, value))
+        found_by += [(paragraph_id, fact, None) for fact in found]
+    for paragraph_id, found in reader.labels.items():   # a label written over such a value
+        found_by += [(paragraph_id, label, label) for label in found]
+    for paragraph_id, fact, label in found_by:
+        source = fact.get("source")
+        if not isinstance(source, str) or not _scales.reference_matches(wanted, source):
+            continue
+        try:
+            paragraph = document.paragraph(paragraph_id)
+            element = paragraph._element
+        except (KeyError, ValueError):
+            continue
+        at, written = int(fact["at"]), str(fact.get("text") or "")
+        cell = next(element.iterancestors(_TC), None)
+        value = None
+        if cell is not None:
+            address = _cell_id(index, cell)
+            if address is not None:
+                found_cell = document.get(address)
+                if isinstance(found_cell, Cell) and found_cell.text.strip() == written.strip():
+                    value = _cell_value(document, scale, found_cell, target, reader,
+                                        source=None if label else source)
+        if value is None:
+            value = _text_value(document, scale, f"{paragraph.id}@{at}:{at + len(written)}", target,
+                                paragraph, at, at + len(written), reader, label,
+                                source=None if label else source)
+        out.append((order.get(paragraph.id, len(order)), at, value))
     if not out:
         raise ToolError("not_found", f"{target}: no value written by a reference like it is still in the "
                         "document's text")
@@ -367,7 +416,9 @@ def write(call: Any, scale: _scales.Scale, plan: list[tuple[ScaleValue, _scales.
         if not preview:
             ids[index] = document.styles.find(name, "character").id
     if not preview:
-        for value, step in plan:
+        for value, step in (_last_first(plan) if scale.labels else plan):
+            if scale.labels:
+                edits.extend(_write_label(document, value, step))
             edits.extend(_apply(document, value, step, ids[step.index]))
     result = outcome(edits, "")
     result.warnings.extend(warnings)
@@ -384,6 +435,37 @@ def _make_style(document: Any, name: str, step: _scales.Step) -> Any:
     for flag in node.findall(_W + "qFormat"):
         remove(flag)
     return edit
+
+
+def _last_first(plan: list[tuple[ScaleValue, _scales.Step]]) -> list[tuple[ScaleValue, _scales.Step]]:
+    """The plan with the values in one paragraph last first: a label written in place of a
+    value moves the text after it, never the text before."""
+    def place(item: tuple[ScaleValue, _scales.Step]) -> tuple[int, int]:
+        kind, where, _ = item[0].handle
+        return (1, where[1]) if kind == "range" else (0, 0)
+    return sorted(plan, key=place, reverse=True)
+
+
+def _write_label(document: Any, value: ScaleValue, step: _scales.Step) -> list[Any]:
+    """The step's label written in place of the value's text -- taking the formatting of
+    its first character -- and kept there with the value it stands for (the module's
+    notes); ``value.handle`` then names the label."""
+    assert step.label is not None and value.record is not None
+    kind, where, paragraphs = value.handle
+    if kind == "range":
+        paragraph, start, end = where
+    else:
+        cell = document.get(where)
+        holding = [p for p in cell.paragraphs if p.text.strip()]
+        paragraph, start, end = holding[0].id, 0, len(_text.atoms(holding[0]._element))
+    with document._edit():
+        edit = TextRange(document, paragraph, start, paragraph, end).replace(step.label)
+        paragraph = edit.renamed.get(paragraph, paragraph) if edit.renamed else paragraph
+        record = {**value.record, "p": 0, "at": start, "text": step.label}
+        document.keep_text_label(paragraph, record)
+    if kind == "range":
+        value.handle = ("range", (paragraph, start, start + len(step.label)), [paragraph])
+    return [edit]
 
 
 def _apply(document: Any, value: ScaleValue, step: _scales.Step, style_id: str) -> list[Any]:

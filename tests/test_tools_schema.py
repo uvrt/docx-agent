@@ -229,10 +229,14 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 #: +464 (14,328 -> 14,950).  The guard rises to 14,950.  style_by_value is listed last and
 #: does not fit Claude's strict limits beside the others: the strict set is unchanged (6
 #: tools, 23 optional parameters).
+#: Round 38 (ooxml-edit 0.87.0): the scale's ``show`` (label: a step's label in place of its
+#: value, the value kept) +14 to the core (3,034 -> 3,048) and +60 to every definition
+#: (14,950 -> 15,010).  The guard rises to 15,010.  The strict set is unchanged (6 tools, 23
+#: optional parameters).
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 6500
-ALL_GUARD = 14950
+ALL_GUARD = 15010
 
 
 @pytest.fixture(scope="module")
