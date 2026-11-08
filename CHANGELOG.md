@@ -5,6 +5,47 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.66 -- unreleased
+
+- **`word_set_text` writes a paragraph's style and its emphasis in the same call**
+  (production round 42). Each item (and the single form) takes `paragraph_style`, a
+  paragraph style the template has, by name or id; one it lacks is refused with the
+  paragraph styles there are, and the same style again is a note, not a change. The text
+  may carry inline emphasis in the template's character styles, as `word_insert_markdown`
+  writes it: `**...**` the strong role's style (Strong), `*...*` the emphasis role's
+  (Emphasis), and a span `[text]{Character style}` (also `{style="..."}` and Pandoc's
+  `{custom-style="..."}`) any character style the template has -- one it lacks is refused
+  with the ones there are. Marks inside a span are direct bold or italic beside its style,
+  as `insert_markdown` writes a run with several marks. The result's `data.styled` lists the
+  styled runs (`range`, `text`, `style`), at most 40, the rest counted. The text is read
+  as CommonMark reads `*` (`5 * 3` and an unclosed `**` stay text) and as nothing else:
+  `_` is never emphasis, links, code, HTML, entities and line-start blocks are their
+  characters; a backslash before punctuation writes it (`\*` is an asterisk, `\[` a
+  bracket). **Text with markup states the paragraph's emphasis:** its marked pieces get
+  their styles and every other run loses its character style and direct bold and italic
+  (other run formatting -- colour, size, font, language -- is kept as the diff keeps it; a
+  hyperlink's runs keep their look); a repeat changes nothing. **Text without markup is
+  written exactly as before**, its formatting kept. One undo step; tracked, the style
+  changes are formatting revisions (`w:rPrChange`). Python: `markdown.styled.parse`,
+  `Document.style_spans`. word_set_text has five optional parameters now and is sent
+  non-strict to Claude (the dispatcher still validates it); edit_smartart takes its place
+  in the strict set (6 tools, 23 optional parameters). +69 estimated tokens in the core.
+- **`word_insert_markdown` at `replace:` keeps the replaced paragraphs' settings**
+  (production round 42). Before, the new paragraphs had the style map's defaults only:
+  replacing paragraphs lost their keeps, page break, indents, paragraph style and list
+  membership (a replaced nested item's list became a new list). Now each new body
+  paragraph takes the paragraph properties of the replaced paragraph of its kind -- a
+  paragraph, a heading of the same level, a list item of the same kind (bullet or
+  numbered) and level -- at its position, the last one's past the last (without its page
+  break); a list's nesting counts from the replaced items' level, so a flat list replacing
+  nested items stays nested, and items join the replaced items' list and count on in it.
+  Markdown's word wins: the kind, a numbered list's start, a style the style map names
+  (then only the keeps, page break and widow control are kept). The result's `data.kept`
+  says per new paragraph what it kept and from which (at most 30, the rest counted);
+  instances the Markdown list would have used and nothing names are removed. Python:
+  `Document.insert_markdown(..., keep_settings=True)`, `EditResult.kept`
+  (`docx_agent.markdown.keep`). No tool definition changes.
+
 ## 0.1.65 -- unreleased
 
 - **A check's facts read the parse its layout was made from** (production round 41). A check

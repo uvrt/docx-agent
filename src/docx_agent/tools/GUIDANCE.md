@@ -113,6 +113,13 @@ How to use them:
   one it inherits (without that, the inherited stop is the first one the tab reaches). A
   stop with no `position` is at the text column's end as the sections are now (worked out
   when written: widen the margins later and set it again).
+- **A paragraph's text, style and emphasis in one call:** `word_set_text` with
+  `paragraph_style` and `**strong**`, `*emphasis*` or `[text]{Character style}` in the text
+  writes them in the template's styles; text with markup states the paragraph's emphasis
+  (bold elsewhere goes), text without it keeps the formatting there. `\*` is an asterisk.
+- **Replacing paragraphs with Markdown** (`at: replace:...`) keeps their keeps, page break,
+  indents, style and list (matched by kind and position); `data.kept` says what. Markdown
+  that names a heading level, a list kind or start, or a mapped style wins.
 - **Captions in Markdown:** a paragraph starting `: ` (or `Table: ` next to a table) is a
   caption paragraph in the Caption style (`style_map` `caption` names another); for a
   numbered caption, `word_fields` `insert_caption`.
