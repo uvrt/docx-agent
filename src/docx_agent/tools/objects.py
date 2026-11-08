@@ -48,7 +48,9 @@ CELL = obj({"row": integer(minimum=0, optional=True),
             "col": integer(minimum=0, optional=True),
             "row_label": string("Or the row's first cell text.", optional=True),
             "col_label": string("Or the column's header text.", optional=True),
-            "text": string("Lines are paragraphs.")})
+            "text": string("Lines are paragraphs.", optional=True),
+            # Round 45, R66: one value of a source, as a text reference names one.
+            "from": string("Or one value: d:<id>/#12/<column>, :0.0 to round.", optional=True)})
 POSITION = obj({"row": integer(minimum=0), "col": integer(minimum=0)},
                "merge, split: first cell, from 0.", optional=True)
 
@@ -99,8 +101,8 @@ def _text(table: Any, row: int, col: int) -> str:
             "first": POSITION, "last": POSITION,
             "rows": integer("split: into rows. Default 1.", minimum=1, maximum=63, optional=True),
             "columns": integer("split: into columns. Default 2.", minimum=1, maximum=63, optional=True)},
-           refs=('table',), group="word_objects", mutates=True, sources=("from",),
-           aliases={"columns": names_as("columns", "from_columns")})
+           refs=('table',), group="word_objects", mutates=True, sources=("from", "cells[].from"),
+           facts=("cells[].text",), aliases={"columns": names_as("columns", "from_columns")})
 def word_edit_table(call: Any, doc: str, table: str, action: str, cells: list[dict] | None = None,
                     index: int | None = None, side: str = "after", first: dict | None = None,
                     last: dict | None = None, rows: int = 1, columns: int = 2,
@@ -110,12 +112,21 @@ def word_edit_table(call: Any, doc: str, table: str, action: str, cells: list[di
     table = resolve(call, table)
     view = document.table(table)
     source = given.get("from")
+    read_as = None
     if source is not None:
         if action != "set_cells":
             raise ToolError("invalid_arguments", f"{action} takes no from; from is for set_cells",
                             field="from", valid_options=["set_cells"])
-        if cells is not None:
+        from . import field_text
+
+        if field_text.names_one_value(source):
+            # Round 45, R66: one value is a cell's, not rows to fill from.
+            cells = _one_value_cells(source, cells, action)
+            read_as = f"from {source} (one value) read as the from of each of the {len(cells)} cell(s) given"
+            source = None
+        elif cells is not None:
             raise ToolError("invalid_arguments", "from replaces cells: give one", field="cells")
+    if source is not None:
         asked = {"doc": doc, "table": table, "action": action, "from": source, "from_columns": from_columns,
                  "header": header, "date_format": date_format, "index": index}
         return _set_from(call, view, source, from_columns, header, index or 0, date_format,
@@ -127,14 +138,19 @@ def word_edit_table(call: Any, doc: str, table: str, action: str, cells: list[di
                         valid_options=["from", "insert_row"])
     kept = _Kept(document, table)
     edits = []
+    facts: list[dict[str, Any]] | None = None
     if action == "set_cells":
         cells = need(cells, "cells")
         _limit_cells(call, len(cells))
-        for cell in cells:  # in order: a label set by an earlier cell is found by a later one
+        values = [_cell_value(call, cell, k) for k, cell in enumerate(cells)]   # all read first
+        placed_at: list[tuple[int, int]] = []
+        for cell, (text, _record) in zip(cells, values):  # in order: a label set by an earlier cell is found by a later one
             current = document.table(table)
             row, col = _locate(current, cell)
             kept.cell(row, col)
-            edits.extend(_set_cell(document, current, row, col, cell["text"]))
+            edits.extend(_set_cell(document, current, row, col, text))
+            placed_at.append((row, col))
+        facts = _cell_facts(call, cells, values, placed_at, lambda: kept.current_id() or table)
     elif action == "insert_row":
         edits.append(document.insert_row(table, index, below=side == "after"))
     elif action == "delete_row":
@@ -154,10 +170,81 @@ def word_edit_table(call: Any, doc: str, table: str, action: str, cells: list[di
     kept.follow(call, action, index, side)
     # A row inserted or deleted at the top renames the table (its id is its first row's).
     now = kept.current_id() or table
-    result = outcome(edits, f"{action} on {table}", data=table_json(document, now), changed=[now])
+    data = table_json(document, now)
+    if facts is not None:
+        data["facts"] = facts
+    result = outcome(edits, f"{action} on {table}", data=data, changed=[now])
+    if read_as:
+        result.warnings.insert(0, read_as)
     if now != table:
         result.renamed[table] = now
     return note_small_text(call, result, [now]) if action == "set_cells" else result
+
+
+def _one_value_cells(source: str, cells: list[dict] | None, action: str) -> list[dict]:
+    """Round 45, R66: a top-level ``from`` naming one value with ``cells`` that give only
+    places is each place's value (rule 1, read so, with a note in ``cells[].from``'s place);
+    without them it is refused with the call that works."""
+    example = f"cells: [{{row: 1, col: 2, from: '{source}'}}]"
+    if action != "set_cells" or not cells or any(c.get("text") not in (None, "") or c.get("from") not in (None, "")
+                                                 for c in cells):
+        raise ToolError("invalid_arguments", f"from {source} is one value: set_cells from fills rows (d:<id>, "
+                        f"d:<id>/#9:#16); one value goes in a cell: {example}", field="from",
+                        valid_options=[example, source.split("/", 1)[0]])
+    return [{**cell, "from": source} for cell in cells]
+
+
+def _cell_value(call: Any, cell: dict, k: int) -> tuple[str, dict[str, Any] | None]:
+    """Round 45, R66: a cell's text -- its ``text`` (references written already), or the one
+    value its ``from`` names, as a reference writes it (a number format or date pattern
+    after it), and that value's record."""
+    text, source = cell.get("text"), cell.get("from")
+    from . import field_text
+
+    if text == "" and source is not None:
+        text = None                     # a strict decoder's placeholder beside a from (rule 1)
+    if source is None:
+        if text is None:
+            raise ToolError("invalid_arguments", f"cells[{k}] gives no text: give text, or from (one value, "
+                            "d:<id>/#12/<column>)", field=f"cells[{k}].text", valid_options=["text", "from"])
+        return text, None
+    if text is not None:
+        raise ToolError("invalid_arguments", f"cells[{k}] gives text and from: give one", field=f"cells[{k}].from",
+                        valid_options=["text", "from"])
+    try:
+        return call.fact(source, field=f"cells[{k}].from")
+    except ToolError as error:
+        field_text.with_rows(call, source, f"cells[{k}].from", error)
+        raise
+
+
+def _cell_facts(call: Any, cells: list[dict], values: list[tuple[str, Any]], placed_at: list[tuple[int, int]],
+                table: Any) -> list[dict[str, Any]] | None:
+    """The values set_cells wrote by reference -- a cell's ``from`` and references in a
+    cell's ``text`` -- each with its cell, in order; a ``from`` kept as its cell's
+    paragraphs' source.  ``None`` without any (the result as before)."""
+    from . import field_text
+
+    by_cell: dict[int, list[Any]] = {}
+    for fact in getattr(call, "facts", None) or ():
+        found = re.match(r"cells\[(\d+)\]\.text$", fact.field)
+        if found:
+            by_cell.setdefault(int(found.group(1)), []).append(fact)
+    if not by_cell and all(record is None for _text, record in values):
+        return None
+    document = call.document
+    view = document.table(table())     # its id now (a first row's change renames it)
+    out: list[dict[str, Any]] = []
+    for k, (text, record) in enumerate(values):
+        if record is None and k not in by_cell:
+            continue
+        cell = view.cell(*placed_at[k]).id
+        if record is not None:
+            fact = field_text.as_fact(cells[k]["from"], f"cells[{k}].from", text, record)
+            field_text.keep_in_paragraphs(document, record, [p.id for p in document.get(cell).paragraphs])
+            out.append(field_text.brief(fact, cell=cell))
+        out += [field_text.brief(fact, cell=cell) for fact in by_cell.get(k, ())]
+    return out
 
 
 def _set_from(call: Any, view: Any, source: str, from_columns: list[str] | None,

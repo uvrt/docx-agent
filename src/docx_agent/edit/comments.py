@@ -105,9 +105,16 @@ class CommentOps:
         """A comment on a range (a range id or range; an empty range comments on a place),
         by ``author`` (the tracking author, else :data:`~docx_agent.revisions.stamp.DEFAULT_AUTHOR`)
         at ``date`` (now by default).  ``text`` may hold ``\\n`` between paragraphs.  Returns
-        the comment's id, ``c:<durableId>``."""
+        the comment's id, ``c:<durableId>``.
+
+        Round 45 (R68): ``where`` may name a whole table (``t:...``) or row (``tr:...``,
+        ``t:X/r1``): the comment covers it as Word's does when it is selected
+        (:meth:`_add_block_comment`)."""
         from .document import EditError, EditResult
 
+        block = self._commented_block(where) if isinstance(where, str) else None
+        if block is not None:
+            return self._add_block_comment(block, text, self._comment_author(author, initials, date))
         where = where if isinstance(where, TextRange) else self.range(where)
         if where.view != "current":
             raise EditError("edits take the current view")
@@ -137,6 +144,63 @@ class CommentOps:
                 end_parent, end_index = _inline.position(entries[-1].element, where.end)
                 end_parent.insert(end_index, end_marker)
             end_marker.addnext(reference)
+            durable = self._write_comment(comment_id, text, who, parent=None)
+            self.package.mark_dirty(part)
+        return EditResult(f"c:{durable}", created=[f"c:{durable}"], renamed=renames)
+
+    # -- a comment on a table or a row (round 45, R68) -----------------------------------------
+
+    def _commented_block(self: "Document", where: str):
+        """The table or row ``where`` names (``t:...``, ``tr:...``, ``t:X/r1``), or ``None``
+        for anything else (a range, a paragraph, a cell: text)."""
+        from .document import Row, Table
+
+        if "@" in where or ".." in where:
+            return None
+        try:
+            found = self.get(where)
+        except (KeyError, ValueError, IndexError):
+            return None
+        return found if isinstance(found, (Table, Row)) else None
+
+    def _add_block_comment(self: "Document", block, text: str, who) -> "EditResult":
+        """A comment on a whole table or row, as Word anchors one when the table (or row) is
+        selected (measured, Word 16.106, ``feedback-round45/probe-D``): the range starts at
+        the start of its first cell's first paragraph and ends right after the table's
+        ``w:tbl`` -- a row's ``w:tr``, or the table's when it is the last row -- with
+        ``w:commentRangeEnd`` there, between blocks (or rows), and the reference run at the
+        start of the next paragraph (the one after the table; the next row's first), at that
+        text's size."""
+        from .document import EditError, EditResult, Row
+
+        if isinstance(block, Row):
+            part, entry = block._table._entry()
+            element = entry.rows[block._index][0]
+            later = [n for n in element.itersiblings() if n.tag == _W + "tr"]
+            end_after = element if later else entry.element
+        else:
+            part, entry = block._entry()
+            element = end_after = entry.element
+        first = next(element.iter(_W + "p"), None)
+        following = _following_paragraph(end_after)
+        if first is None or following is None:
+            raise EditError(f"{block.id} has no paragraph to anchor a comment at"
+                            if first is None else f"{block.id} has no paragraph after it for the comment's mark")
+        index = self._index(part)
+        entries = [e for e in (index.entry_for(first), index.entry_for(following)) if e is not None]
+        size = self._reference_size(following, 0)
+        with self._edit():
+            renames = self._prepare_many([(part, entries)])
+            comment_id = self._next_annotation_id()
+            start_marker = make("w:commentRangeStart")
+            start_marker.set(_W + "id", str(comment_id))
+            end_marker = make("w:commentRangeEnd")
+            end_marker.set(_W + "id", str(comment_id))
+            parent, at = _inline.position(first, 0)
+            parent.insert(at, start_marker)
+            end_after.addnext(end_marker)
+            parent, at = _inline.position(following, 0)
+            parent.insert(at, self._reference_run(comment_id, size))
             durable = self._write_comment(comment_id, text, who, parent=None)
             self.package.mark_dirty(part)
         return EditResult(f"c:{durable}", created=[f"c:{durable}"], renamed=renames)
@@ -549,6 +613,69 @@ class CommentOps:
                         table = parent
             out.append((record["id"], table))
         return out
+
+
+def block_references(element: Element) -> list[Element] | None:
+    """The reference runs ``element`` (a paragraph or a row being deleted) holds of comments
+    on a whole table or row (Word's form: the range ends between blocks or rows, the
+    reference opens the next paragraph) -- runs that can move to the paragraph after it,
+    as Word's form has them there once ``element`` is gone.  ``None`` when it holds any
+    other note or comment reference (its delete is refused as before); ``[]`` with none."""
+    root = element.getroottree().getroot()
+    found: list[Element] = []
+    for node in element.iter(_W + "footnoteReference", _W + "endnoteReference", _W + "commentReference"):
+        if node.tag != _W + "commentReference":
+            return None
+        run = node.getparent()
+        paragraph = run.getparent() if run is not None else None
+        ends = [e for e in root.iter(_W + "commentRangeEnd") if e.get(_W + "id") == node.get(_W + "id")]
+        if paragraph is None or paragraph.tag != _W + "p" or len(ends) != 1 or ends[0].getparent().tag == _W + "p":
+            return None
+        before = [c for c in paragraph if isinstance(c.tag, str)][:paragraph.index(run)]
+        if any(c.tag == _W + "r" and c.find(_W + "commentReference") is None for c in before):
+            return None                 # not where Word's form has it: the paragraph's start
+        found.append(run)
+    return found
+
+
+def move_block_references(element: Element, runs: list[Element]) -> None:
+    """Before ``element`` is deleted: its block comments' reference runs (:func:`block_references`)
+    to the start of the paragraph after it, and a range end left after a table's last row
+    to after the table, as Word writes a comment on a table or row."""
+    if not runs:
+        return
+    target = _following_paragraph(element)
+    if target is None:
+        from .document import EditError
+
+        raise EditError("a comment's reference has no paragraph after it to move to")
+    if element.tag == _W + "tr":
+        later = [n for n in element.itersiblings() if n.tag == _W + "tr"]
+        if not later:
+            table = element.getparent()
+            for node in list(element.itersiblings(preceding=True)):
+                if node.tag == _W + "commentRangeEnd" and node.getnext() is element:
+                    table.addnext(node)
+    parent, at = _inline.position(target, 0)
+    for run in runs:
+        parent.insert(at, run)
+        at += 1
+
+
+def _following_paragraph(node: Element) -> Element | None:
+    """The first paragraph after ``node`` in document order (not inside it): in a later
+    sibling, else after its parent -- the paragraph after a table, a next row's first."""
+    while node is not None and node.tag != _W + "body":
+        for sibling in node.itersiblings():
+            if not isinstance(sibling.tag, str):
+                continue
+            if sibling.tag == _W + "p":
+                return sibling
+            found = next(sibling.iter(_W + "p"), None)
+            if found is not None:
+                return found
+        node = node.getparent()
+    return None
 
 
 def _last_para_id(comment: Element) -> str:
