@@ -28,7 +28,9 @@ reports where they differ:
   headings) or its count runs on from before the sample (by design), its level and label
   are compared and its number never -- nor where the copy's item is numbered by the
   outline: no restart is offered there.  Decided from how the sample's count behaves
-  (:data:`COUNT`), never from a style's name;
+  (:data:`COUNT`), never from a style's name.  Where the caller states that the copies'
+  lists run on (round 43, :class:`Run`: never inferred), a later copy's item where the
+  sample's count begins goes on from the copy before it instead (:data:`RUNS_ON`);
 * ``indent_left`` and ``indent_first`` (points; ``indent_first`` negative for a hanging
   indent): the paragraph's own, its style's or its list level's;
 * ``keep_with_next``, ``keep_lines``, ``page_break_before``, ``widow_control``: true or false.
@@ -56,7 +58,8 @@ a list of Word's own of the reference's kind, its label compared by the next che
 bullet as its Unicode character -- and, where the item's indents differ, ``text_at`` and
 ``number_at`` at the reference's: the copy's list only, Word's copy-on-write), ``restart``
 (``start``) and ``continue`` (where an earlier list over the same definition is there to
-continue).  ``widow_control`` has no ``word_format`` field: ``like`` gives it, else
+continue; in a stated run, with ``join``: the previous copy's list, and no restart inside
+a running list).  ``widow_control`` has no ``word_format`` field: ``like`` gives it, else
 ``word_follow_sample`` (the check's ``fix``).  None where no call makes it.
 """
 
@@ -86,6 +89,13 @@ LIST_SETTINGS = frozenset(SETTINGS[:3])
 #: goes on from an item before the region): what :func:`_counted` decides by.  Not a
 #: setting, never reported.
 COUNT = "list_count"
+#: Round 43 (run on): per list item, its list key (the instances counting together) and
+#: whether it leads its count in the region (no item of its list at its level or a
+#: shallower one before it there).  Not settings, never reported.
+LIST_KEY, LEAD = "list_key", "list_lead"
+#: Round 43: ``list_numbering``'s value where the caller states the copies' lists run on
+#: (:class:`Run`) and a copy's item goes on from the copy before it, in the same list.
+RUNS_ON = "runs on"
 #: :mod:`.compare`'s properties these replace for the paragraphs compared here.
 REPLACED = frozenset({"indent_left", "indent_first", "keep_with_next", "keep_lines", "page_break_before"})
 #: The settings ``word_format`` sets by the same name.
@@ -480,6 +490,7 @@ def region_settings(document: "Document", paragraphs: list) -> dict[int, dict[st
     items = read.items
     out: dict[int, dict[str, Any]] = {}
     seen: dict[int, tuple] = {}             # level -> (list key, number) of the item last there
+    shallowest: dict[Any, int] = {}         # list key -> the shallowest level of its items so far
     for element in paragraphs:
         applied = read.applied(element)
         values: dict[str, Any] = {
@@ -487,12 +498,16 @@ def region_settings(document: "Document", paragraphs: list) -> dict[int, dict[st
             "indent_first": round(applied.first_line - applied.hanging, 2),
             "keep_with_next": applied.keep_with_next, "keep_lines": applied.keep_together,
             "page_break_before": applied.page_break_before, "widow_control": applied.widow_control,
-            "list_level": None, "list_format": None, "list_numbering": None, COUNT: None}
+            "list_level": None, "list_format": None, "list_numbering": None, COUNT: None,
+            LIST_KEY: None, LEAD: False}
         item = items.get(id(element))
         if item is not None:
             key, level, number_format, text, number, fresh, outline = item
             values["list_level"] = level
             values["list_format"] = f"{number_format or 'decimal'} {text}"
+            values[LIST_KEY] = key
+            values[LEAD] = shallowest.get(key, 9) > level
+            shallowest[key] = min(shallowest.get(key, 9), level)
             if number_format not in ("bullet", "none") and text and "%" in text:
                 before = seen.get(level)
                 goes_on = before is not None and before[0] == key and number == before[1] + 1
@@ -507,14 +522,17 @@ def region_settings(document: "Document", paragraphs: list) -> dict[int, dict[st
 
 def compare_settings(document: "Document", reference_document: "Document", pairs: list[tuple],
                      ids: dict[int, tuple[str, str]], mine: dict[int, dict], theirs: dict[int, dict],
-                     reference_ids: dict[int, str]) -> list[dict]:
+                     reference_ids: dict[int, str], run: "Run | None" = None) -> list[dict]:
     """The differences of ``pairs`` (``(paragraph, reference)`` elements, styles alike), each
     ``{"block", "property", "paragraphs", "value", "reference", "fix"}`` grouped per block,
     property and values; ``ids`` gives each paragraph's ``(block, paragraph id)``, ``mine``
-    and ``theirs`` the regions' settings (:func:`region_settings`)."""
+    and ``theirs`` the regions' settings (:func:`region_settings`); ``run`` (round 43) where
+    the caller states the copy's lists run on (:class:`Run`)."""
     groups: dict[tuple, list[str]] = {}
     samples: dict[tuple, tuple] = {}
     likes: dict[tuple, dict[str, str | None]] = {}
+    joins: dict[str, str] = {}
+    held: set[tuple] = set()                 # groups whose restart would break a stated run
     same = document is reference_document
     for paragraph, reference in pairs:
         where = ids.get(id(paragraph))
@@ -530,11 +548,17 @@ def compare_settings(document: "Document", reference_document: "Document", pairs
         elif a["list_format"] != b["list_format"]:
             names = ["list_format", *_PAGE]  # its fix places the label as the reference's
         for name in names:
-            if name == "list_numbering" and not _counted(a, b):
-                continue
-            if a[name] != b[name]:
-                key = (block, name, a[name], b[name])
+            value, expected = a[name], b[name]
+            if name == "list_numbering":
+                if not _counted(a, b):
+                    continue
+                if run is not None:
+                    value, expected = run.compared(a, b, identifier, joins)
+            if value != expected:
+                key = (block, name, value, expected)
                 groups.setdefault(key, []).append(identifier)
+                if run is not None and name == "list_numbering" and not b[LEAD]:
+                    held.add(key)            # a restart inside a running list moves the run
                 sample = reference_ids.get(id(reference), "")
                 samples.setdefault(key, (sample, b, a))
                 # Round 42: the same document's sample paragraph to look like, where taking
@@ -547,7 +571,7 @@ def compare_settings(document: "Document", reference_document: "Document", pairs
         out.append({"block": block, "property": name, "paragraphs": paragraphs, "value": value,
                     "reference": reference,
                     "fix": settings_fix(document, name, value, reference, paragraphs, *samples[key],
-                                        likes=likes[key])})
+                                        likes=likes[key], joins=joins, restart=key not in held)})
     order = {name: k for k, name in enumerate(SETTINGS)}
     out.sort(key=lambda d: order[d["property"]])
     return out
@@ -558,13 +582,17 @@ def compare_settings(document: "Document", reference_document: "Document", pairs
 
 def settings_fix(document: "Document", name: str, value: Any, reference: Any, paragraphs: list[str],
                  sample: str, sample_settings: dict, own_settings: dict,
-                 likes: "dict[str, str | None] | None" = None) -> dict | None:
+                 likes: "dict[str, str | None] | None" = None, joins: "dict[str, str] | None" = None,
+                 restart: bool = True) -> dict | None:
     """The calls that give ``paragraphs`` the reference's ``name`` (the module's "Fixes"):
     every fix of a list item or a page setting is written here, and only here.  ``sample``
     is the reference paragraph, ``sample_settings`` its settings and ``own_settings`` the
     first paragraph's.  ``likes`` (round 42): per paragraph, the sample paragraph of the
     same document it may look like (``None``: not so) -- where every paragraph has one,
-    ``word_format`` ``like``, one call per sample paragraph."""
+    ``word_format`` ``like``, one call per sample paragraph.  Round 43, lists stated to run
+    on (:class:`Run`): ``joins`` gives each paragraph the previous copy's item whose list it
+    goes on from (``word_lists`` ``continue`` ``join``), and ``restart`` false holds back a
+    restart that would break the run."""
     if likes and all(likes.get(p) for p in paragraphs):
         by_sample: dict[str, list[str]] = {}
         for identifier in paragraphs:
@@ -597,12 +625,75 @@ def settings_fix(document: "Document", name: str, value: Any, reference: Any, pa
                   "label": label, **place} for p, level in _first_per_list(document, paragraphs)]
         return {"tool": "word_lists", "calls": calls} if calls else None
     if name == "list_numbering":
+        if reference == RUNS_ON:
+            calls = [{"targets": [p], "action": "continue", "join": joins[p]} for p in paragraphs
+                     if joins and joins.get(p)]
+            return {"tool": "word_lists", "calls": calls} if calls and len(calls) == len(paragraphs) else None
         if reference.startswith("starts at "):
+            if not restart:
+                return None
             return {"tool": "word_lists", "calls": [{"targets": [p], "action": "restart",
                                                       "start": int(reference.split()[-1])} for p in paragraphs]}
         calls = [{"targets": [p], "action": "continue"} for p in paragraphs if _can_continue(document, p)]
         return {"tool": "word_lists", "calls": calls} if len(calls) == len(paragraphs) else None
     return None
+
+
+class Run:
+    """Round 43: the caller states that a copy's numbered lists run on through the copies
+    of one sample (one list counting 1-2 in the first copy, 3-4 in the next, ...) --
+    never inferred: in Word's XML a copy that counts on by design and one that should have
+    begun again are alike.  ``previous`` is ``None`` for the run's first copy (it numbers as
+    its sample shows) and otherwise the copy before it's numbered items, in order: ``(level,
+    list key, label, paragraph id)``.
+
+    Where the sample's own count begins at the start of its region (:data:`LEAD`, ``starts
+    at N``), a later copy's item is to go on from the copy before it: in the list of that
+    copy's last item at its level and label (else at its level), its count carried on, no
+    restart between -- :data:`RUNS_ON`; any other number (a restart, a separate list) is
+    the difference, its fix ``word_lists`` ``continue`` joining that list (``join``), never
+    a restart.  Where the copy before has no such item, the item compares as its sample.
+    The level, the label and every other item compare as before; a restart is offered
+    only on an item that leads its count (in a run's first copy, or with nothing to run on
+    from), never inside a running list (:func:`compare_settings`)."""
+
+    def __init__(self, previous: "list[tuple] | None" = None):
+        self.previous = previous
+
+    @classmethod
+    def after(cls, document: "Document", blocks: "list[Any] | None") -> "Run":
+        """The run as it stands after the copy whose region's paragraphs are ``blocks``
+        (``None``: no copy before)."""
+        if blocks is None:
+            return cls(None)
+        index = document._index(document.package.document_part())
+        found = region_settings(document, blocks)
+        items = []
+        for element in blocks:
+            values = found[id(element)]
+            entry = index.entry_for(element)
+            if values["list_numbering"] is not None and entry is not None:
+                items.append((values["list_level"], values[LIST_KEY], values["list_format"], entry.id))
+        return cls(items)
+
+    def target(self, own: dict) -> "tuple | None":
+        """The previous copy's item ``own`` goes on from: its last at ``own``'s level and
+        label, else its last at the level."""
+        level = [item for item in self.previous or () if item[0] == own["list_level"]]
+        alike = [item for item in level if item[2] == own["list_format"]]
+        return (alike or level or [None])[-1]
+
+    def compared(self, own: dict, sample: dict, identifier: str, joins: dict[str, str]) -> tuple:
+        """``(value, expected)`` of ``list_numbering`` for a copy's item and its sample's."""
+        if self.previous is None or not (sample[LEAD] and sample[COUNT] == "own"
+                                         and str(sample["list_numbering"]).startswith("starts at ")):
+            return own["list_numbering"], sample["list_numbering"]
+        found = self.target(own)
+        if found is None:
+            return own["list_numbering"], sample["list_numbering"]
+        joins[identifier] = found[3]
+        goes_on = own[COUNT] == "runs_on" and own[LIST_KEY] == found[1]
+        return (RUNS_ON if goes_on else own["list_numbering"]), RUNS_ON
 
 
 def _counted(own: dict, sample: dict) -> bool:
@@ -702,5 +793,5 @@ def _can_continue(document: "Document", identifier: str) -> bool:
     return False
 
 
-__all__ = ["LIST_SETTINGS", "REPLACED", "SETTINGS", "compare_settings", "list_items", "region_settings",
+__all__ = ["LIST_SETTINGS", "REPLACED", "RUNS_ON", "Run", "SETTINGS", "compare_settings", "list_items", "region_settings",
            "settings_fix"]

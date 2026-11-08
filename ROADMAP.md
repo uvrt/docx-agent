@@ -1243,6 +1243,15 @@ doc.render_svg(pages=diff.changed)     # or render_png; ids on every paragraph g
   and its model holds paths and fields open across blocks), a `word_fields` update that stops
   a pass early (the last pass confirms the numbers; skipping it exactly needs docx2svg's
   settled field values in docx-agent's terms).
+- **Round 43 (0.1.70):** lists stated to run on through the copies (`check` `copies[].lists`
+  `run_on`, never inferred): `copy_settings.Run` -- per run (the stated copies of one
+  reference, in document order, `tools.scoped._runs`) the copy before's numbered items;
+  where the sample's own count begins at the start of its region (`LEAD`, `starts at N`), a
+  later copy's item is `runs on` when its count goes on from before the copy (`runs_on`) in
+  the list of the copy before's last item at its level and label, else the difference,
+  fixed by `word_lists` `continue` `join`. A restart is held back inside a running list
+  (an item that does not lead its count). The cache key carries the run (the copy before's
+  blocks).
 - **Round 43 (0.1.69):** where a copy's numbered item stands in its count is compared only
   where the sample's own count begins inside the sample (`copy_settings._counted`): each
   item's count read as `outline` (an outline level 0-8 and numbering from its style or a

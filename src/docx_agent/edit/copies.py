@@ -163,22 +163,27 @@ def styles_digest(document: "Document") -> str:
 
 
 def compare_copy(document: "Document", copy: list[tuple[str, Any]], reference_document: "Document",
-                 reference: list[tuple[str, Any]]) -> dict[str, Any]:
+                 reference: list[tuple[str, Any]], *, runs_on: "list[tuple[str, Any]] | bool" = False
+                 ) -> dict[str, Any]:
     """One copy (its blocks, :func:`blocks_of`) compared with its reference (blocks of
     ``reference_document``, which may be ``document``): ``{"follows", "pairs",
     "differences", "example_text"}`` -- the pairs ``[copy block, reference block]``, every
     difference (``block``, ``property``, ..., ``fix``, ``kind``; the module says which) and
-    every place the reference's example text is still in the copy."""
+    every place the reference's example text is still in the copy.  ``runs_on`` (round 43):
+    the caller states the copies' numbered lists run on (:class:`.copy_settings.Run`) -- the
+    blocks of the copy before this one in the run, or ``True`` for the run's first copy."""
     with styles_read():
-        return _compare_copy(document, copy, reference_document, reference)
+        return _compare_copy(document, copy, reference_document, reference, runs_on)
 
 
 def _compare_copy(document: "Document", copy: list[tuple[str, Any]], reference_document: "Document",
-                  reference: list[tuple[str, Any]]) -> dict[str, Any]:
+                  reference: list[tuple[str, Any]], runs_on: "list | bool" = False) -> dict[str, Any]:
     other = reference_document if reference_document is not document else None
     pairs, missing, extra = align(document, copy, reference_document, reference)
     differences: list[dict] = []
-    settings, compared_here = _settings_differences(document, copy, reference_document, reference, pairs)
+    run = None if runs_on is False else _settings.Run.after(
+        document, _region(runs_on) if isinstance(runs_on, list) else None)
+    settings, compared_here = _settings_differences(document, copy, reference_document, reference, pairs, run)
     for (identifier, _), (reference_id, _) in pairs:
         found = compare_blocks(document, [identifier], reference_id, other)
         for difference in found["differences"]:
@@ -220,7 +225,8 @@ def _region(blocks: list[tuple[str, Any]]) -> list[Any]:
 
 
 def _settings_differences(document: "Document", copy: list[tuple[str, Any]], reference_document: "Document",
-                          reference: list[tuple[str, Any]], pairs: list[tuple]) -> tuple[dict, set]:
+                          reference: list[tuple[str, Any]], pairs: list[tuple],
+                          run: "_settings.Run | None" = None) -> tuple[dict, set]:
     """``(differences by copy block, the ids of the paragraphs compared)``: each pair's
     paragraphs of the same style compared as Word applies them (:mod:`.copy_settings`)."""
     index = document._index(document.package.document_part())
@@ -245,7 +251,7 @@ def _settings_differences(document: "Document", copy: list[tuple[str, Any]], ref
     theirs = _settings.region_settings(reference_document, _region(reference))
     by_block: dict[str, list[dict]] = {}
     for difference in _settings.compare_settings(document, reference_document, paragraph_pairs, ids, mine,
-                                                 theirs, reference_ids):
+                                                 theirs, reference_ids, run):
         by_block.setdefault(difference["block"], []).append(difference)
     return by_block, {i for _, i in ids.values()}
 
