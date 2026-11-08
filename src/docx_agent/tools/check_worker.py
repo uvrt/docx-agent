@@ -18,6 +18,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import docx2svg
+
 from ..layout import DocumentLayout, LayoutSummary, _in_body, _put_held, held_layout, made_facts
 
 
@@ -34,6 +36,13 @@ def _opened(held: Any, data: bytes, options: dict) -> DocumentLayout:
         owner.font_dirs = options.get("font_dirs")
         owner.locale = options.get("locale")
         layout, _, warnings = held.laid
+        parsed = getattr(docx2svg, "parsed_document", None)
+        if parsed is not None:
+            # Round 41: the facts read docx2svg's parse of these bytes that the layout was made
+            # from, not a second parse of them (docx2svg 0.11.10).
+            from ..edit.effective import seed_model
+
+            seed_model(owner, data, parsed(layout, data))
         found = held.extra["layout"] = DocumentLayout(owner, layout, warnings)
     return found
 

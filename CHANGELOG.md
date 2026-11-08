@@ -5,6 +5,22 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.65 -- unreleased
+
+- **A check's facts read the parse its layout was made from** (production round 41). A check
+  made in the worker holding the document's layout opened a copy of the document from the
+  bytes laid out, and its layout facts parsed those bytes with docx2svg a second time
+  (`edit.effective`'s model; about a quarter of the facts' CPU). The copy now takes docx2svg's
+  parse of the very bytes the layout was made from (`docx2svg.parsed_document`, docx2svg
+  0.11.10) where the copy's bytes are those; with an earlier docx2svg, or other bytes, it
+  parses them as before. The facts are the same: every call's result of a made-up build --
+  two 11-page documents and the 46-page report, edited and checked, through a Toolbox with 2
+  workers -- is 0.1.64's byte for byte, and
+  `tests/test_worker_facts.py::test_the_facts_read_the_parse_the_layout_was_made_from`
+  compares the facts both ways. With docx2svg 0.11.10 the worker's layout of each new version
+  also builds the model only of the blocks that changed (docx2svg's kept parse, held with the
+  layout in the worker, within what a held layout costs). No tool definition changes.
+
 ## 0.1.64 -- unreleased
 
 - **`check(range=...)` says what a range's keep does to the pages, laid out** (production

@@ -358,3 +358,32 @@ def test_keys_resolved_from_their_parents_are_the_elements_the_path_names(made):
     assert any("/w:tc[" in key for key in keys)
     for key in sorted(keys):
         assert layout._element_of(key) is resolve_path(root, key), key
+
+
+@pytest.mark.skipif(not hasattr(__import__("docx2svg"), "parsed_document"), reason="docx2svg before 0.11.10")
+def test_the_facts_read_the_parse_the_layout_was_made_from(made, monkeypatch):
+    """Round 41: a check's facts, made in the process holding the layout, read docx2svg's
+    parse of the version that layout was made from (``docx2svg.parsed_document``) rather
+    than parse the same bytes again -- and are the facts a parse of their own gives."""
+    import docx2svg
+
+    from docx_agent.edit import effective
+
+    parses = []
+    real = effective.parse_package
+
+    def counted(data):
+        parses.append(len(data))
+        return real(data)
+
+    monkeypatch.setattr(effective, "parse_package", counted)
+    with _toolbox(workers=0) as box:
+        shared = _session_run(box, made, _steps())
+    in_worker = len(parses)
+    with monkeypatch.context() as patch:
+        patch.delattr(docx2svg, "parsed_document")     # as with an earlier docx2svg
+        with _toolbox(workers=0) as box:
+            own = _session_run(box, made, _steps())
+    assert shared == own
+    # The checks' facts parsed the document in the second run, never in the first.
+    assert in_worker == 0 and len(parses) > 0
