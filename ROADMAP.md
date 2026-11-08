@@ -1243,6 +1243,14 @@ doc.render_svg(pages=diff.changed)     # or render_png; ids on every paragraph g
   and its model holds paths and fields open across blocks), a `word_fields` update that stops
   a pass early (the last pass confirms the numbers; skipping it exactly needs docx2svg's
   settled field values in docx-agent's terms).
+- **Round 43 (0.1.69):** where a copy's numbered item stands in its count is compared only
+  where the sample's own count begins inside the sample (`copy_settings._counted`): each
+  item's count read as `outline` (an outline level 0-8 and numbering from its style or a
+  level tied to a style, `_by_outline`), `own` (begins in the region -- the count's first
+  or a `w:startOverride` restart, read before it is counted -- or goes on from an item of
+  the region) or `runs_on` (goes on from before the region). Headings numbered by the
+  template's outline and lists that run on compare by level and label alone; no restart
+  on an outline item.
 - **Round 42 (0.1.68):** copies compared as Word applies them (`docx_agent.edit.copy_settings`):
   each paired paragraph -- a block's, a table's cell paragraphs (`compare.paragraph_pairs`)
   -- read through `edit.effective` (docx2svg's cascade) for its indents, keeps and widow

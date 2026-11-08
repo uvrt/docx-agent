@@ -5,6 +5,21 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.69 -- unreleased
+
+- **`check(copies=...)` no longer counts numbered headings as list differences** (production
+  round 43). Since 0.1.68 a copy's title numbered by its heading style through the
+  template's outline (1, 1.1, 1.1.1) was told as `list_numbering` `starts at 2` against
+  the sample's `starts at 1`, with a `word_lists` `restart` that would break the outline's
+  numbers: every copy after the first failed to follow. Where a numbered item stands in
+  its count is now compared only where the sample's own count begins inside the sample (a
+  numbered list of its own: each copy's begins and goes on alike, a copy running on from
+  the one before is still told, fixed by a restart). Where the sample's item is numbered
+  by the outline (an outline level with numbering from its style, or a level tied to a
+  style -- read from the structure, not the style's name), or its list runs on from before
+  the sample, level and label are compared and the number is not; a copy's item numbered
+  by the outline is never offered a restart.
+
 ## 0.1.68 -- unreleased
 
 - **`check(copies=...)` compares lists and page settings as Word applies them** (production
