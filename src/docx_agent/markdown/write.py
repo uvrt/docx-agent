@@ -116,6 +116,8 @@ class Options:
     emphasis: str = "styles"
     images: object = None
     fetch: Callable[[str], bytes] | None = None
+    #: Round 42, R47: the looks list items take by level (:class:`~docx_agent.edit.like.LevelLooks`).
+    like: object = None
 
 
 @dataclass
@@ -139,7 +141,7 @@ class _Place:
 
 def insert_markdown(document: "Document", md: str, *, at: str = "end", style_map: StyleMap | None = None,
                     images=None, fetch: Callable[[str], bytes] | None = None, html: str = "refuse",
-                    emphasis: str = "styles") -> "EditResult":
+                    emphasis: str = "styles", like=None) -> "EditResult":
     """See :meth:`docx_agent.Document.insert_markdown`."""
     if not isinstance(md, str):
         raise EditError("insert_markdown takes Markdown text")
@@ -147,7 +149,7 @@ def insert_markdown(document: "Document", md: str, *, at: str = "end", style_map
         raise EditError(f"html is one of {', '.join(HTML_MODES)}")
     if emphasis not in EMPHASIS_MODES:
         raise EditError(f"emphasis is one of {', '.join(EMPHASIS_MODES)}")
-    options = Options(html, emphasis, images, fetch)
+    options = Options(html, emphasis, images, fetch, _levels(document, like))
     blocks = parse_model(md)
     notes = {b.label: b for b in blocks if isinstance(b, m.FootnoteDef)}
     blocks = [b for b in blocks if not isinstance(b, (m.FootnoteDef, m.Comment))]
@@ -184,6 +186,16 @@ def _write(document: "Document", blocks: list, notes: dict, options: Options, at
         return _insert(document, place, blocks, notes, options, pictures, style_map, tracking)
     except _Nothing:
         return EditResult(None, changed=False)
+
+
+def _levels(document: "Document", like):
+    """``insert_markdown``'s ``like`` read (:class:`~docx_agent.edit.like.LevelLooks`), or
+    ``None``: the looks are taken before anything changes."""
+    if not like:
+        return None
+    from ..edit.like import LevelLooks
+
+    return LevelLooks(document, like) or None
 
 
 class _Nothing(Exception):
@@ -786,6 +798,13 @@ class Writer:
             self._verbatim = False
 
     def list(self, block: m.ListBlock, depth: int) -> list[Element]:
+        look = None
+        if self.options.like:
+            look = self.options.like.at("number" if block.ordered else "bullet", depth + 1)
+            for text in self.options.like.warnings:
+                self._warn_once(text)
+        if look is not None:
+            return self.list_like(block, depth, look)
         level = min(depth, _MAX_LEVEL)
         kind = "number" if block.ordered else "bullet"
         construct = "ordered_list" if block.ordered else "bullet_list"
@@ -836,6 +855,30 @@ class Writer:
                 else:
                     out += self.block(inner)
         return out
+
+    def list_like(self, block: m.ListBlock, depth: int, look) -> list[Element]:
+        """A list whose items look like a given paragraph (round 42, R47;
+        :mod:`docx_agent.edit.like`): its style, its list at its level -- numbered on from
+        it, a start number not taken -- its indents and page settings, as ``word_format``'s
+        ``like`` gives them."""
+        from ..edit import like as _like
+
+        if block.ordered and block.start != 1:
+            self._warn_once(f"like: a numbered list starting at {block.start} continues {look.sample}'s numbering")
+        out: list[Element] = []
+        for item in block.items:
+            first = item[0] if item else None
+            rest = item[1:] if isinstance(first, m.Paragraph) else item
+            paragraph = self.paragraph(first.inline if isinstance(first, m.Paragraph) else [], None)
+            _like.take(paragraph, look, set())
+            out.append(paragraph)
+            for inner in rest:
+                out += self.list(inner, depth + 1) if isinstance(inner, m.ListBlock) else self.block(inner)
+        return out
+
+    def _warn_once(self, text: str) -> None:
+        if text not in self.warnings:
+            self.warnings.append(text)
 
     def _abstract(self, kind: str) -> int:
         """The abstract definition this insertion's ``kind`` lists use: a copy of the

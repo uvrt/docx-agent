@@ -182,6 +182,15 @@ class FormatOps:
             self.package.mark_dirty(part)
         return EditResult(renames.get(entry.id, entry.id), renamed=renames)
 
+    def format_like(self: "Document", identifier: str, sample: str) -> "EditResult":
+        """Make the paragraph ``identifier`` look like the paragraph ``sample``
+        (:mod:`docx_agent.edit.like`, round 42): its style, its list at its level (numbered
+        on from it), its direct indents and its page settings -- not its run formatting,
+        spacing or alignment.  A paragraph already like it is no change."""
+        from . import like as _like
+
+        return _like.format_like(self, identifier, _like.look_of(self, sample))[0]
+
     def format_run(self: "Document", identifier: str, index: int, **values) -> "EditResult":
         """Direct formatting on one run, as it is (no split)."""
         from .document import EditError, EditResult

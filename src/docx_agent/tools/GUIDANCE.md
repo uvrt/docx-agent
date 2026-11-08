@@ -71,6 +71,11 @@ How to use them:
   `word_lists` `format` sets `number_at`, `text_at`, `follow` and `tab_at` (a label wider
   than its hanging indent runs into the text: widen it). `check`'s `numbering_skips_level`
   names a level used while the level above never is.
+- **Items and paragraphs like the sample's:** `word_format` `like: "p:X"` gives the targets
+  p:X's style, its list at its level (numbered on from it), its indents and keeps in one
+  call; `word_insert_markdown` `like: ["p:3", "p:4"]` writes new list items, level by level,
+  as those paragraphs are (a deeper level follows the last one given, a level down). Name a
+  sample of each level: a point and its example. Run formatting is not taken.
 - **Blocks that belong on one page** (a heading, its text, a table and its source line):
   `word_format` `keep_together: true` on the span (`p:A..t:B`) keeps them together as Word
   does -- lines kept, each block with the next, every row with the next -- and moves them

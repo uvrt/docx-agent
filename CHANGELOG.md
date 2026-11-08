@@ -5,6 +5,37 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.66 -- unreleased
+
+- **Paragraphs made to look like a given one** (production round 42). `word_format` takes
+  `like`: a paragraph whose look each target takes -- its paragraph style; its list at its
+  level, numbered on from it (its own `numId` and `ilvl` where it has them, none where its
+  style numbers it, `numId` 0 where it is taken out of its style's list); its direct indents;
+  its page settings (keep with next, keep lines together, page break before, widow control).
+  Each is taken whole (where the sample has none, the target's own goes); run formatting,
+  spacing, alignment and tabs stay the target's (the result says so). A list a target leaves
+  unused is removed. The call's other settings win where both say something (an explicit
+  `paragraph_style`, keep, `keep_together` or `clear`). The result lists per target what was
+  set (`data.like.set`) and the targets already alike (`alike`, no change; a call where every
+  target is alike changes nothing and says so). A range, a cell or a span of one paragraph
+  as the sample is that paragraph (a note says so); several are refused with their ids.
+  Python: `Document.format_like(identifier, sample)` (`docx_agent.edit.like`).
+- **New list items like the sample's, by level.** `word_insert_markdown` takes `like`: the
+  paragraphs list items look like, by level (`["p:3", "p:4"]`: the top level like p:3, the
+  second like p:4; one id for the top level; `""` for a level written as before). A level
+  below the given ones is the nearest given one's list a level deeper per level, as Word's
+  Tab demotes an item (the same style, the level's own indent). A style map naming a
+  paragraph for a list role (`{"element": "bullet2", "style": "p:4"}`) is read as `like` for
+  that role, with a note. Warnings say where a sample is in no list, or a bullet item stands
+  for numbered ones. Python: `insert_markdown(..., like={1: "p:3", 2: "p:4"})`.
+- **`word_lists` `remove` on items numbered by a list of their own over a numbering style**
+  -- a builder removing a stray list's numbering, where `force` then takes every marker --
+  now also names the `word_format` `like` call that joins the nearest earlier list at their
+  level instead, keeping their marker and level.
+- Tool definitions: `like` on `word_format` and `word_insert_markdown`. `word_insert_markdown`
+  is sent strict: its tenth optional parameter sends `word_set_text` (three) non-strict and
+  `edit_smartart` (two) strict in its place, 24 optional parameters as before.
+
 ## 0.1.65 -- unreleased
 
 - **A check's facts read the parse its layout was made from** (production round 41). A check

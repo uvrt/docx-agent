@@ -1243,6 +1243,16 @@ doc.render_svg(pages=diff.changed)     # or render_png; ids on every paragraph g
   and its model holds paths and fields open across blocks), a `word_fields` update that stops
   a pass early (the last pass confirms the numbers; skipping it exactly needs docx2svg's
   settled field values in docx-agent's terms).
+- **Round 42 (0.1.66, R47):** a paragraph's look taken from another (`docx_agent.edit.like`):
+  the sample's own `w:pStyle`, `w:numPr` (`ilvl`, `numId`; change records left), `w:ind`,
+  `w:keepNext`, `w:keepLines`, `w:pageBreakBefore`, `w:widowControl`, each copied whole or
+  removed, compared by their XML (no change where alike); `word_format` `like` per target
+  before its other settings (an explicit one skips its part), `insert_markdown`'s `like`
+  in the writer's `list_like` (`LevelLooks`: by level or role; a deeper level the sample's
+  list a level down, `Look.deeper`). Open: the defaults without `like` -- a nested Markdown
+  item under a style-numbered level whose own list style numbers another list is still
+  written as a list of its own (Word's own List Bullet 2 is one); whether to nest it in the
+  parent's list as Word's Tab does is a decision (it changes written lists).
 - **Round 40 (0.1.64):** a range's keep tried (`docx_agent.tools.keep_trials`, from
   `check_worker`): the change `keep_blocks_together` would write (its `_keep_changes`, read
   on the document checked) written on a copy of the bytes, laid out with docx2svg's
