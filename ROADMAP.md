@@ -1243,7 +1243,7 @@ doc.render_svg(pages=diff.changed)     # or render_png; ids on every paragraph g
   and its model holds paths and fields open across blocks), a `word_fields` update that stops
   a pass early (the last pass confirms the numbers; skipping it exactly needs docx2svg's
   settled field values in docx-agent's terms).
-- **Round 42 (0.1.66):** copies compared as Word applies them (`docx_agent.edit.copy_settings`):
+- **Round 42 (0.1.68):** copies compared as Word applies them (`docx_agent.edit.copy_settings`):
   each paired paragraph -- a block's, a table's cell paragraphs (`compare.paragraph_pairs`)
   -- read through `edit.effective` (docx2svg's cascade) for its indents, keeps and widow
   control, and its list item counted over the body as the layout counts (docx2svg's
@@ -1259,6 +1259,14 @@ doc.render_svg(pages=diff.changed)     # or render_png; ids on every paragraph g
   (`Page.blocks`): `if_kept` / `if_released`, capped (`TRIALS`, `TRIAL_SECONDS`), each result kept in the worker by the bytes' digest (`TRIAL_CACHE`). Open: the
   layout facts' own keep fixes (`table_parted`, `keep_with_next_at_foot`) are not tried;
   several ranges' keeps together are not tried (each alone).
+- **Round 42 (0.1.66):** `word_set_text`'s emphasis is a reading of its own
+  (`docx_agent.markdown.styled`: markdown-it's emphasis and escape rules, nothing else, with
+  `_` literal and spans `[text]{Style}` read before), written over the diffed text by
+  `Document.style_spans` (runs isolated per span, cut at fields' edges). A replacement keeps
+  the replaced paragraphs' properties by kind and position (`docx_agent.markdown.keep`: the
+  writer tags each body paragraph with what Markdown says it is). Open: `insert_markdown`
+  does not read spans (`[text]{Style}` is its text there) and `to_markdown` does not write
+  them.
 - **Round 35 (R18, R19):** `check` and `render` on some blocks: `range`, one or several
   of `word_read`'s range forms; the facts about the blocks on the pages they fall on
   (`docx_agent.scope`: a fact is about its subject -- `para`, `paras`, `ids`, `table`,

@@ -138,9 +138,11 @@ def test_a_builder_without_resolve_keeps_the_default_tools_and_strict_set(box):
     default, builder = _sent(box, None), _sent(box, ["review", "edit"])
     assert set(builder) == set(default)
     # Its word_changes offers list alone and so has no ids or all (round 17,
-    # Tool.action_fields): the strict optional parameters it frees take edit_smartart too.
+    # Tool.action_fields): the strict optional parameters it frees keep word_set_text strict
+    # (round 42: five optional parameters, which the default set has no room for; edit_smartart
+    # takes its place there).
     assert {n for n, d in builder.items() if d["strict"]} == \
-        {n for n, d in default.items() if d["strict"]} | {"edit_smartart"}
+        ({n for n, d in default.items() if d["strict"]} - {"edit_smartart"}) | {"word_set_text"}
     assert "ids" not in builder["word_changes"]["input_schema"]["properties"]
     assert "ids" in default["word_changes"]["input_schema"]["properties"]
     assert _enum(builder["word_comments"]) == ["list", "add", "reply", "edit"]

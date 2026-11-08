@@ -62,59 +62,283 @@ def _cell_paragraphs(table: Table, row: int, column: int) -> list[Paragraph]:
 # -- W5 word_set_text --------------------------------------------------------------------------
 
 
+#: Round 42: text that may carry inline emphasis (:mod:`docx_agent.markdown.styled`).
+SET_TEXT = "The whole new text; \\n starts a paragraph; **strong**, *emphasis*, [text]{Character style}."
+SET_STYLE = "Paragraph style for it (name or id)."
 SET_ITEM = obj({"target": string("Paragraph, or table cell t:X/c<row>,<col>."),
-                "text": string("The whole new text, plain; \\n starts a paragraph.")})
+                "text": string(SET_TEXT),
+                "paragraph_style": string(SET_STYLE, optional=True)})
+#: How many styled runs a result lists (rule 4); the rest are counted.
+STYLED_CAP = 40
 
 
-@word_tool("word_set_text", "Rewrite whole paragraphs, keeping the formatting; tracked, only changed words become revisions. For words within a paragraph, replace_text.",
+@word_tool("word_set_text", "Rewrite whole paragraphs, keeping the formatting; emphasis written in the template's character styles; tracked, only changed words become revisions. For words within a paragraph, replace_text.",
            {"doc": DOC,
             "target": string("Paragraph, or table cell t:X/c<row>,<col>.", optional=True),
-            "text": string("The whole new text, plain; \\n starts a paragraph.", optional=True),
+            "text": string("The whole new text, as items' text.", optional=True),
+            "paragraph_style": string("Its paragraph style.", optional=True),
             "items": array(SET_ITEM, "Or several paragraphs.", optional=True)},
            refs=('target', 'items[].target'), group="core", mutates=True,
            facts=("text", "items[].text"))
 def word_set_text(call: Any, doc: str, target: str | None = None, text: str | None = None,
-                  items: list[dict] | None = None) -> Result:
+                  items: list[dict] | None = None, paragraph_style: str | None = None) -> Result:
     """Round 28, W10: a ``\\n`` in the text (refused before) splits it into paragraphs, the
     later ones after the target in its style (``Document.set_text_paragraphs``); ``\\v`` is
-    a line break inside one."""
+    a line break inside one.
+
+    Round 42: ``paragraph_style`` gives the paragraphs written that style (the template's;
+    one it lacks is refused with its paragraph styles); text with ``**strong**``,
+    ``*emphasis*`` or ``[text]{Character style}`` is written in those character styles
+    (:func:`styled_text`), and the result lists the styled runs (``data.styled``).  Text
+    without them is written as before, its formatting kept."""
     one_of({"target": target, "items": items}, "target", "items")
     if items == []:         # a trimmed batch's leftover: nothing to do, said, not refused
         return Result.nothing_given("written")
-    work = items if items is not None else [{"target": target, "text": need(text, "text")}]
-    edits = []
-    for item in work:
-        edits.extend(_set_one(call, resolve(call, item["target"]), item["text"]))
+    if items is not None and paragraph_style is not None:
+        # Rule 1: one style beside items is meant for each item that names none.
+        items = [{**item, "paragraph_style": item.get("paragraph_style") or paragraph_style} for item in items]
+    work = items if items is not None else [{"target": target, "text": need(text, "text"),
+                                             "paragraph_style": paragraph_style}]
+    document = call.document
+    # Everything is read and checked before anything changes: a style the template lacks,
+    # or a span naming no character style, refuses the call whole.
+    plans = [_plan(call, resolve(call, item["target"]), item["text"], item.get("paragraph_style") or None,
+                   f"items[{k}]." if items is not None else "")
+             for k, item in enumerate(work)]
+    edits, styled, notes = [], [], []
+    with document.batch():
+        for plan in plans:
+            made, runs, said = _set_one(call, plan)
+            edits.extend(made)
+            styled.extend(runs)
+            notes.extend(said)
     made = sum(len(edit.created) for edit in edits)
-    return outcome(edits, f"Set the text of {len(work)} paragraph(s)" + (f", {made} new after them" if made else ""))
+    summary = f"Set the text of {len(work)} paragraph(s)" + (f", {made} new after them" if made else "")
+    data = None
+    if styled:
+        summary += f"; {len(styled)} run(s) styled"
+        data = {"styled": styled[:STYLED_CAP]}
+        if len(styled) > STYLED_CAP:
+            data["left_out"] = len(styled) - STYLED_CAP
+            notes.append(f"{len(styled) - STYLED_CAP} more styled run(s) not listed: word_read the paragraphs "
+                         "with detail to see each run's style")
+    result = outcome(edits, summary, data=data)
+    result.warnings.extend(note for note in notes if note not in result.warnings)
+    return result
 
 
-def _set_one(call: Any, address: str, text: str) -> list[Any]:
+def _set_one(call: Any, plan: "_SetPlan") -> tuple[list[Any], list[dict], list[str]]:
     """One target's text: a paragraph's, or a cell's first paragraph's; with ``\\n``, every
     line a paragraph -- after the paragraph, or as the cell's paragraphs (the cell's others
-    go, as word_edit_table's set_cells writes a cell's lines)."""
+    go, as word_edit_table's set_cells writes a cell's lines).  Then its paragraph style and
+    its emphasis."""
     from .objects import _set_cell
+
+    document = call.document
+    found, text, address = plan.found, plan.plain, plan.address
+    notes: list[str] = []
+    edits: list[Any] = []
+    if plan.style is not None:
+        edits += _paragraph_style(document, plan, notes)
+        if isinstance(found, Paragraph):
+            renamed = {k: v for edit in edits for k, v in edit.renamed.items()}
+            found = document.get(renamed.get(found.id, found.id))
+    if isinstance(found, Cell) and plan.split:
+        lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+        if [p.text for p in found.paragraphs] != lines:
+            edits += _set_cell(document, found._table, found.row, found.column, "\n".join(lines))
+        cell = document.get(address)
+        written = [p.id for p in cell.paragraphs]
+        if not edits:
+            edits = [EditResult(written[0], changed=False)]
+    elif plan.split:
+        edit = document.set_text_paragraphs(found.id, text)
+        edits.append(edit)
+        written = [edit.id, *edit.created]
+    else:
+        edit = found.set_text(text)
+        edits.append(edit)
+        written = [edit.id]
+    runs: list[dict] = []
+    if plan.marked:
+        for paragraph_id, line in zip(written, plan.lines):
+            spans = plan.spans(line)
+            if _looks_as(document, paragraph_id, spans):
+                continue
+            edits.append(document.style_spans(paragraph_id, spans))
+        for paragraph_id, line in zip(written, plan.lines):
+            runs += _styled_runs(document.get(paragraph_id).id, line, plan)
+        notes += plan.added
+    return edits, runs, notes
+
+
+class _SetPlan:
+    """What one item writes, read and checked before anything changes."""
+
+    def __init__(self, address: str, found: Any, lines: list, style: str | None, roles: dict[str, str],
+                 added: list[str]) -> None:
+        self.address = address
+        self.found = found
+        self.lines = lines
+        self.style = style
+        self.roles = roles
+        self.added = added
+        self.plain = "\n".join(line.plain for line in lines)
+        self.split = len(lines) > 1
+        self.marked = any(line.marked for line in lines)
+
+    def look(self, piece: Any) -> tuple[str | None, bool, bool]:
+        """A piece's character style and direct bold and italic: a span's style, else the
+        strong role's, else the emphasis role's -- a run has one style; the other marks
+        are direct, as insert_markdown writes a run with several."""
+        strong, em = "strong" in piece.marks, "em" in piece.marks
+        if piece.style:
+            return piece.style, strong, em
+        if strong:
+            return self.roles["strong"], False, em
+        if em:
+            return self.roles["emphasis"], False, False
+        return None, False, False
+
+    def spans(self, line: Any) -> list[tuple[int, int, str | None, bool, bool]]:
+        return [(p.start, p.end, *self.look(p)) for p in line.pieces]
+
+
+def _plan(call: Any, address: str, text: str, style: str | None, prefix: str) -> _SetPlan:
+    from ..markdown.styled import parse
 
     document = call.document
     if span_ends(address) is not None:
         raise ToolError("invalid_arguments", f"{address} is a span: word_set_text writes one paragraph or "
-                        "cell per target; give items, one per paragraph", field="target")
+                        "cell per target; give items, one per paragraph", field=prefix + "target")
     split = "\n" in text or "\r" in text
     found = document.get(address)
-    if isinstance(found, Cell) and split:
-        lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
-        if [p.text for p in found.paragraphs] == lines:
-            return [EditResult(found.paragraphs[0].id, changed=False)]
-        return _set_cell(document, found._table, found.row, found.column, "\n".join(lines))
-    if not isinstance(found, Paragraph):
+    if not isinstance(found, (Paragraph, Cell)) or (isinstance(found, Cell) and not split):
         paragraphs = getattr(found, "paragraphs", None)
         if not paragraphs or isinstance(found, Table):
             raise ToolError("invalid_arguments", f"{address} is a {type(found).__name__.lower()}: word_set_text "
-                            "writes a paragraph or a cell (t:X/c<row>,<col>)", field="target")
+                            "writes a paragraph or a cell (t:X/c<row>,<col>)", field=prefix + "target")
         found = (paragraphs() if callable(paragraphs) else paragraphs)[0]
-    if split:
-        return [document.set_text_paragraphs(found.id, text)]
-    return [found.set_text(text)]
+    lines = [parse(line) for line in text.replace("\r\n", "\n").replace("\r", "\n").split("\n")]
+    if style is not None:
+        known_style(document, style, "paragraph", prefix + "paragraph_style")
+    roles: dict[str, str] = {}
+    added: list[str] = []
+    if any(line.marked for line in lines):
+        used = {mark for line in lines for piece in line.pieces if not piece.style for mark in piece.marks}
+        roles, added = _role_styles(document, used)
+        for name in dict.fromkeys(n for line in lines for n in line.styles_named()):
+            _character_style(document, name, prefix + "text")
+            if document.styles.find(name, "character") is None:
+                added.append(f"style added: {name}, as Word writes it")
+    # Text with escapes only (\\*) is its characters, written as plain text is.
+    return _SetPlan(address, found, lines, style, roles, added)
+
+
+def _role_styles(document: Any, used: set[str]) -> tuple[dict[str, str], list[str]]:
+    """The styles ``**`` and ``*`` are written in: the strong and emphasis roles' of the
+    style map insert_markdown writes with (Strong, Emphasis); one the document lacks is
+    added as Word writes it, and said, as insert_markdown says it."""
+    from ..markdown.stylemap import DEFAULT
+
+    out, added = {}, []
+    for role, mark in (("strong", "strong"), ("emphasis", "em")):
+        name = DEFAULT.style_for(role).style
+        found = document.styles.find(name, "character")
+        out[role] = found.name if found is not None and found.name else name
+        if found is None and mark in used:
+            added.append(f"style added: {name}, as Word writes it")
+    return out, added
+
+
+def _character_style(document: Any, name: str, field: str) -> None:
+    """Rule 2: a span naming no character style is refused with the ones there are."""
+    try:
+        document.styles.resolve(name, "character")
+    except StyleError as error:
+        names = [s.name for s in document.styles if s.name and s.kind == "character"]
+        raise ToolError("not_found", f"[...]{{{name}}}: {error}; a span names a character style of the "
+                        "template (or write \\[ for a literal bracket)", field=field,
+                        valid_options=names[:50]) from None
+
+
+def _paragraph_style(document: Any, plan: _SetPlan, notes: list[str]) -> list[Any]:
+    """The item's paragraph style on the target paragraph (a cell's paragraphs, all) before
+    its text is written, so the lines a \\n splits off take it; already so is a note."""
+    found = plan.found
+    targets = list(found.paragraphs) if isinstance(found, Cell) else [found]
+    wanted = document.styles.resolve(plan.style, "paragraph")[0]
+    default = document.styles.default("paragraph")
+    edits = []
+    for paragraph in targets:
+        current = paragraph.style or (default.id if default is not None else None)
+        if current == wanted:
+            notes.append(f"{paragraph.id} is already in {plan.style}")
+            continue
+        edits.append(paragraph.set_style(plan.style))
+    return edits
+
+
+def _looks_as(document: Any, paragraph_id: str, spans: list) -> bool:
+    """Whether the paragraph's characters already have the spans' styles and emphasis (a
+    repeat writes nothing: rule 3)."""
+    from ..edit import text as _text_mod
+
+    paragraph = document.get(paragraph_id)
+    element = document._resolve(paragraph.id)[1].element
+    atoms = _text_mod.atoms(element)
+    styles = document.styles
+    for start, end, name, bold, italic in spans:
+        found = styles.find(name, "character") if name else None
+        if name and found is None:
+            return False
+        wanted = found.id if found is not None else None
+        for atom in atoms[start:end]:
+            if atom.run is None or atom.kind != "text":
+                continue
+            properties = atom.run.find(_W + "rPr")
+            style = properties.find(_W + "rStyle") if properties is not None else None
+            have = style.get(_W + "val") if style is not None else None
+            if wanted is None and have is not None and _linked(atom.run):
+                continue
+            if have != wanted or _on(properties, "b") != bold or _on(properties, "i") != italic:
+                return False
+    return True
+
+
+_W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+
+
+def _on(properties: Any, name: str) -> bool:
+    node = properties.find(_W + name) if properties is not None else None
+    return node is not None and node.get(_W + "val") not in ("0", "false", "off")
+
+
+def _linked(run: Any) -> bool:
+    parent = run.getparent()
+    while parent is not None and parent.tag != _W + "p":
+        if parent.tag == _W + "hyperlink":
+            return True
+        parent = parent.getparent()
+    return False
+
+
+def _styled_runs(paragraph_id: str, line: Any, plan: _SetPlan) -> list[dict]:
+    """The styled pieces of a written paragraph: range, text, style (and direct bold or
+    italic beside a span's style)."""
+    out = []
+    for piece in line.pieces:
+        style, bold, italic = plan.look(piece)
+        if style is None:
+            continue
+        entry = {"range": f"{paragraph_id}@{piece.start}:{piece.end}", "text": short(piece.text, 40),
+                 "style": style}
+        if bold:
+            entry["bold"] = True
+        if italic:
+            entry["italic"] = True
+        out.append(entry)
+    return out
 
 
 # -- W6 word_insert_text -----------------------------------------------------------------------
@@ -374,8 +598,20 @@ def word_insert_markdown(call: Any, doc: str, at: str, markdown: str | None = No
     except StyleError as error:
         raise ToolError("not_found", str(error), field="style_map",
                         valid_options=[s.name for s in call.document.styles][:50]) from None
-    result = outcome([edit], f"Inserted {len(edit.blocks)} block(s)", data={"blocks": edit.blocks})
+    data: dict = {"blocks": edit.blocks}
+    if edit.kept:
+        # Round 42: what the new paragraphs kept of the replaced ones (rule 4: capped).
+        data["kept"] = edit.kept[:KEPT_CAP]
+        if len(edit.kept) > KEPT_CAP:
+            data["kept_left_out"] = len(edit.kept) - KEPT_CAP
+    result = outcome([edit], f"Inserted {len(edit.blocks)} block(s)"
+                     + (f"; {len(edit.kept)} kept the replaced paragraphs' settings" if edit.kept else ""),
+                     data=data)
     return name_blocks(call, ref, note_small_text(call, result, edit.blocks))
+
+
+#: How many paragraphs' kept settings a replacement lists; the rest are counted.
+KEPT_CAP = 30
 
 
 def named(call: Any, tool: str, ref: str | None, at: str) -> None:
