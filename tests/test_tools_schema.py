@@ -253,10 +253,15 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 #: optional parameters no longer fit Claude's 24 beside the strict tools before it: it is sent
 #: non-strict (the dispatcher still validates it) and edit_smartart (two) takes the place: 6
 #: tools, 23 optional parameters.
+#: Round 42, R47: ``like`` on word_format (the look of a given paragraph) and on
+#: word_insert_markdown (list items like given paragraphs, by level) +66 to every definition
+#: (15,355 -> 15,421), none to the core (3,157).  The guard rises to 15,425.
+#: word_insert_markdown is strict: its tenth optional parameter takes the strict set to 6
+#: tools and 24 optional parameters, Claude's limit.
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 6500
-ALL_GUARD = 15360
+ALL_GUARD = 15425
 
 
 @pytest.fixture(scope="module")

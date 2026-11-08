@@ -2473,7 +2473,7 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
                            stories=stories)
 
     def insert_markdown(self, md: str, *, at: str = "end", style_map=None, images=None, fetch=None,
-                        html: str = "refuse", emphasis: str = "styles", keep_settings: bool = True) -> EditResult:
+                        html: str = "refuse", emphasis: str = "styles", keep_settings: bool = True, like=None) -> EditResult:
         """Write Markdown as the document's own blocks (:mod:`docx_agent.markdown.write`).
 
         ``at``: ``"end"`` (the body's end) or ``"end:<story>"``; ``"after:<id>"``,
@@ -2500,6 +2500,10 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
         path must lie under, a mapping or a function -- and remote ones only through
         ``fetch``.  ``html``: ``"refuse"`` raw HTML, or keep it as ``"text"``.  ``emphasis``:
         the Emphasis and Strong ``"styles"`` (decided), or ``"direct"`` ``w:i``/``w:b``.
+        ``like`` (round 42): list items that look like given paragraphs, by level --
+        ``{1: "p:3", 2: "p:4"}``, a role (``"bullet2"``: a bullet list's second level), or
+        one id for the top level -- each taking its paragraph's style, list at its level
+        (numbered on), indents and page settings (:class:`~docx_agent.edit.like.LevelLooks`).
 
         At ``"replace:..."`` the new paragraphs keep the settings of the paragraphs they
         replace (round 42; ``keep_settings=False``: not), matched by kind -- a paragraph, a
@@ -2516,7 +2520,7 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
         from ..markdown.write import insert_markdown
 
         return insert_markdown(self, md, at=at, style_map=style_map, images=images, fetch=fetch, html=html,
-                               emphasis=emphasis, keep_settings=keep_settings)
+                               emphasis=emphasis, keep_settings=keep_settings, like=like)
 
     def state(self, range: str | None = None, *, view: str = "final", layout: bool = False,
               xml: bool = False, style_map=None) -> dict:

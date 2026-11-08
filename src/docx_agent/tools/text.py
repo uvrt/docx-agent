@@ -562,6 +562,9 @@ _INSERT_MARKDOWN = {"doc": DOC,
                     "date_format": DATE_FORMAT,
                     "at": AT,
                     "style_map": STYLE_MAP,
+                    # Round 42, R47: list items like given paragraphs (edit/like.py).
+                    "like": array(string(), "Paragraphs list items look like, by level (first: the top).",
+                                  or_single=True, optional=True),
                     "key": string("Retry key: a repeat with the same key makes nothing new.", optional=True),
                     "ref": BLOCKS_REF}
 
@@ -576,9 +579,12 @@ def word_insert_markdown(call: Any, doc: str, at: str, markdown: str | None = No
                          blob: str | None = None, style_map: list[dict] | None = None,
                          key: str | None = None, from_columns: list[str] | None = None,
                          header: list[str] | None = None, date_format: str | None = None,
-                         ref: str | None = None, **given: Any) -> Result:
+                         ref: str | None = None, like: list[str] | None = None, **given: Any) -> Result:
     """``ref`` (round 40) names the blocks made, as a creating call's ``ref`` does: the one
-    block's id, or the span from the first to the last."""
+    block's id, or the span from the first to the last.
+
+    ``like`` (round 42, R47): the list items at each level look like the paragraph given for
+    it (:func:`_levels_like`)."""
     named(call, "word_insert_markdown", ref, at)
     source = given.get("from")
     if source is not None:
@@ -592,9 +598,11 @@ def word_insert_markdown(call: Any, doc: str, at: str, markdown: str | None = No
         except UnicodeDecodeError:
             raise ToolError("invalid_arguments", f"{blob} is not UTF-8 text", field="blob") from None
     at = _at(call, at)
+    levels, style_map, read_as = _levels_like(call, like, style_map)
     try:
         edit = call.document.insert_markdown(markdown, at=at, style_map=_style_map(style_map),
-                                             images=images_from(call), fetch=None, html="refuse")
+                                             images=images_from(call), fetch=None, html="refuse",
+                                             like=levels)
     except StyleError as error:
         raise ToolError("not_found", str(error), field="style_map",
                         valid_options=[s.name for s in call.document.styles][:50]) from None
@@ -607,11 +615,40 @@ def word_insert_markdown(call: Any, doc: str, at: str, markdown: str | None = No
     result = outcome([edit], f"Inserted {len(edit.blocks)} block(s)"
                      + (f"; {len(edit.kept)} kept the replaced paragraphs' settings" if edit.kept else ""),
                      data=data)
+    result.warnings[:0] = read_as
     return name_blocks(call, ref, note_small_text(call, result, edit.blocks))
 
 
 #: How many paragraphs' kept settings a replacement lists; the rest are counted.
 KEPT_CAP = 30
+
+
+def _levels_like(call: Any, like: list[str] | None,
+                 style_map: list[dict] | None) -> tuple[dict | None, list[dict] | None, list[str]]:
+    """``word_insert_markdown``'s ``like`` as :meth:`~docx_agent.Document.insert_markdown`
+    takes it -- ``{level: paragraph}``, an empty entry no paragraph for its level -- each
+    checked as ``word_format``'s ``like`` is (:func:`_sample_look`: one paragraph, or a
+    refusal naming them).  A style map naming a paragraph for a list role (``bullet2``:
+    ``p:4``) is read as like for that role (rule 1), with a note; the style map keeps the rest.
+    Returns ``(levels, style map, notes)``."""
+    from ..edit.like import ROLES
+
+    levels: dict[Any, str] = {}
+    notes: list[str] = []
+    for k, sample in enumerate(like or []):
+        if sample:
+            levels[k + 1] = _sample_look(call, sample).sample
+    kept = []
+    for entry in style_map or []:
+        style = entry.get("style") or ""
+        if entry.get("element") in ROLES and positions.is_place(style) and not call.document.styles.find(
+                style, "paragraph"):
+            levels[entry["element"]] = _sample_look(call, style).sample
+            notes.append(f"style_map {entry['element']}: {style} is a paragraph: read as like, its items "
+                         "looking like it")
+        else:
+            kept.append(entry)
+    return levels or None, (kept if style_map is not None else None), notes
 
 
 def named(call: Any, tool: str, ref: str | None, at: str) -> None:
@@ -761,6 +798,8 @@ FIND_ITEM = obj({"text": string("Text to format."),
             "targets": array(string(), "Paragraph, range (p:A@4:11), span (p:A..p:B) or "
                              "table ids.", or_single=True, optional=True),
             "find": array(FIND_ITEM, "Or text to find and format.", or_single=True, optional=True),
+            # Round 42, R47: the look of a given paragraph (edit/like.py).
+            "like": string("A paragraph to look like: style, list and level, indents, keeps.", optional=True),
             "paragraph_style": string("Paragraph style name.", optional=True),
             "character_style": string("Character style name.", optional=True),
             **RUN_FIELDS, **PARAGRAPH_FIELDS,
@@ -772,12 +811,12 @@ FIND_ITEM = obj({"text": string("Text to format."),
             # Round 16, F8: what check's direct_formatting fix clears -- only these.
             "clear": array(string(enum=[*RUN_FIELDS, *PARAGRAPH_FIELDS]),
                            "Direct properties to remove, back to the style's.", optional=True)},
-           refs=('targets[]', 'find[].within'), group="word_style", mutates=True,
+           refs=('targets[]', 'find[].within', 'like'), group="word_style", mutates=True,
            aliases={**SPACING_ALIASES, "find[].range": "within"})
 def word_format(call: Any, doc: str, targets: list[str] | None = None, paragraph_style: str | None = None,
                 character_style: str | None = None, clear_direct: bool = False,
                 clear: list[str] | None = None, keep_together: bool | None = None,
-                find: list[dict] | None = None, **values: Any) -> Result:
+                find: list[dict] | None = None, like: str | None = None, **values: Any) -> Result:
     """``keep_together`` (round 36, R30): a paragraph -- one alone, or a range's or a cell's
     -- keeps its lines together (``keep_lines``, the Python API's ``keep_together``); a span,
     a table, a section or a block-level control keeps its blocks on one page
@@ -786,7 +825,12 @@ def word_format(call: Any, doc: str, targets: list[str] | None = None, paragraph
 
     ``find`` (round 40): text found by the call, each item's ranges formatted as a range
     target is (:func:`found_ranges`): every one is found before anything changes, so a text
-    that is not there, or matches several without ``occurrence``, refuses the call whole."""
+    that is not there, or matches several without ``occurrence``, refuses the call whole.
+
+    ``like`` (round 42, R47): each target paragraph takes the look of the paragraph ``like``
+    names (:mod:`docx_agent.edit.like`) -- its style, its list at its level numbered on, its
+    direct indents and page settings -- before the call's other settings, which win where
+    both say something (:func:`_like_targets`)."""
     document = call.document
     if not targets and not find:
         if targets is None and find is None:
@@ -805,10 +849,12 @@ def word_format(call: Any, doc: str, targets: list[str] | None = None, paragraph
             run[name] = None
         else:
             paragraph[_API_NAMES.get(name, name)] = None
-    if not (run or paragraph or paragraph_style or character_style or clear_direct or keep_together is not None):
+    look = _sample_look(call, like) if like else None
+    if not (run or paragraph or paragraph_style or character_style or clear_direct or keep_together is not None
+            or look is not None):
         raise ToolError("invalid_arguments", "say what to set: a style, a run or a paragraph property",
-                        valid_options=["paragraph_style", "character_style", *RUN_FIELDS, *PARAGRAPH_FIELDS,
-                                       "keep_together", "clear_direct", "clear"])
+                        valid_options=["like", "paragraph_style", "character_style", *RUN_FIELDS,
+                                       *PARAGRAPH_FIELDS, "keep_together", "clear_direct", "clear"])
     for name, kind in ((paragraph_style, "paragraph"), (character_style, "character")):
         if name is not None:
             known_style(document, name, kind, "paragraph_style" if kind == "paragraph" else "character_style")
@@ -821,7 +867,9 @@ def word_format(call: Any, doc: str, targets: list[str] | None = None, paragraph
     # Round 36, R33: a style or a cleared outline level may change a heading's level.
     from ..edit.outline import headings, moves
 
-    outline = headings(document) if paragraph_style is not None or clear_direct or clear else None
+    outline = headings(document) if paragraph_style is not None or clear_direct or clear or look else None
+    alike = _like_targets(document, addresses, look, _explicit(paragraph_style, paragraph, keep_together, clear),
+                          edits) if look is not None else None
     try:
         for address in addresses:
             is_range = "@" in address and not address.startswith("p@")
@@ -859,14 +907,101 @@ def word_format(call: Any, doc: str, targets: list[str] | None = None, paragraph
                         field="character_style" if kind else "paragraph_style",
                         valid_options=[s.name for s in document.styles if kind is None
                                        or getattr(s, "kind", None) == kind][:50]) from None
-    result = outcome(edits, f"Formatted {len(addresses)} target(s)",
-                     data={"ranges": found[:50]} if found else None)
+    data: dict[str, Any] = {}
+    if found:
+        data["ranges"] = found[:50]
+    if alike is not None:
+        data["like"] = alike
+    result = outcome(edits, f"Formatted {len(addresses)} target(s)", data=data or None)
+    if look is not None and look.sample != resolve(call, like):
+        result.warnings.append(f"like {resolve(call, like)} read as its paragraph {look.sample}")
+    if alike is not None and not alike["set"] and not any(e.changed for e in edits):
+        result.warnings.append(f"every target already looks like {look.sample}: nothing changed")
     if outline is not None:
         renamed: dict[str, str] = {}
         for edit in edits:
             renamed.update(getattr(edit, "renamed", None) or {})
         result.warnings += moves(outline, headings(document), renamed)
     return result
+
+
+#: word_format's settings that say what ``like`` would take: the explicit one wins (its part
+#: of the sample's look is not taken).  Keyed by the Python API's names (split_formatting's).
+_EXPLICIT_PARTS = {"keep_with_next": ("keep_with_next",), "keep_together": ("keep_lines",),
+                   "page_break_before": ("page_break_before",)}
+
+
+def _explicit(paragraph_style: str | None, paragraph: dict[str, Any], keep_together: bool | None,
+              clear: list[str] | None) -> set[str]:
+    """The parts of a sample's look (:data:`docx_agent.edit.like.PARTS`) the call sets
+    itself: its paragraph style, its keeps, what it clears (``keep_together`` keeps lines,
+    or a span's blocks through keep with next)."""
+    skip: set[str] = set()
+    if paragraph_style is not None:
+        skip.add("style")
+    for name in paragraph:
+        skip.update(_EXPLICIT_PARTS.get(name, ()))
+    if keep_together is not None:
+        skip.update(("keep_lines", "keep_with_next"))
+    for name in clear or ():
+        skip.update(_EXPLICIT_PARTS.get(_API_NAMES.get(name, name), ()))
+    return skip
+
+
+def _sample_look(call: Any, like: str) -> Any:
+    """The look of the paragraph ``like`` names (:func:`docx_agent.edit.like.look_of`).  A
+    range in one paragraph, or a cell or span of one paragraph, is that paragraph (a note
+    says so); an address of several paragraphs is refused with them (rule 2)."""
+    from ..edit import like as _like
+
+    document = call.document
+    address = resolve(call, like)
+    try:
+        paragraphs = paragraphs_of(document, address)
+    except ToolError as error:
+        raise ToolError("not_found", f"like: {error.message}", field="like") from None
+    except (KeyError, ValueError, EditError) as error:
+        raise ToolError("not_found", f"like {address!r} names no paragraph ({error}): give a paragraph id, "
+                        "p:<id>", field="like") from None
+    if len(paragraphs) != 1:
+        shown = [p.id for p in paragraphs[:50]]
+        raise ToolError("invalid_arguments", f"like names one paragraph to look like, and {address} holds "
+                        f"{len(paragraphs)}: give one of them, e.g. like: {shown[0]!r}", field="like",
+                        valid_options=shown)
+    return _like.look_of(document, paragraphs[0].id)
+
+
+def _like_targets(document: Any, addresses: list[str], look: Any, skip: set[str],
+                  edits: list[Any]) -> dict[str, Any]:
+    """Each target paragraph given ``look`` (less the parts in ``skip``, which the call sets
+    itself); ``edits`` gets the edits.  What the result says (rule 3: a paragraph already
+    alike, or the sample itself, is listed, not changed; rule 4: 50 ids at most, the rest
+    counted)."""
+    from ..edit import like as _like
+
+    set_parts: dict[str, list[str]] = {}
+    alike: list[str] = []
+    seen: set[str] = set()
+    for address in addresses:
+        for paragraph in paragraphs_of(document, address):
+            if paragraph.id in seen:
+                continue
+            seen.add(paragraph.id)
+            if paragraph.id == look.sample:
+                alike.append(paragraph.id)
+                continue
+            edit, parts = _like.format_like(document, paragraph.id, look, skip=skip)
+            edits.append(edit)
+            if parts:
+                set_parts[edit.id] = parts
+            else:
+                alike.append(edit.id)
+    out: dict[str, Any] = {"sample": look.sample, "set": dict(list(set_parts.items())[:50]),
+                           "alike": alike[:50], "not_taken": _like.NOT_TAKEN}
+    left = max(len(set_parts) - 50, 0) + max(len(alike) - 50, 0)
+    if left:
+        out["left_out"] = left
+    return out
 
 
 def found_ranges(call: Any, items: list[dict]) -> list[str]:

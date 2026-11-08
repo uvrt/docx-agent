@@ -25,7 +25,7 @@ with Toolbox(TOOLS, formats=[FORMAT], groups=GROUPS) as toolbox:
   charts, SmartArt, properties, `close_document`, `read_blob`, `batch`) and 25 Word tools:
   `word_read` (Markdown with ids,
   paged), `word_set_text`, `word_insert_text`, `word_delete`, `word_insert_markdown`,
-  `word_format` (every run and paragraph property, in points), tracking mode, tracked
+  `word_format` (every run and paragraph property, in points; or the look of a given paragraph, `like`: its style, list level, indents and keeps), tracking mode, tracked
   changes (list, accept, reject), comments, moving and copying sections, sections, headers
   and footers, fields and the TOC, notes, links, lists, styles, tables (a new one is Markdown,
   through `word_insert_markdown`, or a dataset's or another document's table's rows with its
