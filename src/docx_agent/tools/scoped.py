@@ -17,7 +17,9 @@ the numbers its lists show (:func:`docx_agent.edit.copies.list_context`).
 :data:`COPY_CACHE` comparisons are kept per document, the least recently used dropped first.
 The reply's ``fix`` is one ``word_follow_sample`` call per reference block; ``list_fix``
 (R49) the ``word_lists`` calls of every copy's list differences, alike ones joined (rule 5),
-at most :data:`LIST_CALLS` (``more`` counts the rest).
+at most :data:`LIST_CALLS` (``more`` counts the rest).  A copy's ``lists`` (round 43):
+``run_on`` where the caller states its numbered lists count on from the copy before
+(:func:`_runs`, :class:`docx_agent.edit.copy_settings.Run`).
 """
 
 from __future__ import annotations
@@ -256,22 +258,25 @@ def _cache(document: Any) -> "OrderedDict[tuple, dict]":
         return cache
 
 
-def compared(call: Any, copy_blocks: list, other: str, other_entry: Any, reference_blocks: list
-             ) -> tuple[dict, bool]:
+def compared(call: Any, copy_blocks: list, other: str, other_entry: Any, reference_blocks: list,
+             runs_on: "list | bool" = False) -> tuple[dict, bool]:
     """One copy's comparison (:func:`docx_agent.edit.copies.compare_copy`), from the cache
-    when neither side's blocks nor either document's styles changed: ``(result, kept)``."""
+    when neither side's blocks nor either document's styles changed: ``(result, kept)``;
+    ``runs_on`` (round 43) as there."""
     document = call.document
     key = (_copies.digest(document, copy_blocks), _styles_digest(call.entry), other,
            _copies.digest(other_entry.document, reference_blocks), _styles_digest(other_entry),
            # Round 42 (R49): the numbers the lists show, which the items before decide.
-           _copies.list_context(document, copy_blocks), _copies.list_context(other_entry.document, reference_blocks))
+           _copies.list_context(document, copy_blocks), _copies.list_context(other_entry.document, reference_blocks),
+           # Round 43: lists stated to run on, and from which copy (its items: list_context).
+           runs_on if isinstance(runs_on, bool) else _copies.digest(document, runs_on))
     cache = _cache(document)
     with _CACHE_LOCK:
         found = cache.get(key)
         if found is not None:
             cache.move_to_end(key)
             return found, True
-    found = _copies.compare_copy(document, copy_blocks, other_entry.document, reference_blocks)
+    found = _copies.compare_copy(document, copy_blocks, other_entry.document, reference_blocks, runs_on=runs_on)
     with _CACHE_LOCK:
         cache[key] = found
         cache.move_to_end(key)
@@ -295,21 +300,32 @@ def compare_copies(call: Any, copies: list) -> dict[str, Any]:
     room, examples_room = DIFFERENCES_PER_REPLY, EXAMPLES_PER_REPLY
     kept_count = 0
     list_calls: list[dict] = []
+    resolved = []
     for number, item in enumerate(items):
         if not isinstance(item, dict) or not isinstance(item.get("reference"), dict):
             raise ToolError("invalid_arguments", f"copies[{number}] is {{\"blocks\": the copy's block or span, "
                             "\"reference\": {\"doc\": its document (default doc), \"block\": its block or "
-                            "span}}", field="copies")
+                            "span}, \"lists\": \"run_on\" where its numbered lists count on from the copy "
+                            "before}", field="copies")
         reference = item["reference"]
         other, other_entry = _documents(call, item, number)
         copy_blocks = _blocks(call.document, item.get("blocks"), f"copies[{number}].blocks")
         reference_blocks = _blocks(other_entry.document, reference.get("block"),
                                    f"copies[{number}].reference.block")
-        found, kept = compared(call, copy_blocks, other, other_entry, reference_blocks)
+        resolved.append((item, other, other_entry, copy_blocks, reference_blocks, _lists(item, number)))
+    runs, alone = _runs(call.document, resolved)
+    for number, (item, other, other_entry, copy_blocks, reference_blocks, _) in enumerate(resolved):
+        reference = item["reference"]
+        before = runs.get(number, False)
+        runs_on = before if isinstance(before, bool) else resolved[before][3]
+        found, kept = compared(call, copy_blocks, other, other_entry, reference_blocks, runs_on)
         kept_count += kept
         entry: dict[str, Any] = {"copy": _said(item.get("blocks")), "reference": _said(reference.get("block"))}
         if other != doc:
             entry["doc"] = other
+        if not isinstance(before, bool):
+            # Round 43: the copy before it in the run, its lists' count goes on from.
+            entry["runs_on_from"] = _said(resolved[before][0].get("blocks"))
         entry["follows"] = found["follows"]
         listed = [{k: v for k, v in d.items()} for d in found["differences"] if d["kind"] != "own"]
         own = len(found["differences"]) - len(listed)
@@ -357,6 +373,10 @@ def compare_copies(call: Any, copies: list) -> dict[str, Any]:
         report["list_fix"] = {"tool": "word_lists", "calls": merged[:LIST_CALLS]}
         if len(merged) > LIST_CALLS:
             report["list_fix"]["more"] = len(merged) - LIST_CALLS
+    if alone:
+        report["note"] = (f"lists run_on on copies[{', '.join(map(str, alone))}] alone of their reference: "
+                          "the first copy of a run numbers as its sample shows, each later one counts on from "
+                          "the copy before it; name the whole run in one check")
     more = sum(e.get("more", 0) for e in out)
     more_examples = sum(e.get("example_text_more", 0) for e in out)
     if more or more_examples:
@@ -365,6 +385,54 @@ def compare_copies(call: Any, copies: list) -> dict[str, Any]:
                               "copies at once, or word_compare_blocks on one copy's block for all its "
                               "differences, paged")
     return report
+
+
+#: ``copies[].lists`` (round 43): ``sample`` (the default) or ``run_on``.
+LISTS = ("sample", "run_on")
+
+
+def _lists(item: dict, number: int) -> str:
+    """A copy's ``lists``: what the caller states of its numbered lists (rule 1: a
+    placeholder -- ``None``, ``""`` -- is the default; rule 2: anything else refused with
+    the values)."""
+    value = item.get("lists")
+    if value in (None, ""):
+        return "sample"
+    if value not in LISTS:
+        raise ToolError("invalid_arguments", f"copies[{number}].lists is {value!r}: \"run_on\" where the copies' "
+                        "numbered lists count on from one copy to the next (1-2, then 3-4), \"sample\" (the "
+                        "default) where each numbers as its sample shows", field=f"copies[{number}].lists",
+                        valid_options=list(LISTS))
+    return value
+
+
+def _runs(document: Any, resolved: list[tuple]) -> tuple[dict[int, "int | bool"], list[int]]:
+    """Round 43: the copies stated to run on (``lists`` ``run_on``), as runs -- those of one
+    reference (document and blocks), in the order they stand in the document: per copy's
+    number ``True`` for a run's first, else the number of the copy before it; and the
+    copies alone in their run (a note: the first numbers as its sample)."""
+    members: dict[tuple, list[int]] = {}
+    for number, (_, other, _, copy_blocks, reference_blocks, lists) in enumerate(resolved):
+        if lists == "run_on":
+            members.setdefault((other, tuple(i for i, _ in reference_blocks)), []).append(number)
+    if not members:
+        return {}, []
+    place = _places(document)
+    out: dict[int, "int | bool"] = {}
+    alone: list[int] = []
+    for numbers in members.values():
+        numbers.sort(key=lambda n: place.get(id(resolved[n][3][0][1]), 0))
+        if len(numbers) == 1:
+            alone.append(numbers[0])
+        for k, number in enumerate(numbers):
+            out[number] = True if k == 0 else numbers[k - 1]
+    return out, sorted(alone)
+
+
+def _places(document: Any) -> dict[int, int]:
+    """Each body element's place in document order, by ``id()``."""
+    body = document.package.tree(document.package.document_part()).find(_W + "body")
+    return {id(element): k for k, element in enumerate(body.iter())}
 
 
 def _merged(calls: list[dict]) -> list[dict]:

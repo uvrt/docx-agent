@@ -5,6 +5,24 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.70 -- unreleased
+
+- **A list that counts on through the copies of a sample, as the caller states it**
+  (production round 43). Word lets one plain numbered list run on through every copy of a
+  sample in a document on purpose (1-2 in the first, 3-4 in the next). The sample alone
+  cannot show it, and in Word's XML such a copy looks the same as one that should have
+  begun again, so it is never inferred: a `check` `copies` item takes `"lists": "run_on"`
+  (ooxml-edit 0.94.0; `sample`, the default, keeps 0.1.69's rule). The copies of one
+  reference stated so are a run, in document order: the first numbers as its sample shows,
+  each later one goes on from the copy before it, in the same list (`runs_on_from` names
+  it). A copy that restarts, or starts a list of its own, is `list_numbering` `starts at
+  1` against `runs on`, fixed by `word_lists` `continue` -- never a restart; no restart is
+  offered inside a running list, and the level and the label compare as before. Headings
+  numbered by the outline are unaffected. A run of one copy is said in the reply's `note`.
+- **`word_lists` `continue` takes `join`**: a paragraph of the list to go on from, where it
+  is not the nearest earlier list over the same definition (`Document.continue_numbering`'s
+  `from_id`). Given to another action it is left out, with a warning.
+
 ## 0.1.69 -- unreleased
 
 - **`check(copies=...)` no longer counts numbered headings as list differences** (production

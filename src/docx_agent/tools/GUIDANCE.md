@@ -76,6 +76,10 @@ How to use them:
   call; `word_insert_markdown` `like: ["p:3", "p:4"]` writes new list items, level by level,
   as those paragraphs are (a deeper level follows the last one given, a level down). Name a
   sample of each level: a point and its example. Run formatting is not taken.
+- **One list counting on through copies of a sample** (1-2 in the first, 3-4 in the next):
+  only when the document means it, say so on every copy in `check`'s `copies`:
+  `"lists": "run_on"`. Its fix for a copy that begins again is `word_lists` `continue` with
+  `join` (a paragraph of the list to go on from), never a restart.
 - **Blocks that belong on one page** (a heading, its text, a table and its source line):
   `word_format` `keep_together: true` on the span (`p:A..t:B`) keeps them together as Word
   does -- lines kept, each block with the next, every row with the next -- and moves them

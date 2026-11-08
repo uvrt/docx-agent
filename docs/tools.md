@@ -63,7 +63,23 @@ with Toolbox(TOOLS, formats=[FORMAT], groups=GROUPS) as toolbox:
   runs on from before the sample, compares by level and label alone, round 43), its indents and its keeps and widow
   control, with the `word_lists` or `word_format` call that fixes each (`list_fix`: every
   copy's list calls together); two items that look the same never differ. A comparison
-  is kept while neither side's blocks, nor the list items before them, change.
+  is kept while neither side's blocks, nor the list items before them, change. Where one
+  numbered list is meant to count on through the copies of a sample (1-2 in the first,
+  3-4 in the next: rare, and never inferred -- in Word's XML it looks the same as a copy
+  that should have begun again), say so on each copy: `"lists": "run_on"` (round 43;
+  `sample`, the default, numbers each copy as its sample shows). The copies of one
+  reference stated so are a run, in document order: its first numbers as the sample, each
+  later one goes on from the copy before it in the same list (`runs_on_from` names it). A
+  copy that restarts, or starts a list of its own, is `list_numbering` `starts at 1`
+  against `runs on`, fixed by `word_lists` `continue` with `join` (a paragraph of the
+  list to go on from) -- never a restart; no restart is offered inside a running list.
+  Name the whole run in one check (a run of one copy is said in `note`):
+
+  ```json
+  {"tool": "check", "doc": "d1", "include": [], "copies": [
+    {"blocks": "p:1A..p:2B", "reference": {"doc": "d2", "block": "p:9..p:C"}, "lists": "run_on"},
+    {"blocks": "p:3C..p:4D", "reference": {"doc": "d2", "block": "p:9..p:C"}, "lists": "run_on"}]}
+  ```
 - **`render` takes `fast`** (round 39): while building, a page for about a third of the CPU:
   the same layout and page breaks, the text drawn as outlines in one raster pass, the
   pixels approximate along glyph edges. The result says so (`"approximate": ["pixels"]`,

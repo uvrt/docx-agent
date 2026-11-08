@@ -46,15 +46,20 @@ STYLE_FIELDS["shading"] = string("Fill: RRGGBB, theme colour, 'accent1 lighter 8
             "text_at": number("format: text indent.", minimum=-1584, maximum=1584, optional=True),
             "follow": string("format: after the number.", enum=["tab", "space", "nothing"], optional=True),
             "tab_at": number("format: tab stop.", minimum=-1584, maximum=1584, optional=True),
-            "force": boolean("remove: also where the style numbers. Default false.", optional=True)},
-           refs=('targets[]',), group="word_style", mutates=True)
+            "force": boolean("remove: also where the style numbers. Default false.", optional=True),
+            # Round 43: the list to go on from, where it is not the nearest one like it.
+            "join": string("continue: a paragraph of the list to join.", optional=True)},
+           refs=('targets[]', 'join'), group="word_style", mutates=True)
 def word_lists(call: Any, doc: str, targets: list[str], action: str, kind: str = "bullet",
                level: int | None = None, start: int | None = None, number_format: str | None = None,
                label: str | None = None, number_at: float | None = None, text_at: float | None = None,
-               follow: str | None = None, tab_at: float | None = None, force: bool = False) -> Result:
+               follow: str | None = None, tab_at: float | None = None, force: bool = False,
+               join: str | None = None) -> Result:
     """Round 36, R33: ``remove`` refuses a paragraph its style numbers -- taking it out writes
     a direct override the template's style no longer decides -- naming the styles that fit
-    and number nothing; ``force`` writes the override (``numId`` 0) as before."""
+    and number nothing; ``force`` writes the override (``numId`` 0) as before.  Round 43:
+    ``continue`` ``join`` names a paragraph of the list to go on from (``check``'s fix for
+    copies whose lists are stated to run on); by default the nearest earlier list like it."""
     document = call.document
     paragraphs = [p for address in resolve(call, targets) for p in paragraphs_of(document, address)]
     if action == "remove" and not force:
@@ -79,7 +84,7 @@ def word_lists(call: Any, doc: str, targets: list[str], action: str, kind: str =
                 edits.append(document.restart_numbering(identifier, at=1 if start is None else start))
         elif action == "continue":
             if k == 0:
-                edits.append(document.continue_numbering(identifier))
+                edits.append(document.continue_numbering(identifier, _joined(document, join)))
         else:
             if k == 0:
                 edits.append(document.set_list_format(identifier, level=level, format=number_format, text=label,
@@ -91,10 +96,24 @@ def word_lists(call: Any, doc: str, targets: list[str], action: str, kind: str =
         lists.append({"id": paragraph.id, "list": None if membership is None else
                       {"kind": membership.kind, "level": membership.level, "num_id": membership.num_id}})
     result = outcome(edits, f"{action}: {len(paragraphs)} paragraph(s)", data=lists[:50])
+    if action != "continue" and isinstance(join, str) and join.strip():
+        result.warnings.append(f"join is continue's: left out of {action}")
     if listless:
         named = ", ".join(listless[:10]) + (f" and {len(listless) - 10} more" if len(listless) > 10 else "")
         result.warnings.append(f"{len(listless)} paragraph(s) were not in a list, left as they were: {named}")
     return result
+
+
+def _joined(document: Any, join: str | None) -> str | None:
+    """``join``'s paragraph id (an address ``word_read`` takes: its first paragraph), or
+    ``None`` -- a placeholder too (rule 1)."""
+    if not isinstance(join, str) or not join.strip():
+        return None
+    found = paragraphs_of(document, join.strip())
+    if not found:
+        raise ToolError("not_found", f"join {join!r} holds no paragraph: name a paragraph of the list to "
+                        "go on from", field="join")
+    return found[0].id
 
 
 def _refuse_style_numbered(document: Any, paragraphs: list[Any]) -> None:
