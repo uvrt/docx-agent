@@ -276,3 +276,23 @@ def test_a_trial_that_fails_never_fails_the_check(monkeypatch):
         [entry] = _range(box, session, d, f"{ids[17]}..{ids[20]}")
     assert "fix" in entry and "if_kept" not in entry
     assert entry["effect_left_out"].startswith("not laid out: the trial layout failed (RuntimeError)")
+
+
+def test_a_second_check_of_the_unchanged_document_lays_no_trial_out_again():
+    """The trial's result is kept in the process that made it, by the bytes checked: the
+    same range checked again -- other pages, so not the caller's kept facts -- reuses it;
+    an edit is other bytes and is tried afresh."""
+    with Toolbox(TOOLS, formats=[FORMAT], groups=GROUPS, workers=0) as box:
+        session = box.session()
+        d = session.open(_span_doc(), "again.docx")
+        ids = _ids(session, d)
+        span = f"{ids[17]}..{ids[20]}"
+        before = keep_trials.laid_out
+        [first] = _range(box, session, d, span, pages=[1])
+        assert keep_trials.laid_out == before + 1
+        [second] = _range(box, session, d, span, pages=[1, 2])
+        assert keep_trials.laid_out == before + 1
+        assert second["if_kept"] == first["if_kept"]
+        ok(box, session, "word_format", doc=d, targets=[ids[0]], bold=True)
+        [third] = _range(box, session, d, span, pages=[1])
+        assert keep_trials.laid_out == before + 2 and "if_kept" in third

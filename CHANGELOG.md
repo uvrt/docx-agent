@@ -36,6 +36,13 @@ snapshot commit; the development history before it is summarised here.
   page, taller than a page, or kept and not starting a page costs nothing. On by default
   for the ranges a check is given (`docx_agent.tools.shared.KEEP_TRIALS`); the caps are
   `docx_agent.tools.keep_trials.TRIALS` and `TRIAL_SECONDS`. No tool definition changes.
+- A trial's result is kept in the worker that made it (`keep_trials.TRIAL_CACHE`, 256, least
+  recently used out; never pickled), keyed by the digest of the bytes checked, the options,
+  the range, kept or released and the caps: the same range of an unchanged document
+  checked again lays nothing out, and an edit is another key. On the 46-page report, a
+  repeated check of a parted table (other pages asked, so not the caller's kept facts)
+  took 0.074 s of CPU (median, 6 tables), against 0.079 s without trials and 0.56 s for
+  the first, tried.
 
 ## 0.1.63 -- unreleased
 

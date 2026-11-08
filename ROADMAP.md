@@ -1247,7 +1247,7 @@ doc.render_svg(pages=diff.changed)     # or render_png; ids on every paragraph g
   `check_worker`): the change `keep_blocks_together` would write (its `_keep_changes`, read
   on the document checked) written on a copy of the bytes, laid out with docx2svg's
   `lay_out_docx(previous=<the layout held>, keep=False)` and read by element key
-  (`Page.blocks`): `if_kept` / `if_released`, capped (`TRIALS`, `TRIAL_SECONDS`). Open: the
+  (`Page.blocks`): `if_kept` / `if_released`, capped (`TRIALS`, `TRIAL_SECONDS`), each result kept in the worker by the bytes' digest (`TRIAL_CACHE`). Open: the
   layout facts' own keep fixes (`table_parted`, `keep_with_next_at_foot`) are not tried;
   several ranges' keeps together are not tried (each alone).
 - **Round 35 (R18, R19):** `check` and `render` on some blocks: `range`, one or several

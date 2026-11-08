@@ -25,12 +25,18 @@ call as its ``fix`` -- so an agent sees both sides and decides once.
 
 Each range is tried alone, whatever the others' keeps would do with it.  At most
 :data:`TRIALS` trials a check, and within :data:`TRIAL_SECONDS` (the first is always made; rule 4): a range past
-them says so (``effect_left_out``), and how to ask for it.
+them says so (``effect_left_out``), and how to ask for it.  A result is kept in the
+process that made it (:data:`TRIAL_CACHE`), by the bytes checked: the same range of the
+same bytes is not laid out again.
 """
 
 from __future__ import annotations
 
+import copy
+import hashlib
+import threading
 import time
+from collections import OrderedDict
 from fractions import Fraction
 from typing import Any
 
@@ -39,6 +45,17 @@ TRIALS = 4
 #: Seconds of trial layouts one check spends at most: none is started past them (a check's
 #: task has the layout deadline, 30 s by default, for everything it does).
 TRIAL_SECONDS = 6.0
+
+#: Trial results this process keeps (its own: never pickled, never sent), the least
+#: recently used dropped first: a check of the same bytes, options and range again -- with
+#: other pages, other facts asked, or after its facts were dropped -- lays nothing out.
+#: Keyed by the bytes' digest, so any edit is another key and nothing goes stale.  Each
+#: result is a small dict (or ``None``: nothing to change).
+TRIAL_CACHE = 256
+_RESULTS: "OrderedDict[tuple, dict | None]" = OrderedDict()
+_RESULTS_LOCK = threading.Lock()
+#: Trial layouts this process made (for tests and probes: a result reused makes none).
+laid_out = 0
 
 _W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 _P = _W + "p"
@@ -61,9 +78,22 @@ def keep_effects(previous: Any, data: bytes, options: dict, layout: Any, scope: 
     tried = 0
     began = time.monotonic()
     index = None
+    digest = None
     for found, entry in zip(scope.ranges, reported):
         on = _wanted(layout, found, entry)
         if on is None:
+            continue
+        if digest is None:
+            digest = (hashlib.sha256(data).digest(), repr(sorted(options.items())))
+        key = (digest, found.address, tuple(found.paragraphs), on, trials, seconds)
+        with _RESULTS_LOCK:
+            hit = key in _RESULTS
+            if hit:
+                _RESULTS.move_to_end(key)
+                effect = copy.deepcopy(_RESULTS[key])
+        if hit:                                       # kept: no layout, not counted
+            if effect is not None:
+                entry["if_kept" if on else "if_released"] = effect
             continue
         if tried >= trials or (tried and time.monotonic() - began > seconds):
             entry["effect_left_out"] = (f"not laid out: a check tries at most {trials:g} keeps (within "
@@ -80,6 +110,11 @@ def keep_effects(previous: Any, data: bytes, options: dict, layout: Any, scope: 
             entry["effect_left_out"] = (f"not laid out: the trial layout failed ({type(error).__name__}); "
                                         "make the call and check again")
             continue
+        with _RESULTS_LOCK:
+            _RESULTS[key] = copy.deepcopy(effect)
+            _RESULTS.move_to_end(key)
+            while len(_RESULTS) > TRIAL_CACHE:
+                _RESULTS.popitem(last=False)
         if effect is not None:
             entry["if_kept" if on else "if_released"] = effect
 
@@ -177,7 +212,9 @@ def _trial(previous: Any, data: bytes, options: dict, layout: Any, index: _Index
     changes, _ = document._keep_changes(blocks, on)
     if not changes:
         return None
+    global laid_out
     convert_options = docx2svg.ConvertOptions(**options)
+    laid_out += 1
     trial, _, _ = docx2svg.lay_out_docx(_changed(data, document, changes), convert_options, previous=previous,
                                         measures=_MEASURES, keep=False, changed_pages=False)
     now = _Pages(layout.pages, keys, after)
