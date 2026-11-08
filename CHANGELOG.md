@@ -5,6 +5,45 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.64 -- unreleased
+
+- **`check(range=...)` says what a range's keep does to the pages, laid out** (production
+  round 40). A range of whole blocks parted by a page break, short enough for one page, has
+  a `fix` (`word_format` `keep_together: true`); what that does was not said: Word moves the
+  range whole to the next page, which can leave much of the page before it blank and push
+  what follows down -- seen only in the next render, then released, then offered again by
+  the next check. Now each such range has `if_kept`: the document with that call's change
+  alone, laid out from the layout checked (docx2svg's incremental layout, in the worker
+  holding it; page for page a layout of those bytes alone), and read there -- `starts`,
+  `ends`, `one_page`, `blank` (the page before it: `pt` and `share` of the body's height
+  left blank at its foot, `now_pt` and `now_share` as it is now), `document_pages` (now,
+  then), `after` (the page what follows starts on, now and then) and `said`, e.g. "keeping
+  it whole (this range alone): starts on page 14, on one page; page 13 left 20% blank
+  (142.2 pt), now 2%; the document stays at 46 pages; what follows stays on page 14". The
+  other side for a range kept already that starts a page only because of its keep (no
+  page break or section start before it): `if_released`, the same facts with the keep
+  released and that call as its `fix` (`keep_together: false`) -- so an agent sees both
+  sides and decides once. Each range is tried alone. At most four trials a check, none
+  started past 6 s after the first; a range past them says so (`effect_left_out`) and how
+  to ask (check it alone). Where a check reads the layout in the caller's process (a
+  converter that cannot make the facts where the layout is held), no trial: the range says
+  so.
+- What a trial costs, measured as CPU time (the machine was shared): 0.79 s a range
+  (median; 0.69-1.00 s over 19 parted ranges) on a made-up 46-page report with a contents,
+  page cross-references and a page count, 0.71 s (0.53-0.88 s, 4 ranges) on a made-up
+  11-page document -- about what laying the document out again after the keep costs, and
+  against 0.16-0.19 s and 0.08-0.11 s for the same scoped check without it. A range on one
+  page, taller than a page, or kept and not starting a page costs nothing. On by default
+  for the ranges a check is given (`docx_agent.tools.shared.KEEP_TRIALS`); the caps are
+  `docx_agent.tools.keep_trials.TRIALS` and `TRIAL_SECONDS`. No tool definition changes.
+- A trial's result is kept in the worker that made it (`keep_trials.TRIAL_CACHE`, 256, least
+  recently used out; never pickled), keyed by the digest of the bytes checked, the options,
+  the range, kept or released and the caps: the same range of an unchanged document
+  checked again lays nothing out, and an edit is another key. On the 46-page report, a
+  repeated check of a parted table (other pages asked, so not the caller's kept facts)
+  took 0.074 s of CPU (median, 6 tables), against 0.079 s without trials and 0.56 s for
+  the first, tried.
+
 ## 0.1.63 -- unreleased
 
 - **`word_format` formats text it finds** (production round 40). `find` takes items of
@@ -36,6 +75,7 @@ snapshot commit; the development history before it is summarised here.
   core; the strict set is 6 tools and 24 optional parameters (`word_insert_markdown`'s
   `ref`): it is full -- Claude's limit -- so the next optional parameter on a strict tool
   sends a tool non-strict.
+
 ## 0.1.61 -- unreleased
 
 - **A check's summary digests only what was laid out again** (production round 39). Where

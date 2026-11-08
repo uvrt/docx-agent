@@ -48,7 +48,11 @@ with Toolbox(TOOLS, formats=[FORMAT], groups=GROUPS) as toolbox:
   pages they fall on, the problems found in them and each range's pages, `render` draws
   those pages; each range of whole blocks says whether it is on one page (`one_page`),
   set to stay so (`kept`, as `word_format` `keep_together` keeps a span), where it breaks
-  and the call that keeps it. **`check` takes `copies`**: each copy (a block or span) compared with the
+  and the call that keeps it -- with what that call does, laid out (round 40, `if_kept`:
+  where the range then starts, how much of the page before it is left blank, the page
+  count and the page what follows starts on, now and then); a kept range that starts a page
+  because of its keep says what releasing it gives (`if_released`, with that call). Each
+  range is tried alone, at most four a check (`effect_left_out` past them). **`check` takes `copies`**: each copy (a block or span) compared with the
   reference it was made from, here or in another open document -- whether it follows,
   what differs with its fix and kind, where the reference's example text is still in it,
   and one `word_follow_sample` call per reference to make the copies follow. A comparison
