@@ -55,8 +55,13 @@ with Toolbox(TOOLS, formats=[FORMAT], groups=GROUPS) as toolbox:
   range is tried alone, at most four a check (`effect_left_out` past them). **`check` takes `copies`**: each copy (a block or span) compared with the
   reference it was made from, here or in another open document -- whether it follows,
   what differs with its fix and kind, where the reference's example text is still in it,
-  and one `word_follow_sample` call per reference to make the copies follow. A comparison
-  is kept while neither side's blocks change.
+  and one `word_follow_sample` call per reference to make the copies follow. Each list item
+  and paragraph is also compared as Word applies it (round 42): its list level, its label
+  (`list_format`, e.g. `bullet •` beside `bullet –`), where its numbering starts
+  (`list_numbering`: `continues`, `starts at 3`), its indents and its keeps and widow
+  control, with the `word_lists` or `word_format` call that fixes each (`list_fix`: every
+  copy's list calls together); two items that look the same never differ. A comparison
+  is kept while neither side's blocks, nor the list items before them, change.
 - **`render` takes `fast`** (round 39): while building, a page for about a third of the CPU:
   the same layout and page breaks, the text drawn as outlines in one raster pass, the
   pixels approximate along glyph edges. The result says so (`"approximate": ["pixels"]`,

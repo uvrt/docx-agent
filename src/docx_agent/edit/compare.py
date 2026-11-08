@@ -500,6 +500,39 @@ def _cells(block: _Block, source: _Block, out: list, grid: list, reference_grid:
     out += _paragraphs(block, source.document, pairs)
 
 
+def paragraph_pairs(document: "Document", element, reference_document: "Document", reference_element
+                    ) -> list[tuple]:
+    """The ``(paragraph, reference paragraph)`` pairs :func:`compare_blocks` compares for a
+    block and its reference block (elements): the paragraph and its reference, or -- two
+    tables -- each cell's paragraphs paired as the module's "Corresponding parts" say (a
+    cell merged up and a cell the reference lacks pair nothing); ``[]`` for blocks of two
+    kinds (round 42, R49: what :mod:`.copies` compares as Word applies it)."""
+    if element.tag != reference_element.tag:
+        return []
+    if element.tag == _W + "p":
+        return [(element, reference_element)]
+    if element.tag != _W + "tbl":
+        return []
+    rows, reference_rows = own_rows(element), own_rows(reference_element)
+    if not rows or not reference_rows:
+        return []
+    mapping = _row_map(len(rows), len(reference_rows), _header_rows(reference_rows))
+    grid, reference_grid = _origins(rows), _origins(reference_rows)
+    out: list[tuple] = []
+    for r, line in enumerate(grid):
+        for column, (cell, _, up) in sorted(line.items()):
+            if up:
+                continue
+            match = _reference_cell(reference_grid[mapping[r]], column)
+            if match is None:
+                continue
+            reference_paragraphs = match.findall(_W + "p")
+            if reference_paragraphs:
+                found, _, _ = _align(document, cell.findall(_W + "p"), reference_document, reference_paragraphs)
+                out += found
+    return out
+
+
 def _reference_cell(line: dict, column: int):
     if column in line:
         return line[column][0]
@@ -765,4 +798,4 @@ def _paragraph_fix(document: "Document", name: str, reference, paragraphs: list[
     return {"tool": "word_format", "calls": [call]}
 
 
-__all__ = ["PROPERTIES", "TEXT_SIMILARITY", "WIDTH_TOLERANCE", "compare_blocks"]
+__all__ = ["PROPERTIES", "TEXT_SIMILARITY", "WIDTH_TOLERANCE", "compare_blocks", "paragraph_pairs"]

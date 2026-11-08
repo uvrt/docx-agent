@@ -12,8 +12,12 @@ call may (a lone call), else on its own snapshot: never a wait for a layout unde
 **Copies** (:mod:`docx_agent.edit.copies`): each copy compared with its reference, kept by
 what both sides hold -- the digests of their blocks (ids and XML) and of each document's
 styles and theme -- not by the document's version, so an edit elsewhere in either document
-finds the comparison kept.  :data:`COPY_CACHE` comparisons are kept per document, the least
-recently used dropped first.
+finds the comparison kept -- and (round 42) by the list items before the copy, which decide
+the numbers its lists show (:func:`docx_agent.edit.copies.list_context`).
+:data:`COPY_CACHE` comparisons are kept per document, the least recently used dropped first.
+The reply's ``fix`` is one ``word_follow_sample`` call per reference block; ``list_fix``
+(R49) the ``word_lists`` calls of every copy's list differences, alike ones joined (rule 5),
+at most :data:`LIST_CALLS` (``more`` counts the rest).
 """
 
 from __future__ import annotations
@@ -26,6 +30,7 @@ from typing import Any
 from ooxml_edit.tools import ToolError
 
 from ..edit import copies as _copies
+from ..edit.copy_settings import LIST_SETTINGS
 from ..edit.ids import DeletedId
 from ..scope import Scope, headings_as_ranges
 
@@ -34,6 +39,9 @@ _P = _W + "p"
 
 #: Comparisons kept per document (each a few kilobytes: a copy's differences and example text).
 COPY_CACHE = 128
+
+#: ``word_lists`` calls in a reply's ``list_fix`` at most (the rest counted: ``more``).
+LIST_CALLS = 40
 
 #: Copies in one check at most (a chapter's, or a reviewer's few chapters).
 MAX_COPIES = 40
@@ -254,7 +262,9 @@ def compared(call: Any, copy_blocks: list, other: str, other_entry: Any, referen
     when neither side's blocks nor either document's styles changed: ``(result, kept)``."""
     document = call.document
     key = (_copies.digest(document, copy_blocks), _styles_digest(call.entry), other,
-           _copies.digest(other_entry.document, reference_blocks), _styles_digest(other_entry))
+           _copies.digest(other_entry.document, reference_blocks), _styles_digest(other_entry),
+           # Round 42 (R49): the numbers the lists show, which the items before decide.
+           _copies.list_context(document, copy_blocks), _copies.list_context(other_entry.document, reference_blocks))
     cache = _cache(document)
     with _CACHE_LOCK:
         found = cache.get(key)
@@ -284,6 +294,7 @@ def compare_copies(call: Any, copies: list) -> dict[str, Any]:
     groups: dict[tuple[str, str], list[str]] = {}
     room, examples_room = DIFFERENCES_PER_REPLY, EXAMPLES_PER_REPLY
     kept_count = 0
+    list_calls: list[dict] = []
     for number, item in enumerate(items):
         if not isinstance(item, dict) or not isinstance(item.get("reference"), dict):
             raise ToolError("invalid_arguments", f"copies[{number}] is {{\"blocks\": the copy's block or span, "
@@ -318,8 +329,13 @@ def compare_copies(call: Any, copies: list) -> dict[str, Any]:
                 entry["example_text_more"] = len(texts) - len(shown_texts)
         entry["cached"] = kept
         for copy_id, reference_id in found["pairs"]:
-            if any(d["kind"] == "format" and d.get("block") == copy_id for d in found["differences"]):
+            # word_follow_sample keeps a copy's lists (R49: word_lists makes them, list_fix).
+            if any(d["kind"] == "format" and d.get("block") == copy_id and d["property"] not in LIST_SETTINGS
+                   for d in found["differences"]):
                 groups.setdefault((other, reference_id), []).append(copy_id)
+        for difference in found["differences"]:
+            if difference["property"] in LIST_SETTINGS and difference.get("fix"):
+                list_calls += difference["fix"]["calls"]
         out.append(_copy.deepcopy(entry))
     report: dict[str, Any] = {
         "compared": len(out), "follow": sum(1 for e in out if e["follows"]),
@@ -334,6 +350,12 @@ def compare_copies(call: Any, copies: list) -> dict[str, Any]:
             calls.append({"sample": sample, "copies": list(dict.fromkeys(copy_ids))})
         # Rule 5: one call per reference block makes every copy of it follow (preview first).
         report["fix"] = {"tool": "word_follow_sample", "calls": calls}
+    if list_calls:
+        # Rule 5: every copy's list differences in one batch of word_lists calls, alike ones joined.
+        merged = _merged(list_calls)
+        report["list_fix"] = {"tool": "word_lists", "calls": merged[:LIST_CALLS]}
+        if len(merged) > LIST_CALLS:
+            report["list_fix"]["more"] = len(merged) - LIST_CALLS
     more = sum(e.get("more", 0) for e in out)
     more_examples = sum(e.get("example_text_more", 0) for e in out)
     if more or more_examples:
@@ -342,6 +364,26 @@ def compare_copies(call: Any, copies: list) -> dict[str, Any]:
                               "copies at once, or word_compare_blocks on one copy's block for all its "
                               "differences, paged")
     return report
+
+
+def _merged(calls: list[dict]) -> list[dict]:
+    """``word_lists`` calls with the same arguments but their targets made one, in order --
+    those of an action that changes each target (``level``, ``add``, ``remove``); the
+    others (``format``, ``restart``, ``continue``: the first target's list) kept apart."""
+    out: list[dict] = []
+    joined: dict[str, dict] = {}
+    for call in calls:
+        if call.get("action") not in ("level", "add", "remove"):
+            out.append(_copy.deepcopy(call))
+            continue
+        key = repr(sorted((k, v) for k, v in call.items() if k != "targets"))
+        found = joined.get(key)
+        if found is None:
+            found = joined[key] = _copy.deepcopy(call)
+            out.append(found)
+        else:
+            found["targets"] += [t for t in call["targets"] if t not in found["targets"]]
+    return out
 
 
 def _said(address: Any) -> Any:

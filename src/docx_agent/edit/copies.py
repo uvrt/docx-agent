@@ -28,8 +28,11 @@ count, a line or block the sample lacks or has: text is the copy's); ``structure
 another kind of block, other columns or merges, a missing table; ``changed_by_copy`` -- a
 style the copy has where no tool can give it the reference's (no such style here, and Word
 has none built in by its name); ``format`` -- formatting ``word_follow_sample`` gives the
-copy: its widths, table, row, cell and paragraph properties, styles, run formatting.  A copy
-**follows** its reference when every difference is its own.
+copy: its widths, table, row, cell and paragraph properties, styles, run formatting -- and
+(round 42, R49) each paired paragraph's list item and page settings as Word applies them
+(:mod:`.copy_settings`: ``list_level``, ``list_format``, ``list_numbering``, the indents and
+the keeps, ``word_lists`` or ``word_format`` the fix).  A copy **follows** its reference when
+every difference is its own.
 
 **Example text** is the reference's own text the copy was meant to replace.  Precisely: the
 text of every paragraph in the reference's blocks (in table cells too; insertions in,
@@ -53,8 +56,10 @@ from typing import TYPE_CHECKING, Any
 
 from lxml import etree
 
+from . import copy_settings as _settings
 from . import text as _text
 from .compare import _by_text, _paragraph_style, _style_name, compare_blocks, styles_read
+from .compare import paragraph_pairs as _paragraph_pairs
 from .follow import KIND as _FOLLOW_KIND
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -62,6 +67,7 @@ if TYPE_CHECKING:  # pragma: no cover
 
 _W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 _P, _TBL, _TR, _SDT = _W + "p", _W + "tbl", _W + "tr", _W + "sdt"
+_TXBX = _W + "txbxContent"
 
 #: A sentence of at least this many words is example text (the module's rule) ...
 EXAMPLE_MIN_WORDS = 3
@@ -135,12 +141,13 @@ def digest(document: "Document", blocks: list[tuple[str, Any]]) -> str:
 
 
 def styles_digest(document: "Document") -> str:
-    """What the comparison reads besides the blocks: the document's styles and theme (style
-    names, the values a style or theme font gives a property)."""
+    """What the comparison reads besides the blocks: the document's styles, theme and
+    numbering (style names, the values a style, a theme font or a list level gives a
+    property; what the numbers before the blocks show, :func:`list_context`, apart)."""
     package = document.package
     hasher = hashlib.blake2b(digest_size=16)
     main = package.document_part()
-    parts = [package.styles_part()]
+    parts = [package.styles_part(), package.numbering_part()]
     parts += package.related_parts_of_type(
         main, "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme")
     for part in parts:
@@ -171,9 +178,19 @@ def _compare_copy(document: "Document", copy: list[tuple[str, Any]], reference_d
     other = reference_document if reference_document is not document else None
     pairs, missing, extra = align(document, copy, reference_document, reference)
     differences: list[dict] = []
+    settings, compared_here = _settings_differences(document, copy, reference_document, reference, pairs)
     for (identifier, _), (reference_id, _) in pairs:
         found = compare_blocks(document, [identifier], reference_id, other)
         for difference in found["differences"]:
+            if difference["property"] in _settings.REPLACED and difference.get("paragraphs"):
+                # Read as Word applies them here (R49): the paragraphs compared so leave it.
+                left = [p for p in difference["paragraphs"] if p not in compared_here]
+                if not left:
+                    continue
+                difference["paragraphs"] = left
+            difference["kind"] = kind_of(difference)
+            differences.append(difference)
+        for difference in settings.get(identifier, ()):
             difference["kind"] = kind_of(difference)
             differences.append(difference)
     for k in missing:
@@ -189,6 +206,93 @@ def _compare_copy(document: "Document", copy: list[tuple[str, Any]], reference_d
             "pairs": [[a, b] for (a, _), (b, _) in pairs],
             "differences": differences,
             "example_text": example_text(document, copy, reference_document, reference)}
+
+
+def _region(blocks: list[tuple[str, Any]]) -> list[Any]:
+    """The paragraphs of ``blocks`` in document order -- in table cells too, not in text
+    boxes (the body's own, as its lists count)."""
+    out = []
+    for _, element in blocks:
+        for paragraph in ([element] if element.tag == _P else element.iter(_P)):
+            if not any(a.tag == _TXBX for a in paragraph.iterancestors()):
+                out.append(paragraph)
+    return out
+
+
+def _settings_differences(document: "Document", copy: list[tuple[str, Any]], reference_document: "Document",
+                          reference: list[tuple[str, Any]], pairs: list[tuple]) -> tuple[dict, set]:
+    """``(differences by copy block, the ids of the paragraphs compared)``: each pair's
+    paragraphs of the same style compared as Word applies them (:mod:`.copy_settings`)."""
+    index = document._index(document.package.document_part())
+    reference_index = reference_document._index(reference_document.package.document_part())
+    paragraph_pairs: list[tuple] = []
+    ids: dict[int, tuple[str, str]] = {}
+    reference_ids: dict[int, str] = {}
+    for (identifier, element), (_, reference_element) in pairs:
+        for paragraph, other in _paragraph_pairs(document, element, reference_document, reference_element):
+            if _paragraph_style(document, paragraph) != _paragraph_style(reference_document, other):
+                continue                      # the style's difference first (the module's rule)
+            entry, other_entry = index.entry_for(paragraph), reference_index.entry_for(other)
+            if entry is None:
+                continue
+            ids[id(paragraph)] = (identifier, entry.id)
+            if other_entry is not None:
+                reference_ids[id(other)] = other_entry.id
+            paragraph_pairs.append((paragraph, other))
+    if not paragraph_pairs:
+        return {}, set()
+    mine = _settings.region_settings(document, _region(copy))
+    theirs = _settings.region_settings(reference_document, _region(reference))
+    by_block: dict[str, list[dict]] = {}
+    for difference in _settings.compare_settings(document, reference_document, paragraph_pairs, ids, mine,
+                                                 theirs, reference_ids):
+        by_block.setdefault(difference["block"], []).append(difference)
+    return by_block, {i for _, i in ids.values()}
+
+
+def list_context(document: "Document", blocks: list[tuple[str, Any]]) -> str:
+    """What decides the numbers the blocks' list items show besides their own XML and the
+    styles and numbering (:func:`styles_digest`): the list items before them and in them,
+    as a digest of each body paragraph that may be one -- its style, its own ``w:numPr``,
+    whether its mark is deleted -- up to the blocks' last paragraph (``""`` where none
+    is).  Part of what a kept comparison is kept by (:mod:`docx_agent.tools.scoped`): read
+    from the XML alone, nothing laid out or parsed."""
+    paragraphs = _region(blocks)
+    if not paragraphs:
+        return ""
+    _, upto, digests = _skeleton(document)
+    return digests[upto.get(id(paragraphs[-1]), 0)]
+
+
+def _skeleton(document: "Document") -> tuple[list, dict[int, int], list[str]]:
+    """The body's list skeleton for the document's state (:func:`list_context`): its
+    paragraphs (held, so their ``id()`` stays theirs), per paragraph the count of those up
+    to it that may be list items, and the digest of the first ``n`` of them, per ``n``."""
+    kept = getattr(document, "_tool_list_skeleton", None)
+    if kept is not None and kept[0] == document._state:
+        return kept[1]
+    from .numbering import paragraph_style_id, style_list
+
+    body = document.package.tree(document.package.document_part()).find(_W + "body")
+    numbered: dict = {}
+    hasher = hashlib.blake2b(digest_size=16)
+    elements = list(body.iter(_P)) if body is not None else []
+    upto: dict[int, int] = {}
+    digests = [hasher.hexdigest()]
+    for element in elements:
+        own = element.find(f"{_W}pPr/{_W}numPr")
+        style = paragraph_style_id(element)
+        if style not in numbered:
+            numbered[style] = style_list(document, style) is not None
+        if own is not None or numbered[style]:
+            hasher.update((style or "").encode() + b"\0")
+            hasher.update(etree.tostring(own) if own is not None else b"-")
+            hasher.update(b"d" if element.find(f"{_W}pPr/{_W}rPr/{_W}del") is not None else b"k")
+            digests.append(hasher.hexdigest())
+        upto[id(element)] = len(digests) - 1
+    found = (elements, upto, digests)
+    document._tool_list_skeleton = (document._state, found)
+    return found
 
 
 def kind_of(difference: dict) -> str:
