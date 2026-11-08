@@ -5,6 +5,46 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.68 -- unreleased
+
+- **`check(copies=...)` compares lists and page settings as Word applies them** (production
+  round 42). The copies comparison read a paragraph's indents and keeps as its own XML
+  states them and its list membership not at all, so copies with dashes among round bullets,
+  an item a level too high or a keep lost were said to follow their sample. Now each paired
+  paragraph (a block, a table's cell paragraphs) is read through the style cascade --
+  docDefaults, table style, paragraph style, list level, direct formatting -- and compared
+  with its reference's: `list_level`, `list_format` (the label: `bullet •`, `decimal %1.`),
+  `list_numbering` (`continues` or `starts at N`, counted over the body as the layout
+  counts: a copy whose numbered list goes on from the chapter before says so),
+  `indent_left`, `indent_first`, `keep_with_next`, `keep_lines`, `page_break_before` and
+  `widow_control`. Values, not XML: a keep stated directly and by the style, an indent
+  stated as the list gives it, a restarted bullet list or another list drawing the same
+  label are no difference. One difference per cause (a level differing hides its label's
+  and indents', a label differing hides its indents'; a pair whose styles differ waits for
+  the style fix). Each with its fix -- `word_lists` `level`, `add`, `remove`, `format` (with
+  `text_at`/`number_at` where the indents differ), `restart`, `continue`, or `word_format`
+  (`clear` where the style gives the sample's value) -- and the reply's `list_fix` joins every
+  copy's `word_lists` calls (at most 40, `more` past them); `word_follow_sample`'s `fix` no
+  longer names a copy for list differences it keeps by design. A kept comparison is also
+  keyed by the list items before the copy (an XML digest, nothing parsed). The paragraphs
+  are read without parsing the package: each from its own XML with docx2svg's property
+  reader, its table's style and cell conditions, resolved against the styles, numbering and
+  settings alone (parsed once while those parts are the same); where docx2svg's final view
+  joins paragraphs (a deleted or moved mark, a deleted row) the whole parse, as before -- the
+  same values either way, paragraph for paragraph, on every fixture document. A reference in the
+  same document gets `word_format` `like` its paragraph as the fix (round 42's `like`), one
+  call per reference paragraph, wherever that takes nothing else compared -- not where a
+  numbered item's numbering starts or a numbered item would join the reference's list
+  (counting on from it), nor a page setting of a paragraph in another list; there, and for
+  a reference in another document, the explicit calls. Cost, 22
+  copies of a chapter with lists in a 70-block report, CPU per check: after an edit 0.307 s
+  on 0.1.65 and 0.312 s here (medians of 8 runs each), the same version again 0.074 s both.
+  No tool definition changes.
+- Tests: `tests/test_shared_layout.py` shows a check after a render of the same version, and
+  a render after a check, lay nothing out (the worker holding the layout answers, `"same"`),
+  in `read_batch` and after a batch too; and the one case that lays out again, the holder
+  busy longer than the pool's wait.
+
 ## 0.1.67 -- unreleased
 
 - **Paragraphs made to look like a given one** (production round 42). `word_format` takes

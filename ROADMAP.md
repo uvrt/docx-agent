@@ -1243,6 +1243,16 @@ doc.render_svg(pages=diff.changed)     # or render_png; ids on every paragraph g
   and its model holds paths and fields open across blocks), a `word_fields` update that stops
   a pass early (the last pass confirms the numbers; skipping it exactly needs docx2svg's
   settled field values in docx-agent's terms).
+- **Round 42 (0.1.68):** copies compared as Word applies them (`docx_agent.edit.copy_settings`):
+  each paired paragraph -- a block's, a table's cell paragraphs (`compare.paragraph_pairs`)
+  -- read through `edit.effective` (docx2svg's cascade) for its indents, keeps and widow
+  control, and its list item counted over the body as the layout counts (docx2svg's
+  `ListCounters`): level, label (a symbol face's bullet as Unicode), where its numbering
+  starts. Fixes written in one place (`settings_fix`), `word_lists` calls joined across
+  copies (`list_fix`). Kept comparisons also keyed by the body's list skeleton up to the
+  copy (`copies.list_context`: XML only). A reference in the same document: `word_format like` its paragraph where that takes
+  nothing else compared (`_like_takes`), else the explicit calls. Open: nested tables' and
+  text boxes' paragraphs are not compared.
 - **Round 42 (0.1.67, R47):** a paragraph's look taken from another (`docx_agent.edit.like`):
   the sample's own `w:pStyle`, `w:numPr` (`ilvl`, `numId`; change records left), `w:ind`,
   `w:keepNext`, `w:keepLines`, `w:pageBreakBefore`, `w:widowControl`, each copied whole or
