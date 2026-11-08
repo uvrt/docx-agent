@@ -217,3 +217,74 @@ def test_clear_is_the_fix_where_the_style_gives_the_reference(box):
     found = _check(box, session, d1, made, samples, reference)
     keep = _settings(found["items"][0])["keep_with_next"]
     assert keep["fix"] == {"tool": "word_format", "calls": [{"targets": [made[0][0]], "clear": ["keep_with_next"]}]}
+
+
+# -- the light reader reads what docx2svg's whole parse reads -------------------------------------
+
+
+def _body_paragraphs(document) -> list:
+    body = document.package.tree(document.package.document_part()).find(W + "body")
+    return [p for p in body.iter(W + "p") if not any(a.tag == W + "txbxContent" for a in p.iterancestors())]
+
+
+def _both(document, monkeypatch) -> tuple[dict, dict, bool]:
+    paragraphs = _body_paragraphs(document)
+    document._tool_settings_reader = None
+    light = copy_settings.reader(document)
+    first = copy_settings.region_settings(document, paragraphs)
+    with monkeypatch.context() as patch:
+        patch.setattr(copy_settings._Light, "of", classmethod(lambda cls, document: None))
+        document._tool_settings_reader = None
+        whole = copy_settings.region_settings(document, paragraphs)
+    document._tool_settings_reader = None
+    return first, whole, isinstance(light, copy_settings._Light)
+
+
+def _made_up() -> list[bytes]:
+    out = []
+    doc = Document.new()
+    doc.insert_markdown(SAMPLE + "\n\n| A | B |\n|---|---|\n| one | two |\n| three | four |\n\n"
+                        "1. Again one\n    1. Nested a\n    2. Nested b\n2. Again two\n", at="end")
+    ids = [b["id"] for b in doc.blocks()]
+    doc.paragraph(ids[1]).format(keep_with_next=True, keep_together=True, page_break_before=True)
+    doc.restart_numbering(ids[6], at=4)
+    out.append(doc.to_bytes())
+    import pathlib
+
+    out += [path.read_bytes() for path in sorted((pathlib.Path(__file__).parent / "fixtures").rglob("*.docx"))]
+    return out
+
+
+def test_the_light_reader_reads_as_the_whole_parse(monkeypatch):
+    """Every body paragraph's settings and list item, read from the XML against the styles,
+    numbering and settings alone, are docx2svg's whole parse's (made-up documents and the
+    repository's fixtures; a document with a deleted paragraph mark is read whole)."""
+    light = 0
+    for data in _made_up():
+        document = Document.open(data)
+        first, whole, used = _both(document, monkeypatch)
+        assert first == whole
+        light += used
+    assert light >= 20
+    # A paragraph mark deleted (tracked): docx2svg joins the paragraphs, so the whole parse.
+    import io
+    import zipfile
+
+    from lxml import etree
+
+    source = zipfile.ZipFile(io.BytesIO(_made_up()[0]))
+    root = etree.fromstring(source.read("word/document.xml"))
+    properties = root.find(f"{W}body/{W}p[2]/{W}pPr")
+    mark = properties.find(W + "rPr")
+    if mark is None:
+        mark = etree.SubElement(properties, W + "rPr")
+    etree.SubElement(mark, W + "del", {W + "id": "90", W + "author": "Someone", W + "date": "2026-01-01T00:00:00Z"})
+    written = io.BytesIO()
+    with zipfile.ZipFile(written, "w", zipfile.ZIP_DEFLATED) as out:
+        for item in source.infolist():
+            out.writestr(item, etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+                         if item.filename == "word/document.xml" else source.read(item.filename))
+    document = Document.open(written.getvalue())
+    first, whole, used = _both(document, monkeypatch)
+    assert first == whole and not used
+    assert isinstance(copy_settings.reader(document), copy_settings._Whole)

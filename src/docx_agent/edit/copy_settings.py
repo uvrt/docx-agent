@@ -76,47 +76,269 @@ _PAGE = ("keep_with_next", "keep_lines", "page_break_before", "widow_control")
 
 
 def list_items(document: "Document") -> dict[int, tuple]:
-    """Every body paragraph that draws a list label, by the ``id()`` of docx2svg's paragraph
-    (:func:`.effective.model`): ``(list key, level, format, text, number)`` -- the list key
-    the instances counting together share, the level, its ``w:numFmt`` and ``w:lvlText``
-    (a symbol face's characters as Unicode) and the number it shows.  Counted in document
-    order over the body, table cells included, as the layout counts (docx2svg's
+    """Every body paragraph that draws a list label, by the ``id()`` of its element (held
+    by the reader, :func:`reader`): ``(list key, level, format, text, number)`` -- the list
+    key the instances counting together share, the level, its ``w:numFmt`` and
+    ``w:lvlText`` (a symbol face's characters as Unicode) and the number it shows.  Counted
+    in document order over the body, table cells included, as the layout counts (docx2svg's
     ``ListCounters``); kept for the document's state."""
-    kept = getattr(document, "_tool_list_items", None)
+    return reader(document).items
+
+
+def reader(document: "Document") -> "_Reader":
+    """What this module reads of the document's paragraphs, for its state: the light
+    reader (:class:`_Light`) where it reads the document as docx2svg would, else docx2svg's
+    whole parse (:class:`_Whole`)."""
+    kept = getattr(document, "_tool_settings_reader", None)
     if kept is not None and kept[0] == document._state:
         return kept[1]
+    found = _Light.of(document) or _Whole(document)
+    document._tool_settings_reader = (document._state, found)
+    return found
+
+
+class _Reader:
+    """The list items (:attr:`items`, by element ``id()``) and each paragraph's formatting
+    as Word applies it (:meth:`applied`)."""
+
+    items: dict[int, tuple]
+
+    def applied(self, element: Any) -> "_effective.EffectiveParagraph":
+        raise NotImplementedError
+
+
+def _count(model: Any, paragraphs: "list[tuple[Any, Any]]") -> dict[int, tuple]:
+    """``items`` of ``(element, docx2svg paragraph)`` in document order, counted."""
     from docx2svg.linebreak import ListCounters
-    from docx2svg.model import Table
     from docx2svg.resolve import resolve_paragraph
 
-    model = _effective.model(document).model
     counters = ListCounters()
     out: dict[int, tuple] = {}
-
-    def walk(item: Any) -> None:
-        if isinstance(item, Table):
-            for row in item.rows:
-                for cell in row:
-                    for inner in cell:
-                        walk(inner)
-            return
-        resolved = resolve_paragraph(model, item)
+    for element, paragraph in paragraphs:
+        resolved = resolve_paragraph(model, paragraph)
         num_id = resolved.get("numPr.numId")
         if not num_id:
-            return
+            continue
         level = resolved.get("numPr.ilvl", 0) or 0
-        if counters.label(model, item, resolved) is None:
-            return
+        if counters.label(model, paragraph, resolved) is None:
+            continue
         key = model.numbering_lists.get(num_id, ("num", num_id))
         found = model.numbering.get(num_id, {}).get(level)
         number = counters.counts.get(key, {}).get(level)
-        out[id(item)] = (key, level, found.format if found is not None else None,
-                         _shown(found), number)
-
-    for block in model.body:
-        walk(block)
-    document._tool_list_items = (document._state, out)
+        out[id(element)] = (key, level, found.format if found is not None else None, _shown(found), number)
     return out
+
+
+class _Whole(_Reader):
+    """From docx2svg's parse of the whole package (:func:`.effective.model`): its
+    paragraphs mapped to our elements (held by the model's map)."""
+
+    def __init__(self, document: "Document") -> None:
+        from docx2svg.model import Table
+
+        self.document = document
+        state = _effective.model(document)
+        elements = state.elements
+        ordered: list[tuple[Any, Any]] = []
+
+        def walk(item: Any) -> None:
+            if isinstance(item, Table):
+                for row in item.rows:
+                    for cell in row:
+                        for inner in cell:
+                            walk(inner)
+                return
+            element = elements.get(id(item))
+            ordered.append((element if element is not None else item, item))
+
+        for block in state.model.body:
+            walk(block)
+        self.items = _count(state.model, ordered)
+
+    def applied(self, element: Any) -> "_effective.EffectiveParagraph":
+        return _effective.paragraph(self.document, element)
+
+
+class _Light(_Reader):
+    """The paragraphs read from the document's own XML, as docx2svg's parse reads them --
+    each paragraph's properties (docx2svg's own reader), its table's style and the cell's
+    conditional formats (docx2svg's ``cell_conditions``) -- resolved against the styles,
+    numbering and settings alone (:func:`_frame`, kept while those parts are the same):
+    no parse of the body, which a check of one copy's blocks paid for every version.
+    The same values as docx2svg's whole parse (``tests/test_copy_settings.py`` compares
+    them, paragraph for paragraph); only where the final view is the XML's own -- no
+    paragraph mark or table row deleted or moved away (docx2svg joins those), else
+    :class:`_Whole`."""
+
+    @classmethod
+    def of(cls, document: "Document") -> "_Light | None":
+        try:
+            from docx2svg.parse import document as parse
+            from docx2svg.resolve import resolve_paragraph  # noqa: F401
+            properties_of, conditions_of, look_of = (parse._paragraph_properties, parse.cell_conditions,
+                                                     parse._table_look)
+        except (ImportError, AttributeError):     # another docx2svg: the whole parse
+            return None
+        body = document.package.tree(document.package.document_part()).find(_W + "body")
+        if body is None:
+            return None
+        if body.find(f".//{_W}trPr/{_W}del") is not None:
+            return None
+        for mark in body.iter(_W + "rPr"):
+            parent = mark.getparent()
+            if parent is not None and parent.tag == _W + "pPr" and (
+                    mark.find(_W + "del") is not None or mark.find(_W + "moveFrom") is not None):
+                return None
+        frame = _frame(document)
+        if frame is None:
+            return None
+        return cls(document, body, frame, properties_of, conditions_of, look_of)
+
+    def __init__(self, document: "Document", body: Any, frame: Any, properties_of: Any, conditions_of: Any,
+                 look_of: Any) -> None:
+        from docx2svg.paths import row_level
+
+        self.document, self.frame = document, frame
+        self._properties_of = properties_of
+        self._context: dict[int, tuple] = {}     # id(element) -> (table style, conditions)
+        self._held: list = []                    # our elements, so their id()s stay theirs
+        order: list = []
+
+        def blocks(parent: Any, style: "str | None", conditions: tuple) -> None:
+            for node in parent:
+                tag = node.tag
+                if tag == _P:
+                    self._held.append(node)
+                    self._context[id(node)] = (style, conditions)
+                    order.append(node)
+                elif tag == _TBL:
+                    table(node)
+                elif tag == _W + "sdt":
+                    content = node.find(_W + "sdtContent")
+                    if content is not None:
+                        blocks(content, style, conditions)
+                elif tag == _W + "customXml":
+                    blocks(node, style, conditions)
+
+        def table(element: Any) -> None:
+            properties = element.find(_W + "tblPr")
+            named = properties.find(_W + "tblStyle") if properties is not None else None
+            style = (named.get(_W + "val") if named is not None else None) or ""
+            look = look_of(properties.find(_W + "tblLook") if properties is not None else None)
+            rows = list(row_level(element, "tr"))
+            for k, row in enumerate(rows):
+                cells = list(row_level(row, "tc"))
+                for j, cell in enumerate(cells):
+                    blocks(cell, style, conditions_of(look, k, j, len(rows), len(cells)))
+
+        blocks(body, None, ())
+        maybe = _maybe_listed(document, frame)
+        self.items = _count(frame, [(e, self._paragraph(e)) for e in order if maybe(e)])
+
+    def _paragraph(self, element: Any) -> Any:
+        from docx2svg import model
+
+        style, conditions = self._context.get(id(element), (_effective._table_style(element), ()))
+        return model.Paragraph(properties=self._properties_of(element.find(_W + "pPr")), table_style_id=style,
+                               table_conditions=conditions)
+
+    def applied(self, element: Any) -> "_effective.EffectiveParagraph":
+        if id(element) not in self._context:
+            return _effective.paragraph(self.document, element)   # not the body's own
+        return _effective._paragraph(_FrameState(self.frame), self._paragraph(element))
+
+
+class _FrameState:
+    """What :func:`.effective._paragraph` reads of its state: the model."""
+
+    __slots__ = ("model",)
+
+    def __init__(self, model: Any) -> None:
+        self.model = model
+
+
+def _maybe_listed(document: "Document", frame: Any) -> Any:
+    """``element -> bool``: whether a paragraph may be in a list -- numbering of its own, a
+    paragraph style whose chain states numbering, or (where docDefaults or a table style
+    states any) every paragraph.  The others resolve to none, so are not resolved."""
+    styles = document.package.tree(document.package.styles_part()) if document.package.styles_part() else None
+    if styles is None:
+        return lambda element: element.find(f"{_W}pPr/{_W}numPr") is not None
+    numbered: dict = {}
+    by_id = {node.get(_W + "styleId"): node for node in styles.iter(_W + "style")}
+    if styles.find(f"{_W}docDefaults/{_W}pPrDefault/{_W}pPr/{_W}numPr") is not None or any(
+            node.get(_W + "type") == "table" and node.find(f".//{_W}numPr") is not None for node in by_id.values()):
+        return lambda element: True
+    default = next((i for i, node in by_id.items() if node.get(_W + "type") == "paragraph"
+                    and node.get(_W + "default") in ("1", "true", "on")), None)
+
+    def chain(style: "str | None") -> bool:
+        if style not in numbered:
+            seen, current, found = set(), style, False
+            while current and current not in seen and current in by_id:
+                seen.add(current)
+                node = by_id[current]
+                if node.find(f"{_W}pPr/{_W}numPr") is not None:
+                    found = True
+                    break
+                based = node.find(_W + "basedOn")
+                current = based.get(_W + "val") if based is not None else None
+            numbered[style] = found
+        return numbered[style]
+
+    def maybe(element: Any) -> bool:
+        if element.find(f"{_W}pPr/{_W}numPr") is not None:
+            return True
+        named = element.find(f"{_W}pPr/{_W}pStyle")
+        return chain(named.get(_W + "val") if named is not None else default)
+
+    return maybe
+
+
+#: A main part with an empty body: :func:`_frame` parses the styles with it.
+_EMPTY = (b'<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+          b"<w:body/></w:document>")
+
+
+def _frame(document: "Document") -> Any:
+    """docx2svg's document of the styles, numbering and settings alone (as
+    :func:`docx2svg.parse.document.parse_package` reads them), kept on the document while
+    those parts' bytes are the same; ``None`` where docx2svg cannot be asked so."""
+    import hashlib
+
+    from lxml import etree
+
+    package = document.package
+    main = package.document_part()
+    named = {"styles": package.styles_part(), "numbering": package.numbering_part()}
+    settings = package.related_parts_of_type(
+        main, "http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings")
+    named["settings"] = settings[0] if settings else None
+    data = {}
+    hasher = hashlib.blake2b(digest_size=16)
+    for name, part in named.items():
+        tree = package.tree(part) if part is not None else None
+        data[name] = etree.tostring(tree) if tree is not None else None
+        hasher.update(name.encode() + b"\0" + (data[name] or b"-") + b"\1")
+    key = hasher.digest()
+    kept = getattr(document, "_tool_settings_frame", None)
+    if kept is not None and kept[0] == key:
+        return kept[1]
+    try:
+        from docx2svg.parse.document import parse_document, settings_read
+        from docx2svg.parse.styles import parse_numbering
+    except ImportError:
+        return None
+    frame = parse_document(_EMPTY, data["styles"])
+    if data["numbering"] is not None:
+        numbering = parse_numbering(data["numbering"], frame.styles)
+        frame.numbering, frame.numbering_lists = numbering.levels, numbering.lists
+        frame.numbering_restarts = numbering.restarts
+    if data["settings"] is not None:
+        for name, value in settings_read(data["settings"]).items():
+            setattr(frame, name, value)
+    document._tool_settings_frame = (key, frame)
+    return frame
 
 
 def _shown(level: Any) -> str | None:
@@ -138,19 +360,19 @@ def _shown(level: Any) -> str | None:
 def region_settings(document: "Document", paragraphs: list) -> dict[int, dict[str, Any]]:
     """Each of ``paragraphs`` (elements, in document order: a copy's or a reference's) by
     ``id()``: its settings (the module's names), ``list_numbering`` read along the region."""
-    items = list_items(document)
-    state = _effective.model(document)
+    read = reader(document)
+    items = read.items
     out: dict[int, dict[str, Any]] = {}
     seen: dict[int, tuple] = {}             # level -> (list key, number) of the item last there
     for element in paragraphs:
-        applied = _effective.paragraph(document, element)
+        applied = read.applied(element)
         values: dict[str, Any] = {
             "indent_left": round(applied.indent_left, 2),
             "indent_first": round(applied.first_line - applied.hanging, 2),
             "keep_with_next": applied.keep_with_next, "keep_lines": applied.keep_together,
             "page_break_before": applied.page_break_before, "widow_control": applied.widow_control,
             "list_level": None, "list_format": None, "list_numbering": None}
-        item = items.get(id(state.paragraph(element)))
+        item = items.get(id(element))
         if item is not None:
             key, level, number_format, text, number = item
             values["list_level"] = level
