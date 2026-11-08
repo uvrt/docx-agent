@@ -1252,6 +1252,16 @@ doc.render_svg(pages=diff.changed)     # or render_png; ids on every paragraph g
   copies (`list_fix`). Kept comparisons also keyed by the body's list skeleton up to the
   copy (`copies.list_context`: XML only). Open: a `word_format like` fix in place of the
   explicit calls once that exists; nested tables' and text boxes' paragraphs are not compared.
+- **Round 42 (0.1.67, R47):** a paragraph's look taken from another (`docx_agent.edit.like`):
+  the sample's own `w:pStyle`, `w:numPr` (`ilvl`, `numId`; change records left), `w:ind`,
+  `w:keepNext`, `w:keepLines`, `w:pageBreakBefore`, `w:widowControl`, each copied whole or
+  removed, compared by their XML (no change where alike); `word_format` `like` per target
+  before its other settings (an explicit one skips its part), `insert_markdown`'s `like`
+  in the writer's `list_like` (`LevelLooks`: by level or role; a deeper level the sample's
+  list a level down, `Look.deeper`). Open: the defaults without `like` -- a nested Markdown
+  item under a style-numbered level whose own list style numbers another list is still
+  written as a list of its own (Word's own List Bullet 2 is one); whether to nest it in the
+  parent's list as Word's Tab does is a decision (it changes written lists).
 - **Round 40 (0.1.64):** a range's keep tried (`docx_agent.tools.keep_trials`, from
   `check_worker`): the change `keep_blocks_together` would write (its `_keep_changes`, read
   on the document checked) written on a copy of the bytes, laid out with docx2svg's

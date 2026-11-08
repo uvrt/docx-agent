@@ -14,7 +14,9 @@ reject, word_comments for its text edits, every role's).  ``["edit"]``: core 1,4
 definition 10,653 (word_changes is accept's now).  Claude's strict set for a reviewer is
 word_comments, word_changes and word_notes; for ``["edit"]`` alone word_changes leaves it
 and edit_smartart and set_properties join; the default's and a builder's
-(``["review", "edit"]``) are unchanged.
+(``["review", "edit"]``) are unchanged but for round 42 (word_insert_markdown's ``like``): the
+default sends word_set_text non-strict and edit_smartart strict, a builder keeps word_set_text
+strict and edit_smartart, which fitted beside it, not.
 """
 
 from __future__ import annotations
@@ -138,11 +140,11 @@ def test_a_builder_without_resolve_keeps_the_default_tools_and_strict_set(box):
     default, builder = _sent(box, None), _sent(box, ["review", "edit"])
     assert set(builder) == set(default)
     # Its word_changes offers list alone and so has no ids or all (round 17,
-    # Tool.action_fields): the strict optional parameters it frees keep word_set_text strict
+    # Tool.action_fields): the strict optional parameters it frees kept word_set_text strict
     # (round 42: five optional parameters, which the default set has no room for; edit_smartart
-    # takes its place there).
-    assert {n for n, d in builder.items() if d["strict"]} == \
-        ({n for n, d in default.items() if d["strict"]} - {"edit_smartart"}) | {"word_set_text"}
+    # takes its place there) until word_insert_markdown's like (R47) took one of them: a
+    # builder's strict set is now the default's.
+    assert {n for n, d in builder.items() if d["strict"]} == {n for n, d in default.items() if d["strict"]}
     assert "ids" not in builder["word_changes"]["input_schema"]["properties"]
     assert "ids" in default["word_changes"]["input_schema"]["properties"]
     assert _enum(builder["word_comments"]) == ["list", "add", "reply", "edit"]

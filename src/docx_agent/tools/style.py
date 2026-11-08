@@ -118,9 +118,51 @@ def _refuse_style_numbered(document: Any, paragraphs: list[Any]) -> None:
                      + (f" (styles like it that number nothing: {', '.join(fits)})" if fits else
                         " (no style like it numbers nothing: word_styles add one based on it)"))
         options += [f for f in fits if f not in options]
-    raise ToolError("invalid_arguments", "; ".join(parts) + ". Taking them out of the list would override "
-                    "their style: give them a style that numbers nothing (word_format paragraph_style), "
-                    "or force true to override", field="targets", valid_options=(options + ["force"])[:50])
+    message = "; ".join(parts) + (". Taking them out of the list would override their style: give them a "
+                                  "style that numbers nothing (word_format paragraph_style), or force true to "
+                                  "override (no marker)")
+    joins = _joins(document, [p for ids in numbered.values() for p in ids])
+    if joins:
+        # Round 42, R47: items numbered by a list of their own over a numbering style --
+        # what a builder means by removing "their own" numbering is joining a list,
+        # keeping their marker and level: word_format like an item of it.
+        message += ". To drop their own numbering and join an earlier list at their level instead, keeping a " \
+                   "marker: " + "; ".join(f"word_format {json.dumps(call)}" for call in joins)
+        options = [f"word_format like {call['like']}" for call in joins] + options
+    raise ToolError("invalid_arguments", message, field="targets", valid_options=(options + ["force"])[:50])
+
+
+def _joins(document: Any, ids: list[str]) -> list[dict]:
+    """For paragraphs numbered by a list of their own (``w:numPr``), the ``word_format``
+    calls that make them items of the nearest earlier list at their level (``like`` an item
+    of it), grouped by that item; at most five."""
+    calls: dict[str, list[str]] = {}
+    for identifier in ids:
+        found = document.list_of(identifier)
+        if found is None or found.from_style:
+            continue
+        item = _earlier_item(document, identifier, found)
+        if item is not None:
+            calls.setdefault(item, []).append(identifier)
+    return [{"targets": targets, "like": item} for item, targets in list(calls.items())[:5]]
+
+
+def _earlier_item(document: Any, identifier: str, own: Any) -> str | None:
+    """The nearest paragraph before ``identifier`` in its container that is an item of
+    another list at ``own``'s level."""
+    from ..edit.numbering import membership
+
+    _, entry = document._paragraph_entry(identifier)
+    node = entry.element.getprevious()
+    index = document._index(document._resolve(identifier)[0])
+    while node is not None:
+        if node.tag == entry.element.tag:
+            found = membership(document, node)
+            if found is not None and found.num_id != own.num_id and found.level == own.level:
+                other = index.entry_for(node)
+                return other.id if other is not None else None
+        node = node.getprevious()
+    return None
 
 
 def _paragraph_style_id(document: Any, paragraph: Any) -> str | None:
