@@ -58,7 +58,9 @@ with Toolbox(TOOLS, formats=[FORMAT], groups=GROUPS) as toolbox:
   and one `word_follow_sample` call per reference to make the copies follow. Each list item
   and paragraph is also compared as Word applies it (round 42): its list level, its label
   (`list_format`, e.g. `bullet •` beside `bullet –`), where its numbering starts
-  (`list_numbering`: `continues`, `starts at 3`), its indents and its keeps and widow
+  (`list_numbering`: `continues`, `starts at 3` -- compared only where the sample's own
+  numbered list begins inside the sample; a heading numbered by the outline, or a list that
+  runs on from before the sample, compares by level and label alone, round 43), its indents and its keeps and widow
   control, with the `word_lists` or `word_format` call that fixes each (`list_fix`: every
   copy's list calls together); two items that look the same never differ. A comparison
   is kept while neither side's blocks, nor the list items before them, change.

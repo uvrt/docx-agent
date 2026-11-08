@@ -21,7 +21,14 @@ reports where they differ:
   or in the reference) or ``starts at N`` (any other number: a first item, a restart, a list
   that continues another before the copy).  Counted as Word counts (docx2svg's
   :class:`~docx2svg.linebreak.ListCounters`, over the whole body), so a copy whose list
-  goes on from the chapter before it is told;
+  goes on from the chapter before it is told.  Compared (round 43) only where the sample's
+  own count begins inside the sample, or goes on there from an item of the sample: then
+  each copy's begins and goes on alike.  Where the sample's item is numbered by the
+  document's outline (:func:`_by_outline`: a heading whose number is its place among the
+  headings) or its count runs on from before the sample (by design), its level and label
+  are compared and its number never -- nor where the copy's item is numbered by the
+  outline: no restart is offered there.  Decided from how the sample's count behaves
+  (:data:`COUNT`), never from a style's name;
 * ``indent_left`` and ``indent_first`` (points; ``indent_first`` negative for a hanging
   indent): the paragraph's own, its style's or its list level's;
 * ``keep_with_next``, ``keep_lines``, ``page_break_before``, ``widow_control``: true or false.
@@ -73,6 +80,12 @@ SETTINGS = ("list_level", "list_format", "list_numbering", "indent_left", "inden
             "keep_with_next", "keep_lines", "page_break_before", "widow_control")
 #: The list's settings: ``word_lists`` makes them; ``word_follow_sample`` keeps a copy's list.
 LIST_SETTINGS = frozenset(SETTINGS[:3])
+#: Round 43: per list item of a region (:func:`region_settings`), how its number comes --
+#: ``outline`` (numbered by the outline: :func:`_by_outline`), ``own`` (its count begins
+#: inside the region, or it continues an item of the region) or ``runs_on`` (its count
+#: goes on from an item before the region): what :func:`_counted` decides by.  Not a
+#: setting, never reported.
+COUNT = "list_count"
 #: :mod:`.compare`'s properties these replace for the paragraphs compared here.
 REPLACED = frozenset({"indent_left", "indent_first", "keep_with_next", "keep_lines", "page_break_before"})
 #: The settings ``word_format`` sets by the same name.
@@ -128,13 +141,32 @@ def _count(model: Any, paragraphs: "list[tuple[Any, Any]]") -> dict[int, tuple]:
         if not num_id:
             continue
         level = resolved.get("numPr.ilvl", 0) or 0
+        key = model.numbering_lists.get(num_id, ("num", num_id))
+        # Round 43: whether the item begins its count -- no item before it at its level
+        # since the count last began (a shallower item, the document's start), or a restart
+        # (``w:startOverride``) its instance makes here -- read before it is counted.
+        fresh = (level not in counters.counts.get(key, {})
+                 or ((num_id, level) not in counters.used and (num_id, level) in model.numbering_restarts))
         if counters.label(model, paragraph, resolved) is None:
             continue
-        key = model.numbering_lists.get(num_id, ("num", num_id))
         found = model.numbering.get(num_id, {}).get(level)
         number = counters.counts.get(key, {}).get(level)
-        out[id(element)] = (key, level, found.format if found is not None else None, _shown(found), number)
+        out[id(element)] = (key, level, found.format if found is not None else None, _shown(found), number,
+                            fresh, _by_outline(resolved, paragraph, found))
     return out
+
+
+def _by_outline(resolved: Any, paragraph: Any, level: Any) -> bool:
+    """Whether an item is numbered by the document's outline: the paragraph stands at an
+    outline level (``w:outlineLvl`` 0-8, its own or its style's) and its numbering is its
+    style's (no ``w:numId`` of its own) or a level tied to a paragraph style (``w:pStyle``
+    in the level: Word's multilevel list linked to the heading styles).  Read from the
+    structure, never the style's name: its number is its place in the outline."""
+    outline = resolved.get("outlineLvl")
+    if not isinstance(outline, int) or not 0 <= outline <= 8:
+        return False
+    own = getattr(getattr(paragraph, "properties", None), "numbering_id", None)
+    return not own or getattr(level, "style", None) is not None
 
 
 class _Whole(_Reader):
@@ -455,16 +487,17 @@ def region_settings(document: "Document", paragraphs: list) -> dict[int, dict[st
             "indent_first": round(applied.first_line - applied.hanging, 2),
             "keep_with_next": applied.keep_with_next, "keep_lines": applied.keep_together,
             "page_break_before": applied.page_break_before, "widow_control": applied.widow_control,
-            "list_level": None, "list_format": None, "list_numbering": None}
+            "list_level": None, "list_format": None, "list_numbering": None, COUNT: None}
         item = items.get(id(element))
         if item is not None:
-            key, level, number_format, text, number = item
+            key, level, number_format, text, number, fresh, outline = item
             values["list_level"] = level
             values["list_format"] = f"{number_format or 'decimal'} {text}"
             if number_format not in ("bullet", "none") and text and "%" in text:
                 before = seen.get(level)
-                values["list_numbering"] = ("continues" if before is not None and before[0] == key
-                                            and number == before[1] + 1 else f"starts at {number}")
+                goes_on = before is not None and before[0] == key and number == before[1] + 1
+                values["list_numbering"] = "continues" if goes_on else f"starts at {number}"
+                values[COUNT] = ("outline" if outline else "own" if goes_on or fresh else "runs_on")
             seen[level] = (key, number)
             for deeper in [k for k in seen if k > level]:
                 del seen[deeper]
@@ -497,6 +530,8 @@ def compare_settings(document: "Document", reference_document: "Document", pairs
         elif a["list_format"] != b["list_format"]:
             names = ["list_format", *_PAGE]  # its fix places the label as the reference's
         for name in names:
+            if name == "list_numbering" and not _counted(a, b):
+                continue
             if a[name] != b[name]:
                 key = (block, name, a[name], b[name])
                 groups.setdefault(key, []).append(identifier)
@@ -568,6 +603,18 @@ def settings_fix(document: "Document", name: str, value: Any, reference: Any, pa
         calls = [{"targets": [p], "action": "continue"} for p in paragraphs if _can_continue(document, p)]
         return {"tool": "word_lists", "calls": calls} if len(calls) == len(paragraphs) else None
     return None
+
+
+def _counted(own: dict, sample: dict) -> bool:
+    """Whether where a copy's item stands in its count is compared with its sample's
+    (round 43): only where the sample's own count begins (or begins again) inside the
+    sample's region and goes on there (:data:`COUNT` ``own``) -- a numbered list of the
+    sample's own, which each copy then numbers alike.  Not where the sample's item is
+    numbered by the outline (its number is its place among the document's headings) or its
+    count runs on from before the sample's region (it runs on by design): there the level
+    and the label compare, never the number.  Nor where the copy's item is numbered by the
+    outline: a restart there would break the outline's numbers."""
+    return sample.get(COUNT) == "own" and own.get(COUNT) != "outline"
 
 
 def _like_takes(name: str, paragraph: Any, reference: Any, own: dict, sample: dict) -> bool:
