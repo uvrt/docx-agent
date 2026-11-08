@@ -26,9 +26,15 @@ snapshot commit; the development history before it is summarised here.
   (`clear` where the style gives the sample's value) -- and the reply's `list_fix` joins every
   copy's `word_lists` calls (at most 40, `more` past them); `word_follow_sample`'s `fix` no
   longer names a copy for list differences it keeps by design. A kept comparison is also
-  keyed by the list items before the copy (an XML digest, nothing parsed). Cost, 22 copies
-  of a chapter with lists in a 70-block report: CPU after an edit 0.56 -> 0.74 s, the same
-  version again 0.15 -> 0.16 s. No tool definition changes.
+  keyed by the list items before the copy (an XML digest, nothing parsed). The paragraphs
+  are read without parsing the package: each from its own XML with docx2svg's property
+  reader, its table's style and cell conditions, resolved against the styles, numbering and
+  settings alone (parsed once while those parts are the same); where docx2svg's final view
+  joins paragraphs (a deleted or moved mark, a deleted row) the whole parse, as before -- the
+  same values either way, paragraph for paragraph, on every fixture document. Cost, 22
+  copies of a chapter with lists in a 70-block report, CPU per check: after an edit 0.307 s
+  on 0.1.65 and 0.312 s here (medians of 8 runs each), the same version again 0.074 s both.
+  No tool definition changes.
 - Tests: `tests/test_shared_layout.py` shows a check after a render of the same version, and
   a render after a check, lay nothing out (the worker holding the layout answers, `"same"`),
   in `read_batch` and after a batch too; and the one case that lays out again, the holder

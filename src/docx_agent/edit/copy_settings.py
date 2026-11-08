@@ -50,7 +50,10 @@ continue).  ``widow_control`` has no ``word_format`` field:
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from typing import TYPE_CHECKING, Any
+
+from lxml import etree
 
 from . import effective as _effective
 
@@ -180,15 +183,8 @@ class _Light(_Reader):
         except (ImportError, AttributeError):     # another docx2svg: the whole parse
             return None
         body = document.package.tree(document.package.document_part()).find(_W + "body")
-        if body is None:
+        if body is None or skeleton(document).removed:
             return None
-        if body.find(f".//{_W}trPr/{_W}del") is not None:
-            return None
-        for mark in body.iter(_W + "rPr"):
-            parent = mark.getparent()
-            if parent is not None and parent.tag == _W + "pPr" and (
-                    mark.find(_W + "del") is not None or mark.find(_W + "moveFrom") is not None):
-                return None
         frame = _frame(document)
         if frame is None:
             return None
@@ -224,23 +220,40 @@ class _Light(_Reader):
             properties = element.find(_W + "tblPr")
             named = properties.find(_W + "tblStyle") if properties is not None else None
             style = (named.get(_W + "val") if named is not None else None) or ""
-            look = look_of(properties.find(_W + "tblLook") if properties is not None else None)
+            # The look read as the cells' conditions are asked for (:meth:`_paragraph`).
+            look: list = []
+            tblLook = properties.find(_W + "tblLook") if properties is not None else None
             rows = list(row_level(element, "tr"))
             for k, row in enumerate(rows):
                 cells = list(row_level(row, "tc"))
                 for j, cell in enumerate(cells):
-                    blocks(cell, style, conditions_of(look, k, j, len(rows), len(cells)))
+                    blocks(cell, style, (look, tblLook, k, j, len(rows), len(cells)))
 
+        self._conditions_of, self._look_of = conditions_of, look_of
         blocks(body, None, ())
-        maybe = _maybe_listed(document, frame)
-        self.items = _count(frame, [(e, self._paragraph(e)) for e in order if maybe(e)])
+        listed = skeleton(document).listed
+        self._models = _model_cache(document)
+        self.items = _count(frame, [(e, self._paragraph(e)) for e in order if id(e) in listed])
 
     def _paragraph(self, element: Any) -> Any:
+        """docx2svg's paragraph of ``element``, as its parse builds it -- kept by the bytes
+        of its ``w:pPr``, its table's style and its cell's conditions (:func:`_model_cache`)."""
         from docx2svg import model
 
-        style, conditions = self._context.get(id(element), (_effective._table_style(element), ()))
-        return model.Paragraph(properties=self._properties_of(element.find(_W + "pPr")), table_style_id=style,
-                               table_conditions=conditions)
+        style, cell = self._context.get(id(element), (_effective._table_style(element), ()))
+        conditions: tuple = ()
+        if cell:
+            look, tblLook, k, j, rows, cells = cell
+            if not look:
+                look.append(self._look_of(tblLook))
+            conditions = self._conditions_of(look[0], k, j, rows, cells)
+        properties = element.find(_W + "pPr")
+        key = (etree.tostring(properties) if properties is not None else b"", style, conditions)
+        found = self._models.get(key)
+        if found is None:
+            found = self._models[key] = model.Paragraph(properties=self._properties_of(properties),
+                                                        table_style_id=style, table_conditions=conditions)
+        return found
 
     def applied(self, element: Any) -> "_effective.EffectiveParagraph":
         if id(element) not in self._context:
@@ -257,7 +270,73 @@ class _FrameState:
         self.model = model
 
 
-def _maybe_listed(document: "Document", frame: Any) -> Any:
+#: docx2svg paragraphs kept per document (:meth:`_Light._paragraph`), past which the oldest go.
+MODELS_KEPT = 4096
+
+
+def _model_cache(document: "Document") -> "OrderedDict":
+    """The document's kept docx2svg paragraphs, bounded (:data:`MODELS_KEPT`): a paragraph
+    is a value of its properties (frozen), so one built is the same for any state."""
+    found = getattr(document, "_tool_paragraph_models", None)
+    if found is None:
+        found = document._tool_paragraph_models = OrderedDict()
+    while len(found) > MODELS_KEPT:
+        found.popitem(last=False)
+    return found
+
+
+class _Skeleton:
+    """The body's paragraphs in document order (held, so their ``id()`` stays theirs), per
+    paragraph (``upto``) how many of those up to it may be list items, the digest of the
+    first ``n`` of those per ``n`` (``digests``), and whether a paragraph mark or a row is
+    deleted or moved away (``removed``: docx2svg's final view joins them)."""
+
+    __slots__ = ("elements", "upto", "digests", "removed", "listed")
+
+    def __init__(self, elements: list, upto: dict, digests: list, removed: bool, listed: set) -> None:
+        self.elements, self.upto, self.digests, self.removed = elements, upto, digests, removed
+        #: The ``id()`` of each paragraph that may be a list item (:func:`_maybe_listed`).
+        self.listed = listed
+
+
+def skeleton(document: "Document") -> _Skeleton:
+    """The body's list skeleton for the document's state (what
+    :func:`docx_agent.edit.copies.list_context` keys a comparison by): for each paragraph
+    that may be a list item (:func:`_maybe_listed`) its style, its own ``w:numPr`` and
+    whether its mark is deleted -- from the XML alone."""
+    import hashlib
+
+    kept = getattr(document, "_tool_list_skeleton", None)
+    if kept is not None and kept[0] == document._state:
+        return kept[1]
+    body = document.package.tree(document.package.document_part()).find(_W + "body")
+    maybe = _maybe_listed(document)
+    hasher = hashlib.blake2b(digest_size=16)
+    elements = list(body.iter(_P)) if body is not None else []
+    upto: dict[int, int] = {}
+    digests = [hasher.hexdigest()]
+    removed = body is not None and body.find(f".//{_W}trPr/{_W}del") is not None
+    listed: set = set()
+    for element in elements:
+        mark = element.find(f"{_W}pPr/{_W}rPr")
+        deleted = mark is not None and mark.find(_W + "del") is not None
+        if mark is not None and (deleted or mark.find(_W + "moveFrom") is not None):
+            removed = True
+        if maybe(element):
+            listed.add(id(element))
+            own = element.find(f"{_W}pPr/{_W}numPr")
+            named = element.find(f"{_W}pPr/{_W}pStyle")
+            hasher.update(((named.get(_W + "val") or "") if named is not None else "").encode() + b"\0")
+            hasher.update(etree.tostring(own) if own is not None else b"-")
+            hasher.update(b"d" if deleted else b"k")
+            digests.append(hasher.hexdigest())
+        upto[id(element)] = len(digests) - 1
+    found = _Skeleton(elements, upto, digests, removed, listed)
+    document._tool_list_skeleton = (document._state, found)
+    return found
+
+
+def _maybe_listed(document: "Document") -> Any:
     """``element -> bool``: whether a paragraph may be in a list -- numbering of its own, a
     paragraph style whose chain states numbering, or (where docDefaults or a table style
     states any) every paragraph.  The others resolve to none, so are not resolved."""

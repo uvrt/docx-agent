@@ -257,42 +257,21 @@ def list_context(document: "Document", blocks: list[tuple[str, Any]]) -> str:
     whether its mark is deleted -- up to the blocks' last paragraph (``""`` where none
     is).  Part of what a kept comparison is kept by (:mod:`docx_agent.tools.scoped`): read
     from the XML alone, nothing laid out or parsed."""
-    paragraphs = _region(blocks)
-    if not paragraphs:
+    last = None
+    for _, element in reversed(blocks):
+        last = element if element.tag == _P else next(reversed(list(element.iter(_P))), None)
+        if last is not None:
+            break
+    if last is None:
         return ""
     _, upto, digests = _skeleton(document)
-    return digests[upto.get(id(paragraphs[-1]), 0)]
+    return digests[upto.get(id(last), 0)]
 
 
 def _skeleton(document: "Document") -> tuple[list, dict[int, int], list[str]]:
-    """The body's list skeleton for the document's state (:func:`list_context`): its
-    paragraphs (held, so their ``id()`` stays theirs), per paragraph the count of those up
-    to it that may be list items, and the digest of the first ``n`` of them, per ``n``."""
-    kept = getattr(document, "_tool_list_skeleton", None)
-    if kept is not None and kept[0] == document._state:
-        return kept[1]
-    from .numbering import paragraph_style_id, style_list
-
-    body = document.package.tree(document.package.document_part()).find(_W + "body")
-    numbered: dict = {}
-    hasher = hashlib.blake2b(digest_size=16)
-    elements = list(body.iter(_P)) if body is not None else []
-    upto: dict[int, int] = {}
-    digests = [hasher.hexdigest()]
-    for element in elements:
-        own = element.find(f"{_W}pPr/{_W}numPr")
-        style = paragraph_style_id(element)
-        if style not in numbered:
-            numbered[style] = style_list(document, style) is not None
-        if own is not None or numbered[style]:
-            hasher.update((style or "").encode() + b"\0")
-            hasher.update(etree.tostring(own) if own is not None else b"-")
-            hasher.update(b"d" if element.find(f"{_W}pPr/{_W}rPr/{_W}del") is not None else b"k")
-            digests.append(hasher.hexdigest())
-        upto[id(element)] = len(digests) - 1
-    found = (elements, upto, digests)
-    document._tool_list_skeleton = (document._state, found)
-    return found
+    """The body's list skeleton (:func:`.copy_settings.skeleton`)."""
+    found = _settings.skeleton(document)
+    return found.elements, found.upto, found.digests
 
 
 def kind_of(difference: dict) -> str:
