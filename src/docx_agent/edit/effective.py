@@ -104,10 +104,12 @@ class _Model:
     every path from the part's root, each step listing its siblings: work that grew with
     the square of the document, done again after every edit."""
 
-    def __init__(self, document: "Document") -> None:
+    def __init__(self, document: "Document", parsed: "tuple[bytes, _model.Document] | None" = None) -> None:
         self.document = document
         data = document.to_bytes()
-        self.model = parse_package(data)
+        # Round 41: docx2svg's parse of these very bytes, where the caller has it (a worker's
+        # check: the one its layout was made from, :func:`docx2svg.parsed_document`).
+        self.model = parsed[1] if parsed is not None and parsed[0] == data else parse_package(data)
         self._paragraphs: dict[int, _model.Paragraph] = {}
         self._elements: dict[int, Element] = {}
         self._tables: dict[int, _model.Table] | None = None
@@ -404,6 +406,13 @@ def _table_style(element: Element) -> str | None:
         return None
     style = node.find(f"{_W}tblPr/{_W}tblStyle")
     return style.get(_W + "val") if style is not None else ""
+
+
+def seed_model(document: "Document", data: bytes, parsed: "_model.Document") -> None:
+    """Take ``parsed``, docx2svg's parse of ``data``, as the document's (:func:`model`)
+    where ``data`` is its bytes now (round 41: a worker's check reads the parse its layout
+    was made from rather than parse the same bytes again); else nothing changes."""
+    document._effective = (document._state, _Model(document, (data, parsed)))
 
 
 def model(document: "Document") -> _Model:
