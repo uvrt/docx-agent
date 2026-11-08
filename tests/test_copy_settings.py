@@ -288,3 +288,38 @@ def test_the_light_reader_reads_as_the_whole_parse(monkeypatch):
     first, whole, used = _both(document, monkeypatch)
     assert first == whole and not used
     assert isinstance(copy_settings.reader(document), copy_settings._Whole)
+
+
+def test_a_sample_in_the_same_document_is_followed_with_like(box):
+    """A reference in the same document: each difference's fix is ``word_format`` ``like``
+    the reference's paragraph where taking its look changes nothing else compared; where a
+    numbered list starts stays ``word_lists`` (``like`` would count on from the sample).
+    The fixes make the copy follow; a reference in another document keeps the explicit
+    calls (the tests above)."""
+    session = box.session()
+    d1, _, reference, made = _made(box, session, 1, same_document=True)
+    sample = _blocks_of(session, d1, reference)
+    copy = made[0]
+    _ok(box, session, "word_lists", doc=d1, targets=[copy[2]], action="add", kind="bullet")
+    _ok(box, session, "word_lists", doc=d1, targets=[copy[2]], action="format", level=0, number_format="bullet",
+        label="–")
+    _ok(box, session, "word_lists", doc=d1, targets=[copy[3]], action="level", level=0)
+    _ok(box, session, "word_format", doc=d1, targets=[copy[1]], keep_with_next=False)
+    pairs = [{"blocks": f"{copy[0]}..{copy[-1]}", "reference": {"block": reference}}]
+    found = _ok(box, session, "check", doc=d1, include=[], copies=pairs).data["copies"]
+    settings = _settings(found["items"][0])
+    assert settings["list_format"]["fix"] == {"tool": "word_format", "calls": [{"targets": [copy[2]],
+                                                                                "like": sample[2]}]}
+    assert settings["list_level"]["fix"] == {"tool": "word_format", "calls": [{"targets": [copy[3]],
+                                                                               "like": sample[3]}]}
+    assert settings["keep_with_next"]["fix"] == {"tool": "word_format", "calls": [{"targets": [copy[1]],
+                                                                                   "like": sample[1]}]}
+    numbering = settings["list_numbering"]
+    assert numbering["fix"]["tool"] == "word_lists" and numbering["fix"]["calls"][0]["action"] == "restart"
+    # list_fix holds only word_lists calls: the restart.
+    assert [c["action"] for c in found["list_fix"]["calls"]] == ["restart"]
+    for difference in found["items"][0]["differences"]:
+        for call in difference["fix"]["calls"]:
+            _ok(box, session, difference["fix"]["tool"], doc=d1, **call)
+    again = _ok(box, session, "check", doc=d1, include=[], copies=pairs).data["copies"]
+    assert again["follow"] == 1, again["items"][0]["differences"]

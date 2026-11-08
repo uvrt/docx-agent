@@ -36,7 +36,12 @@ label differs by ``list_format`` alone -- the page settings apart, which neither
 These differences replace :mod:`.compare`'s ``indent_left``, ``indent_first``,
 ``keep_with_next``, ``keep_lines`` and ``page_break_before`` for the paragraphs compared here.
 
-**Fixes** (:func:`settings_fix`, the one place they are written): ``word_format`` with the
+**Fixes** (:func:`settings_fix`, the one place they are written).  A reference in the
+same document: ``word_format`` ``like`` the reference's paragraph, one call per reference
+paragraph, wherever taking its look changes nothing else compared here (:func:`_like_takes`:
+not for where a numbered item's numbering starts, nor to move a numbered item into the
+reference's list, nor a page setting of a paragraph whose list differs).  Otherwise -- and
+always for a reference in another document -- the explicit calls: ``word_format`` with the
 reference's value, or ``clear`` where the paragraph's style (and list) give it the
 reference's value without its own; ``word_lists`` ``level``, ``add`` (a paragraph in no list:
 a list of Word's own of the reference's kind, its label compared by the next check),
@@ -44,8 +49,8 @@ a list of Word's own of the reference's kind, its label compared by the next che
 bullet as its Unicode character -- and, where the item's indents differ, ``text_at`` and
 ``number_at`` at the reference's: the copy's list only, Word's copy-on-write), ``restart``
 (``start``) and ``continue`` (where an earlier list over the same definition is there to
-continue).  ``widow_control`` has no ``word_format`` field:
-``word_follow_sample`` gives it (the check's ``fix``).  None where no call makes it.
+continue).  ``widow_control`` has no ``word_format`` field: ``like`` gives it, else
+``word_follow_sample`` (the check's ``fix``).  None where no call makes it.
 """
 
 from __future__ import annotations
@@ -475,7 +480,9 @@ def compare_settings(document: "Document", reference_document: "Document", pairs
     property and values; ``ids`` gives each paragraph's ``(block, paragraph id)``, ``mine``
     and ``theirs`` the regions' settings (:func:`region_settings`)."""
     groups: dict[tuple, list[str]] = {}
-    samples: dict[tuple, str] = {}
+    samples: dict[tuple, tuple] = {}
+    likes: dict[tuple, dict[str, str | None]] = {}
+    same = document is reference_document
     for paragraph, reference in pairs:
         where = ids.get(id(paragraph))
         if where is None:
@@ -493,13 +500,19 @@ def compare_settings(document: "Document", reference_document: "Document", pairs
             if a[name] != b[name]:
                 key = (block, name, a[name], b[name])
                 groups.setdefault(key, []).append(identifier)
-                samples.setdefault(key, (reference_ids.get(id(reference), ""), b, a))
+                sample = reference_ids.get(id(reference), "")
+                samples.setdefault(key, (sample, b, a))
+                # Round 42: the same document's sample paragraph to look like, where taking
+                # its look changes nothing else this comparison reads (:func:`_like_takes`).
+                likes.setdefault(key, {})[identifier] = (
+                    sample if same and sample and _like_takes(name, paragraph, reference, a, b) else None)
     out = []
-    for (block, name, value, reference), paragraphs in groups.items():
+    for key, paragraphs in groups.items():
+        block, name, value, reference = key
         out.append({"block": block, "property": name, "paragraphs": paragraphs, "value": value,
                     "reference": reference,
-                    "fix": settings_fix(document, name, value, reference, paragraphs, *samples[(block, name, value,
-                                                                                                reference)])})
+                    "fix": settings_fix(document, name, value, reference, paragraphs, *samples[key],
+                                        likes=likes[key])})
     order = {name: k for k, name in enumerate(SETTINGS)}
     out.sort(key=lambda d: order[d["property"]])
     return out
@@ -509,12 +522,20 @@ def compare_settings(document: "Document", reference_document: "Document", pairs
 
 
 def settings_fix(document: "Document", name: str, value: Any, reference: Any, paragraphs: list[str],
-                 sample: str, sample_settings: dict, own_settings: dict) -> dict | None:
+                 sample: str, sample_settings: dict, own_settings: dict,
+                 likes: "dict[str, str | None] | None" = None) -> dict | None:
     """The calls that give ``paragraphs`` the reference's ``name`` (the module's "Fixes"):
     every fix of a list item or a page setting is written here, and only here.  ``sample``
-    is the reference paragraph (for a call that makes a paragraph look like another, once
-    one exists: that call would replace these); ``sample_settings`` its settings and
-    ``own_settings`` the first paragraph's."""
+    is the reference paragraph, ``sample_settings`` its settings and ``own_settings`` the
+    first paragraph's.  ``likes`` (round 42): per paragraph, the sample paragraph of the
+    same document it may look like (``None``: not so) -- where every paragraph has one,
+    ``word_format`` ``like``, one call per sample paragraph."""
+    if likes and all(likes.get(p) for p in paragraphs):
+        by_sample: dict[str, list[str]] = {}
+        for identifier in paragraphs:
+            by_sample.setdefault(likes[identifier], []).append(identifier)
+        return {"tool": "word_format", "calls": [{"targets": targets, "like": like}
+                                                 for like, targets in by_sample.items()]}
     if name in _FORMAT_FIELDS:
         if _style_gives(document, name, reference, paragraphs):
             return {"tool": "word_format", "calls": [{"targets": paragraphs, "clear": [name]}]}
@@ -547,6 +568,36 @@ def settings_fix(document: "Document", name: str, value: Any, reference: Any, pa
         calls = [{"targets": [p], "action": "continue"} for p in paragraphs if _can_continue(document, p)]
         return {"tool": "word_lists", "calls": calls} if len(calls) == len(paragraphs) else None
     return None
+
+
+def _like_takes(name: str, paragraph: Any, reference: Any, own: dict, sample: dict) -> bool:
+    """Whether ``word_format`` ``like`` the reference gives ``paragraph`` the reference's
+    ``name`` and changes nothing else this comparison reads.  ``like`` takes the sample's
+    style, list (``w:numPr``), direct indents and page settings whole
+    (:mod:`docx_agent.edit.like`); the pair's styles are alike here, so:
+
+    * a page setting or an indent: where the two state the same list (or none) -- else
+      the paragraph would join the sample's list too;
+    * the list level or label: where the reference draws bullets, or one of the two is in
+      no list -- an item of a numbered list joining the sample's would count on from it
+      (``word_lists``' explicit calls keep its numbers);
+    * where its numbering starts: never (``like`` continues the sample's list)."""
+    if name in LIST_SETTINGS:
+        if name == "list_numbering":
+            return False
+        return (own["list_level"] is None or sample["list_level"] is None
+                or (sample["list_format"] or "").startswith("bullet "))
+    return _numbering_stated(paragraph) == _numbering_stated(reference)
+
+
+def _numbering_stated(paragraph: Any) -> tuple:
+    """A paragraph's own ``w:numPr`` as ``like`` compares it: its level and instance."""
+    found = paragraph.find(f"{_W}pPr/{_W}numPr")
+    if found is None:
+        return ()
+    level, number = found.find(_W + "ilvl"), found.find(_W + "numId")
+    return (level.get(_W + "val") if level is not None else None,
+            number.get(_W + "val") if number is not None else None)
 
 
 def _style_gives(document: "Document", name: str, reference: Any, paragraphs: list[str]) -> bool:

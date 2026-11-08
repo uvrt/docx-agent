@@ -334,8 +334,9 @@ def compare_copies(call: Any, copies: list) -> dict[str, Any]:
                    for d in found["differences"]):
                 groups.setdefault((other, reference_id), []).append(copy_id)
         for difference in found["differences"]:
-            if difference["property"] in LIST_SETTINGS and difference.get("fix"):
-                list_calls += difference["fix"]["calls"]
+            fix = difference.get("fix")
+            if difference["property"] in LIST_SETTINGS and fix and fix["tool"] == "word_lists":
+                list_calls += fix["calls"]
         out.append(_copy.deepcopy(entry))
     report: dict[str, Any] = {
         "compared": len(out), "follow": sum(1 for e in out if e["follows"]),

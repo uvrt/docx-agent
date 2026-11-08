@@ -31,7 +31,12 @@ snapshot commit; the development history before it is summarised here.
   reader, its table's style and cell conditions, resolved against the styles, numbering and
   settings alone (parsed once while those parts are the same); where docx2svg's final view
   joins paragraphs (a deleted or moved mark, a deleted row) the whole parse, as before -- the
-  same values either way, paragraph for paragraph, on every fixture document. Cost, 22
+  same values either way, paragraph for paragraph, on every fixture document. A reference in the
+  same document gets `word_format` `like` its paragraph as the fix (round 42's `like`), one
+  call per reference paragraph, wherever that takes nothing else compared -- not where a
+  numbered item's numbering starts or a numbered item would join the reference's list
+  (counting on from it), nor a page setting of a paragraph in another list; there, and for
+  a reference in another document, the explicit calls. Cost, 22
   copies of a chapter with lists in a 70-block report, CPU per check: after an edit 0.307 s
   on 0.1.65 and 0.312 s here (medians of 8 runs each), the same version again 0.074 s both.
   No tool definition changes.

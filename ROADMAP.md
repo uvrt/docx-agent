@@ -1250,8 +1250,9 @@ doc.render_svg(pages=diff.changed)     # or render_png; ids on every paragraph g
   `ListCounters`): level, label (a symbol face's bullet as Unicode), where its numbering
   starts. Fixes written in one place (`settings_fix`), `word_lists` calls joined across
   copies (`list_fix`). Kept comparisons also keyed by the body's list skeleton up to the
-  copy (`copies.list_context`: XML only). Open: a `word_format like` fix in place of the
-  explicit calls once that exists; nested tables' and text boxes' paragraphs are not compared.
+  copy (`copies.list_context`: XML only). A reference in the same document: `word_format like` its paragraph where that takes
+  nothing else compared (`_like_takes`), else the explicit calls. Open: nested tables' and
+  text boxes' paragraphs are not compared.
 - **Round 42 (0.1.67, R47):** a paragraph's look taken from another (`docx_agent.edit.like`):
   the sample's own `w:pStyle`, `w:numPr` (`ilvl`, `numId`; change records left), `w:ind`,
   `w:keepNext`, `w:keepLines`, `w:pageBreakBefore`, `w:widowControl`, each copied whole or
