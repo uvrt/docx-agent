@@ -246,10 +246,17 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 #: tools and 24 optional parameters, Claude's limit -- the next optional parameter on a
 #: strict tool sends one tool non-strict.  The others are not strict.  The other tools'
 #: names for a place are aliases (never sent).
+#: Round 42: word_set_text's ``paragraph_style`` (on the call and each item) and its text's
+#: inline emphasis (``**strong**``, ``*emphasis*``, ``[text]{Character style}``, said in the
+#: items' text) +69 to the core (3,088 -> 3,157, about 4,672 counted by the proxy) and to
+#: every definition (15,286 -> 15,355).  The guard rises to 15,360.  word_set_text's five
+#: optional parameters no longer fit Claude's 24 beside the strict tools before it: it is sent
+#: non-strict (the dispatcher still validates it) and edit_smartart (two) takes the place: 6
+#: tools, 23 optional parameters.
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 6500
-ALL_GUARD = 15290
+ALL_GUARD = 15360
 
 
 @pytest.fixture(scope="module")

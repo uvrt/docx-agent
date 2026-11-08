@@ -1250,6 +1250,14 @@ doc.render_svg(pages=diff.changed)     # or render_png; ids on every paragraph g
   (`Page.blocks`): `if_kept` / `if_released`, capped (`TRIALS`, `TRIAL_SECONDS`), each result kept in the worker by the bytes' digest (`TRIAL_CACHE`). Open: the
   layout facts' own keep fixes (`table_parted`, `keep_with_next_at_foot`) are not tried;
   several ranges' keeps together are not tried (each alone).
+- **Round 42 (0.1.66):** `word_set_text`'s emphasis is a reading of its own
+  (`docx_agent.markdown.styled`: markdown-it's emphasis and escape rules, nothing else, with
+  `_` literal and spans `[text]{Style}` read before), written over the diffed text by
+  `Document.style_spans` (runs isolated per span, cut at fields' edges). A replacement keeps
+  the replaced paragraphs' properties by kind and position (`docx_agent.markdown.keep`: the
+  writer tags each body paragraph with what Markdown says it is). Open: `insert_markdown`
+  does not read spans (`[text]{Style}` is its text there) and `to_markdown` does not write
+  them.
 - **Round 35 (R18, R19):** `check` and `render` on some blocks: `range`, one or several
   of `word_read`'s range forms; the facts about the blocks on the pages they fall on
   (`docx_agent.scope`: a fact is about its subject -- `para`, `paras`, `ids`, `table`,
