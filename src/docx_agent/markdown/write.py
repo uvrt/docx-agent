@@ -77,6 +77,7 @@ from ..edit.addresses import span_ends
 from ..edit.errors import EditError
 from ..oxml.xml import Element, append_in_order, insert_in_order, make, remove
 from . import model as m
+from .keep import _donors, keep_replaced
 from .parse import parse_model
 from .stylemap import DEFAULT, StyleMap, coerce
 
@@ -134,6 +135,8 @@ class _Place:
     position: int = 0
     #: ``end`` of a body that is one empty paragraph: replacing it, only if anything is written.
     lone: bool = False
+    #: Round 42: ``replace:`` given -- the new paragraphs keep the replaced ones' settings.
+    keep: bool = False
 
 
 # -- the entry point -------------------------------------------------------------------------
@@ -141,7 +144,7 @@ class _Place:
 
 def insert_markdown(document: "Document", md: str, *, at: str = "end", style_map: StyleMap | None = None,
                     images=None, fetch: Callable[[str], bytes] | None = None, html: str = "refuse",
-                    emphasis: str = "styles", like=None) -> "EditResult":
+                    emphasis: str = "styles", keep_settings: bool = True, like=None) -> "EditResult":
     """See :meth:`docx_agent.Document.insert_markdown`."""
     if not isinstance(md, str):
         raise EditError("insert_markdown takes Markdown text")
@@ -153,7 +156,7 @@ def insert_markdown(document: "Document", md: str, *, at: str = "end", style_map
     blocks = parse_model(md)
     notes = {b.label: b for b in blocks if isinstance(b, m.FootnoteDef)}
     blocks = [b for b in blocks if not isinstance(b, (m.FootnoteDef, m.Comment))]
-    return _write(document, blocks, notes, options, at, coerce(style_map))
+    return _write(document, blocks, notes, options, at, coerce(style_map), keep_settings)
 
 
 def insert_blocks(document: "Document", blocks: list, *, at: str = "end",
@@ -167,7 +170,7 @@ def insert_blocks(document: "Document", blocks: list, *, at: str = "end",
 
 
 def _write(document: "Document", blocks: list, notes: dict, options: Options, at: str,
-           style_map: StyleMap | None) -> "EditResult":
+           style_map: StyleMap | None, keep_settings: bool = True) -> "EditResult":
     from ..edit.document import EditResult
 
     lone = None
@@ -178,6 +181,7 @@ def _write(document: "Document", blocks: list, notes: dict, options: Options, at
             at = f"before:{lone}" if isinstance(blocks[-1], m.Table) else f"replace:{lone}"
     place = _locate(document, at)
     place.lone = lone is not None
+    place.keep = place.keep and keep_settings and not place.lone
     _check(blocks, notes, options, place)
     pictures = _pictures(blocks, notes, options)
 
@@ -210,6 +214,7 @@ def _insert(document, place, blocks, notes, options, pictures, style_map, tracki
     lone_properties = None
     with document._edit():
         renames = document._prepare(place.part, [], place.position)
+        donors = _donors(document, place.replaced) if place.keep else []
         # Writing into a document's one empty paragraph is typing into it: the first new
         # paragraph keeps its paraId and textId, as Word keeps a paragraph's id (round 37:
         # the same paragraph, so no id goes to another block).
@@ -243,10 +248,13 @@ def _insert(document, place, blocks, notes, options, pictures, style_map, tracki
         elements = writer.blocks(blocks)
         if not elements and (not place.replaced or place.lone):
             raise _Nothing()
+        kept, unnamed = keep_replaced(document, writer, donors) if donors else ([], set())
         _place(place, elements)
         if place.replaced and tracking is None:
             for identifier in place.replaced:
                 removed += document.delete_block(identifier).removed
+        if unnamed:
+            _numbering.reap(document, unnamed)
         # Nor a table beside one already there (round 24): a separator between.
         if elements and elements[0].tag == W_TBL and _previous_sibling_block(elements[0]) is not None \
                 and _previous_sibling_block(elements[0]).tag == W_TBL:
@@ -272,8 +280,10 @@ def _insert(document, place, blocks, notes, options, pictures, style_map, tracki
         document.package.mark_dirty(place.part)
     writer.warnings += cell_indent_warnings(document, writer.tables)
     first = created[0] if created else None
+    kept = [{"block": "p:" + element.get(_ids.PARA_ID), **entry} for element, entry in kept
+            if element.get(_ids.PARA_ID)]
     return EditResult(first, created=created + writer.created_notes, renamed=renames, removed=removed,
-                      warnings=writer.warnings, blocks=writer.top_ids)
+                      warnings=writer.warnings, blocks=writer.top_ids, kept=kept)
 
 
 def cell_indent_warnings(document: "Document", tables: list[tuple[Element, list[int]]]) -> list[str]:
@@ -387,7 +397,7 @@ def _locate(document: "Document", at: str) -> _Place:
             elements, part = document._span_elements(*ends, movable=_BLOCKS)
         ids = [_id_of(document, part, e) for e in elements]
         return _Place(part, elements[0].getparent(), elements[0], ids[0], replaced=ids,
-                      position=_position(document, part, elements[0], False))
+                      position=_position(document, part, elements[0], False), keep=True)
     part, entry = document._resolve_block(rest)
     element = entry.element
     if kind == "after":
@@ -630,6 +640,12 @@ class Writer:
         self._snapshot: list | None = None
         #: The tables written, with their columns' widths (twips), for the cell checks.
         self.tables: list[tuple[Element, list[int]]] = []
+        #: Round 42: each top-level paragraph the Markdown makes, with what Markdown says it
+        #: is -- ``("paragraph", 0)``, ``("heading", level)``, ``("bullet" | "number", depth)``
+        #: -- and whether its list restarts (a start other than 1): what a replacement's
+        #: paragraphs are matched to the replaced ones by (:func:`keep_replaced`).
+        self.tagged: list[tuple[Element, tuple[str, int], bool]] = []
+        self._in_list = 0
 
     # -- styles -----------------------------------------------------------------------------
 
@@ -756,9 +772,13 @@ class Writer:
         if isinstance(block, m.Paragraph):
             if not block.inline:
                 return []
-            return [self.paragraph(block.inline, self.style("blockquote") if self._quote else self.body_style())]
+            made = self.paragraph(block.inline, self.style("blockquote") if self._quote else self.body_style())
+            self._tag(made, ("paragraph", 0))
+            return [made]
         if isinstance(block, m.Heading):
-            return [self.paragraph(block.inline, self.style("heading", block.level))]
+            made = self.paragraph(block.inline, self.style("heading", block.level))
+            self._tag(made, ("heading", block.level))
+            return [made]
         if isinstance(block, m.CodeBlock):
             return self.code(block.text)
         if isinstance(block, m.Quote):
@@ -783,6 +803,11 @@ class Writer:
         if isinstance(block, m.Comment):
             return []
         raise EditError(f"cannot insert {type(block).__name__}")
+
+    def _tag(self, paragraph: Element, key: tuple[str, int], restarts: bool = False) -> None:
+        """Note a body paragraph's kind (not one in a quote, a note or inside a list item)."""
+        if not (self._quote or self._note or self._in_list):
+            self.tagged.append((paragraph, key, restarts))
 
     def body_style(self) -> str | None:
         """A plain paragraph's style: ``paragraph`` in the body, ``footnote_text`` in a note."""
@@ -848,12 +873,17 @@ class Writer:
             if by_style is not None:
                 # An item restarts the deeper levels' counts (w:lvlRestart's default).
                 counting.difference_update({n for n in counting if n > by_style[1]})
+            self._tag(paragraph, (kind, depth), block.ordered and block.start != 1)
             out.append(paragraph)
             for inner in rest:
                 if isinstance(inner, m.ListBlock):
                     out += self.list(inner, depth + 1)
                 else:
-                    out += self.block(inner)
+                    self._in_list += 1
+                    try:
+                        out += self.block(inner)
+                    finally:
+                        self._in_list -= 1
         return out
 
     def list_like(self, block: m.ListBlock, depth: int, look) -> list[Element]:
@@ -871,9 +901,17 @@ class Writer:
             rest = item[1:] if isinstance(first, m.Paragraph) else item
             paragraph = self.paragraph(first.inline if isinstance(first, m.Paragraph) else [], None)
             _like.take(paragraph, look, set())
+            # Not tagged: a replacement's kept settings (keep.py) do not overrule like.
             out.append(paragraph)
             for inner in rest:
-                out += self.list(inner, depth + 1) if isinstance(inner, m.ListBlock) else self.block(inner)
+                if isinstance(inner, m.ListBlock):
+                    out += self.list(inner, depth + 1)
+                else:
+                    self._in_list += 1
+                    try:
+                        out += self.block(inner)
+                    finally:
+                        self._in_list -= 1
         return out
 
     def _warn_once(self, text: str) -> None:

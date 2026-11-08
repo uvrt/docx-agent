@@ -319,14 +319,16 @@ def test_a_newline_split_refuses_a_paragraph_that_ends_a_section():
         document.set_text_paragraphs(ending, "One\nTwo")
 
 
-def test_a_newline_costs_no_parameter_and_the_strict_set_is_at_24(box):
+def test_a_newline_costs_no_parameter_and_the_strict_set_stays_within_24(box):
     # 23 then; round 40's ref on word_insert_markdown made it 24, Claude's limit.  Round 42's
-    # like on word_insert_markdown (R47) sends word_set_text (3) non-strict and edit_smartart
-    # (2) strict in its place: still 24.
+    # paragraph_style (the single form's and each item's) takes word_set_text to 5 optional
+    # parameters: the strict plan sends it non-strict and keeps the set within the limit;
+    # word_insert_markdown's like (R47) fills the 24th place.
     definitions = box.definitions("anthropic", defer=False)
     set_text = next(d for d in definitions if d["name"] == "word_set_text")
-    assert list(set_text["input_schema"]["properties"]) == ["doc", "target", "text", "items"]
+    assert list(set_text["input_schema"]["properties"]) == ["doc", "target", "text", "paragraph_style", "items"]
     tools = {t.name: t for t in TOOLS}
+    assert len(tools["word_set_text"].optional_parameters()) == 5
     assert sum(len(tools[d["name"]].optional_parameters()) for d in definitions if d.get("strict")) == 24
     assert {d["name"] for d in definitions if d.get("strict")} == {
         "replace_text", "word_changes", "word_set_tracking", "word_insert_markdown", "word_template",

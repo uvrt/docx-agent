@@ -119,6 +119,9 @@ class EditResult:
     #: A copy's id for each source id it copies (``copy_blocks``): blocks, paragraphs in
     #: them, notes and comments.
     copied: dict[str, str] = field(default_factory=dict)
+    #: What new paragraphs kept of the ones they replaced (``insert_markdown`` at
+    #: ``replace:``, round 42): ``{"block", "from", "settings"}`` per paragraph.
+    kept: list[dict] = field(default_factory=list)
     #: The document edited, set for an edit made through the API: what :attr:`object`
     #: resolves ``id`` in.
     document: "Document | None" = field(default=None, repr=False, compare=False)
@@ -2470,7 +2473,7 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
                            stories=stories)
 
     def insert_markdown(self, md: str, *, at: str = "end", style_map=None, images=None, fetch=None,
-                        html: str = "refuse", emphasis: str = "styles", like=None) -> EditResult:
+                        html: str = "refuse", emphasis: str = "styles", keep_settings: bool = True, like=None) -> EditResult:
         """Write Markdown as the document's own blocks (:mod:`docx_agent.markdown.write`).
 
         ``at``: ``"end"`` (the body's end) or ``"end:<story>"``; ``"after:<id>"``,
@@ -2502,13 +2505,22 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
         one id for the top level -- each taking its paragraph's style, list at its level
         (numbered on), indents and page settings (:class:`~docx_agent.edit.like.LevelLooks`).
 
+        At ``"replace:..."`` the new paragraphs keep the settings of the paragraphs they
+        replace (round 42; ``keep_settings=False``: not), matched by kind -- a paragraph, a
+        heading of the same level, a list item of the same kind and level -- and position:
+        the paragraph style where the style map names none for it, keeps, page breaks,
+        indents, spacing and list membership, so items join the replaced items' list and
+        count on in it.  What Markdown says wins: a heading level, a bullet or numbered
+        list, a numbered list's start, a style the map names (then only the keeps and page
+        breaks are kept).  ``kept`` says what each new paragraph kept, and from which.
+
         One undo step; with tracking, one revision group.  ``created`` lists every new
         paragraph and table id, ``blocks`` the top-level ones in order, ``warnings`` the
         styles added."""
         from ..markdown.write import insert_markdown
 
         return insert_markdown(self, md, at=at, style_map=style_map, images=images, fetch=fetch, html=html,
-                               emphasis=emphasis, like=like)
+                               emphasis=emphasis, keep_settings=keep_settings, like=like)
 
     def state(self, range: str | None = None, *, view: str = "final", layout: bool = False,
               xml: bool = False, style_map=None) -> dict:

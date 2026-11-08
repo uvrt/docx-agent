@@ -271,6 +271,55 @@ class FormatOps:
         first = entries[0]
         return EditResult(renames.get(first.id, first.id), renamed=renames)
 
+    def style_spans(self: "Document", identifier: str,
+                    spans: "list[tuple[int, int, str | None, bool, bool]]") -> "EditResult":
+        """Character styles and emphasis written over a paragraph's text, span by span:
+        each ``(start, end, style, bold, italic)`` gives the runs of ``[start, end)`` the
+        character style ``style`` (a name; ``None`` removes theirs) and direct ``w:b`` /
+        ``w:i`` where ``bold`` / ``italic`` (removed where not) -- what ``word_set_text``
+        writes for text with inline emphasis (round 42).  Other run formatting stays.  A run
+        inside a hyperlink keeps its style where the span has none (the link's look).  A
+        span across a field's edge is cut there.  One undo step; tracked as ``w:rPrChange``."""
+        from .document import EditError, EditResult
+
+        part, entry = self._paragraph_entry(identifier)
+        styles = self.styles
+        names = list(dict.fromkeys(s[2] for s in spans if s[2]))
+        try:
+            for name in names:
+                styles.resolve(name, "character")
+        except StyleError as error:
+            raise EditError(str(error)) from None
+        length = len(_text.atoms(entry.element))
+        for start, end, *_ in spans:
+            if not 0 <= start <= end <= length:
+                raise EditError(f"{entry.id}@{start}:{end} is outside its {length} characters")
+        with self._edit(), self._track_properties([part]):
+            renames = self._prepare(part, [entry])
+            element = entry.element
+            ids = {name: styles._ensure(name, "character") for name in names}
+            default = styles.default("character")
+            for start, end, name, bold, italic in spans:
+                style_id = ids.get(name) if name else None
+                if default is not None and style_id == default.id:
+                    style_id = None
+                for a, b in _field_pieces(_text.atoms(element), start, end):
+                    runs = _inline.isolate(element, a, b)
+                    for run in runs:
+                        if style_id is None and not bold and not italic and _in_link(run):
+                            continue
+                        properties = _formatting.properties_of(run, "w:rPr", create=True)
+                        _formatting._set_child(properties, "w:rStyle",
+                                               {"w:val": style_id} if style_id else None)
+                        for tag, on in (("w:b", bold), ("w:bCs", bold), ("w:i", italic), ("w:iCs", italic)):
+                            _formatting._set_child(properties, tag, {} if on else None)
+                        if not len(properties):
+                            remove(properties)
+                    _inline.merge_around(runs)
+            _inline.prune(element)
+            self.package.mark_dirty(part)
+        return EditResult(renames.get(entry.id, entry.id), renamed=renames)
+
     def _paragraph_entry(self: "Document", identifier: str) -> tuple[str, ParagraphEntry]:
         from .document import EditError
 
@@ -278,3 +327,27 @@ class FormatOps:
         if not isinstance(entry, ParagraphEntry):
             raise EditError(f"{identifier} is not a paragraph")
         return part, entry
+
+
+def _field_pieces(items: list, start: int, end: int) -> list[tuple[int, int]]:
+    """``[start, end)`` cut where the field a character is in changes: each piece in one
+    field's result, or outside fields (a span may not cut a field, :func:`check_span`)."""
+    out: list[tuple[int, int]] = []
+    k = start
+    while k < end:
+        owner = items[k].field
+        j = k + 1
+        while j < end and items[j].field is owner:
+            j += 1
+        out.append((k, j))
+        k = j
+    return out
+
+
+def _in_link(run: Element) -> bool:
+    parent = run.getparent()
+    while parent is not None and parent.tag != _W + "p":
+        if parent.tag == _W + "hyperlink":
+            return True
+        parent = parent.getparent()
+    return False

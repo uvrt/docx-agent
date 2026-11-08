@@ -441,3 +441,16 @@ def test_a_copied_sample_extended_follows_the_copy(box, made):
     assert [document.list_of(i).level for i in new] == [0, 1]
     assert drawn(document, new[0])[0] == drawn(document, copy[0])[0]
     assert drawn(document, new[1])[1][1] == drawn(document, first_example)[1][1]
+
+
+def test_like_wins_over_the_replaced_items_kept_settings(box, made):
+    session, ids = made
+    # The replaced item is a nested example keeping with the next; like names a top-level point.
+    result = run(box, session, "word_insert_markdown", doc="d1", at=f"replace:{ids['example2']}",
+                 markdown="- Second example, now a point\n", like=ids["point1"])
+    assert result["ok"], result
+    document = doc_of(session)
+    new = result["data"]["blocks"][0]
+    assert numbering_of(document, new) is None and document.list_of(new).level == 0
+    assert own(document, new, "keepNext") is None and own(document, new, "ind") is None
+    assert "kept" not in result["data"]
