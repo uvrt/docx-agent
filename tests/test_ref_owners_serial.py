@@ -45,7 +45,7 @@ def test_a_name_another_agent_gave_is_refused_before_anything_is_made():
         refused = box.dispatch(two, "word_insert_markdown", {"doc": doc, "at": "end", "markdown": "Second",
                                                              "ref": "table"})
         assert not refused.ok and refused.error.field == "ref" and refused.error.valid_options == ["table_2"]
-        assert "agent=one" in refused.error.message
+        assert "another caller" in refused.error.message and "agent" not in str(refused.to_json())
         assert session.entry(doc).document.id_state() == state         # no id drawn
         used = box.dispatch(two, "word_insert_markdown", {"doc": doc, "at": "after:$table", "markdown": "Second",
                                                           "ref": "table_2"})
