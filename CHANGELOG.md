@@ -8,7 +8,7 @@ snapshot commit; the development history before it is summarised here.
 ## 0.1.74 -- unreleased
 
 - **Edits of different blocks of one document at the same time** (production round 45, R64
-  stage 3; ooxml-edit 0.99.0, `DocumentFormat.blocks`; `docx_agent.blocks`). With another
+  stage 3; ooxml-edit 0.100.0, `DocumentFormat.blocks`; `docx_agent.blocks`). With another
   edit of the document in flight (and a fill from a dataset always: it may run long),
   `word_set_text`, `word_insert_markdown` (`end`, `before:`,
   `after:`; no pictures or footnotes), `word_edit_table` `set_cells` and batches of them --
@@ -40,7 +40,7 @@ snapshot commit; the development history before it is summarised here.
   reads a change).
 - A table cell's `from: ""` (a strict decoder's placeholder beside its text) and
   `word_edit_table`'s own `from: ""` are no source (round 45, lane D's find; ooxml-edit
-  0.99.0 no longer refuses it either).
+  0.100.0 no longer refuses it either).
 
 ## 0.1.73 -- unreleased
 
