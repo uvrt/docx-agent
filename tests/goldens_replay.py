@@ -66,6 +66,9 @@ def normalise(result: Any, tool: str) -> dict[str, Any]:
     if validate and validate.get("new"):
         out["new_problems"] = validate["new"]
     data = body.get("data")
+    if isinstance(data, dict) and "timing" in data:
+        # Round 45: where a call's time went (seconds of wall-clock time): never the same twice.
+        data = {key: value for key, value in data.items() if key != "timing"}
     if data not in (None, {}, []):
         out["data_sha"] = digest(data)
         keys = data_keys(data)

@@ -85,9 +85,11 @@ from __future__ import annotations
 
 import copy
 import datetime as _dt
+import hashlib
 import re
+import threading
 from dataclasses import dataclass, field as _field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Iterator
 
 from ooxml_common.stylenames import find_style, list_separator
 
@@ -1171,6 +1173,12 @@ class FieldOps:
         number Word draws (docx2svg's measured counter, as the Markdown reader counts) and
         what follows it (``tab``, ``space`` or ``nothing``).  A paragraph whose style's
         level is tied to another style is numbered by none (Word draws no number)."""
+        from .numbering import reading
+
+        with reading(self):
+            return self._toc_labels_read()
+
+    def _toc_labels_read(self: "Document") -> dict[int, tuple[str, str]]:
         from docx2svg.linebreak import ListCounters
         from docx2svg.parse.styles import parse_numbering, parse_styles
         from lxml.etree import tostring as serialize
@@ -1262,6 +1270,7 @@ class _TocLooks:
         self.link_style = link_style
         self._looks: dict[int, tuple] = {}
         self._fonts = None
+        self._key: bytes | None = None
 
     def _look(self, level: int):
         if level not in self._looks:
@@ -1271,10 +1280,20 @@ class _TocLooks:
             if style is None:
                 self._looks[level] = (None, None, None)
             else:
-                paragraph, run = style_look(self.document, style.id)
-                linked = style_look(self.document, style.id, character_style=self.link_style)[1] \
-                    if self.link_style else run
-                self._looks[level] = (paragraph, run, linked)
+                if self._key is None:
+                    self._key = _looks_key(self.document)
+                key = (self._key, style.id, self.link_style)
+                found = _LOOKS.get(key)
+                if found is None:
+                    paragraph, run = style_look(self.document, style.id)
+                    linked = style_look(self.document, style.id, character_style=self.link_style)[1] \
+                        if self.link_style else run
+                    found = (paragraph, run, linked)
+                    with _LOOKS_LOCK:
+                        _LOOKS[key] = found
+                        while len(_LOOKS) > _LOOKS_SIZE:
+                            _LOOKS.pop(next(iter(_LOOKS)))
+                self._looks[level] = found
         return self._looks[level]
 
     def has_tabs(self, level: int) -> bool:
@@ -1326,6 +1345,36 @@ class _TocLooks:
         return total * run.size * 20
 
 
+#: Round 45: each table of contents level's look (:class:`_TocLooks`) by what it is made of:
+#: :func:`~.effective.style_look` resolves a style's paragraph and run through the styles,
+#: numbering, settings and theme parts alone (docx2svg's cascade reads nothing of the body),
+#: yet read them from a parse of the whole package -- once per pass of every update, and
+#: an update's ahead copy did it all again.  Kept by those parts' content: ``(digest, style
+#: id, link style) -> (paragraph, run, linked run)``, the oldest dropped past
+#: :data:`_LOOKS_SIZE`; the values are read, never changed.
+_LOOKS: dict[tuple, tuple] = {}
+_LOOKS_LOCK = threading.Lock()
+_LOOKS_SIZE = 256
+
+
+def _looks_key(document: "Document") -> bytes:
+    """What a style's look is made of in ``document``: its styles, numbering, settings and
+    theme parts, as they are now."""
+    from lxml import etree
+    from ooxml_common.opc import REL_THEME
+
+    package = document.package
+    main = package.document_part()
+    digest = hashlib.sha256()
+    for part in (package.styles_part(), package.numbering_part(), package.settings_part(),
+                 *package.related_parts_of_type(main, REL_THEME)):
+        digest.update(b"\0" + (part or "").encode() + b"\0")
+        tree = package.tree(part) if part is not None and package.has_part(part) else None
+        if tree is not None:
+            digest.update(etree.tostring(tree))
+    return digest.digest()
+
+
 class _Unknown(Exception):
     """A result the layout cannot say."""
 
@@ -1350,11 +1399,36 @@ def _page_text(instruction: str, page, context: _Context) -> str:
 
 
 def _between(start: Element, end: Element) -> list[Element]:
-    """The elements after ``start``'s run and before ``end``'s, in document order."""
+    """The elements after ``start``'s run and before ``end``'s, in document order.
+
+    Round 45: walked from ``start``'s run onward, not from the part's root -- each field's
+    result read the whole part up to it, many fields the part many times; where ``end``'s
+    run is not after it (inside it, before it, or not in the tree), the walk from the root
+    says what it always said."""
+    first, last = _run_of(start), _run_of(end)
+    if not any(a is first for a in last.iterancestors()):
+        out = []
+        for node in _following(first):
+            if node is last:
+                return out
+            if isinstance(node.tag, str):
+                out.append(node)
+    return _between_from_root(start, first, last)
+
+
+def _following(node: Element) -> Iterator[Element]:
+    """Every node after ``node`` and its descendants, in document order."""
+    while node is not None:
+        for sibling in node.itersiblings():
+            yield sibling
+            yield from sibling.iterdescendants()
+        node = node.getparent()
+
+
+def _between_from_root(start: Element, first: Element, last: Element) -> list[Element]:
     root = start
     while root.getparent() is not None:
         root = root.getparent()
-    first, last = _run_of(start), _run_of(end)
     out = []
     inside = False
     for node in root.iter():

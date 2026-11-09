@@ -4,13 +4,15 @@
 from __future__ import annotations
 
 import re
+import time
 from typing import Any
 
 from ooxml_edit.tools import REVIEW, Result, ToolError, array, number, obj, string
 
 from ..edit.sections import STARTS
 from . import positions
-from ._base import lay_out_ahead, need, update_fields_ahead, one_of, outcome, remember, resolve, short, word_tool
+from ._base import (Timing, ahead_seconds, ahead_timed, lay_out_ahead, need, update_fields_ahead, one_of, outcome,
+                    remember, resolve, short, word_tool)
 from .text import AT, BLOCKS_REF, find_range, name_blocks, named, text_range
 
 DOC = string("Document id.")
@@ -260,8 +262,10 @@ def _fields_ahead(call: Any, doc: str, action: str, kind: str | None = None,
     done on a copy, its layouts kept (:func:`~._base.update_fields_ahead`); the layout a
     page cross-reference reads (:func:`~._base.lay_out_ahead`)."""
     if action == "update":
+        started = time.perf_counter()
         if any(found.keyword in _LAID_OUT for found in call.document._all_fields()):
             update_fields_ahead(call, ids)
+        ahead_timed(time.perf_counter() - started)    # round 45: the update's timing says it
     elif action == "insert_cross_reference" and kind == "page":
         lay_out_ahead(call)
 
@@ -294,9 +298,17 @@ def word_fields(call: Any, doc: str, action: str, after: str | None = None, befo
     if action == "list":
         return Result(summary="Fields", data=[field_json(f) for f in document.fields()][:100])
     if action == "update":
-        edit = document.update_fields(resolve(call, ids) if ids else None, date=call.now().date())
+        # Round 45 (R67): where the time went -- the work ahead (the update done on a copy, its
+        # lock let go, with its layouts), the update under the lock, and the checks after.
+        timing = Timing()
+        ahead = ahead_seconds()
+        if ahead is not None:
+            timing.add("ahead", ahead)
+        call.touch(timing)
+        with timing.part("update"):
+            edit = document.update_fields(resolve(call, ids) if ids else None, date=call.now().date())
         return outcome([edit], f"Updated fields: {edit.count} result(s) changed",
-                       data={"changed_results": edit.count})
+                       data={"changed_results": edit.count, "timing": timing.parts})
     if action == "insert_toc":
         first, last = 1, 3
         if levels:
