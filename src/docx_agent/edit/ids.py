@@ -378,6 +378,25 @@ def _sequence(seed: str, length: int) -> list[int]:
         return found
 
 
+def copy_ledger(ledger: Ledger) -> Ledger:
+    """A copy of ``ledger`` that changes apart from it (round 45: a read copy of a document's
+    version, ``docx_agent.layout.read_copy``): every set and map copied, the pool with its
+    cursors."""
+    out = Ledger()
+    if ledger.pool is not None:
+        out.pool = IdPool(ledger.pool)
+        out.pool.cursors.update(ledger.pool.cursors)
+    out.version = ledger.version
+    out.blocks = set(ledger.blocks)
+    out.gone = dict(ledger.gone)
+    out.drawings = set(ledger.drawings)
+    out.drawings_gone = dict(ledger.drawings_gone)
+    out.highest_drawing = ledger.highest_drawing
+    out.replaced = dict(ledger.replaced)
+    out.earlier = dict(ledger.earlier)
+    return out
+
+
 class IdPool(set):
     """A document's ids, in use and retired (:meth:`Ledger.pool`): a set of ints that
     :func:`generate` adds to, and where along each seed's sequence it got to -- every value

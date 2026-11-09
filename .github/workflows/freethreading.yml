@@ -86,4 +86,6 @@ jobs:
       - name: Test
         env:
           PYTHON_GIL: "0"
-        run: python -W error::RuntimeWarning -m pytest -q -W error::RuntimeWarning -W error::pytest.PytestUnraisableExceptionWarning -n auto
+        # TEMPORARY (r45): every thread's traceback when a test hangs, to find one seen on this leg.
+        run: python -W error::RuntimeWarning -m pytest -q -W error::RuntimeWarning -W error::pytest.PytestUnraisableExceptionWarning -n auto -o faulthandler_timeout=300 -v
+        timeout-minutes: 40

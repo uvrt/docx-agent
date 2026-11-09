@@ -188,18 +188,31 @@ def update_fields_ahead(call: Any, ids: list[str] | None) -> bool:
     return False
 
 
-def seen_before(document: Any) -> Any:
+def seen_before(document: Any, data: bytes | None = None) -> Any:
     """What a changing call's reflow is measured from: the summary of the layout of the
     document's current state when it was laid out already -- here, or (round 38) in the
-    worker that made a check's facts -- else ``None``."""
+    worker that made a check's facts -- else ``None``.  ``data``: the state's bytes, when
+    the caller has them (:func:`state_bytes`)."""
     options = layout_options(document, {})
-    data = document.to_bytes()
+    data = document.to_bytes() if data is None else data
     key = layout_key(data, options)
     found = known_summary(document, key)
     if found is not None:
         return found
     conversion = document._layouts.get(cache_key(data, options))
     return summary_for(document, key, conversion.layout) if conversion is not None else None
+
+
+def state_bytes(call: Any) -> bytes | None:
+    """The bytes of the call's document as it is now, when the session has them already
+    (round 45): its version's snapshot (``DocumentEntry.snapshot``, kept when the change
+    before ended), as long as nothing changed the document since -- outside a batch, or
+    before any op of the batch changed it.  ``None``: serialize it (``to_bytes``)."""
+    entry = call.entry
+    kept = getattr(entry, "_snapshot", None)
+    if kept is None or kept[0] != entry.version or entry.doc_id in call.context.changed_at:
+        return None
+    return kept[1]
 
 
 def cached_layout(document: Any, *, fetch: bool = True) -> Any:
@@ -397,6 +410,11 @@ def checks(entry: Any, touched: Sequence[Any]) -> dict[str, Any]:
     it was laid out) and after, for a document of :data:`REFLOW_PAGES` pages or fewer
     (``"stale: call check"`` beyond)."""
     document = entry.document
+    handed = getattr(document, "_handed_engine", None)
+    if handed is not None and not isinstance(document.converter, Engine):
+        # Round 45: on the read copy of the version the change made, the lock let go: the
+        # change's own engine (docx_agent.layout.read_copy).
+        document.converter = handed
     before = next((t.layout for t in touched if isinstance(t, Before)), None)
     timing = next((t for t in touched if isinstance(t, Timing)), None) or Timing()
     with timing.part("validate"):
@@ -406,6 +424,7 @@ def checks(entry: Any, touched: Sequence[Any]) -> dict[str, Any]:
             _reflow(document, before, out)
     finally:
         release([entry])
+        document.__dict__.pop("_checks_engine", None)
     return out
 
 
@@ -617,7 +636,7 @@ def wrap(handler: Callable[..., Any], *, mutates: bool, track: bool = True) -> C
         try:
             if mutates and call.entry is not None and call.changing:
                 if not any(isinstance(t, Before) for t in call.context.touched.get(call.entry.doc_id, [])):
-                    call.touch(Before(seen_before(call.document)))
+                    call.touch(Before(seen_before(call.document, state_bytes(call))))
                 if track:
                     with tracked(call, call.entry):
                         returned = handler(call, **arguments)
@@ -639,6 +658,9 @@ def wrap(handler: Callable[..., Any], *, mutates: bool, track: bool = True) -> C
                 if spaced and isinstance(returned, Result):
                     returned.warnings.append(SPACED.format(spaced))
                 keep = True  # the checks hook lays out after the call, then releases
+                # Round 45: the engine its checks lay out with, wherever they run -- on the
+                # read copy of the version it made, after a batch's reads let it go.
+                call.document._checks_engine = call.document.converter
             else:
                 returned = handler(call, **arguments)
             return returned
