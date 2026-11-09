@@ -484,6 +484,11 @@ class _Window:
     before: bytes
     after: bytes
     ids: list[str]
+    #: The ids of the blocks after the call (``first_after..last_after``), and each block's
+    #: bytes before and after.
+    after_ids: list[str] = field(default_factory=list)
+    blocks_before: list[bytes] = field(default_factory=list)
+    blocks_after: list[bytes] = field(default_factory=list)
 
 
 def _windows(before: _Body, after: _Body, regions: list[tuple[int, int, int, int]],
@@ -514,7 +519,9 @@ def _windows(before: _Body, after: _Body, regions: list[tuple[int, int, int, int
         out.append(_Window(first, last, first_after, last_after,
                            before.data[before.at(first):before.to(last)],
                            after.data[after.at(first_after):after.to(last_after)],
-                           before.ids[first:last]))
+                           before.ids[first:last], after.ids[first_after:last_after],
+                           [before.block(k) for k in range(first, last)],
+                           [after.block(k) for k in range(first_after, last_after)]))
         shift += grown
     return out
 
@@ -565,6 +572,7 @@ class Plan:
     #: The body's bytes before the patch, and the renames that are not the same name.
     before: bytes | None = None
     moved: dict[str, str] = field(default_factory=dict)
+    placed: list = field(default_factory=list)
 
 
 def _renamable(draws: list[tuple[str, list[str]]], arguments: Mapping[str, Any], outputs: list[bytes]) -> bool:
@@ -741,7 +749,8 @@ class Blocks:
             raise BlockConflict("ids drawn meanwhile, and these cannot be renamed")
         parts = [(path, before, _renamed_bytes(after, moved) if after is not None else None)
                  for path, before, after in patch.parts]
-        return Plan(patch, _spliced(data, live, placed, moved), renames, pool, parts, before=data, moved=moved)
+        return Plan(patch, _spliced(data, live, placed, moved), renames, pool, parts, before=data, moved=moved,
+                    placed=placed)
 
     def replay_changes(self, document: Any, plan: Plan, op_changes: list[tuple[int, str, Any]]
                        ) -> list[tuple[int, str, Any]] | None:
@@ -778,7 +787,7 @@ class Blocks:
         package = document.package
         patch = plan.patch
         if plan.data is not None and plan.data != plan.before:
-            package.set_tree(patch.body, parse_xml(plan.data))
+            _splice_tree(package, patch.body, plan)
         for path, before, after in plan.parts:
             if after is None:
                 if package.has_part(path):      # (a part's relationships go with it)
@@ -862,6 +871,106 @@ def _spliced(data: bytes, live: _Body, placed: list[tuple[int, int, _Window]], m
     for begin, end, window in sorted(placed, key=lambda item: item[0], reverse=True):
         out[live.at(begin):live.to(end)] = _renamed_bytes(window.after, moved)
     return bytes(out)
+
+
+_BLOCK_TAGS = frozenset(_W + tag for tag in ("p", "tbl", "sdt", "customXml"))
+
+
+def _splice_tree(package: Any, part: str, plan: "Plan") -> None:
+    """The body's windows changed in the document's tree itself, as an edit in place changes
+    it: a block that did not change is left as it is, one changed under its own id is
+    rewritten in place (the same element), new blocks are inserted and removed ones go -- so
+    a reader holding the tree or one of its elements finds it as after an edit -- then the
+    part's bytes are checked against the plan's; anything else (text between blocks, a
+    window not read so), and any difference, installs the planned bytes as the part's
+    tree."""
+    root = package.tree(part)
+    body = root.find(W_BODY) if root is not None else None
+    live = read_body(plan.before)
+    done = False
+    if body is not None and live is not None and plan.before is not None:
+        blocks = [node for node in body if isinstance(node.tag, str) and node.tag in _BLOCK_TAGS]
+        if len(blocks) == live.count and all(
+                _in_place(body, blocks, begin, end, window, plan, live.start)
+                for begin, end, window in sorted(plan.placed, key=lambda item: item[0], reverse=True)):
+            package.mark_dirty(part)
+            done = package.read(part) == plan.data
+    if not done:
+        package.set_tree(part, parse_xml(plan.data))
+
+
+def _in_place(body: Any, blocks: list, begin: int, end: int, window: "_Window", plan: "Plan",
+              start: int) -> bool:
+    """One window of :func:`_splice_tree`; ``False`` when it cannot be done so (nothing changed)."""
+    after = _renamed_bytes(window.after, plan.moved)
+    head = plan.before[:start] if plan.before is not None else b""
+    fragment = parse_xml(head + after + b"</w:body></w:document>").find(W_BODY)
+    made = list(fragment)
+    old = blocks[begin:end]
+    if end == len(blocks):
+        # A window to the body's end holds the last section's properties after its blocks:
+        # as they were (the check compared the body's tail), left where they are.
+        while made and (not isinstance(made[-1].tag, str) or made[-1].tag not in _BLOCK_TAGS):
+            made.pop()
+    if (any(not isinstance(node.tag, str) or node.tag not in _BLOCK_TAGS or (node.tail or "").strip()
+            for node in made) or (fragment.text or "").strip() or len(made) != len(window.after_ids)
+            or any(node.getnext() is not None and node.getnext() not in old and node is not old[-1]
+                   for node in old)):
+        return False
+    rename = token_renamer(plan.moved) if plan.moved else (lambda text: text)
+    ids = [rename(identifier) for identifier in window.after_ids]
+    # Each block between the window's ends is a block of it (no bookmark or other node between).
+    first = blocks[begin - 1] if begin > 0 else None
+    span = []
+    node = first.getnext() if first is not None else (body[0] if len(body) else None)
+    if end < len(blocks):
+        stop = blocks[end]
+    else:
+        stop = old[-1].getnext() if old else node
+    while node is not None and node is not stop:
+        span.append(node)
+        node = node.getnext()
+    if span != old:
+        return False
+    mine = dict(zip(window.ids, old))
+    before_bytes = dict(zip(window.ids, window.blocks_before))
+    after_bytes = [_renamed_bytes(data, plan.moved) for data in window.blocks_after]
+    anchor = first
+    used = set()
+    for new, identifier, data in zip(made, ids, after_bytes):
+        element = mine.get(identifier)
+        if element is not None and identifier not in used:
+            used.add(identifier)
+            if before_bytes.get(identifier) != data:
+                element.attrib.clear()
+                element.attrib.update(new.attrib)
+                element.text = new.text
+                for child in list(element):
+                    element.remove(child)
+                for child in list(new):
+                    element.append(child)
+            placed = element
+            if (anchor.getnext() if anchor is not None else body[0]) is not placed:
+                tail = placed.tail
+                body.remove(placed)
+                placed.tail = tail
+                _after(body, anchor, placed)
+        else:
+            new.tail = None
+            _after(body, anchor, new)
+            placed = new
+        anchor = placed
+    for identifier, element in mine.items():
+        if identifier not in used:
+            body.remove(element)
+    return True
+
+
+def _after(body: Any, anchor: Any, node: Any) -> None:
+    if anchor is None:
+        body.insert(0, node)
+    else:
+        anchor.addnext(node)
 
 
 class _Replayed:
