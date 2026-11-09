@@ -43,6 +43,7 @@ from .numbering import ListMembership, ListOps
 from .pictures import Picture, PictureOps
 from .ranges import TextOps, TextRange
 from .comments import CommentOps
+from . import comments as _comments
 from .tables import TableOps
 from .table_format import TableFormatOps
 from .drawings import DrawingOps
@@ -1899,8 +1900,10 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
             properties = element.find(W_PPR)
             if properties is not None and properties.find(W_SECTPR) is not None:
                 raise EditError(f"{old_id} ends a section; deleting it would join two sections")
+            # Round 45: the reference of a comment on a table or row before it moves on.
+            moving = _comments.block_references(element) if self._active_tracking() is None else None
             for tag in _REFERENCES:
-                if element.find(".//" + tag) is not None:
+                if moving is None and element.find(".//" + tag) is not None:
                     raise EditError(f"{old_id} holds a {tag.rpartition('}')[2]}; deleting it "
                                     "would orphan the note or comment")
             if not _fields_balanced(element):
@@ -1927,6 +1930,8 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
                 # One's own insertion, deleted, goes outright (Word: measured); what it
                 # held of one's own goes with it.
                 self._release(part, _inline.relationship_ids(element))
+            if isinstance(entry, ParagraphEntry):
+                _comments.move_block_references(element, _comments.block_references(element) or [])
             _rehome_markers(element)
             remove(element)
             self.package.mark_dirty(part)

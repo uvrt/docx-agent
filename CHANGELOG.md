@@ -5,6 +5,38 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.71 -- unreleased
+
+- **A dataset's text field written as Markdown, by reference** (production round 45, R65).
+  `word_insert_markdown`'s `from` names one field of one row too -- `d:notes/#12/body`, a
+  row by key `d:notes/Doors/body`, another document's `t:checks/Alpha/note` -- and writes
+  its text as `markdown` would, verbatim: its paragraphs, its lists as lists in the
+  template's styles with nested items at their level, its emphasis (the same document as
+  typing it). `markdown_from` is read as `from`. Several fields go in one call as
+  references each standing alone between blank lines in `markdown`, with headings or text
+  around them. The result's `data.facts` names the blocks each field made (`blocks`) and
+  gives a long or several-line value's length (`chars`) instead of echoing it; a figure
+  inside a sentence is listed as before. Each paragraph a field made keeps it as its
+  source in the file (`Document.text_facts`), so a check of numbers reads its numbers as
+  the data's. A value that is not text is refused with the row's text fields and the
+  `{{...}}` form for a figure; an unknown dataset, row or field names what there is, as
+  whole addresses. `word_set_text` writes a field the same way (`{{d:notes/#2/summary}}`
+  as an item's text), its facts naming the paragraphs it went into.
+- **`set_cells` takes one value per cell** (R66): a cell's `from` names one value of a
+  dataset or another document's table (`d:scores/#12/rating:0.0`, with a number format or
+  a date pattern as a text reference takes), and a cell's `text` takes references. The
+  result's `facts` name each value's cell; the cell keeps its source. A top-level `from`
+  naming one value with cells that give only places is read as each cell's `from`, with a
+  note; alone it is refused with the call that works. A whole dataset or a run of its rows
+  fills the table as before.
+- **A comment on a whole table or row** (R68): `word_comments` add (and
+  `Document.add_comment`) takes a table's id or a row's. The comment covers it as Word
+  16.106 anchors one on a selected table or row (measured: the range from the start of the
+  first cell's first paragraph to right after the table -- or the row, unless it is the
+  last -- and the reference opening the next paragraph); Word resaves the result
+  unchanged. Deleting the paragraph after such a table, or the row after such a row, moves
+  the reference on rather than refusing.
+
 ## 0.1.70 -- unreleased
 
 - **A list that counts on through the copies of a sample, as the caller states it**

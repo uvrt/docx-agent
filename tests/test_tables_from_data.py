@@ -165,7 +165,8 @@ def texts(session, table: str) -> list[list[str]]:
 def test_both_tools_declare_from_and_stay_strict_clean(toolbox):
     for name in ("word_insert_markdown", "word_edit_table"):
         tool_ = toolbox.tools[name]
-        assert tool_.sources == ("from",)
+        # Round 45, R66: a set_cells cell's one value is a source too.
+        assert tool_.sources == (("from",) if name == "word_insert_markdown" else ("from", "cells[].from"))
         properties = tool_.schema["properties"]
         assert properties["from"]["type"] == "string"
         assert properties["from_columns"]["items"] == {"type": "string"}
@@ -178,9 +179,13 @@ def test_both_tools_declare_from_and_stay_strict_clean(toolbox):
 
 def test_no_argument_that_takes_a_drawing_is_a_source():
     for tool_ in TOOLS:
-        assert set(tool_.sources) <= {"from"}, tool_.name
+        assert set(tool_.sources) <= {"from", "cells[].from"}, tool_.name
         for path in tool_.sources:
-            described = tool_.schema["properties"][path].get("description", "")
+            node = tool_.schema["properties"]
+            for part in path.split("."):
+                node = node[part.removesuffix("[]")]
+                node = node["items"]["properties"] if part.endswith("[]") else node
+            described = node.get("description", "")
             assert "drawing" not in described, tool_.name
     drawing_tools = {"word_drawings", "edit_chart", "edit_smartart", "word_delete"}
     for tool_ in TOOLS:

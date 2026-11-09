@@ -3,6 +3,7 @@ the general setter ``word_format``."""
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from ooxml_edit.tools import (Result, ToolError, array, boolean, integer, number, obj, string)
@@ -105,13 +106,14 @@ def word_set_text(call: Any, doc: str, target: str | None = None, text: str | No
     plans = [_plan(call, resolve(call, item["target"]), item["text"], item.get("paragraph_style") or None,
                    f"items[{k}]." if items is not None else "")
              for k, item in enumerate(work)]
-    edits, styled, notes = [], [], []
+    edits, styled, notes, wrote = [], [], [], []
     with document.batch():
         for plan in plans:
-            made, runs, said = _set_one(call, plan)
+            made, runs, said, written = _set_one(call, plan)
             edits.extend(made)
             styled.extend(runs)
             notes.extend(said)
+            wrote.append(written)
     made = sum(len(edit.created) for edit in edits)
     summary = f"Set the text of {len(work)} paragraph(s)" + (f", {made} new after them" if made else "")
     data = None
@@ -122,12 +124,40 @@ def word_set_text(call: Any, doc: str, target: str | None = None, text: str | No
             data["left_out"] = len(styled) - STYLED_CAP
             notes.append(f"{len(styled) - STYLED_CAP} more styled run(s) not listed: word_read the paragraphs "
                          "with detail to see each run's style")
+    said = _set_facts(call, work, wrote, items is not None)
+    if said is not None:
+        data = {**(data or {}), "facts": said}
     result = outcome(edits, summary, data=data)
     result.warnings.extend(note for note in notes if note not in result.warnings)
     return result
 
 
-def _set_one(call: Any, plan: "_SetPlan") -> tuple[list[Any], list[dict], list[str]]:
+def _set_facts(call: Any, work: list[dict], wrote: list[list[str]], listed: bool) -> list[dict] | None:
+    """Round 45, R65: the result's ``facts`` for word_set_text -- each value written by
+    reference, a value that is an item's whole text with the paragraphs it went into
+    (``blocks``), those kept as their source (:mod:`.field_text`); ``None`` without any."""
+    from . import field_text
+
+    facts = list(getattr(call, "facts", None) or ())
+    if not facts:
+        return None
+    out = []
+    for fact in facts:
+        k = 0
+        if listed:
+            found = re.match(r"items\[(\d+)\]\.text$", fact.field)
+            k = int(found.group(1)) if found else -1
+        text = work[k].get("text") if 0 <= k < len(work) else None
+        whole = isinstance(text, str) and not text[:fact.start].strip() and not text[fact.end:].strip()
+        blocks = None
+        if whole:
+            blocks = [call.document.get(identifier).id for identifier in wrote[k]]
+            field_text.keep_in_paragraphs(call.document, fact.record, blocks)
+        out.append(field_text.brief(fact, blocks))
+    return out
+
+
+def _set_one(call: Any, plan: "_SetPlan") -> tuple[list[Any], list[dict], list[str], list[str]]:
     """One target's text: a paragraph's, or a cell's first paragraph's; with ``\\n``, every
     line a paragraph -- after the paragraph, or as the cell's paragraphs (the cell's others
     go, as word_edit_table's set_cells writes a cell's lines).  Then its paragraph style and
@@ -169,7 +199,7 @@ def _set_one(call: Any, plan: "_SetPlan") -> tuple[list[Any], list[dict], list[s
         for paragraph_id, line in zip(written, plan.lines):
             runs += _styled_runs(document.get(paragraph_id).id, line, plan)
         notes += plan.added
-    return edits, runs, notes
+    return edits, runs, notes, written
 
 
 class _SetPlan:
@@ -556,7 +586,9 @@ BLOCKS_REF = string("Ref name for the new blocks ($name).", optional=True)
 _INSERT_MARKDOWN = {"doc": DOC,
                     "markdown": string("Markdown.", optional=True),
                     "blob": string("Or a Markdown blob handle.", optional=True),
-                    "from": string("Or a table of the rows of d:<id> or t:<table>.", optional=True),
+                    # Round 45, R65: one text field's Markdown (field_text.py).
+                    "from": string("Or rows of d:<id> or t:<table> as a table; one text field "
+                                   "(d:<id>/#12/<col>) as Markdown.", optional=True),
                     "from_columns": FROM_COLUMNS,
                     "header": HEADER,
                     "date_format": DATE_FORMAT,
@@ -573,7 +605,7 @@ _INSERT_MARKDOWN = {"doc": DOC,
            _INSERT_MARKDOWN,
            group="word_text", mutates=True, exactly_one=[("markdown", "blob", "from")],
            sources=("from",), facts=("markdown",),
-           aliases={"columns": "from_columns",
+           aliases={"columns": "from_columns", "markdown_from": "from",
                     **positions.aliases("word_insert_markdown", "blocks", _INSERT_MARKDOWN)})
 def word_insert_markdown(call: Any, doc: str, at: str, markdown: str | None = None,
                          blob: str | None = None, style_map: list[dict] | None = None,
@@ -587,10 +619,15 @@ def word_insert_markdown(call: Any, doc: str, at: str, markdown: str | None = No
     it (:func:`_levels_like`)."""
     named(call, "word_insert_markdown", ref, at)
     source = given.get("from")
+    field = None
     if source is not None:
-        return name_blocks(call, ref, _table_from(call, source, from_columns, header, _at(call, at),
-                                                  style_map, date_format))
-    no_source(from_columns, header, date_format)
+        field = _field_from(call, source, from_columns, header, date_format)
+        if field is None:
+            return name_blocks(call, ref, _table_from(call, source, from_columns, header, _at(call, at),
+                                                      style_map, date_format))
+        markdown = field.text
+    else:
+        no_source(from_columns, header, date_format)
     if blob is not None:
         source = call.blob(blob)
         try:
@@ -607,6 +644,11 @@ def word_insert_markdown(call: Any, doc: str, at: str, markdown: str | None = No
         raise ToolError("not_found", str(error), field="style_map",
                         valid_options=[s.name for s in call.document.styles][:50]) from None
     data: dict = {"blocks": edit.blocks}
+    said = _fields_placed(call, markdown, field, edit.blocks)
+    if said is not None:
+        data["facts"], placed_note = said
+        if placed_note:
+            read_as.append(placed_note)
     if edit.kept:
         # Round 42: what the new paragraphs kept of the replaced ones (rule 4: capped).
         data["kept"] = edit.kept[:KEPT_CAP]
@@ -621,6 +663,60 @@ def word_insert_markdown(call: Any, doc: str, at: str, markdown: str | None = No
 
 #: How many paragraphs' kept settings a replacement lists; the rest are counted.
 KEPT_CAP = 30
+
+
+def _field_from(call: Any, source: str, from_columns: list[str] | None, header: list[str] | None,
+                date_format: str | None) -> Any:
+    """Round 45, R65: ``from`` naming one field of one row (:mod:`.field_text`) -- its
+    text's fact (:class:`~ooxml_edit.tools.textfacts.Fact`, its text the Markdown), else
+    ``None`` (rows: a table).  A source that is no dataset is read as rows first, and as one
+    value only when rows refuse it."""
+    from . import field_text
+
+    if not field_text.names_one_value(source):
+        if not field_text.might_name_one_value(source):
+            return None
+        try:
+            placed(call, source, from_columns, header, date_format)
+            return None
+        except ToolError as error:
+            try:
+                text, record = field_text.text_field(call, source, "from")
+            except ToolError:
+                raise error from None
+    else:
+        text, record = field_text.text_field(call, source, "from")
+    for name, value in (("from_columns", from_columns), ("header", header), ("date_format", date_format)):
+        if value is not None:
+            raise ToolError("invalid_arguments", f"{name} is for a table of rows; from {source} is one text "
+                            "field, written as Markdown: leave it out", field=name)
+    return field_text.as_fact(source, "from", text, record)
+
+
+def _fields_placed(call: Any, markdown: str, field: Any, blocks: list[str]) -> tuple[list[dict], str | None] | None:
+    """Round 45, R65: the result's ``facts`` -- the ``from`` field, or each reference in the
+    Markdown, with the blocks a value standing alone made -- and a note when they could
+    not be lined up; each such value kept as its paragraphs' source.  ``None`` when the
+    call wrote nothing by reference (the dispatcher's own listing then stands)."""
+    from . import field_text
+
+    document = call.document
+    if field is not None:
+        field_text.keep_in_paragraphs(document, field.record, blocks)
+        return [field_text.brief(field, blocks)], None
+    facts = call.facts_at("markdown") if getattr(call, "facts", None) else []
+    if not facts:
+        return None
+    found, lined_up = field_text.placed_blocks(markdown, facts, blocks)
+    out = []
+    for k, fact in enumerate(facts):
+        made = found.get(k)
+        if made:
+            field_text.keep_in_paragraphs(document, fact.record, made)
+        out.append(field_text.brief(fact, made))
+    note = None if lined_up else ("the values written by reference could not be lined up with the blocks "
+                                  "made: word_read the new blocks to see which is which")
+    return out, note
 
 
 def _levels_like(call: Any, like: list[str] | None,
