@@ -245,7 +245,7 @@ def test_many_writers_checking_at_once_all_finish_with_their_versions_facts(made
                     assert edit.ok, edit.to_json()
                     found = box.dispatch(session, "check", {"doc": doc, "range": [chapters[1 + n % 4]]})
                     assert found.ok, found.to_json()
-                    assert found.data["reflow"]["pages"] >= 5
+                    assert found.data["reflow"].get("pages", 0) >= 5, found.to_json()
             except BaseException as exc:  # noqa: BLE001
                 errors.append(exc)
 
