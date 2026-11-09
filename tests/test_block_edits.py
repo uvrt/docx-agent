@@ -27,16 +27,16 @@ import block_stress
 pytestmark = pytest.mark.any_faces
 
 
-def _box(mode: str = "always", tries: int = 3) -> Toolbox:
+def _box(mode: str = "always", tries: int = 3, redo: float = 2.0) -> Toolbox:
     return Toolbox([*TOOLS, block_stress.ds_rows], formats=[FORMAT], groups=GROUPS, workers=0, block_edits=mode,
-                   limits=Limits(render_timeout=600, layout_timeout=600, block_tries=tries))
+                   limits=Limits(render_timeout=600, layout_timeout=600, block_tries=tries, block_redo_cpu=redo))
 
 
 @contextlib.contextmanager
-def opened(mode: str = "always", tries: int = 3):
+def opened(mode: str = "always", tries: int = 3, redo: float = 2.0):
     """A session on the made-up report (``block_stress.made``), its layout of ids."""
     data = block_stress.made(3)
-    with _box(mode, tries) as box:
+    with _box(mode, tries, redo) as box:
         session = box.session(clock=block_stress.CLOCK)
         doc = session.open(data, "report.docx")
         box.dispatch(session, "ds_rows", {"id": "rows", "rows": "6"})
@@ -146,6 +146,41 @@ def test_one_caller_alone_fills_from_a_dataset_on_a_draft():
             assert (result.block is not None) is (mode == "auto")
             outcomes.append((block_stress.normal(result), session.entry(doc).document.to_bytes()))
     assert outcomes[0] == outcomes[1]
+
+
+def test_a_slow_fill_runs_once_when_calls_that_take_the_lock_come_meanwhile(monkeypatch):
+    """The team's slow fill: a fill from a dataset (on a draft, alone) still preparing when
+    calls that take the document's lock come -- a style changed (a part the fill's patch
+    must find unchanged) and the fields updated.  They wait for the fill to apply, so it
+    runs once, and they change the version it made."""
+    import time
+
+    from docx_agent.tools import objects
+
+    original = objects._set_from
+    runs = []
+
+    def slow(*args, **kwargs):
+        runs.append(1)
+        time.sleep(2)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(objects, "_set_from", slow)
+    with opened("auto", redo=0.3) as (box, session, doc, layout):
+        out = {}
+        thread = threading.Thread(target=lambda: out.setdefault("fill", box.dispatch(session, "word_edit_table", {
+            "doc": doc, "table": layout.fill, "action": "set_cells", "grow": True, "from": "d:rows"})))
+        thread.start()
+        time.sleep(0.8)
+        style = box.dispatch(session, "word_styles", {"doc": doc, "action": "modify", "name": "Normal", "size": 12})
+        fields = box.dispatch(session, "word_fields", {"doc": doc, "action": "update"})
+        thread.join()
+        fill = out["fill"]
+        assert fill.ok and _shape(fill.block) == {"tries": 1, "conflicts": []}, fill.block
+        assert len(runs) == 1
+        assert style.ok and style.block is not None and style.block["waited"] > 0.5
+        assert style.version == fill.version + 1
+        assert fields.ok and fields.version >= style.version
 
 
 def test_a_call_on_a_draft_answers_and_writes_as_the_call_on_the_document():

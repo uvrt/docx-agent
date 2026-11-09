@@ -27,7 +27,9 @@ snapshot commit; the development history before it is summarised here.
   replaced, ids drawn again where another call drew them first (the result renamed with
   them, never text), the ledger read at the new version, the reflow measured from the
   document as it was just before. Another call's change first: prepared again, at most
-  three times (once only after a preparation of more than 2 s of CPU), then under the lock. Serializable: a randomized run of eight callers (their
+  three times (once only after a preparation of more than 2 s of CPU), then under the lock;
+  a call that takes the lock (a fields update, a style change) waits for a draft in flight
+  that long to apply first, so the team's slow fill runs once. Serializable: a randomized run of eight callers (their
   chapters and each other's, batches with reads after their change, fills, values by
   reference, formatting and undo under the lock) gives the same results, bytes and id state
   as its commit order run alone (tests/block_stress.py; tests/test_block_edits_serial.py
