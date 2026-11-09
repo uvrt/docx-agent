@@ -5,6 +5,23 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.75 -- unreleased
+
+- **`check` says where its time went** (production round 47, R82), as an edit does:
+  `data.timing`, seconds per part that ran -- `resolve` (the ranges), `validate`, `copies`,
+  `layout` (laying the version out, in the worker holding its layout), `facts` (the layout's
+  facts read there and here, the comparison with the last check), `fields` -- and the waits
+  apart, named: `worker_wait` (the worker's queue, a layout of the document in progress
+  there, the bytes there and the facts back) and `document_wait` (taking the document back
+  after laying out with it let go). The wait before the call ran is the result's duration
+  less these. A check in a batch, which holds the document, times its `layout` where it
+  is made. No new parameters; everything else in the result is as before (the same calls'
+  results byte for byte, the timing taken out), and the timing costs no measurable time.
+- **`markdown_from` is no longer read as `from`** (R81): `word_insert_markdown`'s `from` is
+  the one name, as its definition says. A call sending `markdown_from` is refused as an
+  unknown argument, with the tool's arguments, naming `from` (the nearest spelling,
+  `markdown`, would write the reference as text).
+
 ## 0.1.74 -- unreleased
 
 - **Edits of different blocks of one document at the same time** (production round 45, R64

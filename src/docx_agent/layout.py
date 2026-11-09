@@ -1864,14 +1864,20 @@ def adopt(document: "Document", copy: "Document") -> None:
 _FACTS_SIZE = 16
 
 
-def check_facts(document: "Document", unlocked: Any, request: dict) -> "tuple[dict, LayoutSummary] | None":
+def check_facts(document: "Document", unlocked: Any, request: dict, *,
+                timed: Any = None) -> "tuple[dict, LayoutSummary] | None":
     """``check``'s layout facts of the document now, made in the worker holding its layout
     (round 38, :func:`docx_agent.tools.check_worker.check_bytes`, through the document's
     converter, with the lock let go: ``unlocked``) -- ``(facts, summary)``, the summary that
     of the layout the facts are of (:class:`LayoutSummary`, kept: :func:`summary_for`).  The
     same check of the same version again is answered here.  ``None`` where the converter
     cannot (a converter of the old protocol, a layout kept as its pickle): the caller lays
-    the document out here, as before."""
+    the document out here, as before.
+
+    ``timed`` (round 47, R82: ``timed(part, seconds)``) is told where the time went: the
+    worker's ``layout`` and ``facts`` (:func:`~docx_agent.tools.check_worker.check_bytes`)
+    and the rest of the wait for its task, ``worker_wait`` (the worker's queue, a layout of
+    the document in progress there, the bytes there and the facts back)."""
     import copy
 
     converter = document.converter
@@ -1892,9 +1898,16 @@ def check_facts(document: "Document", unlocked: Any, request: dict) -> "tuple[di
         return copy.deepcopy(found), summary
     with unlocked():
         state = kept_layout(document, data, options)
+        started = time.perf_counter()
         result = converter.check(data, dict(options), state, {**request, "summary": summary is None})
+        waited = time.perf_counter() - started
+        worker = result.pop("worker", None)
         keep_layout(document, data, options, key)
         note_made(document, result)
+        if timed is not None and worker is not None:
+            timed("layout", worker["layout"])
+            timed("facts", worker["facts"])
+            timed("worker_wait", max(0.0, waited - worker["layout"] - worker["facts"]))
     made = result.pop("summary", None)
     summary = summary if summary is not None else summary_for(document, key, made)
     with lock:
