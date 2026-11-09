@@ -10,6 +10,9 @@ and an edit's reflow finds the layout a check made).  Made-up documents only."""
 from __future__ import annotations
 
 import dataclasses
+import functools
+import datetime
+import hashlib
 import json
 import threading
 import time
@@ -37,7 +40,9 @@ def slow_edit(call, doc, target, text, stall):
     return Result(summary="set", changed=[target])
 
 
+@functools.lru_cache(maxsize=1)
 def made() -> bytes:
+    """One made-up report for every run (a new document's bytes carry the time it was made)."""
     words = "lantern meadow river stone harbour quiet orchard copper valley signal".split()
     doc = Document.new()
     parts = ["# Report title", "An opening paragraph."]
@@ -69,8 +74,12 @@ def _reads(ids):
             ("word_inspect", {"target": ids[3]}), ("find_text", {"text": "meadow"})]
 
 
+def _clock():
+    return datetime.datetime(2026, 11, 8, 9, 0, tzinfo=datetime.timezone.utc)
+
+
 def _session(box):
-    session = box.session()
+    session = box.session(clock=_clock)
     doc = session.open(made(), "report.docx")
     ids = [p.id for p in session.entry(doc).document.paragraphs()]
     return session, doc, ids
@@ -90,8 +99,7 @@ def _run(copies: bool) -> list[dict]:
                  *_reads(ids)]
         for tool, arguments in steps:
             out.append(_scrub(box.dispatch(session, tool, {"doc": doc, **arguments})))
-        out.append({"bytes": session.entry(doc).document.to_bytes().hex()[:0] or
-                    len(session.entry(doc).document.to_bytes())})
+        out.append({"bytes": hashlib.sha256(session.entry(doc).document.to_bytes()).hexdigest()})
         return out
 
 

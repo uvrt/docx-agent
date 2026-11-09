@@ -1665,7 +1665,28 @@ _SHARED_LAYOUT = ("_layout_lock", "_layout_flights", "_layout_kept", "_layout_co
 #: history are its own, its layout engine is pointed at per call, and the count of spaces
 #: written is an edit's.
 _NOT_SETTINGS = ("package", "history", "converter", "typography_spaced")
+#: The settings a read copy reads from its document whenever asked, so one the application
+#: changes after the version was committed (a locale, a minimum text size) holds for reads
+#: of it too, as it did when reads held the document's lock.
+_LIVE_SETTINGS = ("font_dirs", "locale", "describe_step", "read_hint", "typography", "stamping",
+                  "min_text_size")
 _READER_CLASSES: dict = {}
+
+
+def _live_setting(name: str) -> property:
+    def get(self: Any) -> Any:
+        live = self.__dict__.get("_live")
+        if live is not None and hasattr(live, name):
+            return getattr(live, name)
+        try:
+            return self.__dict__[name]
+        except KeyError:
+            raise AttributeError(name) from None
+
+    def put(self: Any, value: Any) -> None:
+        self.__dict__[name] = value
+
+    return property(get, put)
 
 
 def _shared_attribute(name: str) -> property:
@@ -1702,6 +1723,7 @@ def _reader_class(kind: type) -> type:
                 return kind.to_bytes(self)
 
             namespace: dict = {name: _shared_attribute(name) for name in _SHARED_LAYOUT}
+            namespace.update({name: _live_setting(name) for name in _LIVE_SETTINGS})
             namespace["to_bytes"] = to_bytes
             namespace["__doc__"] = "A read copy of a document at one version (:func:`docx_agent.layout.read_copy`)."
             found = _READER_CLASSES[kind] = type(f"Read{kind.__name__}", (kind,), namespace)
@@ -1725,7 +1747,7 @@ def read_copy(document: "Document"):
     aliases = dict(document._aliases)
     version, last = document.history.version, document.history.last_version
     settings = {name: value for name, value in vars(document).items()
-                if not name.startswith("_") and name not in _NOT_SETTINGS}
+                if not name.startswith("_") and name not in _NOT_SETTINGS + _LIVE_SETTINGS}
     kind = type(document)
     # A changing call's layout engine, still pointed at for its checks, goes to the copy
     # its checks run on once the lock is let go (ooxml-edit's After): the document's own is
