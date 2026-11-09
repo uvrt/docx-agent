@@ -309,11 +309,15 @@ class TableOps:
             raise EditError(f"{entry.id} has no row {index}")
         if len(rows) == 1:
             raise EditError(f"{entry.id} has one row; delete the table instead")
-        for paragraph in rows[index].iter(W_P):
-            if any(True for _ in paragraph.iter(_W + "footnoteReference", _W + "endnoteReference",
-                                               _W + "commentReference")):
-                raise EditError(f"row {index} holds a note or comment reference")
         tracking = self._active_tracking()
+        # Round 45: the reference of a comment on the row before it moves on (untracked).
+        from . import comments as _comments
+
+        moving = _comments.block_references(rows[index]) if tracking is None else None
+        for paragraph in rows[index].iter(W_P):
+            if moving is None and any(True for _ in paragraph.iter(_W + "footnoteReference", _W + "endnoteReference",
+                                                                   _W + "commentReference")):
+                raise EditError(f"row {index} holds a note or comment reference")
         old_row_id = entry.rows[index][1]
         with self._edit():
             renames = self._prepare(part, [])
@@ -358,6 +362,7 @@ class TableOps:
             removed = [old_row_id]
             index_ = self._index(part)
             removed += [e.id for e in index_.paragraphs if any(e.element is p for p in row.iter(W_P))]
+            _comments.move_block_references(row, _comments.block_references(row) or [])
             _rehome_markers(row)
             from . import inline as _inline
 

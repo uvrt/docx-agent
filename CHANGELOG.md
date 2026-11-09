@@ -5,6 +5,68 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.73 -- unreleased
+
+- **A table filled from a dataset in one pass** (production round 45, R67). `word_edit_table`
+  `set_cells` `from` wrote its block as one edit per row added and one or more per cell, each
+  throwing every index away, so the next read the whole document again: 431 rows in a long
+  report took minutes (821 CPU-s on a made-up 212-page report; now 3.4). The rows added and
+  the cells written are the same edits in the same order, made in one pass
+  (`Document._rows_after_last`, `Document._fill_cells`): the ids in use read once, the
+  table's grid once, the index rebuilt only where an edit changes the blocks. The bytes,
+  ids, results and undo are 0.1.71's; where something still needs stamping the edits are
+  made one by one as before. `set_cells` with `cells` that all name their cell by position
+  takes the same pass (a thousand cells: about 80 s before); a label is still read cell by
+  cell. `Cell.paragraphs` looks its own paragraphs up rather than testing every paragraph of
+  the story, and a result's ids are gathered in linear time.
+- **`word_fields` update reads less** (R67): a field's result is read from its start onward,
+  not from the part's root; where a block is drawn comes from an index of the layout's lines
+  (made again when the aliases change), not a search of every line per heading; the
+  numbering part is listed once for a table of contents' labels; the toc styles' looks are
+  kept by the content of the styles, numbering, settings and theme parts they are resolved
+  from, not parsed from the whole package each pass; a layout's paths resolve each parent's
+  children once. The same bytes and results (6.95 -> 3.2 CPU-s for an update with nothing
+  to lay out on a 62-page report). An update after a large change is still mostly docx2svg's
+  layout.
+- **Where a long call's time went**: `set_cells` `from` and `word_fields` update say it in
+  `data.timing`, seconds per part (`resolve`, `check`, `rows`, `cells`, `record`, `result`,
+  `spacing`, `validate`, `reflow`; `ahead`, `update`), the wait for the document's lock in
+  none. Tool definitions unchanged.
+- The spacing of written text is not looked for a second time at a batch's end when nothing
+  changed since the tool layer applied it.
+
+## 0.1.71 -- unreleased
+
+- **A dataset's text field written as Markdown, by reference** (production round 45, R65).
+  `word_insert_markdown`'s `from` names one field of one row too -- `d:notes/#12/body`, a
+  row by key `d:notes/Doors/body`, another document's `t:checks/Alpha/note` -- and writes
+  its text as `markdown` would, verbatim: its paragraphs, its lists as lists in the
+  template's styles with nested items at their level, its emphasis (the same document as
+  typing it). `markdown_from` is read as `from`. Several fields go in one call as
+  references each standing alone between blank lines in `markdown`, with headings or text
+  around them. The result's `data.facts` names the blocks each field made (`blocks`) and
+  gives a long or several-line value's length (`chars`) instead of echoing it; a figure
+  inside a sentence is listed as before. Each paragraph a field made keeps it as its
+  source in the file (`Document.text_facts`), so a check of numbers reads its numbers as
+  the data's. A value that is not text is refused with the row's text fields and the
+  `{{...}}` form for a figure; an unknown dataset, row or field names what there is, as
+  whole addresses. `word_set_text` writes a field the same way (`{{d:notes/#2/summary}}`
+  as an item's text), its facts naming the paragraphs it went into.
+- **`set_cells` takes one value per cell** (R66): a cell's `from` names one value of a
+  dataset or another document's table (`d:scores/#12/rating:0.0`, with a number format or
+  a date pattern as a text reference takes), and a cell's `text` takes references. The
+  result's `facts` name each value's cell; the cell keeps its source. A top-level `from`
+  naming one value with cells that give only places is read as each cell's `from`, with a
+  note; alone it is refused with the call that works. A whole dataset or a run of its rows
+  fills the table as before.
+- **A comment on a whole table or row** (R68): `word_comments` add (and
+  `Document.add_comment`) takes a table's id or a row's. The comment covers it as Word
+  16.106 anchors one on a selected table or row (measured: the range from the start of the
+  first cell's first paragraph to right after the table -- or the row, unless it is the
+  last -- and the reference opening the next paragraph); Word resaves the result
+  unchanged. Deleting the paragraph after such a table, or the row after such a row, moves
+  the reference on rather than refusing.
+
 ## 0.1.70 -- unreleased
 
 - **A list that counts on through the copies of a sample, as the caller states it**

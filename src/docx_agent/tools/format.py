@@ -48,7 +48,8 @@ renamed maps old to new; the old id keeps working.
 - A figure from a dataset or table goes into text as {{d:<id>/<key>/<column>}} or \
 {{t:<table>/<key>/<column>}}, :0.0 after it to round, a date pattern such as :d mmmm yyyy \
 for a date: the tool writes the value in the \
-locale and reports its source.
+locale and reports its source. A text value too, verbatim: in word_insert_markdown its \
+Markdown (from: d:<id>/#12/<column>, or each {{...}} alone between blank lines); never retype it.
 - To change words inside a paragraph, prefer replace_text with expect one, or \
 word_insert_text and word_delete with find; word_set_text rewrites a whole paragraph. \
 word_format sets styles and run or paragraph formatting. A new table is a Markdown \

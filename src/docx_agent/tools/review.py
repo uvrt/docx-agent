@@ -9,7 +9,7 @@ from ooxml_edit.tools import ACCEPT, REVIEW, Result, ToolError, array, boolean, 
 
 from ..revisions.changes import CHANGE_KINDS
 from ._base import author_of, need, one_of, outcome, page, remember, resolve, short, word_tool
-from .text import find_range, text_range
+from .text import find_range
 
 DOC = string("Document id.")
 CURSOR = string("next_cursor of the previous page.", optional=True)
@@ -217,7 +217,7 @@ def _by_author(changes: list[Any]) -> dict[str, int]:
 
 
 COMMENT_ITEM = obj({
-    "target": string("add: range or paragraph to attach to.", optional=True),
+    "target": string("add: range, paragraph, table or row to attach to.", optional=True),
     "find": string("add: or text occurring once.", optional=True),
     "within": string("add: block or span to search for find.", optional=True),
     "comment": string("The comment (c:...), except for add.", optional=True),
@@ -269,7 +269,7 @@ def word_comments(call: Any, doc: str, action: str, items: list[dict] | None = N
             text = need(item.get("text"), "items[].text")
             where = (find_range(call, item["find"], item.get("within"))
                      if one_of(item, "find", "target") == "find"
-                     else text_range(document, resolve(call, item["target"])))
+                     else resolve(call, item["target"]))   # a range's id, or a table's or row's (R68)
             edit = document.add_comment(where, text, author=who, date=call.now())
             made.append(edit.id)
             remember(call, item.get("ref"), edit.id)
