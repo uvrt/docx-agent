@@ -5,6 +5,12 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.78 -- unreleased
+
+- Tests: the check-timing test that tells the wait for the layout's worker from the layout
+  stretches both by sleeps far apart (0.3 s before the task, 2 s in the layout), so a
+  loaded runner's slack no longer fails it; it proves the same thing (round 47, R82).
+
 ## 0.1.76 -- unreleased
 
 - **Refs at the committed version, and refs by caller** (round 47, R79 R80; ooxml-edit

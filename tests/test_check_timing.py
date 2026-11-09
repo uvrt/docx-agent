@@ -104,20 +104,32 @@ def test_a_check_answered_from_what_the_version_had_lays_nothing_out(made):
 
 def test_the_wait_for_the_worker_is_apart_from_the_layout(made, monkeypatch):
     """Time before the worker's task starts -- a queue, another layout of the document in
-    progress there -- is ``worker_wait``, not ``layout``."""
-    stall = 0.3
+    progress there -- is ``worker_wait``, not ``layout``; the layout's own time is ``layout``,
+    not ``worker_wait``.  Both are stretched by sleeps far apart (the layout's much the
+    longer), so a busy machine's slack cannot pass one off as the other."""
+    import docx2svg
+
+    stall, laying = 0.3, 2.0
     check = base_module.Engine.check
+    lay_out = docx2svg.lay_out_docx
 
     def slow(self, *args, **kwargs):
         time.sleep(stall)
         return check(self, *args, **kwargs)
 
+    def slow_layout(*args, **kwargs):
+        time.sleep(laying)
+        return lay_out(*args, **kwargs)
+
     monkeypatch.setattr(base_module.Engine, "check", slow)
+    monkeypatch.setattr(docx2svg, "lay_out_docx", slow_layout)
     with Toolbox(TOOLS, formats=[FORMAT], groups=GROUPS, workers=0) as box:
         session, doc, _document = _open(box, made)
         timing = _timing(box.dispatch(session, "check", {"doc": doc, "include": ["reflow"]}))
-    assert timing["worker_wait"] >= stall
-    assert timing["worker_wait"] < stall + 0.15         # the layout is not in it
+    assert timing["layout"] >= laying                    # the layout's time is its own
+    assert timing["worker_wait"] >= stall                # the wait before it is the wait
+    # Had the layout been counted as waiting, the wait would hold it too: ``laying`` more.
+    assert timing["worker_wait"] < stall + laying, timing
 
 
 def test_taking_the_document_back_is_document_wait():
