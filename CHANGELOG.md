@@ -35,6 +35,19 @@ snapshot commit; the development history before it is summarised here.
   provenance item, or lists only added to the numbering). A read of the whole document still
   hears of any change.
 
+## 0.1.76 -- unreleased
+
+- **Refs at the committed version, and refs by caller** (round 47, R79 R80; ooxml-edit
+  0.102.0). `Session.read_refs` and `Session.read_resolve_ref` read a document's refs at its
+  committed version, never waiting for an edit in flight; a call that only names something is
+  committed at once. A ref belongs to the agent (call context) that defined it: another agent
+  giving the same `ref` to what it makes is refused before anything is made, with a free name
+  to use instead (`table_2`); using another agent's `$name` works, and a ref defined with no
+  context is shared, as before. The serial-replay stress gains refs by several callers
+  (`tests/ref_stress.py`: own names, names every thread gives, names nobody gave yet, as
+  `ref`, `at` and `target`); `python tests/ref_stress.py --seeds 0-19 --threads 8 --calls 16`
+  replays every run the same (seeds 0-19, Python 3.12 and 3.15t).
+
 ## 0.1.75 -- unreleased
 
 - **`check` says where its time went** (production round 47, R82), as an edit does:
