@@ -91,7 +91,7 @@ def _session_run(box, data: bytes, steps) -> list[str]:
         result = box.dispatch(session, kind, {"doc": doc, **arguments})
         assert result.ok, result.to_json()
         if kind == "check":
-            out.append(json.dumps(result.data))
+            out.append(json.dumps(untimed(result.data)))
         else:
             out.append(json.dumps(result.checks, sort_keys=False, default=str))
     # What saving writes into app.xml: the pages and lines of the layout checked last.
@@ -99,6 +99,12 @@ def _session_run(box, data: bytes, steps) -> list[str]:
 
     out.append(json.dumps(layout_statistics(document)))
     return out
+
+
+def untimed(data: dict) -> dict:
+    """A check's data without its ``timing`` (round 47, R82): where its time went differs from
+    run to run, and between the two paths."""
+    return {key: value for key, value in data.items() if key != "timing"}
 
 
 def _steps():
@@ -211,7 +217,7 @@ def test_a_holder_killed_lays_the_next_version_out_afresh_with_the_same_facts(ma
             kind, arguments = step(document)
             result = box.dispatch(session, kind, {"doc": doc, **arguments})
             assert result.ok, result.to_json()
-            out.append(json.dumps(result.data) if kind == "check"
+            out.append(json.dumps(untimed(result.data)) if kind == "check"
                        else json.dumps(result.checks, default=str))
     assert out == here[:len(steps)]
 

@@ -16,6 +16,7 @@ document's aliases there).
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 import docx2svg
@@ -61,11 +62,16 @@ def check_bytes(data: bytes, options: dict, state: tuple, request: dict) -> dict
     * ``layout`` (asked): the layout facts of ``pages`` -- the ranges' pages among them
       when ranges are given -- with ``min_size`` and ``styles``.
 
-    Plus how the layout was found or made (:func:`docx_agent.layout.made_facts`)."""
+    Plus how the layout was found or made (:func:`docx_agent.layout.made_facts`), and
+    (round 47, R82) ``worker``: the seconds this task spent laying out (``layout``) and
+    reading the facts (``facts``) -- the caller's ``timing`` counts the rest of its wait
+    for the task as waiting for the worker."""
     held, how, seconds = held_layout(data, options, state)
     try:
         out = made_facts(held, how, seconds)
+        began = time.perf_counter()
         out.update(_facts(held, data, options, request))
+        out["worker"] = {"layout": seconds, "facts": time.perf_counter() - began}
     finally:
         _put_held(state[1], held, state[3])    # a layout of these bytes either way
     return out

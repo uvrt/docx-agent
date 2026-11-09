@@ -4,11 +4,11 @@
 (``d:notes``, ``d:notes/#3:#9``) -- or one field of one row (``d:notes/#12/body``,
 ``d:notes/Doors/body``, ``t:checks/Alpha/note``): that value's text, written as the
 ``markdown`` argument is (its paragraphs, its lists as lists in the template's styles,
-nested items at their level, its emphasis), verbatim -- nothing retyped.  ``markdown_from``
-is read as ``from`` (the name a builder reaches for).  A value that is not text -- a
-number, a date, a logical value -- is refused with the way out (a figure goes into text as
-``{{d:...}}``) and the text fields of its row; an unknown dataset, row or field is refused
-as a reference to it is, naming what there is.
+nested items at their level, its emphasis), verbatim -- nothing retyped.  ``from`` is its
+one name (round 47: no alias).  A value that is not text -- a number, a date, a logical
+value -- is refused with the way out (a figure goes into text as ``{{d:...}}``) and the
+text fields of its row; an unknown dataset, row or field is refused as a reference to it
+is, naming what there is.
 
 **Several fields** go in one call as references in ``markdown``, each standing alone
 between blank lines, with whatever is wanted around them (``## Doors\\n\\n{{d:notes/#12/body}}

@@ -64,6 +64,9 @@ def _box(copies: bool = True) -> Toolbox:
 def _scrub(result) -> dict:
     out = result.to_json()
     out.pop("duration", None)
+    if isinstance(out.get("data"), dict) and "timing" in out["data"]:
+        # Where a check's time went (round 47, R82) differs from run to run.
+        out["data"] = {key: value for key, value in out["data"].items() if key != "timing"}
     return out
 
 

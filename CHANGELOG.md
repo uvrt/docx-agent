@@ -5,7 +5,7 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
-## 0.1.75 -- unreleased
+## 0.1.76 -- unreleased
 
 - **Refs at the committed version, and refs by caller** (round 47, R79 R80; ooxml-edit
   0.102.0). `Session.read_refs` and `Session.read_resolve_ref` read a document's refs at its
@@ -16,7 +16,24 @@ snapshot commit; the development history before it is summarised here.
   context is shared, as before. The serial-replay stress gains refs by several callers
   (`tests/ref_stress.py`: own names, names every thread gives, names nobody gave yet, as
   `ref`, `at` and `target`); `python tests/ref_stress.py --seeds 0-19 --threads 8 --calls 16`
-  replays every run the same.
+  replays every run the same (seeds 0-19, Python 3.12 and 3.15t).
+
+## 0.1.75 -- unreleased
+
+- **`check` says where its time went** (production round 47, R82), as an edit does:
+  `data.timing`, seconds per part that ran -- `resolve` (the ranges), `validate`, `copies`,
+  `layout` (laying the version out, in the worker holding its layout), `facts` (the layout's
+  facts read there and here, the comparison with the last check), `fields` -- and the waits
+  apart, named: `worker_wait` (the worker's queue, a layout of the document in progress
+  there, the bytes there and the facts back) and `document_wait` (taking the document back
+  after laying out with it let go). The wait before the call ran is the result's duration
+  less these. A check in a batch, which holds the document, times its `layout` where it
+  is made. No new parameters; everything else in the result is as before (the same calls'
+  results byte for byte, the timing taken out), and the timing costs no measurable time.
+- **`markdown_from` is no longer read as `from`** (R81): `word_insert_markdown`'s `from` is
+  the one name, as its definition says. A call sending `markdown_from` is refused as an
+  unknown argument, with the tool's arguments, naming `from` (the nearest spelling,
+  `markdown`, would write the reference as text).
 
 ## 0.1.74 -- unreleased
 
