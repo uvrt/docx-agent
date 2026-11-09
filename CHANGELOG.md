@@ -8,7 +8,7 @@ snapshot commit; the development history before it is summarised here.
 ## 0.1.74 -- unreleased
 
 - **Edits of different blocks of one document at the same time** (production round 45, R64
-  stage 3; ooxml-edit 0.98.0, `DocumentFormat.blocks`; `docx_agent.blocks`). With another
+  stage 3; ooxml-edit 0.99.0, `DocumentFormat.blocks`; `docx_agent.blocks`). With another
   call on the document, `word_set_text`, `word_insert_markdown` (`end`, `before:`,
   `after:`; no pictures or footnotes), `word_edit_table` `set_cells` and batches of them --
   text by reference only from datasets -- run on a *draft*: an editable copy of the last
@@ -34,10 +34,12 @@ snapshot commit; the development history before it is summarised here.
   `block_edits="auto"`). tests/test_block_edits.py: what a draft takes, a draft's result and
   bytes those of the document's, edits beside a held call, ids drawn again, the same and
   neighbouring blocks prepared again, past the tries, and each rule of the shared-state
-  inventory in `docx_agent/blocks.py`.
+  inventory in `docx_agent/blocks.py`. A body is read for its blocks once per state, and
+  from the state read last only between the first and last byte that differ (as `touched`
+  reads a change).
 - A table cell's `from: ""` (a strict decoder's placeholder beside its text) and
   `word_edit_table`'s own `from: ""` are no source (round 45, lane D's find; ooxml-edit
-  0.98.0 no longer refuses it either).
+  0.99.0 no longer refuses it either).
 
 ## 0.1.73 -- unreleased
 

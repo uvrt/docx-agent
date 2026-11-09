@@ -423,7 +423,8 @@ def read_body(data: bytes | None) -> _Body | None:
             found = _BODIES.pop(data)
             _BODIES[data] = found
             return found
-    found = _read_body(data)
+        base = next((body for body in reversed(_BODIES.values()) if body is not None), None)
+    found = (base is not None and _reread_body(data, base)) or _read_body(data)
     with _BODIES_LOCK:
         _BODIES[data] = found
         while len(_BODIES) > _BODIES_KEPT:
@@ -449,6 +450,41 @@ def _read_body(data: bytes) -> _Body | None:
     if ids is None or len(set(ids)) != len(ids):
         return None
     return _Body(data, start, end, spans, ids)
+
+
+def _reread_body(data: bytes, base: _Body) -> _Body | None:
+    """:func:`_read_body` from ``base``, another state of a body: the blocks before the
+    first byte that differs and after the last are ``base``'s, only those between are read
+    again (as ``touched`` reads a change).  ``None`` when the bytes differ outside the
+    body's blocks, or what is between does not read so."""
+    from .tools import touched as _touched
+
+    old = base.data
+    prefix = _touched._common_prefix(old, data)
+    suffix = _touched._common_suffix(old, data, min(len(old), len(data)) - prefix)
+    if prefix < base.start or len(old) - suffix > base.end:
+        return None
+    delta = len(data) - len(old)
+    spans = base.spans
+    before = 0
+    while before < len(spans) and spans[before][1] <= prefix:
+        before += 1
+    after = 0
+    while after < len(spans) - before and spans[len(spans) - 1 - after][0] >= len(old) - suffix:
+        after += 1
+    begin = spans[before - 1][1] if before else base.start
+    stop = spans[len(spans) - after][0] + delta if after else base.end + delta
+    middle = _touched._blocks(data, begin, stop)
+    if middle is None or not _touched._stamped(data):
+        return None
+    found = _touched._span_ids(data, middle)
+    if found is None:
+        return None
+    ids = base.ids[:before] + found + base.ids[len(spans) - after:]
+    if len(set(ids)) != len(ids):
+        return None
+    shifted = [(start + delta, end + delta) for start, end in spans[len(spans) - after:]]
+    return _Body(data, base.start, base.end + delta, spans[:before] + middle + shifted, ids)
 
 
 def _regions(before: _Body, after: _Body) -> list[tuple[int, int, int, int]]:

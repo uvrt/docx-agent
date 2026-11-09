@@ -469,3 +469,40 @@ def test_a_cells_empty_from_is_no_source():
                                                            "from": ""})
         assert result.ok, result.to_json()
         assert session.entry(doc).document.table(layout.tables[0]).cell(1, 1).text == "7"
+
+
+def test_a_body_read_from_an_earlier_state_reads_as_the_whole_body():
+    """``read_body`` reads only the blocks between the first and last byte that differ from
+    the body it read last; what it finds is what a read of the whole part finds."""
+    import random
+
+    with opened("off") as (_box, session, doc, _layout):
+        document = session.entry(doc).document
+        data = document.package.read(document.package.document_part())
+    base = blocks._read_body(data)
+    assert base is not None
+    rng = random.Random(45)
+    reread = 0
+    for _ in range(300):
+        k = rng.randrange(base.count)
+        last = min(base.count, k + rng.randrange(1, 4))
+        begin, end = base.spans[k][0], base.spans[last - 1][1]
+        choice = rng.random()
+        if choice < 0.3:
+            new = data[:begin] + data[end:]
+        elif choice < 0.6:
+            new = data[:begin] + data[begin:end].replace(b"e", b"E", 3) + data[end:]
+        elif choice < 0.8:
+            j = rng.randrange(base.count)
+            copy = data[base.spans[j][0]:base.spans[j][1]]
+            new = data[:begin] + copy.replace(b'paraId="', b'paraId="7', 1) + data[begin:]
+        else:
+            cut = rng.randrange(len(data))
+            new = data[:cut] + b"<w:p>" + data[cut:]
+        whole, found = blocks._read_body(new), blocks._reread_body(new, base)
+        if found is None:
+            continue
+        reread += 1
+        assert whole is not None
+        assert (found.start, found.end, found.spans, found.ids) == (whole.start, whole.end, whole.spans, whole.ids)
+    assert reread > 100

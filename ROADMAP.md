@@ -1243,7 +1243,7 @@ doc.render_svg(pages=diff.changed)     # or render_png; ids on every paragraph g
   and its model holds paths and fields open across blocks), a `word_fields` update that stops
   a pass early (the last pass confirms the numbers; skipping it exactly needs docx2svg's
   settled field values in docx-agent's terms).
-- **Round 45 (0.1.73, 0.1.74; ooxml-edit 0.97.0, 0.98.0):** builders on one document wait
+- **Round 45 (0.1.73, 0.1.74; ooxml-edit 0.97.0, 0.99.0):** builders on one document wait
   for each other no more than their changes overlap. Reads, checks and renders work on a
   copy of the last committed version (`layout.read_copy`), an edit's checks after its lock;
   and, with another call on the document, the admitted edits (`docx_agent.blocks`:
