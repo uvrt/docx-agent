@@ -12,6 +12,7 @@ from typing import Any
 from ooxml_edit.charts import ChartDataWarning
 from ooxml_edit.tools import DocumentFormat
 
+from ..blocks import BLOCKS
 from ..edit.addresses import AddressError
 from ..edit.authoring import AuthoringWarning
 from ..edit.charts import DiagramDrawingDropped, UntrackedChartEdit
@@ -250,4 +251,4 @@ FORMAT = DocumentFormat(
     read_provenance=read_provenance, restored=restored, own_facts=dict(OWN_REFUSED),
     tool_hints=TOOL_HINTS, warm_up=warm_up, touched=touched, number_texts=number_texts,
     scale_values=scale_values, state=id_state, open_with_state=open_docx_with_state,
-    read_copy=read_copy)
+    read_copy=read_copy, blocks=BLOCKS)

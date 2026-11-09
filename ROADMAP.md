@@ -1243,6 +1243,21 @@ doc.render_svg(pages=diff.changed)     # or render_png; ids on every paragraph g
   and its model holds paths and fields open across blocks), a `word_fields` update that stops
   a pass early (the last pass confirms the numbers; skipping it exactly needs docx2svg's
   settled field values in docx-agent's terms).
+- **Round 45 (0.1.73, 0.1.74; ooxml-edit 0.97.0, 0.100.0):** builders on one document wait
+  for each other no more than their changes overlap. Reads, checks and renders work on a
+  copy of the last committed version (`layout.read_copy`), an edit's checks after its lock;
+  and, with another edit of the document in flight (a fill from a dataset always), the
+  admitted edits (`docx_agent.blocks`:
+  `word_set_text`, `word_insert_markdown` at `end`/`before:`/`after:`, `set_cells`, batches
+  of them) run on a draft and are applied under the lock when the blocks they read and
+  changed are as they were -- byte for byte, by window -- else prepared again (three tries,
+  then the lock). Kept under the lock for the whole call: everything else (styles, fields,
+  sections, comments, notes, pictures, tracked changes, undo), and any call whose draft
+  stamped, renamed or drew annotation ids. Measured in the round's hand-back (lane B), with
+  the shared-state inventory in `docx_agent/blocks.py`'s notes. Not built: merging the
+  provenance item entry by entry (a value written by reference is a conflict for every
+  call prepared before it), drafts kept in step with the document rather than made again
+  after another call's change.
 - **Round 43 (0.1.70):** lists stated to run on through the copies (`check` `copies[].lists`
   `run_on`, never inferred): `copy_settings.Run` -- per run (the stated copies of one
   reference, in document order, `tools.scoped._runs`) the copy before's numbered items;

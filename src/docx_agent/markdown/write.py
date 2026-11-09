@@ -70,6 +70,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Mapping
 
+from ..blocks import observe
 from ..edit import ids as _ids
 from ..edit import numbering as _numbering
 from ..edit import text as _text
@@ -175,7 +176,8 @@ def _write(document: "Document", blocks: list, notes: dict, options: Options, at
 
     lone = None
     if at in ("end", "end:body"):
-        lone = _lone_empty_paragraph(document)
+        # Round 45 (lane B): a fact of the whole body, the same when a draft's change applies.
+        lone = observe(document, "lone_empty_paragraph", _lone_empty_paragraph(document))
         if lone is not None and blocks and not isinstance(blocks[0], m.Table):
             # Ending in a table, the empty paragraph stays as the one Word needs after it.
             at = f"before:{lone}" if isinstance(blocks[-1], m.Table) else f"replace:{lone}"
@@ -719,17 +721,8 @@ class Writer:
 
     def _table_style_in_use(self):
         """The table style the document's tables use most (Table Grid when they use none)."""
-        counts: dict[str, int] = {}
-        for part in self.document._parts():
-            for node in self.document.package.tree(part).iter(_W + "tblStyle"):
-                value = node.get(_W + "val")
-                if value:
-                    counts[value] = counts.get(value, 0) + 1
-        for style_id, _ in sorted(counts.items(), key=lambda kv: -kv[1]):
-            for style in self._all():
-                if style.id == style_id and style.kind == "table":
-                    return style
-        return None
+        style_id = observe(self.document, "table_style_in_use", table_style_in_use(self.document))
+        return next((style for style in self._all() if style.id == style_id and style.kind == "table"), None)
 
     # -- blocks -----------------------------------------------------------------------------
 
@@ -924,7 +917,7 @@ class Writer:
         if kind in self._abstracts:
             return self._abstracts[kind]
         numbering = _numbering.Numbering(self.document)
-        source = _document_definition(self.document, kind)
+        source = observe(self.document, "list_definition", _document_definition(self.document, kind), kind)
         if source is not None:
             abstract_id = _numbering.copy_abstract(self.document, source)
         else:
@@ -1355,6 +1348,23 @@ def _track_table(table: Element, stamp, part: str) -> None:
     for paragraph in table.iter(W_P):
         _insert_content(paragraph, stamp, part)
         _track.mark(paragraph, "ins", stamp, part)
+
+
+def table_style_in_use(document: "Document") -> str | None:
+    """The id of the table style the document's tables use most -- of those its styles
+    declare as table styles, the most used first, ties in the order first used -- or
+    ``None`` when they use none (:meth:`Writer._table_style_in_use`)."""
+    counts: dict[str, int] = {}
+    for part in document._parts():
+        for node in document.package.tree(part).iter(_W + "tblStyle"):
+            value = node.get(_W + "val")
+            if value:
+                counts[value] = counts.get(value, 0) + 1
+    tables = {style.id for style in document.styles if style.kind == "table"}
+    for style_id, _ in sorted(counts.items(), key=lambda kv: -kv[1]):
+        if style_id in tables:
+            return style_id
+    return None
 
 
 def _document_definition(document: "Document", kind: str) -> int | None:

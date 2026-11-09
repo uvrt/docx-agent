@@ -309,12 +309,24 @@ def _fast_ids(data: bytes, spans: list[tuple[int, int]] | None) -> list[str] | N
     repeated (as after this library's first edit stamps them all), and every content
     control block an id of its own; ``None`` otherwise (:func:`_parsed` names them as
     ``Document`` does)."""
-    if spans is None or _W14_DECLARED not in data[:data.find(b">", data.find(b"<w:document"))]:
+    if spans is None or not _stamped(data):
         return None
+    return _span_ids(data, spans)
+
+
+def _stamped(data: bytes) -> bool:
+    """Whether the part declares ``w14`` and every paragraph and row in it has a paraId,
+    none repeated."""
+    if _W14_DECLARED not in data[:data.find(b">", data.find(b"<w:document"))]:
+        return False
     live = _FALLBACK.sub(b"", data) if b"<mc:Fallback" in data else data
     stamped = _ALL_PARA_IDS.findall(live)
-    if len(stamped) != len(_PARA_OR_ROW.findall(live)) or len(set(map(bytes.upper, stamped))) != len(stamped):
-        return None
+    return len(stamped) == len(_PARA_OR_ROW.findall(live)) and len(set(map(bytes.upper, stamped))) == len(stamped)
+
+
+def _span_ids(data: bytes, spans: list[tuple[int, int]]) -> list[str] | None:
+    """The ids of the blocks at ``spans`` (:func:`_fast_ids`, the part known stamped);
+    ``None`` when one has none, or two content control blocks share one."""
     ids: list[str] = []
     sdt_ids: set[bytes] = set()
     for begin, end in spans:

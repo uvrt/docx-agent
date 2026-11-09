@@ -1,0 +1,1151 @@
+"""Edits of different blocks of one Word document at the same time (round 45, lane B): the Word
+format's :class:`ooxml_edit.tools.blocks.BlockEdits` (``DocumentFormat.blocks``).
+
+ooxml-edit runs a changing call this module admits on a **draft** -- an editable copy of the
+document's last committed version (:func:`docx_agent.layout.read_copy`'s ``make.draft``) --
+with no lock of the document held, then applies what it changed to the document under the
+lock, briefly, when what it read is as it was (ooxml-edit's ``tools/blocks.py`` says the
+protocol).  What runs on a draft: ``word_set_text``, ``word_insert_markdown`` (``end``,
+``before:``, ``after:``; no pictures or footnotes) and ``word_edit_table``'s ``set_cells``, and
+batches of them; text written by reference only from datasets (``{{d:...}}``, ``from: d:...``).
+Every other call takes the document's lock for its whole run, as before.
+
+**What a draft records** (:class:`DraftOps`, :class:`DraftPool`): every block an id named
+(``Document._resolve``; ``_direct``: whether an id names anything), every id drawn from the
+document's sequences (:func:`docx_agent.edit.ids.generate`), the facts about the whole document
+the call used (:func:`observe`: the table style most tables use, the list definition the
+document's lists use most, whether the body is one empty paragraph), and what a patch cannot
+carry -- then the call runs as before on the document: ids stamped, a tracked change, an
+annotation id (comments, bookmarks, revisions), revision ids repeated, ids kept from a copy,
+drawing numbers, media, a layout, renames.
+
+**The patch** (:meth:`Blocks.prepared`): the body's top-level blocks before and after, from
+``word/document.xml``'s bytes (each block's own bytes, ids included), compared in order: each
+run of blocks that differ is a *region*; each region, and each block the call named, with
+:data:`CONTEXT` blocks either side, is a *window*, its bytes (gaps between blocks included) as
+they were.  Every other part the call changed, before and after.  The draws, and whether the
+ids drawn can be renamed (:func:`_renamable`).
+
+**The check** (:meth:`Blocks.check`, under the document's lock): no part but the body changed
+since the draft's version (ooxml-edit counts the parts each change touched); the body's head
+(the root's namespaces) and tail (the last section's properties) as they were; each window in
+the document now, found by its first block's id, byte for byte as it was; each id that named
+nothing still naming nothing, each id that named something still naming something; every
+fact the call used the same now; the renames, never given before; the document fully stamped
+and its renames as they were.  Else a conflict: the call is prepared again.
+
+**Apply and settle**: each window's bytes replaced by the draft's, ids renamed where the
+document's sequence moved on (another call drew the same values first); the other parts
+replaced; the id pool as the draws leave it; then the ledger read at the new version, the
+spacing count, the checks' layout engine, and the reflow's "before" (the layout of the
+document as it was just before) -- all as the call's own run on the document leaves them.
+
+**Shared state** (round 45's inventory; ``tests/test_block_edits.py`` tests each):
+
+=========================  =================================================================
+item                       rule
+=========================  =================================================================
+body blocks                windows compared byte for byte; regions spliced in
+w14:paraId / textId        drawn again on the document (renamed): never reused, unique
+id ledger, retired ids     read at the new version after the patch (``_note_ids``)
+renames (aliases)          must be as they were; a call that renames: whole lock
+stamping                   the document fully stamped (``_fast_ids``); a call that stamps:
+                           whole lock
+tracked changes            tracking on: whole lock; revision ids repeated: whole lock
+annotation ids             comments, bookmarks, revisions: whole lock
+footnotes, endnotes        Markdown footnotes: not admitted; the parts: unchanged or conflict
+comments part              unchanged since the draft's version, or conflict
+numbering.xml              unchanged since, or conflict; a list restarted: the part replaced
+styles.xml                 unchanged since, or conflict; a style added: the part replaced
+settings.xml, theme        unchanged since, or conflict
+relationships, parts,      unchanged since, or conflict; added or replaced as the draft did,
+[Content_Types]            in its order; ids drawn again renamed in an added XML part as in a
+                           changed one (any other part added with ids renamed: conflict)
+provenance item            unchanged since, or conflict; replaced or added, its keys renamed
+sectPr, section breaks     the body's tail as it was; a region holding a section break
+                           changed: whole lock
+fields and TOC             in the body's blocks (windows); field updates: whole lock
+docProps                   unchanged since, or conflict (no admitted call writes them)
+list numbering             the list style's numbering counts in Word; no admitted call reads
+                           a list's place (its windows hold the neighbours it reads)
+datasets, refs, keys       ooxml-edit checks them (the same datasets, not stale; the refs as
+                           they were when used; a retry key not used meanwhile)
+version, undo, owners      ooxml-edit: the patch is one undo step, the call's, its version
+layouts, checks            per version, after the patch (the copy of the version it made)
+=========================  =================================================================
+"""
+
+from __future__ import annotations
+
+import contextlib
+import difflib
+import json
+import re
+import threading
+import weakref
+from collections import Counter
+from contextlib import ExitStack
+from dataclasses import dataclass, field
+from typing import Any, Iterator, Mapping
+
+from ooxml_edit.tools.blocks import BlockConflict, renamed, token_renamer
+from ooxml_edit.xml import parse_xml
+
+from .edit import ids as _ids
+
+_W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+W_BODY = _W + "body"
+
+#: Blocks of context either side of a change, and of a block a call named: its window,
+#: which must be as it was for the change to apply.  The admitted calls read at most the
+#: block before and the block after the place they change (``word_set_text`` with lines:
+#: the paragraphs after it, as many as its lines -- :func:`_window_after`).
+CONTEXT = 2
+
+#: The calls a draft takes (:func:`admits`).
+TOOLS = ("word_set_text", "word_insert_markdown", "word_edit_table")
+
+#: Drafts kept per document to reuse (each a parsed copy of it).
+KEEP_DRAFTS = 2
+
+_REFERENCE = re.compile(r"\{\{\s*([^}]*?)\s*\}\}")
+_HEX_TOKEN = re.compile(rb"(?<![0-9A-Fa-f])([0-9A-Fa-f]{8})(?![0-9A-Fa-f])")
+#: Where an id drawn may stand in what a call writes and says: a paraId or textId, a block
+#: id (``p:``, ``t:``, ``tr:``), a provenance entry's key.
+_ID_CONTEXTS = (b'w14:paraId="', b'w14:textId="', b"p:", b"t:", b"tr:")
+
+
+# -- what a draft takes --------------------------------------------------------------------------
+
+
+def admits(tool: str, arguments: Mapping[str, Any]) -> bool:
+    """Whether a validated changing call may run on a draft: one of :data:`TOOLS`, naming
+    blocks by id (or ``$ref``), text by reference only from datasets."""
+    if tool == "word_set_text":
+        items = arguments.get("items") or []
+        targets = [arguments.get("target")] + [item.get("target") for item in items if isinstance(item, Mapping)]
+        texts = [arguments.get("text")] + [item.get("text") for item in items if isinstance(item, Mapping)]
+        return (all(_plain(target) for target in targets if target is not None)
+                and all(_from_datasets(text) for text in texts))
+    if tool == "word_insert_markdown":
+        at = arguments.get("at")
+        markdown = arguments.get("markdown")
+        if not isinstance(at, str) or not _place(at):
+            return False
+        if isinstance(markdown, str) and ("![" in markdown or "[^" in markdown):
+            return False
+        likes = arguments.get("like") or []
+        return (_from_datasets(markdown) and _source(arguments.get("from"))
+                and all(_plain(sample) for sample in ([likes] if isinstance(likes, str) else likes) if sample))
+    if tool == "word_edit_table":
+        cells = arguments.get("cells") or []
+        return (arguments.get("action") == "set_cells" and _plain(arguments.get("table"))
+                and _source(arguments.get("from"))
+                and all(isinstance(cell, Mapping) and _source(cell.get("from")) and _from_datasets(cell.get("text"))
+                        for cell in cells))
+    return False
+
+
+def alone(tool: str, arguments: Mapping[str, Any]) -> bool:
+    """Whether an admitted call is worth a draft with no other edit in flight: a fill from
+    a dataset (a ``from: "d:..."`` of ``word_edit_table`` or ``word_insert_markdown``, or of
+    a cell), whose rows may be many, so an edit that comes while it runs need not wait."""
+    if tool not in ("word_edit_table", "word_insert_markdown"):
+        return False
+    cells = arguments.get("cells") or [] if tool == "word_edit_table" else []
+    return any(isinstance(value, str) and value.startswith("d:")
+               for value in [arguments.get("from")] + [cell.get("from") for cell in cells
+                                                        if isinstance(cell, Mapping)])
+
+
+def _plain(address: Any) -> bool:
+    """An id or a ref, not a span, a heading's range or a place in text."""
+    return isinstance(address, str) and bool(address) and ".." not in address and "h:" not in address \
+        and "@" not in address
+
+
+def _place(at: str) -> bool:
+    if at in ("end", "end:body"):
+        return True
+    kind, _, rest = at.partition(":")
+    if kind in ("before", "after"):
+        return _plain(rest)
+    return kind not in ("replace", "end") and _plain(at)
+
+
+def _source(value: Any) -> bool:
+    """No source, or a dataset (``d:``): rows of a table of a document are read now."""
+    return value is None or value == "" or (isinstance(value, str) and value.startswith("d:"))
+
+
+def _from_datasets(text: Any) -> bool:
+    """Text whose references (``{{...}}``) all name datasets."""
+    if not isinstance(text, str) or "{{" not in text:
+        return True
+    return all(found.startswith("d:") for found in _REFERENCE.findall(text))
+
+
+# -- what a draft records ------------------------------------------------------------------------
+
+
+class _Recording:
+    """What a call did on a draft that its patch, or its check, needs."""
+
+    def __init__(self, body: str) -> None:
+        self.body = body
+        #: What a patch cannot carry, in words: the call runs on the document instead.
+        self.cannot: list[str] = []
+        #: ``(seed, values)``: every draw from the document's id sequences, in order.
+        self.draws: list[tuple[str, list[str]]] = []
+        #: The body's top-level blocks an id named, by id.
+        self.blocks: set[str] = set()
+        #: Ids named that named nothing; ids looked up (``_direct``) and whether they did.
+        self.missing: set[str] = set()
+        self.exists: dict[str, bool] = {}
+        #: Facts of the whole document the call used: ``(name, args) -> value``.
+        self.facts: dict[tuple, Any] = {}
+
+    def read(self, document: Any, part: str, element: Any) -> None:
+        """A block an id named, ``element`` in ``part``: its top-level block, if the body's."""
+        if part != self.body:
+            return
+        node = element
+        while node is not None and node.getparent() is not None and node.getparent().tag != W_BODY:
+            node = node.getparent()
+        if node is None or node.getparent() is None:
+            return
+        try:
+            self.blocks.add(document._block_id(part, node))
+        except Exception:  # noqa: BLE001 -- a block without an id: no window can find it
+            self.cannot.append("a block without an id")
+
+
+class DraftPool(_ids.IdPool):
+    """A draft's id pool (:attr:`docx_agent.edit.ids.Ledger.pool`): records every draw."""
+
+    __slots__ = ("recording",)
+
+    def __init__(self, values: Any = ()) -> None:
+        super().__init__(values)
+        self.recording: _Recording | None = None
+
+    def drew(self, seed: str, values: list[str]) -> None:
+        if self.recording is not None:
+            self.recording.draws.append((seed, list(values)))
+
+
+def observe(document: Any, name: str, value: Any, *args: Any) -> Any:
+    """``value``, the fact ``name`` (with ``args``) of the whole document a call used: on a
+    draft, recorded, to be found the same when its change is applied (:func:`_fact`)."""
+    recording = document.__dict__.get("_recording") if hasattr(document, "__dict__") else None
+    if recording is not None:
+        recording.facts.setdefault((name, args), value)
+    return value
+
+
+def _fact(document: Any, name: str, args: tuple) -> Any:
+    from .markdown import write as _write
+
+    if name == "table_style_in_use":
+        return _write.table_style_in_use(document)
+    if name == "list_definition":
+        return _write._document_definition(document, *args)
+    if name == "lone_empty_paragraph":
+        return _write._lone_empty_paragraph(document)
+    raise KeyError(name)
+
+
+class DraftOps:
+    """What a draft's class adds to :class:`docx_agent.Document` (``layout._draft_class``):
+    the recording.  Off a call (no recording), the document's own behaviour."""
+
+    def _draft_cannot(self, why: str) -> None:
+        recording = self.__dict__.get("_recording")
+        if recording is not None:
+            recording.cannot.append(why)
+
+    def _resolve(self, identifier: str) -> Any:
+        recording = self.__dict__.get("_recording")
+        try:
+            part, entry = super()._resolve(identifier)  # type: ignore[misc]
+        except KeyError:
+            if recording is not None:
+                recording.missing.add(identifier)
+            raise
+        if recording is not None:
+            recording.read(self, part, entry.element)
+        return part, entry
+
+    def _resolve_block(self, identifier: str) -> Any:
+        found = super()._resolve_block(identifier)  # type: ignore[misc]
+        recording = self.__dict__.get("_recording")
+        if recording is not None and isinstance(identifier, str) and identifier.startswith(("cc:", "cc@")):
+            recording.read(self, found[0], found[1].element)
+        return found
+
+    def _direct(self, identifier: str) -> Any:
+        found = super()._direct(identifier)  # type: ignore[misc]
+        recording = self.__dict__.get("_recording")
+        if recording is not None:
+            recording.exists.setdefault(identifier, found is not None)
+        return found
+
+    def _follow_text_facts(self) -> Any:
+        # Every edit's bookkeeping of values written by reference: it reads each paragraph
+        # an entry of the provenance item names, wherever it is.  Not the call's reads: a
+        # change to such a paragraph's text, or its going, changes the item too (the change
+        # that made it ran this), and the item must be as it was for the patch to apply.
+        with self._unrecorded():
+            return super()._follow_text_facts()  # type: ignore[misc]
+
+    def _prune_provenance(self) -> Any:
+        # The same for the records whose table or paragraph is gone (the item again).
+        with self._unrecorded():
+            return super()._prune_provenance()  # type: ignore[misc]
+
+    @contextlib.contextmanager
+    def _unrecorded(self) -> Iterator[None]:
+        recording = self.__dict__.pop("_recording", None)
+        try:
+            yield
+        finally:
+            if recording is not None:
+                self.__dict__["_recording"] = recording
+
+    def _stamp_document(self) -> Any:
+        renames = super()._stamp_document()  # type: ignore[misc]
+        if renames:
+            self._draft_cannot("ids stamped")
+        return renames
+
+    def _prepare(self, part: str, entries: Any, position: Any = None, *, including: bool = False) -> Any:
+        if self.stamping != "document":  # type: ignore[attr-defined]
+            self._draft_cannot("stamping by paragraph")
+        return super()._prepare(part, entries, position, including=including)  # type: ignore[misc]
+
+    def _prepare_many(self, targets: Any) -> Any:
+        if self.stamping != "document":  # type: ignore[attr-defined]
+            self._draft_cannot("stamping by paragraph")
+        return super()._prepare_many(targets)  # type: ignore[misc]
+
+    def _unique_revision_ids(self, before: Any) -> Any:
+        if before is not None and self._revision_id_counts() != before:  # type: ignore[attr-defined]
+            self._draft_cannot("revision ids")
+        return super()._unique_revision_ids(before)  # type: ignore[misc]
+
+    def _next_annotation_id(self) -> Any:
+        self._draft_cannot("annotation ids")
+        return super()._next_annotation_id()  # type: ignore[misc]
+
+    def _remember_ids(self, values: Any) -> Any:
+        self._draft_cannot("ids kept")
+        return super()._remember_ids(values)  # type: ignore[misc]
+
+    def _next_doc_pr(self) -> Any:
+        self._draft_cannot("drawing numbers")
+        return super()._next_doc_pr()  # type: ignore[misc]
+
+    def _media(self, part: str, data: bytes) -> Any:
+        self._draft_cannot("media")
+        return super()._media(part, data)  # type: ignore[misc]
+
+    def _active_tracking(self) -> Any:
+        found = super()._active_tracking()  # type: ignore[misc]
+        if found is not None:
+            self._draft_cannot("tracked")
+        return found
+
+    def layout(self, **options: Any) -> Any:
+        self._draft_cannot("laid out")
+        return super().layout(**options)  # type: ignore[misc]
+
+    def _rename(self, renames: Any) -> Any:
+        if renames:
+            self._draft_cannot("ids renamed")
+        return super()._rename(renames)  # type: ignore[misc]
+
+    def _note_replaced(self, old: Any, new: Any) -> Any:
+        self._draft_cannot("a block replaced")
+        return super()._note_replaced(old, new)  # type: ignore[misc]
+
+
+# -- the body in bytes ---------------------------------------------------------------------------
+
+
+@dataclass
+class _Body:
+    """``word/document.xml``'s bytes, read for blocks: where the body's content begins and
+    ends, each top-level block's span and id."""
+
+    data: bytes
+    start: int
+    end: int
+    spans: list[tuple[int, int]]
+    ids: list[str]
+    #: Every paragraph's and row's paraId in the part (upper case), each once: the part is
+    #: fully stamped (``touched._stamped``), counted so another state's is read from the
+    #: blocks that differ alone (:func:`_reread_body`).
+    stamps: "Counter[bytes]" = field(default_factory=Counter, repr=False)
+    _where: dict[str, int] | None = None
+
+    @property
+    def count(self) -> int:
+        return len(self.spans)
+
+    def block(self, k: int) -> bytes:
+        begin, end = self.spans[k]
+        return self.data[begin:end]
+
+    def blocks(self) -> list[bytes]:
+        return [self.data[begin:end] for begin, end in self.spans]
+
+    def at(self, k: int) -> int:
+        """Where a window from block ``k`` begins: after the block before it."""
+        return self.spans[k - 1][1] if k > 0 else self.start
+
+    def to(self, k: int) -> int:
+        """Where a window up to block ``k`` (not included) ends: where it begins."""
+        return self.spans[k][0] if k < len(self.spans) else self.end
+
+    def head(self) -> bytes:
+        return self.data[:self.start]
+
+    def tail(self) -> bytes:
+        return self.data[self.spans[-1][1] if self.spans else self.start:]
+
+    def where(self, identifier: str) -> int | None:
+        if self._where is None:
+            self._where = {identifier: k for k, identifier in enumerate(self.ids)}
+        return self._where.get(identifier)
+
+
+_BODY_OPEN = re.compile(rb"<w:body(?=[\s>])")
+
+
+#: Bodies read lately, by their bytes (the same state is read by the draft, the check and a
+#: batch's ops): :func:`read_body`'s answers, the latest last.
+_BODIES: "dict[bytes, _Body | None]" = {}
+_BODIES_LOCK = threading.Lock()
+_BODIES_KEPT = 8
+
+
+def read_body(data: bytes | None) -> _Body | None:
+    """The body's blocks from the part's bytes (``touched``'s scan), each named by its id;
+    ``None`` when they cannot be read so -- the part does not write ``w:``, its tags do
+    not nest, or a paragraph, row or content control lacks an id of its own (the document is
+    not fully stamped).  The same bytes are read once (:data:`_BODIES`)."""
+    if data is None:
+        return None
+    with _BODIES_LOCK:
+        if data in _BODIES:
+            found = _BODIES.pop(data)
+            _BODIES[data] = found
+            return found
+        base = next((body for body in reversed(_BODIES.values()) if body is not None), None)
+    found = (base is not None and _reread_body(data, base)) or _read_body(data)
+    with _BODIES_LOCK:
+        _BODIES[data] = found
+        while len(_BODIES) > _BODIES_KEPT:
+            _BODIES.pop(next(iter(_BODIES)))
+    return found
+
+
+def _read_body(data: bytes) -> _Body | None:
+    from .tools import touched as _touched
+
+    root_end = data.find(b">", data.find(b"<w:document"))
+    if root_end < 0 or _touched._W_DECLARED not in data[:root_end]:
+        return None
+    opening = _BODY_OPEN.search(data, root_end)
+    end = data.rfind(b"</w:body>")
+    if opening is None or end < 0:
+        return None
+    start = data.index(b">", opening.end()) + 1
+    spans = _touched._blocks(data, start, end)
+    if spans is None or _touched._W14_DECLARED not in data[:root_end]:
+        return None
+    stamps = _stamps(data)
+    if stamps is None or any(count != 1 for count in stamps.values()):
+        return None
+    ids = _touched._span_ids(data, spans)
+    if ids is None or len(set(ids)) != len(ids):
+        return None
+    return _Body(data, start, end, spans, ids, stamps)
+
+
+def _stamps(data: bytes) -> "Counter[bytes] | None":
+    """The paraIds in ``data`` (upper case) when every paragraph and row there has one
+    (``touched._stamped``'s reading), else ``None``."""
+    from .tools import touched as _touched
+
+    live = _touched._FALLBACK.sub(b"", data) if b"<mc:Fallback" in data else data
+    stamped = _touched._ALL_PARA_IDS.findall(live)
+    if len(stamped) != len(_touched._PARA_OR_ROW.findall(live)):
+        return None
+    return Counter(map(bytes.upper, stamped))
+
+
+def _reread_body(data: bytes, base: _Body) -> _Body | None:
+    """:func:`_read_body` from ``base``, another state of a body: the blocks before the
+    first byte that differs and after the last are ``base``'s, only those between are read
+    again (as ``touched`` reads a change).  ``None`` when the bytes differ outside the
+    body's blocks, or what is between does not read so."""
+    from .tools import touched as _touched
+
+    old = base.data
+    prefix = _touched._common_prefix(old, data)
+    suffix = _touched._common_suffix(old, data, min(len(old), len(data)) - prefix)
+    if prefix < base.start or len(old) - suffix > base.end:
+        return None
+    delta = len(data) - len(old)
+    spans = base.spans
+    before = 0
+    while before < len(spans) and spans[before][1] <= prefix:
+        before += 1
+    after = 0
+    while after < len(spans) - before and spans[len(spans) - 1 - after][0] >= len(old) - suffix:
+        after += 1
+    begin = spans[before - 1][1] if before else base.start
+    stop = spans[len(spans) - after][0] + delta if after else base.end + delta
+    middle = _touched._blocks(data, begin, stop)
+    if middle is None:
+        return None
+    # Stamped as the whole part is read (every paraId once): the base's, less those of its
+    # blocks between, plus those of the blocks between now.
+    added, removed = _stamps(data[begin:stop]), _stamps(old[begin:stop - delta])
+    if added is None or removed is None or not base.stamps:
+        return None
+    stamps = base.stamps.copy()
+    stamps.subtract(removed)
+    stamps.update(added)
+    if any(stamps[value] != 1 for value in added):
+        return None
+    stamps = +stamps
+    found = _touched._span_ids(data, middle)
+    if found is None:
+        return None
+    ids = base.ids[:before] + found + base.ids[len(spans) - after:]
+    if len(set(ids)) != len(ids):
+        return None
+    shifted = [(start + delta, end + delta) for start, end in spans[len(spans) - after:]]
+    return _Body(data, base.start, base.end + delta, spans[:before] + middle + shifted, ids, stamps)
+
+
+def _regions(before: _Body, after: _Body) -> list[tuple[int, int, int, int]]:
+    """Each run of blocks that differ: ``(i1, i2, j1, j2)``, blocks ``i1..i2`` before became
+    ``j1..j2`` after."""
+    old, new = before.blocks(), after.blocks()
+    n, m = len(old), len(new)
+    head = 0
+    while head < n and head < m and old[head] == new[head]:
+        head += 1
+    tail = 0
+    while tail < n - head and tail < m - head and old[n - 1 - tail] == new[m - 1 - tail]:
+        tail += 1
+    if head == n and head == m:
+        return []
+    middle_old, middle_new = old[head:n - tail], new[head:m - tail]
+    if not middle_old or not middle_new:
+        return [(head, n - tail, head, m - tail)]
+    matcher = difflib.SequenceMatcher(None, middle_old, middle_new, autojunk=False)
+    return [(head + i1, head + i2, head + j1, head + j2)
+            for tag, i1, i2, j1, j2 in matcher.get_opcodes() if tag != "equal"]
+
+
+@dataclass
+class _Window:
+    """Blocks ``first..last`` (not included) of the body before the call (``first_after
+    ..last_after`` after it), and their bytes then and after."""
+
+    first: int
+    last: int
+    first_after: int
+    last_after: int
+    before: bytes
+    after: bytes
+    ids: list[str]
+    #: The ids of the blocks after the call (``first_after..last_after``), and each block's
+    #: bytes before and after.
+    after_ids: list[str] = field(default_factory=list)
+    blocks_before: list[bytes] = field(default_factory=list)
+    blocks_after: list[bytes] = field(default_factory=list)
+
+
+def _windows(before: _Body, after: _Body, regions: list[tuple[int, int, int, int]],
+             named: list[int], wide: int) -> list[_Window]:
+    """The windows: each region with :data:`CONTEXT` blocks either side (``wide`` after a
+    region, for a call that reads further), and each block named (``named``), merged where
+    they meet."""
+    n = before.count
+    spans: list[tuple[int, int, list[tuple[int, int, int, int]]]] = []
+    for region in regions:
+        i1, i2 = region[0], region[1]
+        spans.append((max(0, i1 - CONTEXT), min(n, i2 + max(CONTEXT, wide)), [region]))
+    for k in named:
+        spans.append((max(0, k - CONTEXT), min(n, k + 1 + CONTEXT), []))
+    spans.sort(key=lambda item: (item[0], item[1]))
+    merged: list[list[Any]] = []
+    for first, last, held in spans:
+        if merged and first <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], last)
+            merged[-1][2].extend(held)
+        else:
+            merged.append([first, last, list(held)])
+    out: list[_Window] = []
+    shift = 0
+    for first, last, held in merged:
+        grown = sum((j2 - j1) - (i2 - i1) for i1, i2, j1, j2 in held)
+        first_after, last_after = first + shift, last + shift + grown
+        out.append(_Window(first, last, first_after, last_after,
+                           before.data[before.at(first):before.to(last)],
+                           after.data[after.at(first_after):after.to(last_after)],
+                           before.ids[first:last], after.ids[first_after:last_after],
+                           [before.block(k) for k in range(first, last)],
+                           [after.block(k) for k in range(first_after, last_after)]))
+        shift += grown
+    return out
+
+
+# -- the patch -----------------------------------------------------------------------------------
+
+
+@dataclass
+class Patch:
+    """What a call changed on its draft (:meth:`Blocks.prepared`)."""
+
+    body: str
+    head: bytes
+    tail: bytes
+    #: How many top-level blocks the body had before the call.
+    count: int
+    windows: list[_Window]
+    #: Every other part changed: ``(path, before, after)``, ``None`` for absent; in the
+    #: draft's order of its parts.
+    parts: list[tuple[str, bytes | None, bytes | None]]
+    draws: list[tuple[str, list[str]]]
+    #: Whether the ids drawn can be renamed (:func:`_renamable`).
+    renamable: bool
+    missing: set[str]
+    exists: dict[str, bool]
+    facts: dict[tuple, Any]
+    aliases: dict[str, str]
+    spaced: int
+    engine: Any
+    after_body: bytes | None
+    #: The version the draft was of; the draft's id pool before and after the call.
+    version: int = -1
+    pool_before: tuple[int, dict] = (0, {})
+    pool_after: Any = None
+    before_body: bytes | None = None
+
+
+@dataclass
+class Plan:
+    """A patch checked against the document now (:meth:`Blocks.check`): its new body and
+    parts, the renames and the id pool they leave."""
+
+    patch: Patch
+    data: bytes | None
+    renames: dict[str, str]
+    pool: Any
+    parts: list[tuple[str, bytes | None, bytes | None]] = field(default_factory=list)
+    #: The body's bytes before the patch, and the renames that are not the same name.
+    before: bytes | None = None
+    moved: dict[str, str] = field(default_factory=dict)
+    placed: list = field(default_factory=list)
+
+
+def _renamable(draws: list[tuple[str, list[str]]], arguments: Mapping[str, Any], outputs: list[bytes]) -> bool:
+    """Whether the ids a call drew can be renamed in what it wrote and said by their text
+    alone: none of them is in its arguments, and each place one is in its outputs is an id's
+    (:data:`_ID_CONTEXTS`) -- text, a number format, a hash are never renamed."""
+    drawn = {value.encode() for _seed, values in draws for value in values}
+    if not drawn:
+        return True
+    given = json.dumps(arguments, ensure_ascii=False, default=str).encode("utf-8").upper()
+    if any(token in drawn for token in _HEX_TOKEN.findall(given)):
+        return False
+    for data in outputs:
+        for match in _HEX_TOKEN.finditer(data):
+            token = match.group(1)
+            if token in drawn and not data[max(0, match.start() - 12):match.start()].endswith(_ID_CONTEXTS):
+                return False
+    return True
+
+
+def _renamed_bytes(data: bytes, renames: Mapping[str, str]) -> bytes:
+    if not renames:
+        return data
+    rename = token_renamer(renames)
+    return rename(data.decode("utf-8")).encode("utf-8")
+
+
+# -- the drafts ----------------------------------------------------------------------------------
+
+
+class Draft:
+    """A call's draft: the copy, and what the call does on it (:class:`_Recording`)."""
+
+    def __init__(self, document: Any, committed: Any) -> None:
+        self.document = document
+        self.committed = committed
+        self.recording = _Recording(document.package.document_part())
+        self.why: str | None = None
+        document.__dict__["_recording"] = self.recording
+        pool = document._ledger.pool
+        if isinstance(pool, DraftPool):
+            pool.recording = self.recording
+        self.aliases = dict(document._aliases)
+        self.replaced = dict(document._ledger.replaced)
+        #: The id pool's size and cursors when the call began (:func:`_redraw`'s shortcut).
+        self.pool = (len(pool), dict(pool.cursors)) if pool is not None else (0, {})
+        self.spaced = getattr(document, "typography_spaced", 0)
+        self._stack = ExitStack()
+        self.change = self._stack.enter_context(document.history.watch())
+
+    def stop(self) -> None:
+        """The call has run: stop recording, close the watch."""
+        self._stack.close()
+        self.document.__dict__.pop("_recording", None)
+        pool = self.document._ledger.pool
+        if isinstance(pool, DraftPool):
+            pool.recording = None
+
+
+class Blocks:
+    """The Word format's :class:`ooxml_edit.tools.blocks.BlockEdits`."""
+
+    def __init__(self) -> None:
+        self._kept: "weakref.WeakKeyDictionary[Any, list[tuple[Any, Any]]]" = weakref.WeakKeyDictionary()
+        self._lock = threading.Lock()
+
+    # -- ooxml-edit's protocol --------------------------------------------------------------------
+
+    def admits(self, tool: str, arguments: Mapping[str, Any]) -> bool:
+        return admits(tool, arguments)
+
+    def alone(self, tool: str, arguments: Mapping[str, Any]) -> bool:
+        return alone(tool, arguments)
+
+    def draft(self, document: Any, committed: Any) -> Draft | None:
+        make = getattr(getattr(committed, "make", None), "draft", None)
+        if make is None:
+            return None
+        copy = None
+        with self._lock:
+            kept = self._kept.get(document) or []
+            for k, (version, found) in enumerate(kept):
+                if version is committed:
+                    copy = found
+                    del kept[k]
+                    break
+        if copy is None:
+            copy = make(committed.data)
+        else:
+            copy.typography_spaced = getattr(document, "typography_spaced", 0)
+        return Draft(copy, committed)
+
+    def prepared(self, draft: Draft, result: Any, arguments: Mapping[str, Any]) -> Patch | None:
+        draft.stop()
+        recording, document = draft.recording, draft.document
+        why = list(dict.fromkeys(recording.cannot))
+        if not isinstance(document._ledger.pool, DraftPool):
+            why.append("no id pool")
+        if document._aliases != draft.aliases or document._ledger.replaced != draft.replaced:
+            why.append("ids renamed")
+        change = draft.change
+        body = document.package.document_part()
+        before_bytes, after_bytes = change.before(body), change.after(body)
+        before, after = read_body(before_bytes), read_body(after_bytes)
+        if before is None or after is None:
+            why.append("a body whose blocks do not all have ids")
+        if why:
+            draft.why = "; ".join(why)
+            return None
+        assert before is not None and after is not None
+        if before.head() != after.head() or before.tail() != after.tail():
+            draft.why = "the body's namespaces or last section changed"
+            return None
+        regions = _regions(before, after)
+        wide = _window_after(arguments)
+        named = sorted(k for k in (before.where(identifier) for identifier in recording.blocks) if k is not None)
+        windows = _windows(before, after, regions, named, wide)
+        for window in windows:
+            if b"<w:sectPr" in window.before or b"<w:sectPr" in window.after:
+                if _section_breaks(window.before) != _section_breaks(window.after):
+                    draft.why = "a section break changed"
+                    return None
+        parts: list[tuple[str, bytes | None, bytes | None]] = []
+        order = {path: k for k, path in enumerate(_entry_names(document.package))}
+        for path in sorted(change.parts - {body}, key=lambda p: (order.get(p, len(order)), p)):
+            parts.append((path, change.before(path), change.after(path)))
+        outputs = [window.after for window in windows] + [after for _p, _b, after in parts if after]
+        outputs.append(json.dumps(_said(result), ensure_ascii=False, default=str).encode("utf-8"))
+        return Patch(body=body, head=before.head(), tail=before.tail(), count=before.count, windows=windows,
+                     parts=parts,
+                     draws=list(recording.draws), renamable=_renamable(recording.draws, arguments, outputs),
+                     missing=set(recording.missing), exists=dict(recording.exists), facts=dict(recording.facts),
+                     aliases=draft.aliases,
+                     spaced=getattr(document, "typography_spaced", 0) - draft.spaced,
+                     engine=document.__dict__.get("_checks_engine"), after_body=after_bytes,
+                     version=draft.committed.version, pool_before=draft.pool,
+                     pool_after=document._ledger.pool, before_body=before_bytes)
+
+    def check(self, document: Any, patch: Patch, changed: frozenset[str] | None) -> Plan:
+        if changed is None:
+            raise BlockConflict("the document changed outside the tools")
+        others = sorted(changed - {patch.body})
+        if others:
+            raise BlockConflict(f"{', '.join(others[:3])} changed")
+        if document._aliases != patch.aliases:
+            raise BlockConflict("ids were renamed")
+        data = _body_now(document, patch.body)
+        live = read_body(data)
+        if live is None:
+            raise BlockConflict("the document is not fully stamped")
+        if live.head() != patch.head or live.tail() != patch.tail:
+            raise BlockConflict("the body's namespaces or last section changed")
+        if (b"<wp:inline" in data or b"<wp:anchor" in data) and document._stamping_due():
+            raise BlockConflict("a drawing needs ids")
+        placed = _placed(live, data, patch.windows, patch.count)
+        for identifier in patch.missing:
+            try:
+                document._resolve(identifier)
+            except KeyError:
+                continue
+            raise BlockConflict(f"{identifier} names a block now")
+        seen = {identifier for _begin, _end, window in placed for identifier in window.ids}
+        for identifier, existed in patch.exists.items():
+            if identifier in seen:
+                continue            # in a window found the same
+            if existed and live.where(identifier) is not None:
+                continue            # a block of the body, there now
+            if (document._direct(identifier) is not None) != existed:
+                raise BlockConflict(f"{identifier} {'is gone' if existed else 'names a block now'}")
+        for (name, args), value in patch.facts.items():
+            if _fact(document, name, args) != value:
+                raise BlockConflict(f"the document's {name.replace('_', ' ')} changed")
+        renames, pool = _redraw(document, patch)
+        moved = {old: new for old, new in renames.items() if old != new}
+        # Ids drawn again are renamed in what the call wrote -- the body's windows and every
+        # part it changed or added (the provenance item a first fill adds) -- by their text.
+        if moved and (not patch.renamable or any(after is not None and not path.endswith((".xml", ".rels"))
+                                                 for path, _b, after in patch.parts)):
+            raise BlockConflict("ids drawn meanwhile, and these cannot be renamed")
+        parts = [(path, before, _renamed_bytes(after, moved) if after is not None else None)
+                 for path, before, after in patch.parts]
+        return Plan(patch, _spliced(data, live, placed, moved), renames, pool, parts, before=data, moved=moved,
+                    placed=placed)
+
+    def replay_changes(self, document: Any, plan: Plan, op_changes: list[tuple[int, str, Any]]
+                       ) -> list[tuple[int, str, Any]] | None:
+        """A batch's changes op by op (each ``(op, doc, change)`` on the draft) as the
+        document's: each op's blocks spliced in turn into the body as it is now, for what
+        each op changed (``Result.touched_by_op``) read from the document, as a batch run on
+        it reads it; ``None`` when the body is as the draft's was and no id was renamed: the
+        draft's are the document's.  :class:`BlockConflict` when they cannot be (never,
+        where the patch applies: each op's blocks lie in its windows)."""
+        body = plan.patch.body
+        current = plan.before
+        if current == plan.patch.before_body and not plan.moved:
+            return None             # the body as the draft's: the draft's changes are the document's
+        out: list[tuple[int, str, Any]] = []
+        for op, doc, change in sorted(op_changes, key=lambda item: item[0]):
+            parts = frozenset(change.parts)
+            befores: dict[str, bytes | None] = {path: change.before(path) for path in parts - {body}}
+            afters: dict[str, bytes | None] = {path: change.after(path) for path in parts - {body}}
+            if body in parts:
+                old, new = read_body(change.before(body)), read_body(change.after(body))
+                live = read_body(current)
+                if old is None or new is None or live is None:
+                    raise BlockConflict("an op's change cannot be read by blocks")
+                windows = _windows(old, new, _regions(old, new), [], CONTEXT)
+                made = _spliced(current, live, _placed(live, current, windows, old.count), plan.moved)
+                befores[body], afters[body] = current, made
+                current = made
+            out.append((op, doc, _Replayed(parts, befores, afters)))
+        if current != plan.data:
+            raise BlockConflict("the ops' changes do not add up to the call's")
+        return out
+
+    def apply(self, document: Any, plan: Plan) -> Mapping[str, str]:
+        package = document.package
+        patch = plan.patch
+        if plan.data is not None and plan.data != plan.before:
+            _splice_tree(package, patch.body, plan)
+        for path, before, after in plan.parts:
+            if after is None:
+                if package.has_part(path):      # (a part's relationships go with it)
+                    package.remove_part(path)
+            elif before is None or not package.has_part(path):
+                package.replace_part(path, after)
+            elif path.endswith((".xml", ".rels")):
+                package.set_tree(path, parse_xml(after))
+            else:
+                package.replace_part(path, after)
+        document._ledger.pool = plan.pool
+        document._invalidate()
+        return plan.renames
+
+    def settle(self, document: Any, plan: Plan, *, touched: list[Any], before: bytes) -> None:
+        from .tools._base import Before, Engine, seen_before
+
+        document._note_ids()
+        # The body's bytes at this version, as the patch was checked to make them: the next
+        # patch's check reads them, while the document is at this version, without writing
+        # the part again.
+        document.__dict__["_block_body"] = (document.history.version,
+                                            plan.data if plan.data is not None else plan.before)
+        document.typography_spaced = getattr(document, "typography_spaced", 0) + plan.patch.spaced
+        engine = plan.patch.engine
+        if isinstance(engine, Engine):
+            document._checks_engine = Engine(engine._run, engine.timeout, keyed=engine.keyed, document=document)
+        for k, scope in enumerate(touched):
+            if isinstance(scope, Before):
+                # What the reflow is measured from: the document as it was just before.
+                touched[k] = Before(seen_before(document, before))
+
+    def rename(self, value: Any, renames: Mapping[str, str]) -> Any:
+        return renamed(value, token_renamer(renames))
+
+    def release(self, draft: Draft, *, current: Any = None) -> None:
+        if draft.recording is not None and "_recording" in draft.document.__dict__:
+            draft.stop()
+        if current is None:
+            return
+        document = draft.document
+        document.history.clear()
+        document.converter = None
+        document.__dict__.pop("_checks_engine", None)
+        live = document.__dict__.get("_live")
+        if live is None:
+            return
+        with self._lock:
+            kept = self._kept.setdefault(live, [])
+            kept.insert(0, (current, document))
+            del kept[KEEP_DRAFTS:]
+
+
+def _body_now(document: Any, part: str) -> bytes | None:
+    """The body part's bytes now: those the last patch applied made, while the document is
+    still at the version it left (equal versions are equal content); else the part
+    written."""
+    kept = document.__dict__.get("_block_body")
+    if kept is not None and kept[0] == document.history.version:
+        return kept[1]
+    return document.package.read(part)
+
+
+def _placed(live: _Body, data: bytes, windows: list[_Window], count: int) -> list[tuple[int, int, _Window]]:
+    """Each window in the body now (``live``, read from ``data``): found by its first block's
+    id, the same blocks after it, byte for byte as they were, reaching the body's end where
+    it did (``count``: the blocks the body had); in order, apart.  :class:`BlockConflict`
+    naming what moved or changed otherwise."""
+    placed: list[tuple[int, int, _Window]] = []
+    for window in windows:
+        size = window.last - window.first
+        if window.first == 0:
+            begin = 0
+        else:
+            found = live.where(window.ids[0])
+            if found is None:
+                raise BlockConflict(f"{window.ids[0]} is gone")
+            begin = found
+        end = begin + size
+        if end > live.count or (window.last == count and end != live.count):
+            raise BlockConflict("the blocks around a change moved")
+        if live.ids[begin:end] != window.ids or data[live.at(begin):live.to(end)] != window.before:
+            raise BlockConflict(f"a block near {window.ids[0] if window.ids else 'the end'} changed")
+        placed.append((begin, end, window))
+    placed.sort(key=lambda item: item[0])
+    for (_b1, e1, _w1), (b2, _e2, _w2) in zip(placed, placed[1:]):
+        if b2 < e1:
+            raise BlockConflict("changes overlap")
+    return placed
+
+
+def _spliced(data: bytes, live: _Body, placed: list[tuple[int, int, _Window]], moved: Mapping[str, str]) -> bytes:
+    """``data`` with each placed window's bytes replaced by what the call made of them, its
+    ids renamed (``moved``)."""
+    out = bytearray(data)
+    for begin, end, window in sorted(placed, key=lambda item: item[0], reverse=True):
+        out[live.at(begin):live.to(end)] = _renamed_bytes(window.after, moved)
+    return bytes(out)
+
+
+_BLOCK_TAGS = frozenset(_W + tag for tag in ("p", "tbl", "sdt", "customXml"))
+
+
+def _splice_tree(package: Any, part: str, plan: "Plan") -> None:
+    """The body's windows changed in the document's tree itself, as an edit in place changes
+    it: a block that did not change is left as it is, one changed under its own id is
+    rewritten in place (the same element), new blocks are inserted and removed ones go -- so
+    a reader holding the tree or one of its elements finds it as after an edit -- then the
+    part's bytes are checked against the plan's; anything else (text between blocks, a
+    window not read so), and any difference, installs the planned bytes as the part's
+    tree."""
+    root = package.tree(part)
+    body = root.find(W_BODY) if root is not None else None
+    live = read_body(plan.before)
+    done = False
+    if body is not None and live is not None and plan.before is not None:
+        blocks = [node for node in body if isinstance(node.tag, str) and node.tag in _BLOCK_TAGS]
+        if len(blocks) == live.count and all(
+                _in_place(body, blocks, begin, end, window, plan, live.start)
+                for begin, end, window in sorted(plan.placed, key=lambda item: item[0], reverse=True)):
+            package.mark_dirty(part)
+            done = package.read(part) == plan.data
+    if not done:
+        package.set_tree(part, parse_xml(plan.data))
+
+
+def _in_place(body: Any, blocks: list, begin: int, end: int, window: "_Window", plan: "Plan",
+              start: int) -> bool:
+    """One window of :func:`_splice_tree`; ``False`` when it cannot be done so (nothing changed)."""
+    after = _renamed_bytes(window.after, plan.moved)
+    head = plan.before[:start] if plan.before is not None else b""
+    fragment = parse_xml(head + after + b"</w:body></w:document>").find(W_BODY)
+    made = list(fragment)
+    old = blocks[begin:end]
+    if end == len(blocks):
+        # A window to the body's end holds the last section's properties after its blocks:
+        # as they were (the check compared the body's tail), left where they are.
+        while made and (not isinstance(made[-1].tag, str) or made[-1].tag not in _BLOCK_TAGS):
+            made.pop()
+    if (any(not isinstance(node.tag, str) or node.tag not in _BLOCK_TAGS or (node.tail or "").strip()
+            for node in made) or (fragment.text or "").strip() or len(made) != len(window.after_ids)
+            or any(node.getnext() is not None and node.getnext() not in old and node is not old[-1]
+                   for node in old)):
+        return False
+    rename = token_renamer(plan.moved) if plan.moved else (lambda text: text)
+    ids = [rename(identifier) for identifier in window.after_ids]
+    # Each block between the window's ends is a block of it (no bookmark or other node between).
+    first = blocks[begin - 1] if begin > 0 else None
+    span = []
+    node = first.getnext() if first is not None else (body[0] if len(body) else None)
+    if end < len(blocks):
+        stop = blocks[end]
+    else:
+        stop = old[-1].getnext() if old else node
+    while node is not None and node is not stop:
+        span.append(node)
+        node = node.getnext()
+    if span != old:
+        return False
+    mine = dict(zip(window.ids, old))
+    before_bytes = dict(zip(window.ids, window.blocks_before))
+    after_bytes = [_renamed_bytes(data, plan.moved) for data in window.blocks_after]
+    anchor = first
+    used = set()
+    for new, identifier, data in zip(made, ids, after_bytes):
+        element = mine.get(identifier)
+        if element is not None and identifier not in used:
+            used.add(identifier)
+            if before_bytes.get(identifier) != data:
+                element.attrib.clear()
+                element.attrib.update(new.attrib)
+                element.text = new.text
+                for child in list(element):
+                    element.remove(child)
+                for child in list(new):
+                    element.append(child)
+            placed = element
+            if (anchor.getnext() if anchor is not None else body[0]) is not placed:
+                tail = placed.tail
+                body.remove(placed)
+                placed.tail = tail
+                _after(body, anchor, placed)
+        else:
+            new.tail = None
+            _after(body, anchor, new)
+            placed = new
+        anchor = placed
+    for identifier, element in mine.items():
+        if identifier not in used:
+            body.remove(element)
+    return True
+
+
+def _after(body: Any, anchor: Any, node: Any) -> None:
+    if anchor is None:
+        body.insert(0, node)
+    else:
+        anchor.addnext(node)
+
+
+class _Replayed:
+    """An op's change read from bytes, with :class:`ooxml_edit.history.Change`'s interface
+    (what ``touched`` reads): the parts it changed, each one's bytes before and after."""
+
+    def __init__(self, parts: frozenset[str], before: dict[str, bytes | None],
+                 after: dict[str, bytes | None]) -> None:
+        self.parts = parts
+        self.changed = bool(parts)
+        self._before, self._after = before, after
+
+    def before(self, path: str) -> bytes | None:
+        return self._before.get(path)
+
+    def after(self, path: str) -> bytes | None:
+        return self._after.get(path)
+
+
+def _redraw(document: Any, patch: Patch) -> tuple[dict[str, str], Any]:
+    """The draws made again on the document's sequences now -- what the call would draw
+    there -- on a copy of its pool: ``old -> new`` for each value, and the pool after.
+
+    Nothing committed since the draft's version, and the document's pool as the draft's was
+    (pools only grow: the same size is the same set), the draws are the draft's, and its
+    pool after the call is the document's: taken as they are."""
+    draws = patch.draws
+    pool = document._id_pool()
+    if (document.history.version == patch.version and (len(pool), pool.cursors) == patch.pool_before
+            and patch.pool_after is not None):
+        same = _ids.IdPool(patch.pool_after)
+        same.cursors.update(patch.pool_after.cursors)
+        return {value: value for _seed, values in draws for value in values}, same
+    scratch = _ids.IdPool(pool)
+    scratch.cursors.update(pool.cursors)
+    if draws:
+        scratch |= _ids.used_long_hex(document._roots())
+    renames: dict[str, str] = {}
+    for seed, values in draws:
+        for old, new in zip(values, _ids.generate(seed, scratch, len(values))):
+            renames[old] = new
+    return renames, scratch
+
+
+def _window_after(arguments: Mapping[str, Any]) -> int:
+    """How far after a change a call reads: ``word_set_text`` with lines reads the paragraphs
+    after its paragraph, one per line (whether they already hold them); others
+    :data:`CONTEXT`."""
+    texts = [arguments.get("text")] + [item.get("text") for item in arguments.get("items") or []
+                                       if isinstance(item, Mapping)]
+    for op in arguments.get("ops") or []:
+        if isinstance(op, Mapping) and isinstance(op.get("arguments"), Mapping):
+            inner = op["arguments"]
+            texts += [inner.get("text")] + [item.get("text") for item in inner.get("items") or []
+                                            if isinstance(item, Mapping)]
+    lines = max((text.count("\n") + 1 for text in texts if isinstance(text, str)), default=1)
+    return max(CONTEXT, lines + 1)
+
+
+def _section_breaks(data: bytes) -> list[bytes]:
+    return re.findall(rb"<w:sectPr(?=[\s>]).*?</w:sectPr>|<w:sectPr(?=[\s>])[^>]*/>", data, re.S)
+
+
+def _entry_names(package: Any) -> list[str]:
+    from ooxml_common.opc import normalize_part_path
+
+    return [normalize_part_path(entry.filename) for entry in package._entries]
+
+
+def _said(result: Any) -> Any:
+    """What a result says, for :func:`_renamable`: its JSON, and the application's parts."""
+    return {"json": result.to_json(), "touched_by_op": result.touched_by_op}
+
+
+BLOCKS = Blocks()
+
+__all__ = ["BLOCKS", "Blocks", "CONTEXT", "DraftOps", "DraftPool", "Patch", "TOOLS", "admits", "alone", "observe",
+           "read_body"]

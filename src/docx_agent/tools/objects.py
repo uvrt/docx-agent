@@ -112,7 +112,7 @@ def word_edit_table(call: Any, doc: str, table: str, action: str, cells: list[di
     document = call.document
     table = resolve(call, table)
     view = document.table(table)
-    source = given.get("from")
+    source = given.get("from") or None  # "": a strict decoder's placeholder for none (rule 1)
     read_as = None
     if source is not None:
         if action != "set_cells":
@@ -229,6 +229,8 @@ def _cell_value(call: Any, cell: dict, k: int) -> tuple[str, dict[str, Any] | No
     text, source = cell.get("text"), cell.get("from")
     from . import field_text
 
+    if source == "":
+        source = None                   # a strict decoder's placeholder for no from (rule 1)
     if text == "" and source is not None:
         text = None                     # a strict decoder's placeholder beside a from (rule 1)
     if source is None:

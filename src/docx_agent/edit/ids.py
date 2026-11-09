@@ -450,6 +450,12 @@ def generate(seed: str, used: set[int], count: int = 1) -> list[str]:
         out.append(f"{value:08X}")
     if cursors is not None:
         cursors[seed] = k
+    drew = getattr(used, "drew", None)
+    if drew is not None:
+        # Round 45 (lane B): a draft's pool records what it drew, in order, so the same
+        # draws can be made again where the document's sequence is when its change is
+        # applied (docx_agent.blocks).
+        drew(seed, out)
     return out
 
 

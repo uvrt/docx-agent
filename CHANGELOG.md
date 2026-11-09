@@ -5,6 +5,47 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.74 -- unreleased
+
+- **Edits of different blocks of one document at the same time** (production round 45, R64
+  stage 3; ooxml-edit 0.100.0, `DocumentFormat.blocks`; `docx_agent.blocks`). With another
+  edit of the document in flight (and a fill from a dataset always: it may run long),
+  `word_set_text`, `word_insert_markdown` (`end`, `before:`,
+  `after:`; no pictures or footnotes), `word_edit_table` `set_cells` and batches of them --
+  text by reference only from datasets -- run on a *draft*: an editable copy of the last
+  committed version (`layout.read_copy`'s `make.draft`), no lock of the document held. The
+  draft records what the call does: the blocks its ids named, every id it drew, the facts of
+  the whole document it used (the table style the tables use most, the list definition the
+  lists use most, a body of one empty paragraph), and anything a patch cannot carry (ids
+  stamped or renamed, tracked changes, annotation ids, revision ids repeated, ids kept from a
+  copy, drawing numbers, media, a layout), which runs the call under the lock instead. Its
+  patch: the body's blocks before and after, by their bytes; each run that differs, and each
+  block it named, with two blocks either side, is a window (more after a paragraph written
+  in several lines). Under the lock, briefly: every other part unchanged since its version;
+  the body's namespaces and last section as they were; each window found by its first id and
+  byte for byte as it was; the facts the same; then the windows replaced, other parts
+  replaced, ids drawn again where another call drew them first (the result renamed with
+  them, never text), the ledger read at the new version, the reflow measured from the
+  document as it was just before. Another call's change first: prepared again, at most
+  three times (once only after a preparation of more than 2 s of CPU), then under the lock;
+  a call that takes the lock (a fields update, a style change) waits for a draft in flight
+  that long to apply first, so the team's slow fill runs once. Ids another call drew first
+  are drawn again and renamed in every XML part the call changed or added -- the provenance
+  item a document's first fill adds too -- so a first fill beside other edits runs once. Serializable: a randomized run of eight callers (their
+  chapters and each other's, batches with reads after their change, fills, values by
+  reference, formatting and undo under the lock) gives the same results, bytes and id state
+  as its commit order run alone (tests/block_stress.py; tests/test_block_edits_serial.py
+  small, `--run-slow` longer). Any other call with no other edit in flight runs as before
+  (ooxml-edit's `block_edits="auto"`). tests/test_block_edits.py: what a draft takes, a draft's result and
+  bytes those of the document's, edits beside a held call, ids drawn again, the same and
+  neighbouring blocks prepared again, past the tries, and each rule of the shared-state
+  inventory in `docx_agent/blocks.py`. A body is read for its blocks once per state, and
+  from the state read last only between the first and last byte that differ (as `touched`
+  reads a change).
+- A table cell's `from: ""` (a strict decoder's placeholder beside its text) and
+  `word_edit_table`'s own `from: ""` are no source (round 45, lane D's find; ooxml-edit
+  0.100.0 no longer refuses it either).
+
 ## 0.1.73 -- unreleased
 
 - **Checks, renders and reads never wait for an edit in flight; an edit's checks run after

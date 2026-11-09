@@ -1756,6 +1756,25 @@ def _reader_class(kind: type) -> type:
         return found
 
 
+_DRAFT_CLASSES: dict = {}
+
+
+def _draft_class(kind: type) -> type:
+    """A draft's class for documents of ``kind`` (round 45, lane B): ``kind`` with the
+    settings read from the document it is of (:data:`_LIVE_SETTINGS`), as a read copy's,
+    and :class:`docx_agent.blocks.DraftOps` recording what a call does on it.  Its layouts
+    are its own."""
+    from .blocks import DraftOps
+
+    with _KEEPERS_LOCK:
+        found = _DRAFT_CLASSES.get(kind)
+        if found is None:
+            namespace: dict = {name: _live_setting(name) for name in _LIVE_SETTINGS}
+            namespace["__doc__"] = "A draft of a document at one version (:mod:`docx_agent.blocks`)."
+            found = _DRAFT_CLASSES[kind] = type(f"Draft{kind.__name__}", (DraftOps, kind), namespace)
+        return found
+
+
 def read_copy(document: "Document"):
     """ooxml-edit's ``DocumentFormat.read_copy`` (round 45): what a copy of ``document`` at
     this version needs -- its ids (the ledger of every id it had, the renames, the version
@@ -1795,6 +1814,30 @@ def read_copy(document: "Document"):
         copy.__dict__["_frozen"] = (copy.history.version, copy._state, data)
         return copy
 
+    def draft(data: bytes) -> "Document":
+        """Round 45 (lane B): an *editable* copy of this version (:mod:`docx_agent.blocks`):
+        the same ids, version numbers and settings as the read copy, its ledger its own,
+        its layouts its own (a draft is never laid out for the document), its id pool
+        recording what is drawn from it."""
+        from .blocks import DraftPool
+
+        copy = _draft_class(kind).open(data, stamping=document.stamping)
+        copy.__dict__["_live"] = document
+        copy.history.continue_from(version, last)
+        copy._ledger = _ids.copy_ledger(ledger)
+        if copy._ledger.pool is None:
+            copy._note_ids()        # as the document's first edit reads them
+        pool = DraftPool(copy._ledger.pool)
+        pool.cursors.update(copy._ledger.pool.cursors)
+        copy._ledger.pool = pool
+        copy._aliases.update(aliases)
+        for name, value in settings.items():
+            setattr(copy, name, value)
+        copy.converter = None
+        copy.typography_spaced = getattr(document, "typography_spaced", 0)
+        return copy
+
+    make.draft = draft  # type: ignore[attr-defined]
     return make
 
 
