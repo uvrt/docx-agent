@@ -184,6 +184,9 @@ def normal(result: Result) -> dict:
     data = out.get("data")
     if isinstance(data, dict):
         data.pop("timing", None)
+        if isinstance(data.get("reflow"), dict):
+            # What a check says changed since the last check -- whichever ran last, in time.
+            data["reflow"].pop("since_last_check", None)
         for op in data.get("ops") or []:
             if isinstance(op.get("data"), dict):
                 op["data"].pop("timing", None)
@@ -349,5 +352,5 @@ if __name__ == "__main__":
                           **{k: v for k, v in found.items() if k not in ("differ",)}}), flush=True)
         if not found["same"]:
             failed += 1
-            print(json.dumps(found["differ"], indent=1)[:6000], flush=True)
+            print(json.dumps(found["differ"], indent=1), flush=True)
     sys.exit(1 if failed else 0)
