@@ -5,7 +5,7 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
-## 0.1.73 -- unreleased
+## 0.1.72 -- unreleased
 
 - **A table filled from a dataset in one pass** (production round 45, R67). `word_edit_table`
   `set_cells` `from` wrote its block as one edit per row added and one or more per cell, each
