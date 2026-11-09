@@ -345,11 +345,15 @@ class DocumentLayout:
         page order and, on a page, in the order its columns are first drawn."""
         wanted = self._wanted(identifier)
         out: list[Placement] = []
-        for number, lines in enumerate(self._lines):
+        drawn = self._drawn()
+        found = sorted((at for key in wanted for at in drawn.get(key, ())), key=lambda at: at[:2])
+        pages: dict[int, list] = {}
+        for number, _, line in found:
+            pages.setdefault(number, []).append(line)
+        for number, lines in pages.items():
             columns: dict[int, list] = {}
-            for key, line in lines:
-                if key is not None and self._canon(key) in wanted:
-                    columns.setdefault(line.column or 0, []).append(line)
+            for line in lines:
+                columns.setdefault(line.column or 0, []).append(line)
             for column, mine in columns.items():
                 top = min(line.top for line in mine)
                 bottom = max(line.top + line.pitch for line in mine)
@@ -359,6 +363,28 @@ class DocumentLayout:
         if out:
             return out
         return self._unknown(identifier)
+
+    def _drawn(self) -> dict[str, list[tuple[int, int, Any]]]:
+        """Round 45: each id (aliases followed, :meth:`_canon`) -> where its lines are drawn,
+        ``(page index, place on the page, line)`` in drawing order -- what :meth:`where`
+        looked for by reading every line of every page, once per id asked (a table of
+        contents asked for each of its headings).  Made again when the aliases changed."""
+        aliases = self._document._aliases
+        kept = self.__dict__.get("_drawn_by")
+        if kept is not None and kept[0] is aliases and kept[1] == aliases:
+            return kept[2]
+        out: dict[str, list[tuple[int, int, Any]]] = {}
+        canon: dict[str, str] = {}
+        for number, lines in enumerate(self._lines):
+            for place, (key, line) in enumerate(lines):
+                if key is None:
+                    continue
+                name = canon.get(key)
+                if name is None:
+                    name = canon[key] = self._canon(key)
+                out.setdefault(name, []).append((number, place, line))
+        self.__dict__["_drawn_by"] = (aliases, dict(aliases), out)
+        return out
 
     def extent(self, identifiers: "str | Any", pages: "Any" = None) -> list[Extent]:
         """How much of each page the body content of some blocks takes (round 35, R26):

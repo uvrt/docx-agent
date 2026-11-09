@@ -331,6 +331,49 @@ def remember(call: Any, ref: str | None, identifier: str | None) -> None:
 # -- checks ------------------------------------------------------------------------------------
 
 
+class Timing:
+    """Round 45 (R67): where a long call's time went, part by part -- its result's
+    ``data.timing``, seconds of wall-clock time each, rounded to milliseconds.  The handler
+    times its parts (:meth:`part`) and touches the call with it (``call.touch(timing)``);
+    the checks after the call add theirs (``validate``, ``reflow``: the layout after it).
+    The time a call waited for the document's lock is in none of them."""
+
+    def __init__(self) -> None:
+        #: The parts so far, in order: what the result's ``timing`` is (the same dict).
+        self.parts: dict[str, float] = {}
+
+    @contextmanager
+    def part(self, name: str) -> Iterator[None]:
+        started = time.perf_counter()
+        try:
+            yield
+        finally:
+            self.add(name, time.perf_counter() - started)
+
+    def add(self, name: str, seconds: float) -> None:
+        self.parts[name] = round(self.parts.get(name, 0.0) + seconds, 3)
+
+
+#: ``word_fields``' work ahead of an update, timed (:func:`ahead_timed`), for the update's
+#: ``timing``: per thread, the seconds the last ahead on it took -- the ahead and its call run
+#: on one thread, one after the other.
+_AHEAD_SECONDS: dict[int, float] = {}
+
+
+def ahead_timed(seconds: float) -> None:
+    """Say how long the work ahead of this thread's call took (:data:`_AHEAD_SECONDS`)."""
+    import threading
+
+    _AHEAD_SECONDS[threading.get_ident()] = seconds
+
+
+def ahead_seconds() -> float | None:
+    """The seconds the work ahead of this thread's call took, taken (``None``: none)."""
+    import threading
+
+    return _AHEAD_SECONDS.pop(threading.get_ident(), None)
+
+
 class Before:
     """What a changing call touches first: the layout of the state before it (or ``None``),
     for the reflow the checks report.  Equal to every other, so a batch keeps the first."""
@@ -355,26 +398,40 @@ def checks(entry: Any, touched: Sequence[Any]) -> dict[str, Any]:
     (``"stale: call check"`` beyond)."""
     document = entry.document
     before = next((t.layout for t in touched if isinstance(t, Before)), None)
-    out: dict[str, Any] = {"validate": validate_delta(entry), "reflow": None}
+    timing = next((t for t in touched if isinstance(t, Timing)), None) or Timing()
+    with timing.part("validate"):
+        out: dict[str, Any] = {"validate": validate_delta(entry), "reflow": None}
     try:
-        if before is not None:
-            if before.count > REFLOW_PAGES:
-                out["reflow"] = STALE
-            else:
-                engine = document.converter
-                if isinstance(engine, Engine):
-                    engine.arm()
-                try:
-                    # By summaries (round 38), ids followed through the document's aliases now.
-                    after = document.layout()
-                    now = summary_for(document, after.key if after.key is not None else layout_key(
-                        document.to_bytes(), layout_options(document, {})), after)
-                    out["reflow"] = reflow_json(now.compare(before, canon_of(document)))
-                except ToolError as error:
-                    out["reflow"] = f"{error.code}: {error.message}"
+        with timing.part("reflow") if before is not None and before.count <= REFLOW_PAGES else _no_part():
+            _reflow(document, before, out)
     finally:
         release([entry])
     return out
+
+
+@contextmanager
+def _no_part() -> Iterator[None]:
+    yield
+
+
+def _reflow(document: Any, before: Any, out: dict[str, Any]) -> None:
+    """:func:`checks`' reflow, into ``out``."""
+    if before is None:
+        return
+    if before.count > REFLOW_PAGES:
+        out["reflow"] = STALE
+        return
+    engine = document.converter
+    if isinstance(engine, Engine):
+        engine.arm()
+    try:
+        # By summaries (round 38), ids followed through the document's aliases now.
+        after = document.layout()
+        now = summary_for(document, after.key if after.key is not None else layout_key(
+            document.to_bytes(), layout_options(document, {})), after)
+        out["reflow"] = reflow_json(now.compare(before, canon_of(document)))
+    except ToolError as error:
+        out["reflow"] = f"{error.code}: {error.message}"
 
 
 def validate_delta(entry: Any, problems: Sequence[Any] | None = None) -> dict[str, Any]:
@@ -451,14 +508,22 @@ def outcome(results: Iterable[Any], summary: str, *, data: Any = None,
             changed: Sequence[str] = ()) -> Result:
     """The envelope for one or more :class:`~docx_agent.EditResult`\\ s."""
     result = Result(summary=summary, data=data)
+    # Round 45: what each list holds, as a set beside it -- the same lists, in the same order,
+    # without reading them through for every edit (a table filled from a dataset is
+    # thousands of edits).
+    seen = {"created": set(result.created), "removed": set(result.removed), "changed": set(result.changed)}
     for edit in results:
         if edit is None:
             continue
         for key, values in (("created", edit.created), ("removed", edit.removed)):
-            target = getattr(result, key)
-            target.extend(v for v in values if v not in target)
-        if edit.id is not None and edit.changed and edit.id not in result.created \
-                and edit.id not in result.changed:
+            target, held = getattr(result, key), seen[key]
+            for value in values:
+                if value not in held:
+                    held.add(value)
+                    target.append(value)
+        if edit.id is not None and edit.changed and edit.id not in seen["created"] \
+                and edit.id not in seen["changed"]:
+            seen["changed"].add(edit.id)
             result.changed.append(edit.id)
         result.renamed.update(edit.renamed)
         result.warnings.extend(w for w in edit.warnings if w not in result.warnings)
@@ -467,7 +532,8 @@ def outcome(results: Iterable[Any], summary: str, *, data: Any = None,
             if note not in result.warnings:
                 result.warnings.append(note)
     for identifier in changed:
-        if identifier not in result.changed:
+        if identifier not in seen["changed"]:
+            seen["changed"].add(identifier)
             result.changed.append(identifier)
     return result
 
@@ -555,15 +621,21 @@ def wrap(handler: Callable[..., Any], *, mutates: bool, track: bool = True) -> C
                 if track:
                     with tracked(call, call.entry):
                         returned = handler(call, **arguments)
+                        started = time.perf_counter()
                         spaced = _space_written(call)
                 else:
                     returned = handler(call, **arguments)
+                    started = time.perf_counter()
                     spaced = _space_written(call)
                 if getattr(call, "facts", None):
                     # Round 36: what was written by reference is kept on its paragraph.
                     from .textfacts import keep_written
 
                     keep_written(call, returned, arguments)
+                timing = _timing_of(returned)
+                if timing is not None:
+                    # Round 45: the spacing of the text written, after the handler.
+                    timing["spacing"] = round(time.perf_counter() - started, 3)
                 if spaced and isinstance(returned, Result):
                     returned.warnings.append(SPACED.format(spaced))
                 keep = True  # the checks hook lays out after the call, then releases
@@ -575,6 +647,13 @@ def wrap(handler: Callable[..., Any], *, mutates: bool, track: bool = True) -> C
                 release(call.entries.values())
 
     return run
+
+
+def _timing_of(returned: Any) -> dict | None:
+    """A result's ``data.timing`` (:class:`Timing`), if it has one."""
+    data = returned.data if isinstance(returned, Result) else None
+    found = data.get("timing") if isinstance(data, dict) else None
+    return found if isinstance(found, dict) else None
 
 
 # -- arguments ---------------------------------------------------------------------------------

@@ -161,60 +161,142 @@ class TableOps:
         index = len(rows) - 1 if index is None else index
         if not 0 <= index < len(rows):
             raise EditError(f"{entry.id} has no row {index}")
-        reference = rows[index]
         neighbour = rows[index + 1] if below and index + 1 < len(rows) else (rows[index - 1] if not below and index else None)
         tracking = self._active_tracking()
         with self._edit():
             renames = self._prepare(part, [])
             part, entry = self._table_entry(renames.get(table, table))
             rows = [row for row, _ in entry.rows]
-            reference = rows[index]
-            row = make("w:tr")
-            if reference.find(_W + "tblPrEx") is not None:
-                row.append(copy.deepcopy(reference.find(_W + "tblPrEx")))
-            if reference.find(_W + "trPr") is not None:
-                properties = copy.deepcopy(reference.find(_W + "trPr"))
-                for child in list(properties):
-                    if child.tag in (_W + "ins", _W + "del", _W + "trPrChange"):
-                        remove(child)
-                if len(properties):
-                    row.append(properties)
-            next_cells = {start: cell for cell, start, _ in _cells(neighbour)} if neighbour is not None else {}
-            for cell, start, span in _cells(reference):
-                new_cell = make("w:tc")
-                properties = _clean_cell_properties(cell.find(_W + "tcPr"))
-                merge = properties.find(_W + "vMerge")
-                if merge is not None:
-                    remove(merge)
-                    inside = (_vmerge(next_cells[start]) == "continue" if below and start in next_cells else False) \
-                        or (not below and _vmerge(cell) == "continue")
-                    if inside:
-                        insert_in_order(properties, make("w:vMerge"))
-                new_cell.append(properties)
-                new_cell.append(_empty_paragraph_like(cell.find(W_P)))
-                row.append(new_cell)
-            if below:
-                reference.addnext(row)
-            else:
-                reference.addprevious(row)
-            self._stamp_new(part, [row] + list(row.iter(W_P)))
-            if tracking is not None:
-                from ..revisions import track as _track
-                from ..revisions.stamp import Stamp
-
-                stamp = Stamp(self, tracking)
-                properties = row.find(_W + "trPr")
-                if properties is None:
-                    properties = make("w:trPr")
-                    insert_in_order(row, properties)
-                insert_in_order(properties, stamp.make("w:ins", part))
-                for paragraph in row.iter(W_P):
-                    _track.mark(paragraph, "ins", stamp, part)
-                stamp.finish()
-            self.package.mark_dirty(part)
-            story = self._story_of(part)
-            new_id = ("" if story == "body" else f"{story}/") + f"tr:{row.get(_ids.PARA_ID)}"
+            new_id = self._put_row_like(part, rows[index], neighbour, below, tracking)
         return EditResult(new_id, created=[new_id], renamed=renames)
+
+    def _put_row_like(self: "Document", part: str, reference: Element, neighbour: Element | None,
+                      below: bool, tracking) -> str:
+        """:meth:`insert_row`'s change, inside its edit: the new row beside ``reference``
+        (below it unless ``below`` is false), stamped, its insertion tracked under
+        ``tracking``; its id."""
+        row = make("w:tr")
+        if reference.find(_W + "tblPrEx") is not None:
+            row.append(copy.deepcopy(reference.find(_W + "tblPrEx")))
+        if reference.find(_W + "trPr") is not None:
+            properties = copy.deepcopy(reference.find(_W + "trPr"))
+            for child in list(properties):
+                if child.tag in (_W + "ins", _W + "del", _W + "trPrChange"):
+                    remove(child)
+            if len(properties):
+                row.append(properties)
+        next_cells = {start: cell for cell, start, _ in _cells(neighbour)} if neighbour is not None else {}
+        for cell, start, span in _cells(reference):
+            new_cell = make("w:tc")
+            properties = _clean_cell_properties(cell.find(_W + "tcPr"))
+            merge = properties.find(_W + "vMerge")
+            if merge is not None:
+                remove(merge)
+                inside = (_vmerge(next_cells[start]) == "continue" if below and start in next_cells else False) \
+                    or (not below and _vmerge(cell) == "continue")
+                if inside:
+                    insert_in_order(properties, make("w:vMerge"))
+            new_cell.append(properties)
+            new_cell.append(_empty_paragraph_like(cell.find(W_P)))
+            row.append(new_cell)
+        if below:
+            reference.addnext(row)
+        else:
+            reference.addprevious(row)
+        self._stamp_new(part, [row] + list(row.iter(W_P)))
+        if tracking is not None:
+            from ..revisions import track as _track
+            from ..revisions.stamp import Stamp
+
+            stamp = Stamp(self, tracking)
+            properties = row.find(_W + "trPr")
+            if properties is None:
+                properties = make("w:trPr")
+                insert_in_order(row, properties)
+            insert_in_order(properties, stamp.make("w:ins", part))
+            for paragraph in row.iter(W_P):
+                _track.mark(paragraph, "ins", stamp, part)
+            stamp.finish()
+        self.package.mark_dirty(part)
+        story = self._story_of(part)
+        return ("" if story == "body" else f"{story}/") + f"tr:{row.get(_ids.PARA_ID)}"
+
+    # -- a table filled in one pass (round 45, R67) -------------------------------------------
+    #
+    # word_edit_table's set_cells from a source wrote a block of thousands of cells as one
+    # edit per row added and one or more per cell: each edit threw every index away, so the
+    # next one read the whole document again (every story's paragraphs, the ids in use, the
+    # table's grid) -- a 431-row block took minutes.  These two make the same changes, in the
+    # same order, in one pass: the bytes and ids are those the edits one by one give (tests:
+    # test_table_fill_speed.py).  Only where nothing needs stamping (Document._stamping_due),
+    # where every edit's stamping stamps nothing; the caller checks, and makes the edits one
+    # by one otherwise.
+
+    def _rows_after_last(self: "Document", table: str, count: int) -> list["EditResult"]:
+        """``count`` rows after the table's last, each as ``insert_row(table, last)`` makes
+        one -- and each that would repeat as a header row made a body row
+        (``set_row(header=False)``), as ``word_edit_table``'s grow did, row by row: their
+        edits, in order."""
+        from .document import EditResult
+
+        part, entry = self._table_entry(table)
+        table_id, height = entry.id, len(entry.rows)
+        tracking = self._active_tracking()
+        edits: list[EditResult] = []
+        with self._edit(), self._held_ids():
+            last = entry.rows[-1][0]
+            for k in range(count):
+                new_id = self._put_row_like(part, last, None, True, tracking)
+                last = last.getnext()
+                edits.append(EditResult(new_id, created=[new_id], renamed={}))
+                if last.find(f"{_W}trPr/{_W}tblHeader") is not None:
+                    self._invalidate()          # set_row finds the row in the index
+                    edits.append(self.set_row(table_id, height + k, header=False))
+        return edits
+
+    def _fill_cells(self: "Document", table: str, writes: list[tuple[int, int, str]]
+                    ) -> tuple[list["EditResult"], list[str]]:
+        """Each ``(row, column, text)`` of ``writes`` in order, as ``word_edit_table`` writes
+        a cell's text: its first paragraph's text set (formatting kept) where it differs,
+        its other paragraphs deleted, each line after the first a paragraph after it.  The
+        edits, and each cell's id."""
+        from .document import EditResult, ParagraphEntry, cell_element
+        from . import text as _text
+
+        part, entry = self._table_entry(table)
+        grid = self.table(entry.id).grid()
+        rows = [row for row, _ in entry.rows]     # the same elements after every edit here
+        tracking = self._active_tracking()
+        edits: list[EditResult] = []
+        ids: list[str] = []
+        with self._edit(), self._held_ids():
+            for row, column, text in writes:
+                cell = grid[row][column]
+                element = cell_element(rows[cell.row], cell.column)
+                if element is None:
+                    raise KeyError(f"{cell.id} no longer exists")
+                index = self._index(part)
+                paragraphs = [found for found in map(index.entry_for, element.iter(W_P))
+                              if isinstance(found, ParagraphEntry)]
+                lines = text.split("\n")
+                first = paragraphs[0]
+                if _text.paragraph_text(first.element) != lines[0]:
+                    _text.check_text(lines[0])
+                    nested = any(True for node in first.element.iter(W_P, W_TBL, W_TR) if node is not first.element)
+                    self._write_text(part, first, lines[0], tracking, prepare=False)
+                    edits.append(EditResult(first.id, renamed={}))
+                    if nested:
+                        self._invalidate()      # what it held may have gone with its text
+                for extra in paragraphs[1:]:
+                    edits.append(self.delete_block(extra.id))
+                if len(lines) > 1:
+                    last = self._index(part).entry_for(first.element).id
+                    for line in lines[1:]:
+                        made = self.insert_paragraph(line, after=last)
+                        edits.append(made)
+                        last = made.id
+                ids.append(f"{entry.id}/c{cell.row},{cell.column}")
+        return edits, ids
 
     def delete_row(self: "Document", table: str, index: int) -> "EditResult":
         """Delete row ``index``; a vertical merge it starts goes on from the row below it.
