@@ -264,10 +264,18 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 #: ``continue`` joins) +24: +59 to every definition (15,421 -> 15,480).  The guard rises to
 #: 15,480.  Neither tool is strict: the strict set is unchanged (6 tools, 24 optional
 #: parameters).
+#: Round 45, R65/R66/R68: word_insert_markdown's ``from`` names one text field too, written
+#: as its Markdown (+12; ``markdown_from`` is an alias: no definition), word_edit_table's
+#: cells take ``from`` (one value, a number format after it; ``text`` now optional: +20) and
+#: word_comments' target a table or row (+3): +36 to every definition (15,480 -> 15,516), none
+#: to the core (3,192).  The guard rises to 15,520.  word_insert_markdown is strict: its
+#: description only, so the strict set is unchanged (6 tools, 24 optional parameters); the
+#: other two are not strict for Claude (on OpenAI, where every tool is, a cell's ``from`` is
+#: one more nullable string).
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 6500
-ALL_GUARD = 15480
+ALL_GUARD = 15520
 
 
 @pytest.fixture(scope="module")
