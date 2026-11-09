@@ -9,7 +9,8 @@ snapshot commit; the development history before it is summarised here.
 
 - Tests: the check-timing test that tells the wait for the layout's worker from the layout
   stretches both by sleeps far apart (0.3 s before the task, 2 s in the layout), so a
-  loaded runner's slack no longer fails it; it proves the same thing (round 47, R82).
+  loaded runner's slack no longer fails it; it proves the same thing (round 47, R82). Its
+  lower bounds allow 10 ms for a clock that reads a sleep short (Windows: 0.2 s as 0.199).
 
 ## 0.1.76 -- unreleased
 

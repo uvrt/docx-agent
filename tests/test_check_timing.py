@@ -30,6 +30,9 @@ pytestmark = pytest.mark.any_faces
 
 WORDS = "lantern meadow river stone harbour quiet orchard copper valley signal".split()
 
+#: A sleep measured by another clock, rounded to the millisecond: Windows' can read a little
+#: short (a 0.2 s sleep as 0.199).
+CLOCK = 0.01
 #: Every name a check's timing may hold.
 PARTS = {"resolve", "validate", "copies", "layout", "facts", "fields", "worker_wait", "document_wait"}
 
@@ -126,8 +129,8 @@ def test_the_wait_for_the_worker_is_apart_from_the_layout(made, monkeypatch):
     with Toolbox(TOOLS, formats=[FORMAT], groups=GROUPS, workers=0) as box:
         session, doc, _document = _open(box, made)
         timing = _timing(box.dispatch(session, "check", {"doc": doc, "include": ["reflow"]}))
-    assert timing["layout"] >= laying                    # the layout's time is its own
-    assert timing["worker_wait"] >= stall                # the wait before it is the wait
+    assert timing["layout"] >= laying - CLOCK                    # the layout's time is its own
+    assert timing["worker_wait"] >= stall - CLOCK                # the wait before it is the wait
     # Had the layout been counted as waiting, the wait would hold it too: ``laying`` more.
     assert timing["worker_wait"] < stall + laying, timing
 
@@ -150,7 +153,7 @@ def test_taking_the_document_back_is_document_wait():
     timing = Timing()
     with shared_module._timed_unlocked(Call(True), timing)() as let_go:
         assert let_go is True
-    assert timing.parts["document_wait"] >= stall
+    assert timing.parts["document_wait"] >= stall - CLOCK
     held = Timing()
     with shared_module._timed_unlocked(Call(False), held)():
         pass
