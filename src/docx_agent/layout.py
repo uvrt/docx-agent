@@ -18,7 +18,10 @@ call on it).  One rule: *never wait for a layout in progress while holding the d
 lock*.  In order, each taken only with those before it held, never the other way:
 
 1. the document's lock (ooxml-edit's ``DocumentEntry.lock``, taken by ``Session.lock`` in
-   document order; ``Call.unlocked()`` lets the call's go and takes them back in that order);
+   document order; ``Call.unlocked()`` lets the call's go and takes them back in that order)
+   -- or, for a read (round 45), the lock of the read copy of its committed version
+   (:func:`read_copy`; ``Session.read_lock``), which stands in its place: the copy shares
+   the document's layouts, so the locks below are the document's;
 2. the lock over the document's layouts (:func:`_keeper`: the cache, the layouts in progress,
    the one kept for the next version; held only for a lookup or to map a layout to ids --
    never while laying out or waiting) -- one document's at a time (:func:`adopt` takes the
@@ -1645,6 +1648,108 @@ def twin(data: bytes, like: dict) -> "Document":
     return copy
 
 
+#: Round 45: what a read copy (:func:`read_copy`) shares with the document it is of -- the
+#: layouts and what is known of them, all keyed by the bytes laid out (equal bytes, equal
+#: layout), under the document's one lock over them (:func:`_keeper`).  A read copy's
+#: layout is the document's, and the document's next version is laid out from it.  The
+#: layout a check last saw (``check``'s ``since_last_check``) is the document's too.
+_SHARED_LAYOUT = ("_layout_lock", "_layout_flights", "_layout_kept", "_layout_count",
+                  "_layout_tickets", "_layout_lineage", "_layout_fresh", "_layout_summaries",
+                  "_check_facts", "_layouts", "_layout_stats", "_tool_seen_layout",
+                  # The tools' caches keyed by content or by version, set whole (a tuple) or
+                  # under a lock of their own: a check's copy comparisons, the styles' digest,
+                  # a render's coverage, the settings read for a like.
+                  "_tool_copy_cache", "_tool_styles_digest", "_tool_render_coverage",
+                  "_tool_settings_frame")
+#: A document's public attributes a read copy does not take as they are: its parts and
+#: history are its own, its layout engine is pointed at per call, and the count of spaces
+#: written is an edit's.
+_NOT_SETTINGS = ("package", "history", "converter", "typography_spaced")
+_READER_CLASSES: dict = {}
+
+
+def _shared_attribute(name: str) -> property:
+    def get(self: Any) -> Any:
+        live = self.__dict__.get("_live")
+        if live is None:
+            try:
+                return self.__dict__[name]
+            except KeyError:
+                raise AttributeError(name) from None
+        return getattr(live, name)
+
+    def put(self: Any, value: Any) -> None:
+        live = self.__dict__.get("_live")
+        if live is None:
+            self.__dict__[name] = value
+        else:
+            setattr(live, name, value)
+
+    return property(get, put)
+
+
+def _reader_class(kind: type) -> type:
+    """The read copy's class for documents of ``kind``: ``kind`` with the layout attributes
+    (:data:`_SHARED_LAYOUT`) the document's, and its bytes those it was opened from while it
+    is the state it was opened as."""
+    with _KEEPERS_LOCK:
+        found = _READER_CLASSES.get(kind)
+        if found is None:
+            def to_bytes(self: Any) -> bytes:
+                frozen = self.__dict__.get("_frozen")
+                if frozen is not None and frozen[0] == self.history.version and frozen[1] == self._state:
+                    return frozen[2]
+                return kind.to_bytes(self)
+
+            namespace: dict = {name: _shared_attribute(name) for name in _SHARED_LAYOUT}
+            namespace["to_bytes"] = to_bytes
+            namespace["__doc__"] = "A read copy of a document at one version (:func:`docx_agent.layout.read_copy`)."
+            found = _READER_CLASSES[kind] = type(f"Read{kind.__name__}", (kind,), namespace)
+        return found
+
+
+def read_copy(document: "Document"):
+    """ooxml-edit's ``DocumentFormat.read_copy`` (round 45): what a copy of ``document`` at
+    this version needs -- its ids (the ledger of every id it had, the renames, the version
+    numbers: what :meth:`Document.id_state` holds) and its settings -- taken now, under the document's lock; and
+    ``make(data)``, which opens the copy from this version's bytes with no lock held.  The
+    copy answers as the document did: the same ids, version and refusals (its ids), the
+    same settings (font folders, locale, stamping, how a gone id is described), and the
+    document's own layouts (:data:`_SHARED_LAYOUT`: a check of the copy lays out where the
+    document's layouts are, from its last one, and the document's next layout starts from
+    the copy's).  Never edited: its tools only read."""
+    _keeper(document)
+    # Its ids as they are now: the ledger copied (what id_state would write and the copy's
+    # open read back, without either), the renames, and the version numbers.
+    ledger = _ids.copy_ledger(document._ledger)
+    aliases = dict(document._aliases)
+    version, last = document.history.version, document.history.last_version
+    settings = {name: value for name, value in vars(document).items()
+                if not name.startswith("_") and name not in _NOT_SETTINGS}
+    kind = type(document)
+    # A changing call's layout engine, still pointed at for its checks, goes to the copy
+    # its checks run on once the lock is let go (ooxml-edit's After): the document's own is
+    # let go now, as the checks would have (docx_agent.tools._base.checks).
+    engine = document.__dict__.pop("_checks_engine", None)
+    if document.converter is engine:
+        document.converter = None
+
+    def make(data: bytes) -> "Document":
+        copy = _reader_class(kind).open(data, stamping=document.stamping)
+        copy.__dict__["_live"] = document
+        copy.history.continue_from(version, last)
+        copy._ledger = ledger
+        copy._aliases.update(aliases)
+        for name, value in settings.items():
+            setattr(copy, name, value)
+        copy.converter = None
+        copy.__dict__["_handed_engine"] = engine
+        copy.__dict__["_frozen"] = (copy.history.version, copy._state, data)
+        return copy
+
+    return make
+
+
 def adopt(document: "Document", copy: "Document") -> None:
     """Keep ``copy``'s layouts (:func:`twin`) as ``document``'s: each cached under the bytes
     and options it is of, so the document finds one wherever it comes to those very bytes
@@ -1706,7 +1811,9 @@ def check_facts(document: "Document", unlocked: Any, request: dict) -> "tuple[di
         while len(document._check_facts) > _FACTS_SIZE:
             document._check_facts.popitem(last=False)
         if result.get("stats") is not None:
-            stats = document.__dict__.setdefault("_layout_stats", OrderedDict())
+            stats = getattr(document, "_layout_stats", None)
+            if stats is None:      # round 45: an attribute, so a read copy keeps the document's
+                stats = document._layout_stats = OrderedDict()
             stats[cache_key(data, options)] = result["stats"]
             while len(stats) > _CACHE_SIZE:
                 stats.popitem(last=False)

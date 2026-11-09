@@ -5,6 +5,29 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.71 -- unreleased
+
+- **Checks, renders and reads never wait for an edit in flight; an edit's checks run after
+  it lets the document go** (production round 45, R64 stages 1 and 2; ooxml-edit 0.96.0).
+  The Word format copies documents for ooxml-edit's reads of the committed version
+  (`DocumentFormat.read_copy`: `docx_agent.layout.read_copy`): under the lock, when a
+  changing call ends, it copies the id ledger, the renames, the version numbers and the
+  settings (font folders, locale, stamping, how a gone id is described); the copy is opened
+  later from the version's bytes, with no lock held. It answers every reading call as the
+  document did at that version -- the same ids, refusals, facts and pages -- and its
+  layouts are the document's own (the layouts, their summaries, the facts of checks, the
+  layout the last check saw, all keyed by the bytes laid out), so a check of the copy lays
+  out where the document's layouts are held, and the next version is laid out from it. Its
+  bytes are those it was opened from (no second serialization). A changing call's checks --
+  the validation delta (seconds on a long document) and the reflow -- run on the copy of
+  the version it made, with the call's own layout engine, after the lock is let go; a
+  change's reflow is measured from the bytes its version kept rather than serialized
+  again. On the made-up 60-page report with twelve builders and two layout workers (round
+  45 harness), the checks' wait for the lock fell from 5,138 s in all to 156 s. Results and
+  bytes are 0.1.70's for the same calls one after another (tests/test_committed_reads.py
+  compares every read and edit with the copies on and off; the harness's ordered run gives
+  the same results and final bytes as 0.1.70).
+
 ## 0.1.70 -- unreleased
 
 - **A list that counts on through the copies of a sample, as the caller states it**
