@@ -59,8 +59,9 @@ numbering.xml              unchanged since, or conflict; a list restarted: the p
 styles.xml                 unchanged since, or conflict; a style added: the part replaced
 settings.xml, theme        unchanged since, or conflict
 relationships, parts,      unchanged since, or conflict; added or replaced as the draft did,
-[Content_Types]            in its order; parts added with ids renamed: conflict
-provenance item            unchanged since, or conflict; replaced, its keys renamed
+[Content_Types]            in its order; ids drawn again renamed in an added XML part as in a
+                           changed one (any other part added with ids renamed: conflict)
+provenance item            unchanged since, or conflict; replaced or added, its keys renamed
 sectPr, section breaks     the body's tail as it was; a region holding a section break
                            changed: whole lock
 fields and TOC             in the body's blocks (windows); field updates: whole lock
@@ -826,7 +827,10 @@ class Blocks:
                 raise BlockConflict(f"the document's {name.replace('_', ' ')} changed")
         renames, pool = _redraw(document, patch)
         moved = {old: new for old, new in renames.items() if old != new}
-        if moved and (not patch.renamable or any(before is None for _p, before, _a in patch.parts)):
+        # Ids drawn again are renamed in what the call wrote -- the body's windows and every
+        # part it changed or added (the provenance item a first fill adds) -- by their text.
+        if moved and (not patch.renamable or any(after is not None and not path.endswith((".xml", ".rels"))
+                                                 for path, _b, after in patch.parts)):
             raise BlockConflict("ids drawn meanwhile, and these cannot be renamed")
         parts = [(path, before, _renamed_bytes(after, moved) if after is not None else None)
                  for path, before, after in patch.parts]

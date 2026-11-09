@@ -33,9 +33,9 @@ def _box(mode: str = "always", tries: int = 3, redo: float = 2.0) -> Toolbox:
 
 
 @contextlib.contextmanager
-def opened(mode: str = "always", tries: int = 3, redo: float = 2.0):
+def opened(mode: str = "always", tries: int = 3, redo: float = 2.0, first_fill: bool = False):
     """A session on the made-up report (``block_stress.made``), its layout of ids."""
-    data = block_stress.made(3)
+    data = block_stress.made(3, first_fill=first_fill)
     with _box(mode, tries, redo) as box:
         session = box.session(clock=block_stress.CLOCK)
         doc = session.open(data, "report.docx")
@@ -268,6 +268,37 @@ def test_ids_drawn_meanwhile_are_drawn_again_and_the_result_says_the_documents(m
         assert result.data["blocks"] == result.created
         ids = [p.id for p in document.paragraphs()]
         assert len(ids) == len(set(ids)) and not document.validate()
+
+
+def test_a_first_fill_while_others_draw_ids_is_prepared_once_its_added_part_renamed(monkeypatch):
+    """A document's first fill from a dataset adds the provenance item (a part); another
+    builder draws ids while the fill is held on its draft.  The fill's ids are drawn again
+    when it applies -- in the body and in the part it adds -- and it is prepared once: every
+    row's id is the document's, and every place the provenance names is one the document has."""
+    with opened(first_fill=True) as (box, session, doc, layout), held(monkeypatch) as hold:
+        document = session.entry(doc).document
+        assert not any(name.startswith("/customXml/") or name.startswith("customXml/")
+                       for name in document.package.part_names)
+        thread, slow = _in_thread(lambda: box.dispatch(session, "word_edit_table", {
+            "doc": doc, "table": layout.fill, "action": "set_cells", "grow": True, "from": "d:rows"}))
+        assert hold.ready.wait(60)
+        fast = box.dispatch(session, "word_set_text",       # draws textIds, as the fill does
+                            {"doc": doc, "target": layout.bodies[2][0], "text": "Changed meanwhile."})
+        hold.release()
+        thread.join()
+        result = slow["result"]
+        assert fast.ok and result.ok, result.to_json()
+        assert _shape(result.block) == {"tries": 1, "conflicts": []}
+        document = session.entry(doc).document
+        ids = [p.id for p in document.paragraphs()]
+        assert len(ids) == len(set(ids)) and not document.validate()
+        provenance = session.provenance(doc)
+        assert provenance
+        table = document.table(layout.fill)
+        for address in provenance:
+            assert address.split("/")[0] == layout.fill, address
+        assert table.cell(1, 0).text and table.cell(6, 0).text
+        assert any(name.endswith("customXml/item1.xml") for name in document.package.part_names)
 
 
 def test_an_edit_of_the_same_paragraph_makes_the_call_prepare_again(monkeypatch):

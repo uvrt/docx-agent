@@ -13,9 +13,9 @@ import block_stress
 pytestmark = pytest.mark.any_faces
 
 
-@pytest.mark.parametrize("seed", [0, 1])
-def test_concurrent_edits_equal_their_commit_order_run_alone(seed):
-    found = block_stress.run(seed, threads=4, calls=8, chapters=3)
+@pytest.mark.parametrize("seed, first_fill", [(0, False), (1, True)])
+def test_concurrent_edits_equal_their_commit_order_run_alone(seed, first_fill):
+    found = block_stress.run(seed, threads=4, calls=8, chapters=3, first_fill=first_fill)
     assert found["same"], found
     assert found["drafted"] > 0
 

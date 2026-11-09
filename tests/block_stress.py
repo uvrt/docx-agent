@@ -58,10 +58,12 @@ def ds_rows(call: Any, id: str, rows: str) -> Result:
 
 
 @functools.lru_cache(maxsize=4)
-def made(chapters: int = 4) -> bytes:
+def made(chapters: int = 4, *, first_fill: bool = False) -> bytes:
     """A made-up report: per chapter a heading, sections, paragraphs, a bullet and a numbered
     list, a small table, an end paragraph; a table to fill; a paragraph with a value written
-    by reference; a bookmark and a cross-reference; a comment over two paragraphs."""
+    by reference; a bookmark and a cross-reference; a comment over two paragraphs.
+    ``first_fill``: the paragraph's text written plainly, so the document keeps no provenance
+    yet -- its first fill or value by reference adds the part."""
     rng = random.Random(45)
     with Toolbox([*TOOLS, ds_rows], formats=[FORMAT], groups=GROUPS, workers=0, block_edits="off") as box:
         session = box.session(clock=CLOCK)
@@ -96,7 +98,8 @@ def made(chapters: int = 4) -> bytes:
         call("word_fields", action="insert_cross_reference", at=f"{ends[0].id}@{len(ends[0].text)}",
              bookmark="first_section", kind="text")
         call("word_set_text", target=[p.id for p in paragraphs if len(p.text) > 60][1],
-             text="A value from the rows: {{d:rows/#2/name}} and more text after it.")
+             text=("A value from the rows: " + ("a name" if first_fill else "{{d:rows/#2/name}}")
+                   + " and more text after it."))
         long = [p.id for p in paragraphs if len(p.text) > 60]
         call("word_comments", action="add", items=[{"target": f"{long[3]}@3..{long[4]}@9", "text": "A remark on these."}])
         return entry.document.to_bytes()
@@ -232,9 +235,11 @@ def _box(mode: str) -> Toolbox:
                    limits=Limits(render_timeout=600, layout_timeout=600, batch_timeout=600))
 
 
-def run(seed: int, threads: int, calls: int, chapters: int = 4, mode: str = "always") -> dict:
-    """One stress run and its replay; ``{"same": bool, ...}`` with what differed."""
-    data = made(chapters)
+def run(seed: int, threads: int, calls: int, chapters: int = 4, mode: str = "always",
+        first_fill: bool = False) -> dict:
+    """One stress run and its replay; ``{"same": bool, ...}`` with what differed.
+    ``first_fill``: on a report with no provenance yet (:func:`made`)."""
+    data = made(chapters, first_fill=first_fill)
     layout = Layout(Document.open(data))
     with _box(mode) as box, Recorder() as recorder:
         session = box.session(clock=CLOCK)
@@ -343,12 +348,15 @@ if __name__ == "__main__":
     parser.add_argument("--calls", type=int, default=12)
     parser.add_argument("--chapters", type=int, default=4)
     parser.add_argument("--mode", default="always")
+    parser.add_argument("--first-fill", default="odd", choices=("none", "odd", "all"),
+                        help="which seeds run on a report with no provenance yet (default: odd ones)")
     args = parser.parse_args()
     failed = 0
     for seed in _seeds(args.seeds):
         started = time.perf_counter()
-        found = run(seed, args.threads, args.calls, args.chapters, args.mode)
-        print(json.dumps({"seed": seed, "s": round(time.perf_counter() - started, 1),
+        first = args.first_fill == "all" or (args.first_fill == "odd" and seed % 2 == 1)
+        found = run(seed, args.threads, args.calls, args.chapters, args.mode, first_fill=first)
+        print(json.dumps({"seed": seed, "first_fill": first, "s": round(time.perf_counter() - started, 1),
                           **{k: v for k, v in found.items() if k not in ("differ",)}}), flush=True)
         if not found["same"]:
             failed += 1
