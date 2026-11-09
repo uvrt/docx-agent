@@ -5,7 +5,7 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
-## 0.1.76 -- unreleased
+## 0.1.77 -- unreleased
 
 - **An edit conflicts only with changes to what it depends on** (round 47, R78:
   callers writing into neighbouring, all but empty parts of one document ended on the lock).
@@ -20,7 +20,10 @@ snapshot commit; the development history before it is summarised here.
   itself ("p:... is gone") and run under the lock, one caller or many. And a call that adds
   the provenance item while its ids are drawn again names the item again from its renamed
   first key (its properties' `itemID` is a hash of it): 0.1.74 kept the hash of the draft's
-  key, so the bytes differed from the calls run one at a time (found by the stress). On the round's stress shape (ten
+  key, so the bytes differed from the calls run one at a time (found by the stress). A call
+  that drew ids on its draft and then failed (an atomic batch whose last op fails) runs
+  under the lock, where its ids are spent as before (`Blocks.drew`; ooxml-edit 0.103.0);
+  the stress plans such late failures. On the round's stress shape (ten
   callers, one all but empty part each, tables from a dataset, checks between), 0.1.74
   ended 24-28 of about 90 drafts on the lock after 100+ conflicts; now none, 0-3 conflicts.
   `tests/block_stress.py --shape short`; the serial replay holds for both shapes.

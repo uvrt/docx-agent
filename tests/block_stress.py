@@ -203,6 +203,11 @@ def plan_short(seed: int, threads: int, calls: int, layout: ShortLayout, doc: st
             elif roll < 0.92:
                 mine.append(("word_edit_table", {"doc": doc, "table": layout.fill, "action": "set_cells",
                                                  "grow": True, "from": "d:rows"}))
+            elif roll < 0.95:
+                # A late failure: blocks made (ids drawn), then an op that fails, all undone.
+                mine.append(("batch", {"atomic": True, "ops": [
+                    {"tool": "word_insert_markdown", "arguments": {"doc": doc, "at": place, "markdown": md}},
+                    {"tool": "word_set_text", "arguments": {"doc": doc, "target": "p:7FFFFFF0", "text": "x"}}]}))
             else:
                 mine.append(("word_insert_markdown", {"doc": doc, "at": f"before:{bound}",
                                                       "markdown": f"{sentence(rng, 6)} {{{{d:rows/#{1 + c % 5}/name}}}}"}))
@@ -261,7 +266,13 @@ def plan(seed: int, threads: int, calls: int, layout: Layout, doc: str) -> list[
             elif roll < 0.89:
                 mine.append(("undo", {"doc": doc}))
             elif roll < 0.92:
-                mine.append(("word_set_text", {"doc": doc, "target": "p:7FFFFFF0", "text": "gone"}))
+                if rng.random() < 0.5:
+                    mine.append(("word_set_text", {"doc": doc, "target": "p:7FFFFFF0", "text": "gone"}))
+                else:
+                    # A late failure: blocks made (ids drawn), then an op that fails, all undone.
+                    mine.append(("batch", {"atomic": True, "ops": [
+                        {"tool": "word_insert_markdown", "arguments": {"doc": doc, "at": place, "markdown": md}},
+                        {"tool": "word_set_text", "arguments": {"doc": doc, "target": "p:7FFFFFF0", "text": "x"}}]}))
             else:
                 mine.append(("describe", {"doc": doc}))
         out.append(mine)

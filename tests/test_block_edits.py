@@ -846,3 +846,23 @@ def test_a_first_value_by_reference_in_a_new_paragraph_renamed_names_its_item_ag
         assert box.dispatch(session, "word_insert_markdown", {"doc": doc, **held_args,
                                                               "at": f"before:{layout.ends[1]}"}).ok
         assert session.entry(doc).document.to_bytes() == concurrent
+
+
+def test_a_call_that_draws_ids_then_fails_spends_them_as_under_the_lock():
+    """Round 47 (lane F's find): an atomic batch whose blocks are made, then an op fails --
+    under the lock its ids are spent, so the next call draws others; on a draft it would not
+    be.  It runs under the lock instead: the next call's ids and the id state the same."""
+    found = []
+    for mode in ("off", "always"):
+        with opened(mode) as (box, session, doc, layout):
+            failed = box.dispatch(session, "batch", {"atomic": True, "ops": [
+                {"tool": "word_insert_markdown", "arguments": {"doc": doc, "at": f"before:{layout.ends[0]}",
+                                                               "markdown": "A.\n\nB."}},
+                {"tool": "word_set_text", "arguments": {"doc": doc, "target": "p:7FFFFFF0", "text": "x"}}]})
+            assert not failed.ok
+            if mode == "always":
+                assert failed.block["lock"] == "drew ids, then failed"
+            after = box.dispatch(session, "word_insert_markdown",
+                                 {"doc": doc, "at": f"before:{layout.ends[1]}", "markdown": "C."})
+            found.append((after.created, session.entry(doc).document.id_state()))
+    assert found[0] == found[1]

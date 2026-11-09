@@ -971,6 +971,9 @@ class Blocks:
     def touches(self, change: Any, scope: Any) -> bool:
         return touches(change, scope)
 
+    def drew(self, draft: Draft) -> bool:
+        return any(values for _seed, values in draft.recording.draws)
+
     def release(self, draft: Draft, *, current: Any = None) -> None:
         if draft.recording is not None and "_recording" in draft.document.__dict__:
             draft.stop()
