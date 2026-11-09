@@ -144,6 +144,18 @@ def admits(tool: str, arguments: Mapping[str, Any]) -> bool:
     return False
 
 
+def alone(tool: str, arguments: Mapping[str, Any]) -> bool:
+    """Whether an admitted call is worth a draft with no other edit in flight: a fill from
+    a dataset (a ``from: "d:..."`` of ``word_edit_table`` or ``word_insert_markdown``, or of
+    a cell), whose rows may be many, so an edit that comes while it runs need not wait."""
+    if tool not in ("word_edit_table", "word_insert_markdown"):
+        return False
+    cells = arguments.get("cells") or [] if tool == "word_edit_table" else []
+    return any(isinstance(value, str) and value.startswith("d:")
+               for value in [arguments.get("from")] + [cell.get("from") for cell in cells
+                                                        if isinstance(cell, Mapping)])
+
+
 def _plain(address: Any) -> bool:
     """An id or a ref, not a span, a heading's range or a place in text."""
     return isinstance(address, str) and bool(address) and ".." not in address and "h:" not in address \
@@ -680,6 +692,9 @@ class Blocks:
     def admits(self, tool: str, arguments: Mapping[str, Any]) -> bool:
         return admits(tool, arguments)
 
+    def alone(self, tool: str, arguments: Mapping[str, Any]) -> bool:
+        return alone(tool, arguments)
+
     def draft(self, document: Any, committed: Any) -> Draft | None:
         make = getattr(getattr(committed, "make", None), "draft", None)
         if make is None:
@@ -1083,5 +1098,5 @@ def _said(result: Any) -> Any:
 
 BLOCKS = Blocks()
 
-__all__ = ["BLOCKS", "Blocks", "CONTEXT", "DraftOps", "DraftPool", "Patch", "TOOLS", "admits", "observe",
+__all__ = ["BLOCKS", "Blocks", "CONTEXT", "DraftOps", "DraftPool", "Patch", "TOOLS", "admits", "alone", "observe",
            "read_body"]

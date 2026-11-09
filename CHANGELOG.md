@@ -9,7 +9,8 @@ snapshot commit; the development history before it is summarised here.
 
 - **Edits of different blocks of one document at the same time** (production round 45, R64
   stage 3; ooxml-edit 0.99.0, `DocumentFormat.blocks`; `docx_agent.blocks`). With another
-  call on the document, `word_set_text`, `word_insert_markdown` (`end`, `before:`,
+  edit of the document in flight (and a fill from a dataset always: it may run long),
+  `word_set_text`, `word_insert_markdown` (`end`, `before:`,
   `after:`; no pictures or footnotes), `word_edit_table` `set_cells` and batches of them --
   text by reference only from datasets -- run on a *draft*: an editable copy of the last
   committed version (`layout.read_copy`'s `make.draft`), no lock of the document held. The
@@ -30,8 +31,8 @@ snapshot commit; the development history before it is summarised here.
   chapters and each other's, batches with reads after their change, fills, values by
   reference, formatting and undo under the lock) gives the same results, bytes and id state
   as its commit order run alone (tests/block_stress.py; tests/test_block_edits_serial.py
-  small, `--run-slow` longer). One caller alone runs as before (ooxml-edit's
-  `block_edits="auto"`). tests/test_block_edits.py: what a draft takes, a draft's result and
+  small, `--run-slow` longer). Any other call with no other edit in flight runs as before
+  (ooxml-edit's `block_edits="auto"`). tests/test_block_edits.py: what a draft takes, a draft's result and
   bytes those of the document's, edits beside a held call, ids drawn again, the same and
   neighbouring blocks prepared again, past the tries, and each rule of the shared-state
   inventory in `docx_agent/blocks.py`. A body is read for its blocks once per state, and

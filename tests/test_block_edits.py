@@ -121,6 +121,33 @@ def test_one_caller_alone_runs_as_before():
         assert result.ok and result.block is None
 
 
+@pytest.mark.parametrize("tool, arguments, alone", [
+    ("word_edit_table", {"table": "t:1A", "action": "set_cells", "from": "d:rows"}, True),
+    ("word_edit_table", {"table": "t:1A", "action": "set_cells", "cells": [{"row": 1, "col": 0, "from": "d:rows"}]}, True),
+    ("word_edit_table", {"table": "t:1A", "action": "set_cells", "cells": [{"row": 1, "col": 0, "text": "x"}]}, False),
+    ("word_insert_markdown", {"at": "end", "from": "d:rows"}, True),
+    ("word_insert_markdown", {"at": "end", "markdown": "text {{d:rows/#1/name}}"}, False),
+    ("word_set_text", {"target": "p:1A", "text": "x"}, False),
+])
+def test_a_fill_from_a_dataset_is_worth_a_draft_alone(tool, arguments, alone):
+    assert blocks.alone(tool, arguments) is alone
+
+
+def test_one_caller_alone_fills_from_a_dataset_on_a_draft():
+    """``auto``: a fill from a dataset, which may run long, drafts with no other edit in
+    flight, so an edit that comes while it runs need not wait for it; its result and bytes
+    are those of the same fill on the document."""
+    outcomes = []
+    for mode in ("auto", "off"):
+        with opened(mode) as (box, session, doc, layout):
+            result = box.dispatch(session, "word_edit_table", {"doc": doc, "table": layout.fill, "action": "set_cells",
+                                                               "grow": True, "from": "d:rows"})
+            assert result.ok, result.to_json()
+            assert (result.block is not None) is (mode == "auto")
+            outcomes.append((block_stress.normal(result), session.entry(doc).document.to_bytes()))
+    assert outcomes[0] == outcomes[1]
+
+
 def test_a_call_on_a_draft_answers_and_writes_as_the_call_on_the_document():
     """Every admitted kind, run alone on a draft and on the document: the same results (what
     they say about time aside), the same touched, the same bytes and id state."""

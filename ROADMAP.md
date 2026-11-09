@@ -1246,7 +1246,8 @@ doc.render_svg(pages=diff.changed)     # or render_png; ids on every paragraph g
 - **Round 45 (0.1.73, 0.1.74; ooxml-edit 0.97.0, 0.99.0):** builders on one document wait
   for each other no more than their changes overlap. Reads, checks and renders work on a
   copy of the last committed version (`layout.read_copy`), an edit's checks after its lock;
-  and, with another call on the document, the admitted edits (`docx_agent.blocks`:
+  and, with another edit of the document in flight (a fill from a dataset always), the
+  admitted edits (`docx_agent.blocks`:
   `word_set_text`, `word_insert_markdown` at `end`/`before:`/`after:`, `set_cells`, batches
   of them) run on a draft and are applied under the lock when the blocks they read and
   changed are as they were -- byte for byte, by window -- else prepared again (three tries,
