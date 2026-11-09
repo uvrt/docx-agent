@@ -1,7 +1,7 @@
 """A dataset's text written by reference, and a comment on a table (round 45).
 
-R65: ``word_insert_markdown``'s ``from`` names one text field of one row (``markdown_from``
-read as it) and writes its Markdown as ``markdown`` would -- paragraphs, lists in the
+R65: ``word_insert_markdown``'s ``from`` names one text field of one row (its one name:
+``markdown_from`` is refused naming it, round 47, R81) and writes its Markdown as ``markdown`` would -- paragraphs, lists in the
 template's styles at their levels, emphasis -- verbatim; several fields go in one call as
 references standing alone in ``markdown``; the result says which field made which blocks
 and no longer echoes a long text.  ``word_set_text`` writes a field the same way.
@@ -10,8 +10,8 @@ format after it) and references in a cell's text.
 R68: ``word_comments`` add on a table or a row: the comment covers it as Word's does when
 it is selected (measured with Word 16.106: ``test_word_anchors_a_selected_table_so``).
 
-Tool design rules: 1 (``markdown_from``; a top-level one-value ``from`` with places), 2 (every
-refusal names what there is and the call that works), 4 (a long value counted, not echoed),
+Tool design rules: 1 (a top-level one-value ``from`` with places), 2 (every refusal names what
+there is and the call that works; ``markdown_from`` refused naming ``from``), 4 (a long value counted, not echoed),
 5 (several fields in one call), 6 (lists in the template's styles; Word's comment form).
 The data is made up.
 """
@@ -83,9 +83,28 @@ def body_xml(session) -> str:
 # -- R65: one field as Markdown -----------------------------------------------------------------
 
 
-def test_markdown_from_is_read_as_from_and_writes_the_fields_markdown(toolbox, session):
-    result = ok(insert(toolbox, session, markdown_from="d:notes/#1/body"))
-    assert "markdown_from read as from" in result.warnings
+def test_markdown_from_is_refused_as_an_unknown_argument_naming_from(toolbox, session):
+    """Round 47 (R81): ``from`` is the one name.  ``markdown_from`` gets the refusal any
+    unknown argument gets -- its field, the tool's arguments -- naming ``from``, not the
+    nearest spelling (``markdown``, which would write the reference as text); nothing is
+    written (rule 2)."""
+    before = document(session).to_bytes()
+    error = failed(insert(toolbox, session, markdown_from="d:notes/#1/body"), "invalid_arguments")
+    assert error.message == "unknown argument 'markdown_from'; did you mean 'from'?"
+    usual = failed(insert(toolbox, session, markdown_source="d:notes/#1/body"), "invalid_arguments")
+    assert error.field == "markdown_from" and error.valid_options == usual.valid_options
+    assert "from" in error.valid_options
+    assert document(session).to_bytes() == before
+    # In a batch too, as its op.
+    result = call(toolbox, session, "batch", ops=[{"tool": "word_insert_markdown", "arguments": {
+        "doc": "d1", "at": "end", "markdown_from": "d:notes/#1/body"}}])
+    assert not result.ok and "did you mean 'from'" in result.error.message
+    assert document(session).to_bytes() == before
+
+
+def test_from_writes_the_fields_markdown(toolbox, session):
+    result = ok(insert(toolbox, session, **{"from": "d:notes/#1/body"}))
+    assert not [w for w in result.warnings if "read as" in w]
     paragraphs = document(session).paragraphs()[1:]
     assert [(p.style, p.text) for p in paragraphs] == [
         (None, "Opening paragraph with emphasis and 41 items."), (None, "Second paragraph."),

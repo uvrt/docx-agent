@@ -222,10 +222,10 @@ def _skip_where_faces_are_absent(request, monkeypatch):
 
     facts_of = agent_shared.check_facts
 
-    def checked_facts(document, unlocked, request):
+    def checked_facts(document, unlocked, request, **options):
         # Round 38: a lone check's facts are made in the worker holding the layout; read the
-        # coverage and the warnings that came back.
-        made = facts_of(document, unlocked, request)
+        # coverage and the warnings that came back (round 47: ``timed`` passed on).
+        made = facts_of(document, unlocked, request, **options)
         if made is not None:
             coverage = made[0]["reflow"]["coverage"]
             if coverage.get("missing_fonts"):
