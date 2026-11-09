@@ -17,7 +17,10 @@ snapshot commit; the development history before it is summarised here.
   entry with the document's, where two calls' entries differ, instead of a conflict; an id
   the call made itself is not looked for in the document -- which, alone, made every insert
   or fill writing text by reference (`from: d:notes/#1/body`) conflict three times with
-  itself ("p:... is gone") and run under the lock, one caller or many. On the round's stress shape (ten
+  itself ("p:... is gone") and run under the lock, one caller or many. And a call that adds
+  the provenance item while its ids are drawn again names the item again from its renamed
+  first key (its properties' `itemID` is a hash of it): 0.1.74 kept the hash of the draft's
+  key, so the bytes differed from the calls run one at a time (found by the stress). On the round's stress shape (ten
   callers, one all but empty part each, tables from a dataset, checks between), 0.1.74
   ended 24-28 of about 90 drafts on the lock after 100+ conflicts; now none, 0-3 conflicts.
   `tests/block_stress.py --shape short`; the serial replay holds for both shapes.

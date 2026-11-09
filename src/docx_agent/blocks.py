@@ -892,6 +892,8 @@ class Blocks:
             parts = [(path, before, after) if path != merge
                      else (path, *_merge_sources(document.package.read(path), before, after))
                      for path, before, after in parts]
+        if moved and any(before is None for _p, before, _a in parts):
+            parts = _named_again(patch.parts, parts, moved)
         return Plan(patch, _spliced(data, live, placed, moved), renames, pool, parts, before=data, moved=moved,
                     placed=placed)
 
@@ -1055,6 +1057,34 @@ def _numbering_added(before: bytes | None, after: bytes | None) -> bool:
         return False
     kept = {etree.tostring(node) for node in new}
     return all(etree.tostring(node) in kept for node in old)
+
+
+def _named_again(drafted: list, parts: list, moved: Mapping[str, str]) -> list:
+    """The parts a call added, its ids drawn again (``moved``): a provenance item's
+    properties name it by a hash of the key it was made for (``edit/provenance.py``:
+    ``uuid5(NS#key)``), which renaming its text cannot reach -- named again from the key
+    renamed."""
+    import uuid
+
+    from .edit import provenance as _provenance
+
+    out = []
+    keys = [node.get("key") or "" for _path, before, after in drafted
+            if before is None and after is not None and _is_sources(after) for node in parse_xml(after)]
+    for path, before, after in parts:
+        if before is None and after is not None and b"datastoreItem" in after[:600]:
+            root = parse_xml(after)
+            attribute = "{%s}itemID" % _provenance.DS
+            made = {"{%s}" % str(uuid.uuid5(uuid.NAMESPACE_URL, f"{_provenance.NS}#{key}")).upper(): key
+                    for key in keys}
+            key = made.get(root.get(attribute) or "")
+            if key is not None:
+                renamed_key = token_renamer(moved)(key)
+                root.set(attribute, "{%s}" % str(uuid.uuid5(uuid.NAMESPACE_URL,
+                                                            f"{_provenance.NS}#{renamed_key}")).upper())
+                after = serialize(root)
+        out.append((path, before, after))
+    return out
 
 
 def _is_sources(data: bytes) -> bool:

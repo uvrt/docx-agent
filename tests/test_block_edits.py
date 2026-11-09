@@ -299,6 +299,15 @@ def test_a_first_fill_while_others_draw_ids_is_prepared_once_its_added_part_rena
             assert address.split("/")[0] == layout.fill, address
         assert table.cell(1, 0).text and table.cell(6, 0).text
         assert any(name.endswith("customXml/item1.xml") for name in document.package.part_names)
+        concurrent = document.to_bytes()
+    # The same two calls one at a time, in the order they committed: the same bytes (the
+    # item's properties name it by a hash of its first key, renamed too).
+    with opened(first_fill=True) as (box, session, doc, layout):
+        assert box.dispatch(session, "word_set_text", {"doc": doc, "target": layout.bodies[2][0],
+                                                       "text": "Changed meanwhile."}).ok
+        assert box.dispatch(session, "word_edit_table", {"doc": doc, "table": layout.fill, "action": "set_cells",
+                                                         "grow": True, "from": "d:rows"}).ok
+        assert session.entry(doc).document.to_bytes() == concurrent
 
 
 def test_an_edit_of_the_same_paragraph_makes_the_call_prepare_again(monkeypatch):
@@ -812,3 +821,28 @@ def test_one_caller_filling_an_all_but_empty_document_prepares_each_call_once(mo
             assert result.ok, result.to_json()
             if mode == "always" or result.block is not None:
                 assert _shape(result.block) == {"tries": 1, "conflicts": []}, (arguments, result.block)
+
+
+def test_a_first_value_by_reference_in_a_new_paragraph_renamed_names_its_item_again(monkeypatch):
+    """The provenance item's properties name it by a hash of the key it was made for (the
+    new paragraph's id): drawn again when the call applies, the hash follows the new id --
+    the bytes those of the two calls run one at a time in the order they committed."""
+    held_args = {"at": None, "markdown": "Value {{d:rows/#1/name}}."}
+    with opened(first_fill=True) as (box, session, doc, layout), held(monkeypatch) as hold:
+        thread, slow = _in_thread(lambda: box.dispatch(session, "word_insert_markdown", {
+            "doc": doc, **held_args, "at": f"before:{layout.ends[1]}"}))
+        assert hold.ready.wait(60)
+        other = box.dispatch(session, "word_insert_markdown",
+                             {"doc": doc, "at": f"before:{layout.ends[2]}", "markdown": "Other one.\n\nOther two."})
+        hold.release()
+        thread.join()
+        result = slow["result"]
+        assert other.ok and result.ok and _shape(result.block) == {"tries": 1, "conflicts": []}
+        assert set(result.created).isdisjoint(other.created)
+        concurrent = session.entry(doc).document.to_bytes()
+    with opened(first_fill=True) as (box, session, doc, layout):
+        assert box.dispatch(session, "word_insert_markdown",
+                            {"doc": doc, "at": f"before:{layout.ends[2]}", "markdown": "Other one.\n\nOther two."}).ok
+        assert box.dispatch(session, "word_insert_markdown", {"doc": doc, **held_args,
+                                                              "at": f"before:{layout.ends[1]}"}).ok
+        assert session.entry(doc).document.to_bytes() == concurrent
