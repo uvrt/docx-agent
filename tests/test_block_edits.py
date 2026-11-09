@@ -74,6 +74,11 @@ class held:
         self.go.set()
 
 
+def _shape(block):
+    """``Result.block`` less ``cpu`` (the drafts' own preparation time)."""
+    return {key: value for key, value in (block or {}).items() if key != "cpu"}
+
+
 def _in_thread(fn):
     out: dict = {}
     thread = threading.Thread(target=lambda: out.setdefault("result", fn()))
@@ -172,7 +177,7 @@ def test_an_edit_of_another_chapter_applies_beside_a_call_on_a_draft(monkeypatch
         hold.release()
         thread.join()
         result = slow["result"]
-        assert fast.ok and result.ok and result.block == {"tries": 1, "conflicts": []}
+        assert fast.ok and result.ok and _shape(result.block) == {"tries": 1, "conflicts": []}
         assert result.version == fast.version + 1
         assert _text(session, doc, mine) == "Mine, held."
         entry = session.entry(doc)
@@ -193,7 +198,7 @@ def test_ids_drawn_meanwhile_are_drawn_again_and_the_result_says_the_documents(m
         hold.release()
         thread.join()
         result = slow["result"]
-        assert result.ok and result.block == {"tries": 1, "conflicts": []}
+        assert result.ok and _shape(result.block) == {"tries": 1, "conflicts": []}
         document = session.entry(doc).document
         assert [document.paragraph(i).text for i in result.created] == ["Held one.", "Held two."]
         assert [document.paragraph(i).text for i in fast.created] == ["First one.", "First two."]
@@ -357,7 +362,7 @@ def test_facts_of_the_whole_document_are_recorded_and_checked_again(monkeypatch)
             patch.facts[("table_style_in_use", ())] = "TableGrid"
         hold.release()
         thread.join()
-        assert slow["result"].ok and slow["result"].block == {"tries": 1, "conflicts": []}
+        assert slow["result"].ok and _shape(slow["result"].block) == {"tries": 1, "conflicts": []}
 
 
 def test_a_dataset_redefined_meanwhile_makes_it_prepare_again(monkeypatch):
@@ -437,7 +442,7 @@ def test_checks_and_reads_are_of_the_version_the_change_made(monkeypatch):
         hold.release()
         thread.join()
         result = slow["result"]
-        assert result.ok and result.block == {"tries": 1, "conflicts": []}
+        assert result.ok and _shape(result.block) == {"tries": 1, "conflicts": []}
         read = result.data["ops"][1]
         assert "Seen by the held batch's read." in str(read["data"]) and "version" not in read
         assert result.checks["validate"]["new"] == []
