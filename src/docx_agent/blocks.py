@@ -21,13 +21,18 @@ drawing numbers, media, a layout, renames.
 
 **The patch** (:meth:`Blocks.prepared`): the body's top-level blocks before and after, from
 ``word/document.xml``'s bytes (each block's own bytes, ids included), compared in order: each
-run of blocks that differ is a *region*; each region, and each block the call named, with
-:data:`CONTEXT` blocks either side, is a *window*, its bytes (gaps between blocks included) as
-they were.  Every other part the call changed, before and after.  The draws, and whether the
-ids drawn can be renamed (:func:`_renamable`).
+run of blocks that differ is a *region*.  A *window* is what the change depends on (round 47,
+R78), its bytes (gaps between blocks included) as they were: blocks changed under their own
+ids are their own window; blocks put between two are placed by the one the call named --
+before it (``before:X``: X) or after it (``after:P``: P) -- unless they hold a table, which
+reads both neighbours (a separator beside a table, a paragraph at a container's end), or
+neither neighbour was named (both, :data:`CONTEXT`); blocks removed or replaced, with their
+neighbours; each block the call named, alone.  Every other part the call changed, before and
+after.  The draws, and whether the ids drawn can be renamed (:func:`_renamable`).
 
 **The check** (:meth:`Blocks.check`, under the document's lock): no part but the body changed
-since the draft's version (ooxml-edit counts the parts each change touched); the body's head
+since the draft's version (ooxml-edit counts the parts each change touched) -- the provenance
+item's entries merged instead, entry by entry (:func:`_merge_sources`); the body's head
 (the root's namespaces) and tail (the last section's properties) as they were; each window in
 the document now, found by its first block's id, byte for byte as it was; each id that named
 nothing still naming nothing, each id that named something still naming something; every
@@ -45,7 +50,8 @@ document as it was just before) -- all as the call's own run on the document lea
 =========================  =================================================================
 item                       rule
 =========================  =================================================================
-body blocks                windows compared byte for byte; regions spliced in
+body blocks                windows (what the change depends on) compared byte for byte;
+                           regions spliced in
 w14:paraId / textId        drawn again on the document (renamed): never reused, unique
 id ledger, retired ids     read at the new version after the patch (``_note_ids``)
 renames (aliases)          must be as they were; a call that renames: whole lock
@@ -61,7 +67,9 @@ settings.xml, theme        unchanged since, or conflict
 relationships, parts,      unchanged since, or conflict; added or replaced as the draft did,
 [Content_Types]            in its order; ids drawn again renamed in an added XML part as in a
                            changed one (any other part added with ids renamed: conflict)
-provenance item            unchanged since, or conflict; replaced or added, its keys renamed
+provenance item            merged entry by entry: the call's own entries as it left them, the
+                           document's others as they are (an entry both changed: conflict);
+                           added by the call while another added one: conflict
 sectPr, section breaks     the body's tail as it was; a region holding a section break
                            changed: whole lock
 fields and TOC             in the body's blocks (windows); field updates: whole lock
@@ -73,6 +81,13 @@ datasets, refs, keys       ooxml-edit checks them (the same datasets, not stale;
 version, undo, owners      ooxml-edit: the patch is one undo step, the call's, its version
 layouts, checks            per version, after the patch (the copy of the version it made)
 =========================  =================================================================
+
+**What a read covered** (round 47, :func:`touches`): a ranged ``check`` or ``render`` says the
+blocks it read (``docx_agent.scope.ReadScope``); ooxml-edit warns it that the document
+"changed while this call read it" only when a change made meanwhile touched those blocks --
+changed or removed one, or put blocks between two of them -- or a part but the body other
+than the registrations, the document's properties, the provenance item and lists only added
+to the numbering.
 """
 
 from __future__ import annotations
@@ -89,18 +104,22 @@ from dataclasses import dataclass, field
 from typing import Any, Iterator, Mapping
 
 from ooxml_edit.tools.blocks import BlockConflict, renamed, token_renamer
-from ooxml_edit.xml import parse_xml
+from lxml import etree
+from ooxml_edit.xml import parse_xml, serialize
 
 from .edit import ids as _ids
 
 _W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 W_BODY = _W + "body"
 
-#: Blocks of context either side of a change, and of a block a call named: its window,
-#: which must be as it was for the change to apply.  The admitted calls read at most the
-#: block before and the block after the place they change (``word_set_text`` with lines:
-#: the paragraphs after it, as many as its lines -- :func:`_window_after`).
-CONTEXT = 2
+#: Blocks of context either side of a place where a call added or removed blocks: the
+#: neighbours it read there, which must be as they were -- and still each other's neighbours
+#: -- for the change to apply (round 47, R78: what an edit depends on).  An insert reads the
+#: blocks it goes between and nothing further (a table beside a table takes a separator; a
+#: container's end, a paragraph); a block changed under its own id, and a block a call
+#: named, is its own window -- ``word_set_text`` with lines also reads the paragraphs after
+#: its paragraph, one per further line (:func:`_window_after`).
+CONTEXT = 1
 
 #: The calls a draft takes (:func:`admits`).
 TOOLS = ("word_set_text", "word_insert_markdown", "word_edit_table")
@@ -573,16 +592,33 @@ class _Window:
 
 def _windows(before: _Body, after: _Body, regions: list[tuple[int, int, int, int]],
              named: list[int], wide: int) -> list[_Window]:
-    """The windows: each region with :data:`CONTEXT` blocks either side (``wide`` after a
-    region, for a call that reads further), and each block named (``named``), merged where
-    they meet."""
+    """The windows: each region -- with :data:`CONTEXT` blocks either side where it adds or
+    removes blocks, none where it changes blocks under their own ids; ``wide`` more after it
+    for a call that reads further -- and each block named (``named``), merged where they
+    meet."""
     n = before.count
     spans: list[tuple[int, int, list[tuple[int, int, int, int]]]] = []
+    anchors = {before.ids[k] for k in named}
     for region in regions:
-        i1, i2 = region[0], region[1]
-        spans.append((max(0, i1 - CONTEXT), min(n, i2 + max(CONTEXT, wide)), [region]))
+        i1, i2, j1, j2 = region
+        if i2 > i1 and before.ids[i1:i2] == after.ids[j1:j2]:
+            # Blocks changed under their own ids: those blocks (and what the call reads after).
+            spans.append((i1, min(n, i2 + wide), [region]))
+            continue
+        ahead, behind = CONTEXT, CONTEXT
+        if i1 == i2 and not any(b"<w:tbl" in after.block(j) for j in range(j1, j2)):
+            # Blocks put between two: placed by the one the call named -- before it, or after
+            # it -- and reading nothing else there (a table reads both: beside a table it
+            # takes a separator, at a container's end a paragraph after it).
+            named_before = i1 > 0 and before.ids[i1 - 1] in anchors
+            named_after = i1 < n and before.ids[i1] in anchors
+            if named_after and not named_before:
+                ahead = 0
+            elif named_before and not named_after:
+                behind = 0
+        spans.append((max(0, i1 - ahead), min(n, i2 + max(behind, wide)), [region]))
     for k in named:
-        spans.append((max(0, k - CONTEXT), min(n, k + 1 + CONTEXT), []))
+        spans.append((k, k + 1, []))
     spans.sort(key=lambda item: (item[0], item[1]))
     merged: list[list[Any]] = []
     for first, last, held in spans:
@@ -637,6 +673,9 @@ class Patch:
     pool_before: tuple[int, dict] = (0, {})
     pool_after: Any = None
     before_body: bytes | None = None
+    #: The provenance item (``edit/provenance.py``) as the draft's version had it, by path;
+    #: ``None``: it had none.  Its entries are merged with the document's (:func:`_merge_sources`).
+    provenance: str | None = None
 
 
 @dataclass
@@ -781,6 +820,11 @@ class Blocks:
             parts.append((path, change.before(path), change.after(path)))
         outputs = [window.after for window in windows] + [after for _p, _b, after in parts if after]
         outputs.append(json.dumps(_said(result), ensure_ascii=False, default=str).encode("utf-8"))
+        item = document._provenance_item()
+        if item is not None and change.before(item) is None:
+            item = None             # added by the call: the document's version had none
+        if item is None:
+            item = next((path for path, old, _new in parts if old is not None and _is_sources(old)), None)
         return Patch(body=body, head=before.head(), tail=before.tail(), count=before.count, windows=windows,
                      parts=parts,
                      draws=list(recording.draws), renamable=_renamable(recording.draws, arguments, outputs),
@@ -789,12 +833,19 @@ class Blocks:
                      spaced=getattr(document, "typography_spaced", 0) - draft.spaced,
                      engine=document.__dict__.get("_checks_engine"), after_body=after_bytes,
                      version=draft.committed.version, pool_before=draft.pool,
-                     pool_after=document._ledger.pool, before_body=before_bytes)
+                     pool_after=document._ledger.pool, before_body=before_bytes, provenance=item)
 
     def check(self, document: Any, patch: Patch, changed: frozenset[str] | None) -> Plan:
         if changed is None:
             raise BlockConflict("the document changed outside the tools")
         others = sorted(changed - {patch.body})
+        merge = None
+        if patch.provenance is not None and patch.provenance in others \
+                and document._provenance_item() == patch.provenance:
+            # Values' sources, kept per table and paragraph: merged entry by entry with the
+            # document's (each kept for the call's own blocks), not a conflict.
+            others.remove(patch.provenance)
+            merge = patch.provenance
         if others:
             raise BlockConflict(f"{', '.join(others[:3])} changed")
         if document._aliases != patch.aliases:
@@ -815,9 +866,12 @@ class Blocks:
                 continue
             raise BlockConflict(f"{identifier} names a block now")
         seen = {identifier for _begin, _end, window in placed for identifier in window.ids}
+        made = {value for _seed, values in patch.draws for value in values}
         for identifier, existed in patch.exists.items():
             if identifier in seen:
                 continue            # in a window found the same
+            if existed and identifier.rpartition(":")[2].upper() in made:
+                continue            # one the call made itself (its patch makes it)
             if existed and live.where(identifier) is not None:
                 continue            # a block of the body, there now
             if (document._direct(identifier) is not None) != existed:
@@ -834,6 +888,10 @@ class Blocks:
             raise BlockConflict("ids drawn meanwhile, and these cannot be renamed")
         parts = [(path, before, _renamed_bytes(after, moved) if after is not None else None)
                  for path, before, after in patch.parts]
+        if merge is not None:
+            parts = [(path, before, after) if path != merge
+                     else (path, *_merge_sources(document.package.read(path), before, after))
+                     for path, before, after in parts]
         return Plan(patch, _spliced(data, live, placed, moved), renames, pool, parts, before=data, moved=moved,
                     placed=placed)
 
@@ -908,6 +966,9 @@ class Blocks:
     def rename(self, value: Any, renames: Mapping[str, str]) -> Any:
         return renamed(value, token_renamer(renames))
 
+    def touches(self, change: Any, scope: Any) -> bool:
+        return touches(change, scope)
+
     def release(self, draft: Draft, *, current: Any = None) -> None:
         if draft.recording is not None and "_recording" in draft.document.__dict__:
             draft.stop()
@@ -934,6 +995,132 @@ def _body_now(document: Any, part: str) -> bytes | None:
     if kept is not None and kept[0] == document.history.version:
         return kept[1]
     return document.package.read(part)
+
+
+#: Parts a change may touch without changing what a read of some blocks says: registrations
+#: of parts ([Content_Types], relationships) and the document's properties.  (The
+#: provenance item is told by its content, :func:`_is_sources`; ``numbering.xml`` touches a
+#: read only where a list definition or instance there changed, :func:`_numbering_added`.)
+_UNREAD_PARTS = re.compile(r"(^|/)\[Content_Types\]\.xml$|\.rels$|^docProps/")
+
+
+def touches(change: Any, scope: Any) -> bool:
+    """ooxml-edit's ``BlockEdits.touches`` (round 47): whether ``change`` touched what a read
+    of some ranges covered (``scope``, :class:`docx_agent.scope.ReadScope`) -- a block of it
+    changed, removed or put between two of its blocks; or any other part changed but those
+    that say nothing a read of blocks shows (:data:`_UNREAD_PARTS`, the provenance item, a
+    list only added to the numbering).  Anything that cannot be told: touched."""
+    from .scope import ReadScope
+
+    if not isinstance(scope, ReadScope):
+        return True
+    for part in change.parts:
+        before, after = change.before(part), change.after(part)
+        if part == scope.part:
+            if _body_touches(before, after, scope.blocks):
+                return True
+        elif _UNREAD_PARTS.search(part):
+            continue
+        elif any(data is not None and _is_sources(data) for data in (before, after)):
+            continue
+        elif part.endswith("numbering.xml") and _numbering_added(before, after):
+            continue
+        else:
+            return True
+    return False
+
+
+def _body_touches(before: bytes | None, after: bytes | None, blocks: frozenset) -> bool:
+    old, new = read_body(before), read_body(after)
+    if old is None or new is None:
+        return True
+    for i1, i2, j1, j2 in _regions(old, new):
+        if any(identifier in blocks for identifier in old.ids[i1:i2]) \
+                or any(identifier in blocks for identifier in new.ids[j1:j2]):
+            return True
+        if i1 == i2 and i1 > 0 and old.ids[i1 - 1] in blocks \
+                and (i1 == old.count or old.ids[i1] in blocks):
+            return True             # put between two of its blocks (or after its last, at the end)
+    return False
+
+
+def _numbering_added(before: bytes | None, after: bytes | None) -> bool:
+    """Whether ``numbering.xml`` only gained definitions and instances (lists added
+    elsewhere): every element it had is there as it was."""
+    if before is None or after is None:
+        return False
+    try:
+        old, new = parse_xml(before), parse_xml(after)
+    except Exception:  # noqa: BLE001 -- cannot be told
+        return False
+    kept = {etree.tostring(node) for node in new}
+    return all(etree.tostring(node) in kept for node in old)
+
+
+def _is_sources(data: bytes) -> bool:
+    from .edit import provenance as _provenance
+
+    head = data[:data.find(b">", data.find(b"sources")) + 1] if b"sources" in data[:400] else b""
+    return _provenance.NS.encode() in head
+
+
+def _source_entries(data: bytes) -> tuple[Any, dict[tuple[str, str], Any]]:
+    from .edit import provenance as _provenance
+
+    root = parse_xml(data)
+    if root.tag != _provenance._P + "sources":
+        raise BlockConflict("the provenance item is not one")
+    entries: dict[tuple[str, str], Any] = {}
+    for node in root:
+        if not isinstance(node.tag, str) or node.tag != _provenance._P + "source":
+            raise BlockConflict("the provenance item holds what is not an entry")
+        name = (node.get("kind") or "", node.get("key") or "")
+        if name in entries:
+            raise BlockConflict("the provenance item repeats an entry")
+        entries[name] = node
+    return root, entries
+
+
+def _merge_sources(live: bytes | None, before: bytes | None, after: bytes | None) -> tuple[bytes, bytes]:
+    """The provenance item (``edit/provenance.py``) another call changed since the draft's
+    version, with the call's own change of it: ``(the document's bytes, the merged bytes)``.
+    Each entry (a table's, a paragraph's: ``kind`` and ``key``) the call added, changed or
+    dropped, as it did -- where the document's entry is still the one the call saw (else a
+    :class:`BlockConflict`: both changed it); every other entry as the document has it, in
+    its order, the call's new ones after them, as the call run on the document now adds
+    them.  Never an item left empty (the call would have removed it): a conflict."""
+    if live is None or before is None or after is None:
+        raise BlockConflict("the provenance item came or went meanwhile")
+    root, now = _source_entries(live)
+    _root, old = _source_entries(before)
+    _made, new = _source_entries(after)
+
+    def same(a: Any, b: Any) -> bool:
+        return (a is not None and b is not None and a.tag == b.tag and dict(a.attrib) == dict(b.attrib)
+                and a.text == b.text and not len(a) and not len(b))
+
+    for name in set(old) | set(new):
+        mine_before, mine_after = old.get(name), new.get(name)
+        if mine_before is not None and mine_after is not None and same(mine_before, mine_after):
+            continue                                        # not the call's change
+        theirs = now.get(name)
+        if (theirs is None) != (mine_before is None) or (theirs is not None and not same(theirs, mine_before)):
+            raise BlockConflict(f"the provenance of {name[1]} changed meanwhile")
+        if mine_after is None:
+            root.remove(theirs)                             # dropped by the call
+        elif theirs is not None:
+            theirs.text = mine_after.text                   # changed by the call, in place
+            for attribute, value in mine_after.attrib.items():
+                theirs.set(attribute, value)
+    for name, node in new.items():
+        if name not in old:
+            copy = etree.SubElement(root, node.tag)         # added by the call: after the others
+            for attribute, value in node.attrib.items():
+                copy.set(attribute, value)
+            copy.text = node.text
+    if not len(root):
+        raise BlockConflict("the provenance item would be left empty")
+    return live, serialize(root)
 
 
 def _placed(live: _Body, data: bytes, windows: list[_Window], count: int) -> list[tuple[int, int, _Window]]:
@@ -1116,9 +1303,9 @@ def _redraw(document: Any, patch: Patch) -> tuple[dict[str, str], Any]:
 
 
 def _window_after(arguments: Mapping[str, Any]) -> int:
-    """How far after a change a call reads: ``word_set_text`` with lines reads the paragraphs
-    after its paragraph, one per line (whether they already hold them); others
-    :data:`CONTEXT`."""
+    """How many blocks after a change a call reads: ``word_set_text`` with lines reads the
+    paragraphs after its paragraph, one per further line (whether they already hold them);
+    others none."""
     texts = [arguments.get("text")] + [item.get("text") for item in arguments.get("items") or []
                                        if isinstance(item, Mapping)]
     for op in arguments.get("ops") or []:
@@ -1127,7 +1314,7 @@ def _window_after(arguments: Mapping[str, Any]) -> int:
             texts += [inner.get("text")] + [item.get("text") for item in inner.get("items") or []
                                             if isinstance(item, Mapping)]
     lines = max((text.count("\n") + 1 for text in texts if isinstance(text, str)), default=1)
-    return max(CONTEXT, lines + 1)
+    return lines - 1
 
 
 def _section_breaks(data: bytes) -> list[bytes]:

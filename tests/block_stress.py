@@ -123,6 +123,93 @@ class Layout:
         self.tables = [t.id for t in tables if t.cell(0, 0).text == "Item"]
 
 
+def made_short(parts: int = 10, *, first_fill: bool = False) -> bytes:
+    """A report as callers start one (round 47): ``parts`` headings with no paragraph or one
+    short one between them, a table to fill at the end, and -- unless ``first_fill`` -- a
+    value written by reference (so provenance is kept)."""
+    rng = random.Random(47)
+    with Toolbox([*TOOLS, ds_rows], formats=[FORMAT], groups=GROUPS, workers=0, block_edits="off") as box:
+        session = box.session(clock=CLOCK)
+        document = Document.new()
+        document.paragraphs()[0].set_text("Report of made-up things")
+        doc = session.open(document.to_bytes(), "report.docx")
+
+        def call(name: str, **arguments: Any) -> None:
+            found = box.dispatch(session, name, {"doc": doc, **arguments} if name != "ds_rows" else arguments)
+            if not found.ok:
+                raise AssertionError(json.dumps(found.to_json())[:2000])
+
+        call("ds_rows", id="rows", rows="6")
+        lines = [f"- {sentence(rng, 3)}\n- {sentence(rng, 3)}"]      # a list: the numbering part there
+        for n in range(parts):
+            lines.append(f"# Part {n + 1} {sentence(rng, 2)[:-1]}")
+            if n % 2 == 0:
+                lines.append(sentence(rng, 6))
+        lines.append("Rows in full\n\n| code | name | state |\n|---|---|---|\n| x | y | z |")
+        call("word_insert_markdown", at="end", markdown="\n\n".join(lines))
+        if not first_fill:
+            first = next(p for p in session.entry(doc).document.paragraphs() if p.text.startswith("Part 1 "))
+            call("word_insert_markdown", at=f"after:{first.id}", markdown="A value: {{d:rows/#2/name}}.")
+        return session.entry(doc).document.to_bytes()
+
+
+class ShortLayout:
+    """:func:`made_short`'s ids: each part's heading and the paragraphs after it."""
+
+    def __init__(self, document: Document) -> None:
+        paragraphs = document.paragraphs()
+        ids = [p.id for p in paragraphs]
+        self.heads = [p.id for p in paragraphs if p.text.startswith("Part ")]
+        rows = next(p.id for p in paragraphs if p.text == "Rows in full")
+        bounds = self.heads[1:] + [rows]
+        self.bodies = [ids[ids.index(head) + 1:ids.index(bound)] for head, bound in zip(self.heads, bounds)]
+        self.bounds = bounds
+        self.fill = next(t.id for t in document.tables() if t.cell(0, 0).text == "code")
+
+
+def plan_short(seed: int, threads: int, calls: int, layout: ShortLayout, doc: str) -> list[list[tuple[str, dict]]]:
+    """The team's shape (round 47): each thread writes into its own part of a report whose
+    parts are still all but empty -- at its heading, before the next one, after what it
+    wrote -- with checks and reads of its part between, now and then a fill or an edit of
+    the paragraph a part began with."""
+    out = []
+    parts = len(layout.heads)
+    for k in range(threads):
+        rng = random.Random(seed * 1000 + k)
+        own = k % parts
+        head, bound, body = layout.heads[own], layout.bounds[own], layout.bodies[own]
+        mine: list[tuple[str, dict]] = []
+        for c in range(calls):
+            md = (f"### Note {k}.{c}\n\n{sentence(rng, 10)}" if rng.random() < 0.5
+                  else f"- {sentence(rng, 4)}\n- {sentence(rng, 3)}" if rng.random() < 0.5
+                  else f"| A | B |\n|---|---|\n| {sentence(rng, 1)[:-1]} | {c} |")
+            place = rng.choice([f"after:{head}", f"before:{bound}"] + ([f"after:{body[-1]}"] if body else []))
+            roll = rng.random()
+            if roll < 0.25:
+                mine.append(("word_insert_markdown", {"doc": doc, "at": place, "markdown": md}))
+            elif roll < 0.45:
+                # A table of a dataset's rows, its source kept (the provenance item).
+                mine.append(("word_insert_markdown", {"doc": doc, "at": place, "from": "d:rows"}))
+            elif roll < 0.60:
+                ops = [{"tool": "word_insert_markdown", "arguments": {"doc": doc, "at": place, "markdown": md}},
+                       {"tool": "word_read", "arguments": {"doc": doc, "range": f"{head}..{bound}"}}]
+                mine.append(("batch", {"ops": ops}))
+            elif roll < 0.72:
+                mine.append(("check", {"doc": doc, "range": [f"{head}..{bound}"]}))
+            elif roll < 0.80:
+                mine.append(("word_read", {"doc": doc, "range": f"{head}..{bound}"}))
+            elif roll < 0.88 and body:
+                mine.append(("word_set_text", {"doc": doc, "target": body[0], "text": sentence(rng, 12)}))
+            elif roll < 0.92:
+                mine.append(("word_edit_table", {"doc": doc, "table": layout.fill, "action": "set_cells",
+                                                 "grow": True, "from": "d:rows"}))
+            else:
+                mine.append(("word_insert_markdown", {"doc": doc, "at": f"before:{bound}",
+                                                      "markdown": f"{sentence(rng, 6)} {{{{d:rows/#{1 + c % 5}/name}}}}"}))
+        out.append(mine)
+    return out
+
+
 def plan(seed: int, threads: int, calls: int, layout: Layout, doc: str) -> list[list[tuple[str, dict]]]:
     """Each thread's calls, from ``seed``: mostly its own chapter's, often another's."""
     out = []
@@ -213,8 +300,8 @@ class Recorder:
 
         recorder = self
 
-        def note_change(entry: Any, parts: Any, before: Any) -> None:
-            recorder._original(entry, parts, before)
+        def note_change(entry: Any, parts: Any, before: Any, *more: Any) -> None:
+            recorder._original(entry, parts, before, *more)
             call = getattr(recorder.local, "call", None)
             if call is not None:
                 with recorder.lock:
@@ -236,16 +323,22 @@ def _box(mode: str) -> Toolbox:
 
 
 def run(seed: int, threads: int, calls: int, chapters: int = 4, mode: str = "always",
-        first_fill: bool = False) -> dict:
+        first_fill: bool = False, shape: str = "report") -> dict:
     """One stress run and its replay; ``{"same": bool, ...}`` with what differed.
-    ``first_fill``: on a report with no provenance yet (:func:`made`)."""
-    data = made(chapters, first_fill=first_fill)
-    layout = Layout(Document.open(data))
+    ``first_fill``: on a report with no provenance yet (:func:`made`).  ``shape``:
+    ``"report"`` (:func:`made`, :func:`plan`) or ``"short"`` (:func:`made_short`, one part per
+    thread, :func:`plan_short`)."""
+    if shape == "short":
+        data = made_short(threads, first_fill=first_fill)
+        layout: Any = ShortLayout(Document.open(data))
+    else:
+        data = made(chapters, first_fill=first_fill)
+        layout = Layout(Document.open(data))
     with _box(mode) as box, Recorder() as recorder:
         session = box.session(clock=CLOCK)
         doc = session.open(data, "report.docx")
         box.dispatch(session, "ds_rows", {"id": "rows", "rows": "6"})
-        plans = plan(seed, threads, calls, layout, doc)
+        plans = (plan_short if shape == "short" else plan)(seed, threads, calls, layout, doc)
         made_calls: list[dict] = []
         lock = threading.Lock()
         errors: list[str] = []
@@ -348,6 +441,8 @@ if __name__ == "__main__":
     parser.add_argument("--calls", type=int, default=12)
     parser.add_argument("--chapters", type=int, default=4)
     parser.add_argument("--mode", default="always")
+    parser.add_argument("--shape", default="report", choices=("report", "short"),
+                        help="report: chapters of text; short: one all but empty part per thread")
     parser.add_argument("--first-fill", default="odd", choices=("none", "odd", "all"),
                         help="which seeds run on a report with no provenance yet (default: odd ones)")
     args = parser.parse_args()
@@ -355,7 +450,7 @@ if __name__ == "__main__":
     for seed in _seeds(args.seeds):
         started = time.perf_counter()
         first = args.first_fill == "all" or (args.first_fill == "odd" and seed % 2 == 1)
-        found = run(seed, args.threads, args.calls, args.chapters, args.mode, first_fill=first)
+        found = run(seed, args.threads, args.calls, args.chapters, args.mode, first_fill=first, shape=args.shape)
         print(json.dumps({"seed": seed, "first_fill": first, "s": round(time.perf_counter() - started, 1),
                           **{k: v for k, v in found.items() if k not in ("differ",)}}), flush=True)
         if not found["same"]:

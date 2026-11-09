@@ -20,7 +20,7 @@ from ..edit.properties import refreshed_app
 from ..layout import (affinity, canon_of, check_facts, font_dirs_of, held_state, keep_layout, kept_layout,
                       lay_out_unlocked, layout_key, layout_options, locale_of, note_made, summary_for)
 from ..layout_facts import CAP, empty_paragraphs, layout_facts, numbering_skips_level, punctuation_spacing
-from ..scope import MAX_RANGES, Scope, ranges_of
+from ..scope import MAX_RANGES, Scope, ranges_of, read_scope
 from .render import RENDERER
 from . import keep_trials
 from .keep_trials import left_out
@@ -391,6 +391,8 @@ def _range_pages(call: Any, ranges: list[str], pages: list[int] | None) -> tuple
                         "covers many blocks", field="range")
     document, entry = call.document, call.entry
     scope = Scope(document, ranges)
+    if pages is None:
+        call.read_scope = read_scope(scope)     # what the result is of (round 47)
     version = entry.version
     layout = (lay_out_unlocked(document, call.unlocked, lambda: entry.version == version) if call.may_unlock
               else document.layout())
@@ -542,6 +544,9 @@ def check(call: Any, doc: str, slides: list | None = None, pages: list[int] | No
         raise ToolError("limit", f"{len(ranges)} ranges: at most {MAX_RANGES} per check; a span p:A..t:B "
                         "covers many blocks", field="range")
     scope = Scope(document, ranges) if ranges else None
+    if scope is not None and pages is None:
+        # What the result is of, for whether a change meanwhile touched it (round 47).
+        call.read_scope = read_scope(scope)
     if scope is not None and "layout" not in wanted:
         wanted.append("layout")               # the facts about the blocks are the layout's
     # Round 40: each range's keep tried (.keep_trials).

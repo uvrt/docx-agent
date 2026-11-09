@@ -5,6 +5,28 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.75 -- unreleased
+
+- **An edit conflicts only with changes to what it depends on** (round 47, R78:
+  callers writing into neighbouring, all but empty parts of one document ended on the lock).
+  A draft's windows are what its change depends on, no longer two blocks of context either
+  side: blocks changed under their own ids are their own window; blocks put between two are
+  placed by the block the call named (`before:X` depends on X, `after:P` on P) -- unless they
+  hold a table, which reads both neighbours -- and blocks removed or replaced keep their
+  neighbours; a block named, alone. The provenance item (values' sources) is merged entry by
+  entry with the document's, where two calls' entries differ, instead of a conflict; an id
+  the call made itself is not looked for in the document. On the round's stress shape (ten
+  callers, one all but empty part each, tables from a dataset, checks between), 0.1.74
+  ended 24-28 of about 90 drafts on the lock after 100+ conflicts; now none, 0-3 conflicts.
+  `tests/block_stress.py --shape short`; the serial replay holds for both shapes.
+- **"changed while this call read it" only when the change touched what was read** (round
+  47): a ranged `check` or `render` says the blocks it read (`docx_agent.scope.ReadScope`,
+  ooxml-edit's `Call.read_scope`), and `docx_agent.blocks.touches` says whether a change
+  made meanwhile touched them -- changed or removed one, put blocks between two, or changed
+  a part a read of blocks shows (not the registrations, the document's properties, the
+  provenance item, or lists only added to the numbering). A read of the whole document still
+  hears of any change.
+
 ## 0.1.74 -- unreleased
 
 - **Edits of different blocks of one document at the same time** (production round 45, R64
