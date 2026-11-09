@@ -601,11 +601,19 @@ _INSERT_MARKDOWN = {"doc": DOC,
                     "ref": BLOCKS_REF}
 
 
+def _no_markdown_from(node: Any) -> None:
+    """Round 47 (R81): ``markdown_from`` is not read as ``from`` any more -- ``from`` is the
+    one name, as the definition says.  Refused as any unknown argument is, but naming
+    ``from``: the validator's nearest name, ``markdown``, would write the reference as text."""
+    raise ToolError("invalid_arguments", "unknown argument 'markdown_from'; did you mean 'from'?",
+                    field="markdown_from", valid_options=sorted(_INSERT_MARKDOWN))
+
+
 @word_tool("word_insert_markdown", "Write Markdown as blocks in the document's styles: headings, lists, tables (empty header row: none), links, footnotes, images ![alt](b1), captions (: text). Returns the new blocks' ids.",
            _INSERT_MARKDOWN,
            group="word_text", mutates=True, exactly_one=[("markdown", "blob", "from")],
            sources=("from",), facts=("markdown",),
-           aliases={"columns": "from_columns", "markdown_from": "from",
+           aliases={"columns": "from_columns", "markdown_from": _no_markdown_from,
                     **positions.aliases("word_insert_markdown", "blocks", _INSERT_MARKDOWN)})
 def word_insert_markdown(call: Any, doc: str, at: str, markdown: str | None = None,
                          blob: str | None = None, style_map: list[dict] | None = None,

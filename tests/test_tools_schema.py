@@ -265,7 +265,7 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 #: 15,480.  Neither tool is strict: the strict set is unchanged (6 tools, 24 optional
 #: parameters).
 #: Round 45, R65/R66/R68: word_insert_markdown's ``from`` names one text field too, written
-#: as its Markdown (+12; ``markdown_from`` is an alias: no definition), word_edit_table's
+#: as its Markdown (+12; ``markdown_from`` was an alias, dropped in round 47: no definition), word_edit_table's
 #: cells take ``from`` (one value, a number format after it; ``text`` now optional: +20) and
 #: word_comments' target a table or row (+3): +36 to every definition (15,480 -> 15,516), none
 #: to the core (3,192).  The guard rises to 15,520.  word_insert_markdown is strict: its

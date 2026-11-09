@@ -9,7 +9,9 @@ the session's own (``shared.SESSION_TOOLS``); this module adds docx's ``new_docu
 
 from __future__ import annotations
 
-from typing import Any
+import time
+from contextlib import contextmanager
+from typing import Any, Iterator
 
 from ooxml_edit.tools import Result, ToolError, shared, tiles, worker_task
 from ooxml_edit.tools import render as pipeline
@@ -25,7 +27,8 @@ from .render import RENDERER
 from . import keep_trials
 from .keep_trials import left_out
 from .scoped import compare_copies, problems_in_scope, range_pages
-from ._base import cached_layout, outcome, page, reflow_json, remember, resolve, short, validate_delta, wrap
+from ._base import (Timing, cached_layout, outcome, page, reflow_json, remember, resolve, short, validate_delta,
+                    wrap)
 
 KIND = "docx"
 PAGE_SIZES = ("A4", "Letter", "Legal", "A5", "A3")
@@ -517,7 +520,17 @@ def check(call: Any, doc: str, slides: list | None = None, pages: list[int] | No
           min_size: float | None = None, styles: list[str] | None = None,
           range: Any = None, copies: list | None = None) -> Result:
     """The document's facts; ``range`` (round 35, R18) scopes them to some blocks
-    (:mod:`.scoped`), ``copies`` (R19) compares copies with their reference."""
+    (:mod:`.scoped`), ``copies`` (R19) compares copies with their reference.
+
+    Round 47 (R82): ``data.timing`` says where the time went, as an edit's does
+    (:class:`~._base.Timing`): the parts that ran -- ``resolve`` (the ranges), ``validate``,
+    ``copies``, ``layout`` (laying the document out), ``facts`` (reading the layout's facts
+    and comparing with the last check), ``fields`` -- and, apart, the waits: ``worker_wait``
+    (for the worker holding the document's layout: its queue, a layout of the document in
+    progress there, the bytes there and the facts back) and ``document_wait`` (taking the
+    document back after laying out with it let go).  The wait for the document before the
+    call ran is the result's duration less these."""
+    timing = Timing()
     pages = _pages_of(call, slides, pages)
     if boxes is not None:
         raise _decks_only("boxes", "include")
@@ -539,11 +552,12 @@ def check(call: Any, doc: str, slides: list | None = None, pages: list[int] | No
         wanted.append("layout")               # what they measure (round 16, F8)
     # Round 35, R18: the facts about some blocks, on the pages they fall on -- read under the
     # lock, before the layout lets it go.
-    ranges = ranges_of(resolve(call, range))
-    if len(ranges) > MAX_RANGES:
-        raise ToolError("limit", f"{len(ranges)} ranges: at most {MAX_RANGES} per check; a span p:A..t:B "
-                        "covers many blocks", field="range")
-    scope = Scope(document, ranges) if ranges else None
+    with timing.part("resolve") if range is not None else _untimed():
+        ranges = ranges_of(resolve(call, range))
+        if len(ranges) > MAX_RANGES:
+            raise ToolError("limit", f"{len(ranges)} ranges: at most {MAX_RANGES} per check; a span p:A..t:B "
+                            "covers many blocks", field="range")
+        scope = Scope(document, ranges) if ranges else None
     if scope is not None and pages is None:
         # What the result is of, for whether a change meanwhile touched it (round 47).
         call.read_scope = read_scope(scope)
@@ -553,23 +567,17 @@ def check(call: Any, doc: str, slides: list | None = None, pages: list[int] | No
     keeps = scope is not None and (KEEP_TRIALS or "keeps" in wanted)
     report: dict[str, Any] = {}
     if "validate" in wanted:
-        found = list(document.validate())          # once: the delta reads the same problems
-        if scope is None:
-            report["validate"] = {**validate_delta(entry, found), "problems": [str(p) for p in found][:50]}
-        else:
-            inside, elsewhere = problems_in_scope(document, scope, found)
-            delta = validate_delta(entry, found)
-            named = {str(p) for p in inside}
-            report["validate"] = {"new": [p for p in delta["new"] if p in named], "fixed": delta["fixed"],
-                                  "baseline": delta["baseline"], "problems": [str(p) for p in inside][:50],
-                                  "elsewhere": elsewhere}
+        with timing.part("validate"):
+            _validate(document, entry, scope, report)
     if copies:
         # Round 35, R19: under the lock, on the version validate read.
-        report["copies"] = compare_copies(call, copies)
+        with timing.part("copies"):
+            report["copies"] = compare_copies(call, copies)
     if "reflow" in wanted or "layout" in wanted:
+        started, inner = time.perf_counter(), sum(timing.parts.values())
         reflow, layout = _layout_facts(call, pages, seen="reflow" in wanted, scope=scope,
                                        layout_wanted="layout" in wanted, min_size=min_size, styles=styles,
-                                       keeps=keeps)
+                                       keeps=keeps, timing=timing)
         # Round 38: made where the layout is held -- the ranges' pages and the layout facts
         # came back with the reflow's (a dict); else the layout itself, read here.
         made = layout if isinstance(layout, dict) else None
@@ -614,8 +622,12 @@ def check(call: Any, doc: str, slides: list | None = None, pages: list[int] | No
                                                            if scope is None or scope.about(e)][:CAP],
                                  "punctuation_spacing": [e for e in punctuation_spacing(document)
                                                          if scope is None or scope.about(e)][:CAP]})
+        # The rest of the layout's facts here, beside what the worker timed (layout, facts, waits).
+        inner = sum(timing.parts.values()) - inner
+        timing.add("facts", max(0.0, time.perf_counter() - started - inner))
     if "fields" in wanted:
-        report["fields"] = _field_facts(document)
+        with timing.part("fields"):
+            report["fields"] = _field_facts(document)
     if "app" in wanted:
         report["app_findings"] = None
     summary = "Checked " + ", ".join(wanted)
@@ -625,7 +637,41 @@ def check(call: Any, doc: str, slides: list | None = None, pages: list[int] | No
         found = report["copies"]
         summary += (f"; copies: {found['follow']} of {found['compared']} follow their reference, "
                     f"{found['with_example_text']} with its example text")
+    report["timing"] = timing.parts
     return Result(summary=summary, data=report)
+
+
+def _validate(document: Document, entry: Any, scope: Any, report: dict[str, Any]) -> None:
+    """``check``'s ``validate``, into ``report``: the problems (in ``scope``'s blocks, with
+    those elsewhere counted) and the delta against those the document had when opened."""
+    found = list(document.validate())          # once: the delta reads the same problems
+    if scope is None:
+        report["validate"] = {**validate_delta(entry, found), "problems": [str(p) for p in found][:50]}
+        return
+    inside, elsewhere = problems_in_scope(document, scope, found)
+    delta = validate_delta(entry, found)
+    named = {str(p) for p in inside}
+    report["validate"] = {"new": [p for p in delta["new"] if p in named], "fixed": delta["fixed"],
+                          "baseline": delta["baseline"], "problems": [str(p) for p in inside][:50],
+                          "elsewhere": elsewhere}
+
+
+@contextmanager
+def _untimed() -> Iterator[None]:
+    yield
+
+
+def _timed_unlocked(call: Any, timing: Timing) -> Any:
+    """``call.unlocked``, the time it takes to take the document back after counted as
+    ``document_wait`` (round 47, R82) when it let the document go."""
+    @contextmanager
+    def unlocked() -> Iterator[bool]:
+        with call.unlocked() as let_go:
+            yield let_go
+            back = time.perf_counter()
+        if let_go:
+            timing.add("document_wait", time.perf_counter() - back)
+    return unlocked
 
 
 #: Whether a check with ranges tries each range's keep by default (round 40, .keep_trials).
@@ -644,7 +690,8 @@ BATCH_CHECK = ("check laid the document out between the batch's changes, holding
 
 def _layout_facts(call: Any, pages: list[int] | None, seen: bool = True, *, scope: Any = None,
                   layout_wanted: bool = False, min_size: Any = None,
-                  styles: list[str] | None = None, keeps: bool = False) -> tuple[dict[str, Any], Any]:
+                  styles: list[str] | None = None, keeps: bool = False,
+                  timing: Timing | None = None) -> tuple[dict[str, Any], Any]:
     """``reflow``'s facts, and the layout they are of (``None`` where it failed); ``seen``:
     the layout a later check's ``since_last_check`` is measured from (not for ``layout``
     alone, which reports no reflow).
@@ -652,7 +699,12 @@ def _layout_facts(call: Any, pages: list[int] | None, seen: bool = True, *, scop
     Round 38: a lone check's facts are made in the worker holding the document's layout
     (:func:`docx_agent.layout.check_facts`) -- with the ranges' pages (``scope``) and the
     layout facts (``layout_wanted``, ``min_size``, ``styles``) -- and the second value is
-    then those, a dict ``{"range", "on", "layout"}``: the layout never comes here."""
+    then those, a dict ``{"range", "on", "layout"}``: the layout never comes here.
+
+    ``timing`` (round 47, R82) is told the ``layout`` -- the worker's, else laying out here
+    -- and the waits (:func:`check_facts`, :func:`_timed_unlocked`)."""
+    timing = timing if timing is not None else Timing()
+    unlocked = _timed_unlocked(call, timing)
     document = call.document
     entry = call.entry
     version = entry.version
@@ -665,12 +717,18 @@ def _layout_facts(call: Any, pages: list[int] | None, seen: bool = True, *, scop
                        "ranges": scope.spec() if scope is not None else None,
                        "layout": layout_wanted, "min_size": min_size, "styles": styles,
                        "keeps": keep_trials.asked() if keeps and scope is not None else None}
-            made = check_facts(document, call.unlocked, request)
-            layout = (None if made is not None else
-                      lay_out_unlocked(document, call.unlocked, lambda: entry.version == version))
+            made = check_facts(document, unlocked, request, timed=timing.add)
+            if made is None:
+                started, waited = time.perf_counter(), timing.parts.get("document_wait", 0.0)
+                layout = lay_out_unlocked(document, unlocked, lambda: entry.version == version)
+                timing.add("layout", time.perf_counter() - started
+                           - (timing.parts.get("document_wait", 0.0) - waited))
+            else:
+                layout = None
         else:
             laid_out = call.in_batch and cached_layout(document, fetch=False) is None
-            layout = document.layout()
+            with timing.part("layout"):
+                layout = document.layout()
             if laid_out:
                 # Between a batch's changes (round 33, R16c): after the last one, a check
                 # runs once the batch is done and lets the document go while it lays out.
