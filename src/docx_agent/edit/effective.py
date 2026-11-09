@@ -15,6 +15,7 @@ of where each came from.
 from __future__ import annotations
 
 import dataclasses
+import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -24,6 +25,7 @@ from docx2svg.parse.properties import read_paragraph_properties, read_run_proper
 from docx2svg.paths import path_part, resolve_path, row_level
 from docx2svg.resolve import character_format, resolve_paragraph, resolve_run
 from docx2svg.table import lead_paragraph
+from ooxml_common.xmlutil import element_children
 
 from ..oxml.xml import Element
 
@@ -311,6 +313,16 @@ class PathFinder:
             self._places[key] = kept
         return kept[2]
 
+    def named(self, parent: Element, name: str) -> list:
+        """``parent``'s element children of local name ``name`` (docx2svg's
+        ``element_children``), listed once."""
+        key = (id(parent), "named:" + name)
+        kept = self._places.get(key)
+        if kept is None or kept[0] is not parent or kept[1] != len(parent):
+            kept = (parent, len(parent), element_children(parent, name))
+            self._places[key] = kept
+        return kept[2]
+
     def resolve(self, root: Element | None, path: str) -> Element | None:
         """:func:`~docx2svg.paths.resolve_path` of ``path`` in ``root``: a path of indexed
         ``w:`` steps (``w:body/w:tbl[2]/w:tr[5]/w:tc[1]/w:p[1]``) step by step, each prefix
@@ -338,11 +350,26 @@ class PathFinder:
                 # resolve_path's own rule for a row or cell step, its rows listed once.
                 rows = self.rows(node, name)
                 found = rows[int(index) - 1] if 0 < int(index) <= len(rows) else None
+            elif _INDEX.fullmatch(index) and _NAME.fullmatch(name) and _local(node.tag) not in _DRAWINGS \
+                    and not (name in _DRAWINGS and _local(node.tag) == "r"):
+                # Round 45: resolve_path's rule for any other indexed step -- the children of
+                # that name, in order -- its children listed once (a body of a thousand
+                # blocks was listed again for every paragraph of a layout's lines).
+                named = self.named(node, name)
+                found = named[int(index) - 1] if 0 < int(index) <= len(named) else None
             else:
                 found = resolve_path(node, step)
             self._prefixes[key] = (root, node, len(node), found)
             node = found
         return node
+
+
+#: :meth:`PathFinder.resolve`'s own steps: a name and a 1-based index as docx2svg's paths
+#: write them; and the drawings whose steps count otherwise (a group's members, a run's
+#: anchors and inlines), left to docx2svg's resolver.
+_NAME = re.compile(r"\w+")
+_INDEX = re.compile(r"\d+")
+_DRAWINGS = frozenset({"anchor", "inline"})
 
 
 def _local(tag) -> str:

@@ -7,6 +7,7 @@ controls (``word_controls``)."""
 from __future__ import annotations
 
 import re
+import time
 from typing import Any
 
 from ooxml_edit.tools import (REVIEW, Result, ToolError, array, boolean, integer, names_as, number, obj,
@@ -15,7 +16,7 @@ from ooxml_edit.tools import (REVIEW, Result, ToolError, array, boolean, integer
 from ..edit import provenance as _provenance
 from ..edit.pictures import PictureError
 from . import positions
-from ._base import engage, need, note_small_text, outcome, remember, resolve, short, word_tool
+from ._base import Timing, engage, need, note_small_text, outcome, remember, resolve, short, word_tool
 from .structure import _position
 from .table_data import DATE_FORMAT, FROM_COLUMNS, HEADER, MAX_COLUMNS, MAX_ROWS, cell_text, fits, no_source, placed
 
@@ -144,12 +145,21 @@ def word_edit_table(call: Any, doc: str, table: str, action: str, cells: list[di
         _limit_cells(call, len(cells))
         values = [_cell_value(call, cell, k) for k, cell in enumerate(cells)]   # all read first
         placed_at: list[tuple[int, int]] = []
-        for cell, (text, _record) in zip(cells, values):  # in order: a label set by an earlier cell is found by a later one
-            current = document.table(table)
-            row, col = _locate(current, cell)
-            kept.cell(row, col)
-            edits.extend(_set_cell(document, current, row, col, text))
-            placed_at.append((row, col))
+        writes = _by_position(document, view, cells, [text for text, _record in values])
+        if writes is not None:
+            # Round 45 (R67): every cell by its position, each on the table -- in one pass, the
+            # same edits in the same order (a thousand cells took 80 s one by one).
+            for row, col, _ in writes:
+                kept.cell(row, col)
+                placed_at.append((row, col))
+            edits.extend(document._fill_cells(table, writes)[0])
+        else:
+            for cell, (text, _record) in zip(cells, values):  # in order: a label set by an earlier cell is found by a later one
+                current = document.table(table)
+                row, col = _locate(current, cell)
+                kept.cell(row, col)
+                edits.extend(_set_cell(document, current, row, col, text))
+                placed_at.append((row, col))
         facts = _cell_facts(call, cells, values, placed_at, lambda: kept.current_id() or table)
     elif action == "insert_row":
         edits.append(document.insert_row(table, index, below=side == "after"))
@@ -179,6 +189,24 @@ def word_edit_table(call: Any, doc: str, table: str, action: str, cells: list[di
     if now != table:
         result.renamed[table] = now
     return note_small_text(call, result, [now]) if action == "set_cells" else result
+
+
+def _by_position(document: Any, view: Any, cells: list[dict], texts: list[str]) -> list[tuple[int, int, str]] | None:
+    """``set_cells``' cells as ``(row, column, text)`` where each names its cell by position
+    and the table has a cell there, and nothing needs stamping -- what
+    ``Document._fill_cells`` writes as the cells one by one would be; else ``None`` (a
+    label, read from text an earlier cell may set, or a cell to refuse: one by one)."""
+    if any(not isinstance(c.get("row"), int) or isinstance(c.get("row"), bool) or not isinstance(c.get("col"), int)
+           or isinstance(c.get("col"), bool) for c in cells) or not all(isinstance(t, str) for t in texts):
+        return None
+    grid = view.grid()
+    for c in cells:
+        row, col = c["row"], c["col"]
+        if not (0 <= row < len(grid) and 0 <= col < len(grid[row]) and grid[row][col] is not None):
+            return None
+    if document._stamping_due():
+        return None
+    return [(c["row"], c["col"], text) for c, text in zip(cells, texts)]
 
 
 def _one_value_cells(source: str, cells: list[dict] | None, action: str) -> list[dict]:
@@ -258,7 +286,11 @@ def _set_from(call: Any, view: Any, source: str, from_columns: list[str] | None,
     cells; not a header row), in the call's undo step; ``top`` may then be the row after
     the last.  Without it the refusal gives the call with ``grow``."""
     document = call.document
-    block = placed(call, source, from_columns, header, date_format)
+    timing = Timing()            # round 45 (R67): the result says where the time went
+    call.touch(timing)
+    with timing.part("resolve"):
+        block = placed(call, source, from_columns, header, date_format)
+    started = time.perf_counter()
     height, width = len(view.rows), view.column_count
     if top > height or (top == height and not grow):
         raise ToolError("not_found", f"no row {top}; {view.id} has {height}" + (
@@ -277,19 +309,34 @@ def _set_from(call: Any, view: Any, source: str, from_columns: list[str] | None,
     _one_cell_each(view.id, block, grid, top, min(need_rows, height - top), need_columns, {})
     edits: list[Any] = []
     added: list[str] = []
+    # Round 45 (R67): in one pass where nothing needs stamping -- the same edits, in order.
+    at_once = not document._stamping_due()
     if short_by > 0:
         # The rows added are the last row's likeness: checked as the block's other rows are.
         _one_cell_each(view.id, block, [grid[-1]] * short_by, 0, short_by, need_columns, {}, first=height)
-        edits, added = _grow(document, view.id, short_by)
+        timing.add("check", time.perf_counter() - started)
+        with timing.part("rows"):
+            edits, added = _grow(document, view.id, short_by, at_once=at_once)
+    else:
+        timing.add("check", time.perf_counter() - started)
     changed = [view.id]
-    for row, values in enumerate(block.lines(), start=top):
-        for col, lines in enumerate(values):
-            current = document.table(view.id)
-            edits.extend(_set_cell(document, current, row, col, cell_text(lines)))
-            changed.append(current.cell(row, col).id)
-    placed_from = block.provenance(top)
-    _keep_placed(call, view.id, block, placed_from, top)
-    data = {**table_json(document, view.id, markdown=False), "from": placed_from}
+    with timing.part("cells"):
+        writes = [(row, col, cell_text(lines)) for row, values in enumerate(block.lines(), start=top)
+                  for col, lines in enumerate(values)]
+        if at_once:
+            made, cells = document._fill_cells(view.id, writes)
+            edits.extend(made)
+            changed.extend(cells)
+        else:
+            for row, col, text in writes:
+                current = document.table(view.id)
+                edits.extend(_set_cell(document, current, row, col, text))
+                changed.append(current.cell(row, col).id)
+    with timing.part("record"):
+        placed_from = block.provenance(top)
+        _keep_placed(call, view.id, block, placed_from, top)
+    started = time.perf_counter()
+    data = {**table_json(document, view.id, markdown=False), "from": placed_from, "timing": timing.parts}
     # The rows added are the result's created ones (tr:...).
     result = outcome(edits, f"set_cells on {view.id} from {block.rows.address}"
                      + (f"; {len(added)} row(s) added after row {height - 1}, each like it" if added else ""),
@@ -302,7 +349,9 @@ def _set_from(call: Any, view: Any, source: str, from_columns: list[str] | None,
             line += (f" (rows {top + need_rows}-{height - 1} below the data: delete_row index "
                      f"{top + need_rows}, {below} time(s), removes them)")
         result.warnings.append(line)
-    return note_small_text(call, result, [view.id])
+    result = note_small_text(call, result, [view.id])
+    timing.add("result", time.perf_counter() - started)
+    return result
 
 
 def _one_cell_each(table: str, block: Any, grid: list, top: int, count: int, columns: int,
@@ -340,9 +389,13 @@ def _no_room(block: Any, table: str, room: int, top: int, short_by: int, asked: 
                     details={"call": {"tool": "word_edit_table", "arguments": meant}})
 
 
-def _grow(document: Any, table: str, count: int) -> tuple[list[Any], list[str]]:
+def _grow(document: Any, table: str, count: int, *, at_once: bool = False) -> tuple[list[Any], list[str]]:
     """``count`` rows after the table's last, each as ``insert_row`` makes one -- the last
-    row's properties and cells, empty -- and not a header row where the last is one."""
+    row's properties and cells, empty -- and not a header row where the last is one.
+    ``at_once`` (round 45): in one pass (``Document._rows_after_last``), the same edits."""
+    if at_once:
+        edits = document._rows_after_last(table, count)
+        return edits, [edit.id for edit in edits if edit.created]
     edits, added = [], []
     for _ in range(count):
         last = len(document.table(table).rows) - 1

@@ -27,8 +27,9 @@ from __future__ import annotations
 
 import copy
 import hashlib
+from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Iterator
 
 from lxml import etree
 
@@ -73,6 +74,21 @@ class ListMembership:
         return "bullet" if self.format == "bullet" else "number"
 
 
+@contextmanager
+def reading(document: "Document") -> Iterator[None]:
+    """Round 45: while nothing changes the numbering part (a read of it), its lists and
+    definitions listed once (:meth:`Numbering.nums`, :meth:`Numbering.abstracts`) rather
+    than on every question."""
+    if document.__dict__.get("_numbering_held") is not None:
+        yield
+        return
+    document.__dict__["_numbering_held"] = {}
+    try:
+        yield
+    finally:
+        document.__dict__["_numbering_held"] = None
+
+
 class Numbering:
     """``numbering.xml``, read live."""
 
@@ -89,21 +105,31 @@ class Numbering:
         return self._document.package.tree(part) if part is not None else None
 
     def nums(self) -> dict[int, Element]:
-        root = self.root
-        out: dict[int, Element] = {}
-        for node in (root.findall(_W + "num") if root is not None else []):
-            number = _int(node.get(_W + "numId"))
-            if number is not None:
-                out[number] = node
-        return out
+        return self._listed("num", "numId")
 
     def abstracts(self) -> dict[int, Element]:
-        root = self.root
+        return self._listed("abstractNum", "abstractNumId")
+
+    def _listed(self, tag: str, attribute: str) -> dict[int, Element]:
+        """The part's ``tag`` elements by their number; inside :func:`reading` listed once
+        (round 45: a table of contents asked for every heading's list several times over)."""
+        held = self._document.__dict__.get("_numbering_held")
+        if held is not None:
+            if "root" not in held:
+                held["root"] = self.root
+            root = held["root"]
+            kept = held.get(tag)
+            if kept is not None:
+                return kept[1]
+        else:
+            root = self.root
         out: dict[int, Element] = {}
-        for node in (root.findall(_W + "abstractNum") if root is not None else []):
-            number = _int(node.get(_W + "abstractNumId"))
+        for node in (root.findall(_W + tag) if root is not None else []):
+            number = _int(node.get(_W + attribute))
             if number is not None:
                 out[number] = node
+        if held is not None:
+            held[tag] = (root, out)
         return out
 
     def abstract_of(self, num_id: int) -> int | None:

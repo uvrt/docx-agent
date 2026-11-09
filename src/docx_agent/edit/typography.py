@@ -109,11 +109,15 @@ class Recorder:
 
     def __init__(self) -> None:
         self._nodes: dict[int, tuple[Element, set[int]]] = {}
+        #: Round 45: how many times what it holds changed -- spacing applied at one count, in
+        #: an unchanged document, is applied (``Document._space_written``).
+        self.version = 0
 
     def __bool__(self) -> bool:
         return bool(self._nodes)
 
     def add(self, node: Element, offsets: Iterable[int] | None = None) -> None:
+        self.version += 1
         length = len(node.text or "")
         found = set(range(length)) if offsets is None else {k for k in offsets if 0 <= k < length}
         if found:
@@ -133,11 +137,13 @@ class Recorder:
         held = self.offsets(node)
         if not held:
             return
+        self.version += 1
         self._nodes[id(left)] = (left, {k for k in held if k < at})
         self._nodes[id(node)] = (node, {k - at for k in held if k >= at})
 
     def join(self, kept: Element, gone: Element, shift: int) -> None:
         """``gone``'s text appended to ``kept``'s, which was ``shift`` long."""
+        self.version += 1
         moved = {k + shift for k in self.offsets(gone)}
         self._nodes.pop(id(gone), None)
         if moved:

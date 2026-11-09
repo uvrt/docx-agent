@@ -18,7 +18,7 @@ import os
 import re
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, BinaryIO, Iterator
+from typing import TYPE_CHECKING, Any, BinaryIO, Iterator
 
 from lxml import etree
 from ooxml_edit.history import History
@@ -683,22 +683,20 @@ class Cell:
 
     @property
     def _element(self) -> Element:
-        row = self._table._entry()[1].rows[self.row][0]
-        column = _int(_find(row, "w:trPr/w:gridBefore"), 0)
-        for tc in _cells(row):
-            if column == self.column:
-                return tc
-            column += max(1, _int(_find(tc, "w:tcPr/w:gridSpan"), 1))
-        raise KeyError(f"{self.id} no longer exists")
+        found = cell_element(self._table._entry()[1].rows[self.row][0], self.column)
+        if found is None:
+            raise KeyError(f"{self.id} no longer exists")
+        return found
 
     @property
     def paragraphs(self) -> list[Paragraph]:
         """The cell's paragraphs (not those of a table nested in it)."""
         part, _ = self._table._entry()
         index = self._table._document._index(part)
-        nested = set(map(id, self._element.iter(W_P)))
-        return [Paragraph(self._table._document, entry.id) for entry in index.paragraphs
-                if id(entry.element) in nested]
+        # Round 45: the cell's own paragraphs looked up, not every paragraph of the story
+        # tested -- the same ones in the same (document) order.
+        return [Paragraph(self._table._document, entry.id) for entry in map(index.entry_for, self._element.iter(W_P))
+                if isinstance(entry, ParagraphEntry)]
 
     @property
     def text(self) -> str:
@@ -752,6 +750,10 @@ class Story:
 
 #: How the first edit stamps paraIds (ROADMAP.md, "Durable across a Word save -- measured").
 STAMPING = ("document", "paragraph")
+
+
+#: :meth:`Document._used` inside :meth:`Document._held_ids` before its first read.
+_NOT_READ = object()
 
 
 class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, PictureOps, CommentOps, TableOps,
@@ -824,6 +826,11 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
         self.converter = None
         #: Bumped on every change: what per-state caches (the effective-formatting model) key on.
         self._state = 0
+        #: Round 45: the ids in use, read once inside :meth:`_held_ids` (``None``: not held).
+        self._used_held: Any = None
+        #: Round 45: the recorder, its version and the state the written text was last spaced
+        #: at (:meth:`_space_written`).
+        self._spaced: tuple | None = None
         self._effective = None
         #: The tracking context (``tracking()``) and the per-edit overrides (``track=``).
         self._tracking = None
@@ -1285,7 +1292,47 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
 
     def _used(self) -> set[int]:
         """Every id in use and every id this session had (round 37), as the one set
-        :func:`~docx_agent.edit.ids.generate` adds to: what it gives is never given again."""
+        :func:`~docx_agent.edit.ids.generate` adds to: what it gives is never given again.
+        Inside :meth:`_held_ids`, read once."""
+        held = self._used_held
+        if held is not None:
+            if held is _NOT_READ:
+                held = self._used_held = self._read_used()
+            return held
+        return self._read_used()
+
+    @contextmanager
+    def _held_ids(self) -> Iterator[None]:
+        """Round 45: :meth:`_used` read once for the edits inside, not before each.  The same
+        set either way: every value an edit inside writes is one :func:`~.ids.generate` gave
+        (and so in the set), the edits being the ones a table filled in one pass makes --
+        text, a textId, rows and paragraphs made and stamped here -- none of which copies a
+        paraId, textId or drawing id in from elsewhere."""
+        if self._used_held is not None:
+            yield
+            return
+        self._used_held = _NOT_READ
+        try:
+            yield
+        finally:
+            self._used_held = None
+
+    def _stamping_due(self) -> bool:
+        """Whether an edit's stamping would stamp anything now (:meth:`_stamp_document`'s
+        test, for any stamping policy): a paragraph or row, in any story, without a valid
+        and unique paraId, or a drawing without its anchorId and editId."""
+        for part in self._parts():
+            index = self._index(part)
+            if any(entry.needs_stamp for entry in index.paragraphs):
+                return True
+            prefix = "" if index.story == "body" else f"{index.story}/"
+            if any(not row_id.startswith(prefix + "tr:") for table in index.tables for _, row_id in table.rows):
+                return True
+            if _ids.drawings_needing_ids(index.root):
+                return True
+        return False
+
+    def _read_used(self) -> set[int]:
         roots = self._roots()
         pool = self._id_pool()
         pool |= _ids.used_long_hex(roots)
@@ -1562,9 +1609,16 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
         counted in :attr:`typography_spaced`."""
         if not record:
             return
+        # Round 45: applied already to what the recorder holds, and nothing changed since (no
+        # edit, nothing more recorded) -- the tool layer's spacing then the batch's end: the
+        # spacing is in place (applying it again finds nothing to do), not looked for again.
+        done = (record, record.version, self._state)
+        if self._spaced is not None and self._spaced[0] is record and self._spaced[1:] == done[1:]:
+            return
         roots = {id(self.package.tree(part)): part for part in self._parts()}
         mine = [p for p in record.paragraphs() if id(p.getroottree().getroot()) in roots]
         made, changed = _typography.apply_written(self, record, mine)
+        self._spaced = done
         if not made:
             return
         from .drawings import _MC, sync_text_box
@@ -1649,21 +1703,29 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
             return EditResult(entry.id, changed=False)
         tracking = self._active_tracking()
         with self._edit():
-            stamped = entry.needs_stamp
-            renames = self._prepare(part, [entry])
-            element = entry.element
-            if tracking is not None:
-                stamp = Stamp(self, tracking)
-                old = _text.paragraph_text(element)
-                released = _track.replace_span(element, 0, len(old), value, stamp, part, keep="characters")
-                stamp.finish()
-                self._release(part, released)
-            else:
-                _text.set_text(element, value)
-            if not stamped:
-                self._new_text_id(part, element)
-            self.package.mark_dirty(part)
+            renames = self._write_text(part, entry, value, tracking)
         return EditResult(renames.get(entry.id, entry.id), renamed=renames)
+
+    def _write_text(self, part: str, entry: ParagraphEntry, value: str, tracking: Any, *,
+                    prepare: bool = True) -> dict[str, str]:
+        """:meth:`_set_text`'s change, inside an edit: the renames.  ``prepare`` false (round
+        45: a table filled in one pass, :meth:`~.tables.TableOps._fill_cells`) skips the
+        stamping, where the caller found nothing to stamp (:meth:`_stamping_due`)."""
+        stamped = entry.needs_stamp
+        renames = self._prepare(part, [entry]) if prepare else {}
+        element = entry.element
+        if tracking is not None:
+            stamp = Stamp(self, tracking)
+            old = _text.paragraph_text(element)
+            released = _track.replace_span(element, 0, len(old), value, stamp, part, keep="characters")
+            stamp.finish()
+            self._release(part, released)
+        else:
+            _text.set_text(element, value)
+        if not stamped:
+            self._new_text_id(part, element)
+        self.package.mark_dirty(part)
+        return renames
 
     def set_text_paragraphs(self, identifier: str, value: str) -> EditResult:
         """Paragraph ``identifier`` rewritten as :meth:`Paragraph.set_text` does with the
@@ -2733,6 +2795,17 @@ def _int(node: Element | None, default: int, attribute: str = "w:val") -> int:
         return int(node.get(qn(attribute)) or "")
     except ValueError:
         return default
+
+
+def cell_element(row: Element, column: int) -> Element | None:
+    """The ``w:tc`` of ``row`` whose grid column (``w:gridBefore`` and the spans before it
+    counted) is ``column``, or ``None``."""
+    at = _int(_find(row, "w:trPr/w:gridBefore"), 0)
+    for tc in _cells(row):
+        if at == column:
+            return tc
+        at += max(1, _int(_find(tc, "w:tcPr/w:gridSpan"), 1))
+    return None
 
 
 def _cells(row: Element) -> list[Element]:
