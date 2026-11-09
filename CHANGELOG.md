@@ -5,7 +5,7 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
-## 0.1.75 -- unreleased
+## 0.1.76 -- unreleased
 
 - **An edit conflicts only with changes to what it depends on** (round 47, R78:
   callers writing into neighbouring, all but empty parts of one document ended on the lock).
@@ -15,7 +15,9 @@ snapshot commit; the development history before it is summarised here.
   hold a table, which reads both neighbours -- and blocks removed or replaced keep their
   neighbours; a block named, alone. The provenance item (values' sources) is merged entry by
   entry with the document's, where two calls' entries differ, instead of a conflict; an id
-  the call made itself is not looked for in the document. On the round's stress shape (ten
+  the call made itself is not looked for in the document -- which, alone, made every insert
+  or fill writing text by reference (`from: d:notes/#1/body`) conflict three times with
+  itself ("p:... is gone") and run under the lock, one caller or many. On the round's stress shape (ten
   callers, one all but empty part each, tables from a dataset, checks between), 0.1.74
   ended 24-28 of about 90 drafts on the lock after 100+ conflicts; now none, 0-3 conflicts.
   `tests/block_stress.py --shape short`; the serial replay holds for both shapes.

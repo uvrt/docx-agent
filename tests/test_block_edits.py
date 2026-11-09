@@ -16,7 +16,7 @@ import threading
 
 import pytest
 
-from ooxml_edit.tools import Toolbox
+from ooxml_edit.tools import Dataset, Result, Toolbox, string, tool
 from ooxml_edit.tools.limits import Limits
 
 from docx_agent import Document, blocks
@@ -780,3 +780,35 @@ def test_a_ranged_check_is_warned_only_when_its_blocks_changed_meanwhile(monkeyp
     assert not run(chapter, lambda layout: layout.bodies[2][0])
     assert run(chapter, lambda layout: layout.bodies[0][0])
     assert run(lambda layout: {}, lambda layout: layout.bodies[2][0])
+
+
+@tool("ds_notes", "Test only: notes with Markdown bodies.", {"id": string("Its id.")}, documents=())
+def _ds_notes(call, id):
+    call.define_dataset(id, Dataset(("title", "body"), [("One", "Some **text** here.\n\n- a\n- b"),
+                                                        ("Two", "More text.")]), source=None)
+    return Result(summary="kept")
+
+
+@pytest.mark.parametrize("mode", ["auto", "always"])
+def test_one_caller_filling_an_all_but_empty_document_prepares_each_call_once(mode):
+    """Round 47: a call that writes text by reference looks up the paragraphs it made, and
+    0.1.74 then looked for them in the document -- where its patch has not put them yet:
+    "is gone" three times, and the call ran under the lock.  Alone on a document of one
+    paragraph, inserts and fills from a dataset are each prepared once."""
+    from ooxml_edit.tools.limits import Limits as _Limits
+
+    data = Document.new()
+    data.paragraphs()[0].set_text("Title")
+    with Toolbox([*TOOLS, _ds_notes, block_stress.ds_rows], formats=[FORMAT], groups=GROUPS, workers=0,
+                 block_edits=mode, limits=_Limits(render_timeout=600, layout_timeout=600)) as box:
+        session = box.session(clock=block_stress.CLOCK)
+        doc = session.open(data.to_bytes(), "report.docx")
+        box.dispatch(session, "ds_notes", {"id": "notes"})
+        box.dispatch(session, "ds_rows", {"id": "rows", "rows": "4"})
+        calls = [{"at": "end", "from": "d:notes/#1/body"}, {"at": "end", "from": "d:notes/#2/body"},
+                 {"at": "end", "from": "d:rows"}, {"at": "end", "markdown": "Plain {{d:notes/#1/title}}."}]
+        for arguments in calls:
+            result = box.dispatch(session, "word_insert_markdown", {"doc": doc, **arguments})
+            assert result.ok, result.to_json()
+            if mode == "always" or result.block is not None:
+                assert _shape(result.block) == {"tries": 1, "conflicts": []}, (arguments, result.block)
