@@ -746,6 +746,19 @@ def test_a_change_touches_a_read_of_blocks_it_changed_or_put_between():
     assert not blocks.touches(change, _scope_of(document, layout.heads[2], layout.ends[2]))
 
 
+def test_a_change_before_a_range_touches_a_read_of_its_pages_one_after_it_does_not():
+    change, document, layout = _changed_by(lambda d, l: d.paragraph(l.bodies[0][0]).set_text("New."))
+    ids = [p.id for p in document.paragraphs()]
+    later = ids[ids.index(layout.heads[1]):ids.index(layout.ends[1]) + 1]
+    from docx_agent.scope import ReadScope
+
+    part = document.package.document_part()
+    assert blocks.touches(change, ReadScope(part, frozenset(later), layout=True))
+    assert not blocks.touches(change, ReadScope(part, frozenset(later), layout=False))
+    change, document, layout = _changed_by(lambda d, l: d.paragraph(l.bodies[2][0]).set_text("New."))
+    assert not blocks.touches(change, ReadScope(part, frozenset(later), layout=True))
+
+
 def test_a_change_to_a_style_touches_any_read():
     change, document, layout = _changed_by(lambda d, l: d.styles.modify("Normal", size=12))
     assert blocks.touches(change, _scope_of(document, layout.bodies[0][0]))
@@ -785,9 +798,10 @@ def test_a_ranged_check_is_warned_only_when_its_blocks_changed_meanwhile(monkeyp
             assert result.ok, result.to_json()
             return any("changed while this call read it" in w for w in result.warnings)
 
-    chapter = lambda layout: {"range": [f"{layout.heads[0]}..{layout.ends[0]}"]}      # noqa: E731
-    assert not run(chapter, lambda layout: layout.bodies[2][0])
-    assert run(chapter, lambda layout: layout.bodies[0][0])
+    chapter = lambda layout: {"range": [f"{layout.heads[1]}..{layout.ends[1]}"]}      # noqa: E731
+    assert not run(chapter, lambda layout: layout.bodies[2][0])      # a later chapter
+    assert run(chapter, lambda layout: layout.bodies[1][0])          # its own
+    assert run(chapter, lambda layout: layout.bodies[0][0])          # an earlier one: its pages may move
     assert run(lambda layout: {}, lambda layout: layout.bodies[2][0])
 
 

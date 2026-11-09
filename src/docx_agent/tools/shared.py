@@ -395,7 +395,7 @@ def _range_pages(call: Any, ranges: list[str], pages: list[int] | None) -> tuple
     document, entry = call.document, call.entry
     scope = Scope(document, ranges)
     if pages is None:
-        call.read_scope = read_scope(scope)     # what the result is of (round 47)
+        call.read_scope = read_scope(scope, layout=True)     # what it draws (round 47)
     version = entry.version
     layout = (lay_out_unlocked(document, call.unlocked, lambda: entry.version == version) if call.may_unlock
               else document.layout())
@@ -560,7 +560,7 @@ def check(call: Any, doc: str, slides: list | None = None, pages: list[int] | No
         scope = Scope(document, ranges) if ranges else None
     if scope is not None and pages is None:
         # What the result is of, for whether a change meanwhile touched it (round 47).
-        call.read_scope = read_scope(scope)
+        call.read_scope = read_scope(scope, layout=True)     # its pages: the layout's
     if scope is not None and "layout" not in wanted:
         wanted.append("layout")               # the facts about the blocks are the layout's
     # Round 40: each range's keep tried (.keep_trials).

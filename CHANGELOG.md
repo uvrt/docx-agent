@@ -32,7 +32,9 @@ snapshot commit; the development history before it is summarised here.
   ooxml-edit's `Call.read_scope`), and `docx_agent.blocks.touches` says whether a change
   made meanwhile touched them -- changed or removed one, put blocks between two, or changed
   a part a read of blocks shows (not the registrations, the document's properties, the
-  provenance item, or lists only added to the numbering). A read of the whole document still
+  provenance item, or lists only added to the numbering); and since both report pages, any
+  change at or before the range's last block, or to the last section, too -- a change after
+  the range never. A read of the whole document still
   hears of any change.
 
 ## 0.1.76 -- unreleased

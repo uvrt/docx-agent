@@ -87,7 +87,9 @@ blocks it read (``docx_agent.scope.ReadScope``); ooxml-edit warns it that the do
 "changed while this call read it" only when a change made meanwhile touched those blocks --
 changed or removed one, or put blocks between two of them -- or a part but the body other
 than the registrations, the document's properties, the provenance item and lists only added
-to the numbering.
+to the numbering.  Both depend on the layout, so for them any change at or before the range's
+last block, or to the last section's properties, touches it too (blocks moved to other
+pages); a change after the range does not.
 """
 
 from __future__ import annotations
@@ -1022,7 +1024,7 @@ def touches(change: Any, scope: Any) -> bool:
     for part in change.parts:
         before, after = change.before(part), change.after(part)
         if part == scope.part:
-            if _body_touches(before, after, scope.blocks):
+            if _body_touches(before, after, scope.blocks, layout=scope.layout):
                 return True
         elif _UNREAD_PARTS.search(part):
             continue
@@ -1035,11 +1037,19 @@ def touches(change: Any, scope: Any) -> bool:
     return False
 
 
-def _body_touches(before: bytes | None, after: bytes | None, blocks: frozenset) -> bool:
+def _body_touches(before: bytes | None, after: bytes | None, blocks: frozenset, *,
+                  layout: bool = False) -> bool:
+    """Whether the body's change touched ``blocks``; with ``layout`` (a read of their pages)
+    also any change before the last of them, which can move them to other pages."""
     old, new = read_body(before), read_body(after)
     if old is None or new is None:
         return True
+    last = max((k for k, identifier in enumerate(old.ids) if identifier in blocks), default=None)
+    if layout and (last is None or old.tail() != new.tail()):
+        return True                 # (the last section's properties: every page's)
     for i1, i2, j1, j2 in _regions(old, new):
+        if layout and last is not None and i1 <= last:
+            return True             # at or before the range's last block: its pages may move
         if any(identifier in blocks for identifier in old.ids[i1:i2]) \
                 or any(identifier in blocks for identifier in new.ids[j1:j2]):
             return True

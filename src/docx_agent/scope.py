@@ -183,12 +183,16 @@ class ReadScope:
 
     part: str
     blocks: frozenset
+    #: Whether what was read depends on the layout (a check's pages, a render's page): then
+    #: a change before the range's last block -- which can move it to other pages -- is one
+    #: to it too.
+    layout: bool = False
 
 
-def read_scope(scope: "Scope") -> ReadScope:
+def read_scope(scope: "Scope", *, layout: bool = False) -> ReadScope:
     """The :class:`ReadScope` of ``scope``."""
     return ReadScope(scope.document.package.document_part(),
-                     frozenset(block for found in scope.ranges for block in found.blocks))
+                     frozenset(block for found in scope.ranges for block in found.blocks), layout)
 
 
 def ranges_of(value: Any) -> list[str]:
