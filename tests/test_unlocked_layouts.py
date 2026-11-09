@@ -238,6 +238,17 @@ def test_an_edit_while_fields_lay_out_ahead_goes_first_and_the_update_sees_it(ma
         before = entry.version
         slowed = Slowed(monkeypatch, entry)
         out = {}
+        # When the edit's change was in, its lock let go (round 45: its checks, a reflow laid
+        # out by the same slowed engine, run after that, on the version's read copy).
+        committed: dict = {}
+        commit = type(entry).commit
+
+        def timed(self, fmt):
+            commit(self, fmt)
+            if self is entry and self.version == before + 1:
+                committed.setdefault("at", time.perf_counter())
+
+        monkeypatch.setattr(type(entry), "commit", timed)
 
         def update():
             out["update"] = box.dispatch(session, "word_fields", {"doc": doc, "action": "update"})
@@ -247,7 +258,7 @@ def test_an_edit_while_fields_lay_out_ahead_goes_first_and_the_update_sees_it(ma
         assert slowed.started.wait(60)
         edit = box.dispatch(session, "word_set_text", {"doc": doc, "target": body[0].id,
                                                        "text": LONG})
-        edited_at = time.perf_counter()
+        edited_at = committed["at"]
         thread.join()
         expected = Document.open(made)
         expected.paragraph(body[0].id).set_text(LONG)
