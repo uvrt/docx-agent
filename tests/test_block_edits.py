@@ -519,10 +519,13 @@ def test_a_body_read_from_an_earlier_state_reads_as_the_whole_body():
             new = data[:begin] + data[end:]
         elif choice < 0.6:
             new = data[:begin] + data[begin:end].replace(b"e", b"E", 3) + data[end:]
-        elif choice < 0.8:
+        elif choice < 0.7:
             j = rng.randrange(base.count)
             copy = data[base.spans[j][0]:base.spans[j][1]]
             new = data[:begin] + copy.replace(b'paraId="', b'paraId="7', 1) + data[begin:]
+        elif choice < 0.85:
+            j = rng.randrange(base.count)      # an exact copy: its ids twice, not stamped
+            new = data[:begin] + data[base.spans[j][0]:base.spans[j][1]] + data[begin:]
         else:
             cut = rng.randrange(len(data))
             new = data[:cut] + b"<w:p>" + data[cut:]
@@ -531,5 +534,6 @@ def test_a_body_read_from_an_earlier_state_reads_as_the_whole_body():
             continue
         reread += 1
         assert whole is not None
-        assert (found.start, found.end, found.spans, found.ids) == (whole.start, whole.end, whole.spans, whole.ids)
+        assert (found.start, found.end, found.spans, found.ids, found.stamps) == \
+            (whole.start, whole.end, whole.spans, whole.ids, whole.stamps)
     assert reread > 100

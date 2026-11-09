@@ -82,6 +82,7 @@ import json
 import re
 import threading
 import weakref
+from collections import Counter
 from contextlib import ExitStack
 from dataclasses import dataclass, field
 from typing import Any, Iterator, Mapping
@@ -380,6 +381,10 @@ class _Body:
     end: int
     spans: list[tuple[int, int]]
     ids: list[str]
+    #: Every paragraph's and row's paraId in the part (upper case), each once: the part is
+    #: fully stamped (``touched._stamped``), counted so another state's is read from the
+    #: blocks that differ alone (:func:`_reread_body`).
+    stamps: "Counter[bytes]" = field(default_factory=Counter, repr=False)
     _where: dict[str, int] | None = None
 
     @property
@@ -456,12 +461,27 @@ def _read_body(data: bytes) -> _Body | None:
         return None
     start = data.index(b">", opening.end()) + 1
     spans = _touched._blocks(data, start, end)
-    if spans is None:
+    if spans is None or _touched._W14_DECLARED not in data[:root_end]:
         return None
-    ids = _touched._fast_ids(data, spans)
+    stamps = _stamps(data)
+    if stamps is None or any(count != 1 for count in stamps.values()):
+        return None
+    ids = _touched._span_ids(data, spans)
     if ids is None or len(set(ids)) != len(ids):
         return None
-    return _Body(data, start, end, spans, ids)
+    return _Body(data, start, end, spans, ids, stamps)
+
+
+def _stamps(data: bytes) -> "Counter[bytes] | None":
+    """The paraIds in ``data`` (upper case) when every paragraph and row there has one
+    (``touched._stamped``'s reading), else ``None``."""
+    from .tools import touched as _touched
+
+    live = _touched._FALLBACK.sub(b"", data) if b"<mc:Fallback" in data else data
+    stamped = _touched._ALL_PARA_IDS.findall(live)
+    if len(stamped) != len(_touched._PARA_OR_ROW.findall(live)):
+        return None
+    return Counter(map(bytes.upper, stamped))
 
 
 def _reread_body(data: bytes, base: _Body) -> _Body | None:
@@ -487,8 +507,19 @@ def _reread_body(data: bytes, base: _Body) -> _Body | None:
     begin = spans[before - 1][1] if before else base.start
     stop = spans[len(spans) - after][0] + delta if after else base.end + delta
     middle = _touched._blocks(data, begin, stop)
-    if middle is None or not _touched._stamped(data):
+    if middle is None:
         return None
+    # Stamped as the whole part is read (every paraId once): the base's, less those of its
+    # blocks between, plus those of the blocks between now.
+    added, removed = _stamps(data[begin:stop]), _stamps(old[begin:stop - delta])
+    if added is None or removed is None or not base.stamps:
+        return None
+    stamps = base.stamps.copy()
+    stamps.subtract(removed)
+    stamps.update(added)
+    if any(stamps[value] != 1 for value in added):
+        return None
+    stamps = +stamps
     found = _touched._span_ids(data, middle)
     if found is None:
         return None
@@ -496,7 +527,7 @@ def _reread_body(data: bytes, base: _Body) -> _Body | None:
     if len(set(ids)) != len(ids):
         return None
     shifted = [(start + delta, end + delta) for start, end in spans[len(spans) - after:]]
-    return _Body(data, base.start, base.end + delta, spans[:before] + middle + shifted, ids)
+    return _Body(data, base.start, base.end + delta, spans[:before] + middle + shifted, ids, stamps)
 
 
 def _regions(before: _Body, after: _Body) -> list[tuple[int, int, int, int]]:
@@ -767,8 +798,7 @@ class Blocks:
             raise BlockConflict(f"{', '.join(others[:3])} changed")
         if document._aliases != patch.aliases:
             raise BlockConflict("ids were renamed")
-        package = document.package
-        data = package.read(patch.body)
+        data = _body_now(document, patch.body)
         live = read_body(data)
         if live is None:
             raise BlockConflict("the document is not fully stamped")
@@ -857,6 +887,11 @@ class Blocks:
         from .tools._base import Before, Engine, seen_before
 
         document._note_ids()
+        # The body's bytes at this version, as the patch was checked to make them: the next
+        # patch's check reads them, while the document is at this version, without writing
+        # the part again.
+        document.__dict__["_block_body"] = (document.history.version,
+                                            plan.data if plan.data is not None else plan.before)
         document.typography_spaced = getattr(document, "typography_spaced", 0) + plan.patch.spaced
         engine = plan.patch.engine
         if isinstance(engine, Engine):
@@ -885,6 +920,16 @@ class Blocks:
             kept = self._kept.setdefault(live, [])
             kept.insert(0, (current, document))
             del kept[KEEP_DRAFTS:]
+
+
+def _body_now(document: Any, part: str) -> bytes | None:
+    """The body part's bytes now: those the last patch applied made, while the document is
+    still at the version it left (equal versions are equal content); else the part
+    written."""
+    kept = document.__dict__.get("_block_body")
+    if kept is not None and kept[0] == document.history.version:
+        return kept[1]
+    return document.package.read(part)
 
 
 def _placed(live: _Body, data: bytes, windows: list[_Window], count: int) -> list[tuple[int, int, _Window]]:
