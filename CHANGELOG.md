@@ -5,7 +5,7 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
-## 0.1.84 -- unreleased
+## 0.1.85 -- unreleased
 
 - **`check` says when the words are another language than their tag** (round 49, R94): the
   layout fact `text_language` (`include: ["layout"]`; read from the document, so there where
@@ -24,6 +24,35 @@ snapshot commit; the development history before it is summarised here.
   words 97.3% of the windows judged are right and none is listed as another language
   (wrong and sure); from 15 words 99.6%; every whole paragraph right. 9 ms for a
   127-paragraph document. Tool definitions unchanged. tests/test_text_language.py.
+
+## 0.1.84 -- unreleased
+
+- **A table kept in step with a dataset by key** (round 49, R90: a 127-row table had every row
+  rewritten, the dropped row deleted separately, the new one put as a second line in a cell).
+  `word_edit_table` `sync` with `from: d:<id>`: the key column (`key`: a header label, an
+  index or the source column; default the first column taken), the columns taken
+  (`from_columns`: one source column per table column, `""` for one left as it is; by default
+  each column whose header label is a source column's name, the case aside). A new key's row
+  is added as `insert_row` makes one beside a data row (its formatting; a header row's
+  likeness made a body row), in key order where the table's keys are (digit runs compared as
+  numbers), else in the source's order; matched rows' cells that differ are rewritten as
+  `set_cells` writes them, equal cells and the key cell never; keys gone are listed
+  (`missing`), or deleted with `remove: true`. Header rows, total rows (the look's last row;
+  any row holding a formula field such as `=SUM(ABOVE)`), rows with no key and rows deleted
+  as tracked changes are left as they are. Tracked when tracking is on. Keys are compared with
+  their case; a table and a source key that differ only by case are said in a note. Duplicate
+  keys in the table or the source are refused naming them; rows to add like a row whose one
+  cell spans two columns taken are refused before any change, with the `from_columns` that
+  takes one of them. Values
+  keep their source: the table's record when every data row is a source row afterwards, else
+  each cell written (a table record made untrue dropped, with a note). The result counts
+  `added`, `changed` (keys and the columns changed) and `missing` / `removed`, 20 keys listed
+  each, the rest counted; nothing to change is no change (rule 3). Rows are added in one pass
+  where nothing needs stamping (`Document._rows_beside`, the bytes of one by one). On drafts
+  when its source is a dataset. The 127-row case (one added, one gone, three changed): one call,
+  about 0.2 s and 0.9k characters of result, against 0.3 s and 14.8k for `set_cells from`
+  rewriting every row. tests/test_table_sync.py; `block_stress --sync`. +68 tokens to every
+  definition, none to the core.
 
 ## 0.1.83 -- unreleased
 
