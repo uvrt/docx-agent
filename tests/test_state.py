@@ -144,8 +144,8 @@ def test_links_pictures_notes_and_fields(constructs_doc):
 def test_revisions_and_comments(review_doc):
     document = Document.open(review_doc)
     final, original = document.state(), document.state(view="original")
-    joined = next(b for b in final["blocks"] if b["id"] == "p:7C000006")
-    assert joined["joins"] == ["p:7C000007"] and joined["t"].endswith("joins the next one in the final view.")
+    joined = next(b for b in final["blocks"] if b["id"] == "p:7C000007")
+    assert joined["joins"] == ["p:7C000006"] and joined["t"].endswith("joins the next one in the final view.")
     kinds = {r["id"]: (r["kind"], r["author"]) for r in final["revisions"]}
     assert kinds["rev:101"] == ("deletion", "Alice") and kinds["rev:102"] == ("insertion", "Alice")
     assert kinds["rev:105"] == ("move-from", "Alice") and kinds["rev:108"] == ("paragraph-mark-deletion", "Bob")

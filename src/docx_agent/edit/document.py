@@ -1092,7 +1092,11 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
         ``movable``: :meth:`move_blocks` takes it -- a paragraph or table, not a paragraph
         ending a section; a content control, with its content, unless locked (``w:lock``)
         or holding a section break.  :meth:`delete_block` and :meth:`copy_blocks` take a
-        control's id as they take a table's."""
+        control's id as they take a table's.  ``deleted: True`` (left out when false): the
+        block is wholly a pending tracked deletion -- a paragraph whose mark and every bit of
+        content are deleted (or its content moved away), a table whose every row is deleted;
+        the final view has none of it (accepting removes it, rejecting keeps it), and its id
+        is among the ``joins`` of the paragraph it is joined to there."""
         part = self.package.document_part()
         index = self._index(part)
         levels = _OutlineLevels(self)
@@ -1110,12 +1114,16 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
                 item.update(id=entry.id if entry is not None else None, kind="paragraph",
                             style=levels.style_name(node), level=levels.effective(node),
                             section_break=breaks, movable=not breaks)
+                if _wholly_deleted(node):
+                    item["deleted"] = True
             elif node.tag == W_TBL:
                 entry = index.entry_for(node)
                 declared = node.find(f"{_W}tblPr/{_W}tblStyle")
                 style_id = declared.get(_W + "val") if declared is not None else None
                 item.update(id=entry.id if entry is not None else None, kind="table",
                             style=table_styles.get(style_id, style_id) if style_id else None, movable=True)
+                if _wholly_deleted(node):
+                    item["deleted"] = True
             elif node.tag == _W + "sdt":
                 identifier = self._block_id(part, node)
                 try:
@@ -2010,10 +2018,8 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
         if _track.is_last_in_container(paragraph) and previous is not None and previous.tag == W_P \
                 and _track.mark_record(previous) is None:
             if previous.find(f"{W_PPR}/{W_SECTPR}") is None:
-                _track.mark(previous, "ins", stamp, part)
                 # The old mark's properties: as they were before a change recorded on them.
-                change = previous.find(f"{W_PPR}/{_W}pPrChange/{W_PPR}")
-                old = _track.clean_properties(change if change is not None else previous.find(W_PPR), "w:pPr")
+                old = _track.pass_mark(previous, stamp, part)
                 _track.record_paragraph_change(paragraph, old, stamp, part)
                 stamp.finish()
                 return
@@ -2774,6 +2780,27 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
 
 #: Blocks a section is made of.
 _MOVABLE = (W_P, W_TBL, _W + "sdt", _W + "customXml")
+_GONE = (_W + "del", _W + "moveFrom")
+
+
+def _wholly_deleted(block: Element) -> bool:
+    """Whether a body paragraph or table is wholly a pending tracked deletion (:meth:`Document.blocks`'
+    ``deleted``): a paragraph whose mark is deleted and which keeps no content outside a
+    deletion or a move away; a table whose rows are all deleted."""
+    if block.tag == W_TBL:
+        rows = block.findall(_W + "tr")
+        return bool(rows) and all(row.find(f"{_W}trPr/{_W}del") is not None for row in rows)
+    if block.find(f"{W_PPR}/{_W}rPr/{_W}del") is None:
+        return False
+    for run in block.iter(_W + "r"):
+        if not any(isinstance(child.tag, str) and child.tag != _W + "rPr" for child in run):
+            continue
+        parent = run.getparent()
+        while parent is not block and parent.tag not in _GONE:
+            parent = parent.getparent()
+        if parent is block:
+            return False
+    return True
 
 
 def _blocks_text(elements: list[Element], view: str) -> str:

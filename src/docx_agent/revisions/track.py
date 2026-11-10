@@ -340,6 +340,24 @@ def mark(paragraph: Element, kind: str, stamp: Stamp, part: str, *, name: str | 
     return record
 
 
+def pass_mark(previous: Element, stamp: Stamp, part: str) -> Element:
+    """Word's typing form at a container's end: ``previous`` (the paragraph the new ones
+    follow) gets an inserted mark, and its old mark -- with any change recorded on its
+    properties -- passes to the last new paragraph.  Returns the properties the old mark
+    had before any such change, which the last new paragraph records its own as changed
+    from.  Measured (round 50, ``tools/tracking_probe.py``): paragraphs typed one after
+    another at the end, each styled, keep no ``w:pPrChange`` but on the last one, which
+    holds the document's old mark."""
+    mark(previous, "ins", stamp, part)
+    properties = previous.find(W_PPR)
+    change = properties.find(_W + "pPrChange") if properties is not None else None
+    recorded = change.find(W_PPR) if change is not None else None
+    old = clean_properties(recorded if recorded is not None else properties, "w:pPr")
+    if change is not None:
+        remove(change)
+    return old
+
+
 def mark_record(paragraph: Element) -> Element | None:
     """The paragraph mark's own revision record, if it has one."""
     found = paragraph.find(f"{_W}pPr/{_W}rPr")
