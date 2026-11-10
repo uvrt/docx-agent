@@ -252,8 +252,11 @@ def block_edit(rng: random.Random, doc: str, span: str, target: str, table: str 
                                                 "bookmark": f"mark_{rng.randrange(10_000)}"}}
 
 
-def plan(seed: int, threads: int, calls: int, layout: Layout, doc: str) -> list[list[tuple[str, dict]]]:
-    """Each thread's calls, from ``seed``: mostly its own chapter's, often another's."""
+def plan(seed: int, threads: int, calls: int, layout: Layout, doc: str, sync: bool = False
+         ) -> list[list[tuple[str, dict]]]:
+    """Each thread's calls, from ``seed``: mostly its own chapter's, often another's.
+    ``sync`` (round 49): a quarter of the calls keep the table to fill in step by key instead
+    -- from one of two datasets, its rows gone listed or removed."""
     out = []
     chapters = len(layout.heads)
     for k in range(threads):
@@ -271,6 +274,11 @@ def plan(seed: int, threads: int, calls: int, layout: Layout, doc: str) -> list[
             md = (f"### Note {k}.{c}\n\n{sentence(rng, 10)}" if rng.random() < 0.5
                   else f"- {sentence(rng, 4)}\n- {sentence(rng, 3)}" if rng.random() < 0.5
                   else f"| A | B |\n|---|---|\n| {sentence(rng, 1)[:-1]} | {c} |")
+            if sync and extra.random() < 0.25:
+                mine.append(("word_edit_table", {"doc": doc, "table": layout.fill, "action": "sync",
+                                                 "from": extra.choice(["d:rows", "d:other"]),
+                                                 "remove": extra.random() < 0.5}))
+                continue
             place = rng.choice([f"before:{layout.ends[chapter]}", f"after:{target}", f"before:{target}",
                                 f"after:{layout.tables[chapter]}", "end"])
             if roll < 0.30:
@@ -375,11 +383,12 @@ def _box(mode: str) -> Toolbox:
 
 
 def run(seed: int, threads: int, calls: int, chapters: int = 4, mode: str = "always",
-        first_fill: bool = False, shape: str = "report") -> dict:
+        first_fill: bool = False, shape: str = "report", sync: bool = False) -> dict:
     """One stress run and its replay; ``{"same": bool, ...}`` with what differed.
     ``first_fill``: on a report with no provenance yet (:func:`made`).  ``shape``:
     ``"report"`` (:func:`made`, :func:`plan`) or ``"short"`` (:func:`made_short`, one part per
-    thread, :func:`plan_short`)."""
+    thread, :func:`plan_short`).  ``sync``: :func:`plan`'s syncs (round 49), from ``d:rows``
+    and ``d:other``."""
     if shape == "short":
         data = made_short(threads, first_fill=first_fill)
         layout: Any = ShortLayout(Document.open(data))
@@ -390,7 +399,10 @@ def run(seed: int, threads: int, calls: int, chapters: int = 4, mode: str = "alw
         session = box.session(clock=CLOCK)
         doc = session.open(data, "report.docx")
         box.dispatch(session, "ds_rows", {"id": "rows", "rows": "6"})
-        plans = (plan_short if shape == "short" else plan)(seed, threads, calls, layout, doc)
+        if sync:
+            box.dispatch(session, "ds_rows", {"id": "other", "rows": "8"})
+        plans = (plan_short(seed, threads, calls, layout, doc) if shape == "short"
+                 else plan(seed, threads, calls, layout, doc, sync=sync))
         made_calls: list[dict] = []
         lock = threading.Lock()
         errors: list[str] = []
@@ -425,7 +437,7 @@ def run(seed: int, threads: int, calls: int, chapters: int = 4, mode: str = "alw
         state = session.entry(doc).document.id_state()
         commits = list(recorder.commits)
     order = _order(made_calls, commits)
-    replayed = replay(data, order, threads)
+    replayed = replay(data, order, threads, sync=sync)
     differ = []
     for item, again in zip(order, replayed["results"]):
         if item["result"] != again:
@@ -469,12 +481,14 @@ def _order(calls: list[dict], commits: list[tuple[int, int]]) -> list[dict]:
     return out
 
 
-def replay(data: bytes, order: list[dict], threads: int) -> dict:
+def replay(data: bytes, order: list[dict], threads: int, sync: bool = False) -> dict:
     """The calls one at a time, in ``order``, each by its own caller, on a fresh session."""
     with _box("off") as box:
         session = box.session(clock=CLOCK)
         doc = session.open(data, "report.docx")
         box.dispatch(session, "ds_rows", {"id": "rows", "rows": "6"})
+        if sync:
+            box.dispatch(session, "ds_rows", {"id": "other", "rows": "8"})
         views = {k: session.view(context={"agent": f"b{k}"}) for k in range(threads)}
         results = [normal(box.dispatch(views[item["thread"]], item["name"], item["arguments"])) for item in order]
         entry = session.entry(doc)
@@ -495,6 +509,7 @@ if __name__ == "__main__":
     parser.add_argument("--mode", default="always")
     parser.add_argument("--shape", default="report", choices=("report", "short"),
                         help="report: chapters of text; short: one all but empty part per thread")
+    parser.add_argument("--sync", action="store_true", help="syncs of the table to fill (round 49)")
     parser.add_argument("--first-fill", default="odd", choices=("none", "odd", "all"),
                         help="which seeds run on a report with no provenance yet (default: odd ones)")
     args = parser.parse_args()
@@ -502,7 +517,8 @@ if __name__ == "__main__":
     for seed in _seeds(args.seeds):
         started = time.perf_counter()
         first = args.first_fill == "all" or (args.first_fill == "odd" and seed % 2 == 1)
-        found = run(seed, args.threads, args.calls, args.chapters, args.mode, first_fill=first, shape=args.shape)
+        found = run(seed, args.threads, args.calls, args.chapters, args.mode, first_fill=first, shape=args.shape,
+                    sync=args.sync)
         print(json.dumps({"seed": seed, "first_fill": first, "s": round(time.perf_counter() - started, 1),
                           **{k: v for k, v in found.items() if k not in ("differ",)}}), flush=True)
         if not found["same"]:

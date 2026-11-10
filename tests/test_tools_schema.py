@@ -281,10 +281,15 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 #: ``width_of`` "window" (AutoFit to Window): +4 to every definition (15,544 -> 15,548), none
 #: to the core (3,192).  The guard rises to 15,548.  Neither tool is strict for Claude: the
 #: strict set is unchanged (6 tools, 24 optional parameters).
+#: Round 49, R90: word_edit_table's ``sync`` (an action, ``key`` and ``remove``, ``from`` and
+#: ``from_columns`` saying what sync reads them as) +68 to every definition (15,548 -> 15,616),
+#: none to the core (3,192).  The guard rises to 15,616.  word_edit_table is not strict for
+#: Claude (21 optional parameters of its own now): the strict set is unchanged (6 tools, 24
+#: optional parameters); on OpenAI ``key`` and ``remove`` are two more nullable fields.
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 6500
-ALL_GUARD = 15548
+ALL_GUARD = 15616
 
 
 @pytest.fixture(scope="module")

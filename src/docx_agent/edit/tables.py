@@ -254,6 +254,37 @@ class TableOps:
                     edits.append(self.set_row(table_id, height + k, header=False))
         return edits
 
+    def _rows_beside(self: "Document", table: str, places: list[tuple[int, bool, int]]) -> list["EditResult"]:
+        """For each ``(index, below, count)`` of ``places``, in order: ``count`` rows as
+        ``insert_row(table, index, below=below)`` makes the first and ``insert_row`` below
+        the row just made each next one -- and each that would repeat as a header row made a
+        body row (``set_row(header=False)``) -- as ``word_edit_table``'s ``sync`` makes them
+        one by one (round 49, R90): their edits, in order.  Each ``index`` is a row's index
+        when its place comes (a caller adding from the bottom up gives the table's own)."""
+        from .document import EditResult
+
+        part, entry = self._table_entry(table)
+        table_id = entry.id
+        rows = [row for row, _ in entry.rows]
+        tracking = self._active_tracking()
+        edits: list[EditResult] = []
+        with self._edit(), self._held_ids():
+            for index, below, count in places:
+                at, side = index, below
+                for _ in range(count):
+                    reference = rows[at]
+                    neighbour = (rows[at + 1] if side and at + 1 < len(rows)
+                                 else (rows[at - 1] if not side and at else None))
+                    new_id = self._put_row_like(part, reference, neighbour, side, tracking)
+                    at = at + 1 if side else at
+                    rows.insert(at, reference.getnext() if side else reference.getprevious())
+                    edits.append(EditResult(new_id, created=[new_id], renamed={}))
+                    side = True
+                    if rows[at].find(f"{_W}trPr/{_W}tblHeader") is not None:
+                        self._invalidate()          # set_row finds the row in the index
+                        edits.append(self.set_row(table_id, at, header=False))
+        return edits
+
     def _fill_cells(self: "Document", table: str, writes: list[tuple[int, int, str]]
                     ) -> tuple[list["EditResult"], list[str]]:
         """Each ``(row, column, text)`` of ``writes`` in order, as ``word_edit_table`` writes
