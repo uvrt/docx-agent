@@ -620,7 +620,8 @@ _TABLE_SIDES = ("top", "bottom", "left", "right", "inside_h", "inside_v")
             "width": number("table, column, cell: width.", minimum=1, maximum=1584, optional=True),
             "width_percent": number("table: width, % of width_of.", minimum=1, maximum=100,
                                     optional=True),
-            "width_of": string("Default text width; body: its paragraphs' lines.", enum=["text", "body"],
+            "width_of": string("Default text; body: paragraphs' lines; window: AutoFit Window.",
+                               enum=["text", "body", "window"],
                                optional=True),
             "alignment": string("table: on the page.", enum=["left", "center", "right"], optional=True),
             "shading": string("Fill RRGGBB, or none.", optional=True),
@@ -656,11 +657,13 @@ def word_format_table(call: Any, doc: str, table: str, scope: str, row: int | No
         for key, value in (("style", style), ("alignment", alignment), ("header_rows", header_rows)):
             if value is not None:
                 values[key] = value
+        if width_of in ("body", "window") and width is not None:
+            raise ToolError("invalid_arguments", "width_of is what width_percent is of: give width_percent "
+                            "(or nothing, for 100), not width", field="width_of")
         if width_of == "body":
-            if width is not None:
-                raise ToolError("invalid_arguments", "width_of is what width_percent is of: give width_percent "
-                                "(or nothing, for 100), not width", field="width_of")
             values.update(_body_width(document, table, width_percent or 100, alignment))
+        elif width_of == "window":
+            pass                           # round 48: after the rest (fit_table_to_window), below
         elif width is not None or width_percent is not None:
             values["width"] = f"{width_percent:g}%" if width_percent is not None else width
         if shading is not None:
@@ -687,7 +690,7 @@ def word_format_table(call: Any, doc: str, table: str, scope: str, row: int | No
                     edits[-1] = released
         elif keep_with_next is not None:
             edits.append(document.set_table_keep_with_next(table, keep_with_next))
-        if not values and not edits:
+        if not values and not edits and width_of != "window":
             raise ToolError("invalid_arguments", "nothing to set for the table",
                             valid_options=["style", "width", "width_percent", "alignment", "shading", "borders",
                                            "header_rows", "look", "cant_split", "keep_together", "keep_with_next"])
@@ -701,6 +704,11 @@ def word_format_table(call: Any, doc: str, table: str, scope: str, row: int | No
                 edits.append(document.set_column_width(table, column, new / 20))
         if values:
             edits.append(document.set_table(table, **values))
+        if width_of == "window":
+            # Round 48: Word's AutoFit to Window, after a style or borders given with it
+            # (the grid follows the style's borders and margins).
+            renamed = {k: v for edit in edits if edit is not None for k, v in edit.renamed.items()}
+            edits.append(document.fit_table_to_window(renamed.get(table, table), width_percent or 100))
         result = outcome(edits, f"Formatted {table}", changed=[table])
         if not values and not any(edit.changed for edit in edits):
             # Round 27, W7: asked for what the table already is (keep_together false on a

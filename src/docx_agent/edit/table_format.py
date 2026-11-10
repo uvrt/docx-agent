@@ -98,6 +98,12 @@ def twips(points: float) -> int:
     return int(round(float(points) * 20))
 
 
+def _fiftieths(whole: int, part: int, total: int) -> int:
+    """``part`` of ``total`` as a share of ``whole`` fiftieths of a percent, rounded half up
+    (Word's AutoFit to Window on three equal columns: 1667 each)."""
+    return int(math.floor(whole * part / total + 0.5)) if total else 0
+
+
 def points(value) -> float | None:
     try:
         return int(value) / 20
@@ -958,6 +964,156 @@ class TableFormatOps:
                     warnings.append("Word does not track header rows: they are applied untracked")
             self.package.mark_dirty(part)
         return EditResult(renames.get(entry.id, entry.id), renamed=renames, warnings=warnings)
+
+    def fit_table_to_window(self: "Document", table: str, percent: float = 100) -> "EditResult":
+        """Word's **AutoFit to Window** (round 48; measured with Word 16.106,
+        ``feedback-round48/probe-C``): the table as wide as the text it sits in, at the
+        margin -- its section's text width (one column's, in a section of columns; its
+        cell's text width, nested), its style's cell margins inside it.  What Word writes:
+
+        * ``w:tblW w:type="pct" w:w="5000"`` (``percent`` other than 100: its fiftieths);
+        * no indent: a ``w:tblInd`` of the table's own is removed, and where its style
+          indents it, ``w:tblInd w:w="0"`` overrides that;
+        * the layout autofit (a ``w:tblLayout`` fixed is removed);
+        * every cell's ``w:tcW`` in percent (fiftieths of the whole: 2500 / 2500, 1667 x 3);
+        * the grid the width in percent comes to, each line at the floor of its cumulative
+          share (:func:`docx2svg.table.percent_widths`' rule): in mode 15 the room less the
+          outer halves of the outer borders (10,338 of 10,348 twips with borders of
+          ``w:sz`` 4), below it the room and the first and last cells' margins (10,564 with
+          margins of 108).
+
+        Word's own command also shares the columns again by their content; this keeps their
+        proportions (the template's, or what the table was given).  Tracked, as
+        :meth:`set_table`: a ``w:tblPrChange`` and the cells' ``w:tcPrChange``."""
+        from lxml import etree
+
+        from .document import EditError, EditResult
+
+        if not (isinstance(percent, (int, float)) and 0 < percent <= 100):
+            raise EditError("a width in percent is above 0 and at most 100")
+        part, entry = self._table_entry(table)
+        before = etree.tostring(entry.element)
+        plan = self._window_plan(part, entry.element, int(round(percent * 50)))
+        tracking = self._active_tracking()
+        with self._edit():
+            renames = self._prepare(part, [])
+            part, entry = self._table_entry(renames.get(table, table))
+            element = entry.element
+            tracker = TableTracker(element, rows=False) if tracking is not None else None
+            properties = element.find(_W + "tblPr")
+            if properties is None:
+                properties = make("w:tblPr")
+                insert_in_order(element, properties)
+            drop(properties, "w:tblW")
+            insert_in_order(properties, make("w:tblW", **{"w:w": str(plan["pct"]), "w:type": "pct"}))
+            drop(properties, "w:tblInd")
+            if plan["style_indent"]:
+                insert_in_order(properties, make("w:tblInd", **{"w:w": "0", "w:type": "dxa"}))
+            drop(properties, "w:tblLayout")
+            for row in own_rows(element):
+                for cell, start, span in row_cells(row):
+                    cell_properties = cell.find(_W + "tcPr")
+                    if cell_properties is None:
+                        cell_properties = make("w:tcPr")
+                        cell.insert(0, cell_properties)
+                    drop(cell_properties, "w:tcW")
+                    insert_in_order(cell_properties, make("w:tcW", **{
+                        "w:w": str(_fiftieths(plan["pct"], sum(plan["weights"][start:start + span]),
+                                              plan["total_weight"])), "w:type": "pct"}))
+            set_grid(element, plan["grid"])
+            if tracker is not None:
+                from ..revisions.stamp import Stamp
+
+                stamp = Stamp(self, tracking)
+                tracker.record(stamp, part)
+                stamp.finish()
+            self.package.mark_dirty(part)
+        result = EditResult(renames.get(entry.id, entry.id), renamed=renames)
+        if etree.tostring(element) == before:
+            result.changed = False
+            result.warnings.append(f"{result.id} already fits the window: nothing changed")
+        return result
+
+    def _window_plan(self: "Document", part: str, element: Element, pct: int) -> dict:
+        """What :meth:`fit_table_to_window` writes: the grid the width in percent comes to
+        in the room the table fits, and whether its style indents it -- from docx2svg's
+        resolution of the table (its borders, margins and style)."""
+        from docx2svg.resolve.cascade import style_chain
+        from docx2svg.table import compatible_mode, left_offset, outer_part, resolve_table, right_offset
+
+        from . import effective as _effective
+        from .document import EditError
+
+        state = _effective.model(self)
+        found = state.table(element)
+        weights = grid_widths(element)
+        columns = len(weights)
+        if found is None or not columns:
+            raise EditError("the table has no grid of columns to fit")
+        if not sum(weights):
+            weights = [1] * columns
+        resolved = resolve_table(state.model, found)
+        style_indent = 0
+        for style in style_chain(state.model.styles, found.style_id, "table"):
+            if "tblInd" in style.table:
+                value = style.table["tblInd"]
+                style_indent = value[0] if isinstance(value, tuple) and isinstance(value[0], int) else 0
+        room, nested = self._window_room(part, element, state)
+        first_row = resolved.rows[0] if resolved.rows else None
+        first = first_row.cells[0] if first_row and first_row.cells else None
+        last = first_row.cells[-1] if first_row and first_row.cells else None
+        if compatible_mode(state.model) or nested:
+            whole = room - (outer_part(first.left_edge[0]) if first else 0) - (
+                outer_part(last.right_edge[0]) if last else 0)
+        else:
+            whole = room + (left_offset(first) if first else 0) + (right_offset(last) if last else 0)
+        total = whole * pct // 5000
+        shares = [_fiftieths(pct, w, sum(weights)) for w in weights]
+        cumulative = [sum(shares[:k + 1]) for k in range(columns)]
+        if cumulative[-1] > pct:
+            edges = [whole * c // 5000 for c in cumulative[:-1]] + [total]
+        else:
+            edges = [total * c // cumulative[-1] for c in cumulative]
+        grid = [b - a for a, b in zip([0] + edges, edges)]
+        return {"pct": pct, "grid": grid, "weights": weights, "total_weight": sum(weights),
+                "style_indent": bool(style_indent)}
+
+    def _window_room(self: "Document", part: str, element: Element, state) -> tuple[int, bool]:
+        """The width (twips) AutoFit to Window fits a table to, and whether it is nested:
+        its cell's text width (the cell's columns less its text's offsets from them;
+        measured: 3,000 less 108 and 108), else its section's column -- the text width, or
+        one column's in a section of columns (measured: (10,348 - 708) / 2)."""
+        from docx2svg.table import left_offset, resolve_table, right_offset
+
+        cell = element.getparent()
+        while cell is not None and cell.tag != W_TC:
+            cell = cell.getparent()
+        if cell is not None:
+            outer = cell.getparent()
+            while outer is not None and outer.tag != W_TBL:
+                outer = outer.getparent()
+            found = state.table(outer) if outer is not None else None
+            if found is not None:
+                outer_resolved = resolve_table(state.model, found)
+                grid = grid_widths(outer)
+                for row_element, row in zip(own_rows(outer), outer_resolved.rows):
+                    for (node, start, span), placed in zip(row_cells(row_element), row.cells):
+                        if node is cell:
+                            return sum(grid[start:start + span]) - left_offset(placed) - right_offset(placed), True
+            return self._room_for(part, element), True
+        if part == self.package.document_part():
+            index = self._index(part).entry_for(element)
+            try:
+                section = self.section_of(index.id) if index is not None else self.sections()[-1]
+            except (KeyError, IndexError, AttributeError):
+                section = None
+            if section is not None and section.text_width:
+                columns = section.columns
+                if columns.get("widths"):
+                    return twips(columns["widths"][0][0]), False
+                count = columns["count"]
+                return (section.text_width - twips(columns["space"]) * (count - 1)) // count, False
+        return self._room_for(part, element), False
 
     def set_column_width(self: "Document", table: str, column: int, width: float) -> "EditResult":
         """A grid column's width (points): its ``w:gridCol`` and the ``w:tcW`` of every cell

@@ -217,7 +217,7 @@ def _by_author(changes: list[Any]) -> dict[str, int]:
 
 
 COMMENT_ITEM = obj({
-    "target": string("add: range, paragraph, table or row to attach to.", optional=True),
+    "target": string("add: range, paragraph, table, row or cc:.", optional=True),
     "find": string("add: or text occurring once.", optional=True),
     "within": string("add: block or span to search for find.", optional=True),
     "comment": string("The comment (c:...), except for add.", optional=True),

@@ -524,6 +524,7 @@ class ControlOps:
             part, sdt = self._control(identifier)
             content = sdt.find(_W + "sdtContent")
             children = [c for c in content] if content is not None else []
+            beside = [n for n in (sdt.getprevious(), sdt.getnext()) if n is not None] + children
             if keep_content or level == "inline":
                 if not keep_content:
                     if tracking is not None:
@@ -570,10 +571,26 @@ class ControlOps:
                     _rehome_markers(sdt)
                     self._release(part, _inline.relationship_ids(sdt))
                     remove(sdt)
+            _undisplace(beside)
             if tracking is not None:
                 warnings.append("Word has no revision for a control itself: it is removed untracked")
             self.package.mark_dirty(part)
         return EditResult(None, renamed=renames, removed=[identifier], warnings=warnings)
+
+
+def _undisplace(nodes: list[Element]) -> None:
+    """Round 48: a comment or bookmark mark Word wrote beside a control says so
+    (``w:displacedByCustomXml``, ``next``/``prev``); with the control gone, the mark no longer
+    is beside one, and says nothing."""
+    attribute = _W + "displacedByCustomXml"
+    for node in nodes:
+        if not isinstance(node.tag, str) or node.get(attribute) is None or node.getparent() is None:
+            continue
+        neighbour = node.getnext() if node.get(attribute) == "next" else node.getprevious()
+        if neighbour is None and node.get(attribute) == "prev" and node.getparent().tag == _W + "sdtContent":
+            continue                       # first in another control's content: still beside its start
+        if neighbour is None or neighbour.tag not in (_W + "sdt", _W + "customXml"):
+            del node.attrib[attribute]
 
 
 def _kind_element(kind: str, pairs: list[tuple[str, str]], date, date_format: str, is_checked: bool) -> Element:
