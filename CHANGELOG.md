@@ -28,6 +28,42 @@ snapshot commit; the development history before it is summarised here.
   `width_percent` is a share of the window. The columns keep their proportions (Word's
   command also shares them again by their content).
 
+## 0.1.81 -- unreleased
+
+- **A text field with Markdown is written as its Markdown** (production round 48, R86: a
+  workbook's notes, written from Markdown with nested bullets, came in as Normal paragraphs).
+  A dataset's text value whose source holds more than its characters carries its Markdown
+  (ooxml-edit 0.105.0's `Dataset.markdown`; xlsx-agent 0.1.34 fills it from a cell's bold
+  and italic runs and its list lines). `word_insert_markdown` writes that Markdown for the
+  one field `from` names, and for a reference standing alone between blank lines in
+  `markdown`: list items in the template's list styles at their levels, emphasis in its
+  character styles, as the same Markdown typed in the call (`field_text.with_markdown`). A
+  reference inside a sentence writes the value's text on one line, every character as text
+  (a list's lines joined by spaces). A value without Markdown is written as before, and a
+  table's cells from rows take each value's text. The facts name the blocks each made and
+  count the Markdown's characters. With an ooxml-edit before 0.105.0 nothing changes.
+  tests/test_dataset_markdown.py; no tool definition changed (0 tokens).
+
+## 0.1.80 -- unreleased
+
+- **A column at once** (round 48, R89). `word_edit_table` `set_cells` takes one entry for a
+  column's rows: `{col: 2, rows: "*", text: "Yes"}` -- or `from` (one value), or a reference
+  in the text -- read once and written in every cell. `rows` is `*` (every row below the
+  header rows: those marked to repeat, else the first where the table's look has its header
+  row on) or a range from 0 as `row` counts (`1..40`, `5..`, `..9`, `7`); a range naming a
+  header row writes it, with a note. The column is `col` or `col_label`; a merged cell is
+  written once, a row with no cell at that column is left and said, a range past the last row
+  is refused with the table's rows. The cells are written exactly as that many one-cell
+  entries write them (same bytes); a value by reference is kept on every cell. The result
+  says per entry the column, rows, cells and how many changed (`filled`), not the table's
+  Markdown or each paragraph's id (`changed` names the table). No new top-level parameter:
+  `cells[].rows` (+28 tokens to every definition, none to the core); word_edit_table is not
+  strict for Claude, so the strict set is unchanged (6 tools, 24 optional parameters).
+- **Values kept in many cells in one edit.** A value written by reference into many cells
+  (`cells[].from`) was kept one edit per cell, each following every value kept so far again:
+  431 cells took about 15 s CPU, now about 2 s, the same bytes
+  (`Document.keep_text_facts_in`).
+
 ## 0.1.79 -- unreleased
 
 - **The application's own edits under `session.lock` are committed** (round 48, R84;

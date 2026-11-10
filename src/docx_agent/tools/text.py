@@ -642,6 +642,14 @@ def word_insert_markdown(call: Any, doc: str, at: str, markdown: str | None = No
             markdown = source.data.decode("utf-8")
         except UnicodeDecodeError:
             raise ToolError("invalid_arguments", f"{blob} is not UTF-8 text", field="blob") from None
+    facts = None
+    if field is None and markdown is not None and getattr(call, "facts", None):
+        # Round 48: a value with Markdown (a workbook cell's lists and emphasis) written as it.
+        from . import field_text
+
+        found = call.facts_at("markdown")
+        if found:
+            markdown, facts = field_text.with_markdown(call, markdown, found)
     at = _at(call, at)
     levels, style_map, read_as = _levels_like(call, like, style_map)
     try:
@@ -652,7 +660,7 @@ def word_insert_markdown(call: Any, doc: str, at: str, markdown: str | None = No
         raise ToolError("not_found", str(error), field="style_map",
                         valid_options=[s.name for s in call.document.styles][:50]) from None
     data: dict = {"blocks": edit.blocks}
-    said = _fields_placed(call, markdown, field, edit.blocks)
+    said = _fields_placed(call, markdown, field, edit.blocks, facts)
     if said is not None:
         data["facts"], placed_note = said
         if placed_note:
@@ -701,7 +709,8 @@ def _field_from(call: Any, source: str, from_columns: list[str] | None, header: 
     return field_text.as_fact(source, "from", text, record)
 
 
-def _fields_placed(call: Any, markdown: str, field: Any, blocks: list[str]) -> tuple[list[dict], str | None] | None:
+def _fields_placed(call: Any, markdown: str, field: Any, blocks: list[str],
+                   facts: list | None = None) -> tuple[list[dict], str | None] | None:
     """Round 45, R65: the result's ``facts`` -- the ``from`` field, or each reference in the
     Markdown, with the blocks a value standing alone made -- and a note when they could
     not be lined up; each such value kept as its paragraphs' source.  ``None`` when the
@@ -712,7 +721,8 @@ def _fields_placed(call: Any, markdown: str, field: Any, blocks: list[str]) -> t
     if field is not None:
         field_text.keep_in_paragraphs(document, field.record, blocks)
         return [field_text.brief(field, blocks)], None
-    facts = call.facts_at("markdown") if getattr(call, "facts", None) else []
+    if facts is None:
+        facts = call.facts_at("markdown") if getattr(call, "facts", None) else []
     if not facts:
         return None
     found, lined_up = field_text.placed_blocks(markdown, facts, blocks)

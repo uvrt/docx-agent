@@ -125,7 +125,67 @@ def text_field(call: Any, address: str, field: str) -> tuple[str, dict[str, Any]
                         f"; a figure goes into the markdown as {{{{{shown}}}}}", field=field,
                         valid_options=[f"{prefix}/{textfacts.quote(c)}" for c in texts[:10]]
                         + [f"markdown: '{{{{{shown}}}}}'"])
-    return call.fact(address, field=field)
+    text, record = call.fact(address, field=field)
+    return value_markdown(rows, row, column) or text, record
+
+
+def value_markdown(rows: Any, row: int, column: int) -> str | None:
+    """Round 48: the Markdown a source holds for one text value -- a workbook cell's bold
+    and italic runs and its list lines (ooxml-edit's ``Dataset.markdown``) -- ``None`` when
+    the value is its text."""
+    found = getattr(rows.dataset, "markdown_at", None)
+    return found(row, column) if found is not None else None
+
+
+def reference_markdown(call: Any, fact: Any) -> str | None:
+    """Round 48: the Markdown of the value a reference wrote (``fact``, the dispatcher's),
+    read again from its source; ``None`` when it is its text or cannot be read again."""
+    address = fact.address
+    doc = fact.record.get("doc")
+    if not address.startswith(DATASET_PREFIX) and isinstance(doc, str) and _HANDLE.match(doc + "/"):
+        address = f"{doc}/{address}"
+    try:
+        rows, row, column = _rows_and_cell(call, address, fact.field)
+    except ToolError:
+        return None
+    if not is_text(rows.dataset.rows[row][column], rows.type(column)):
+        return None
+    return value_markdown(rows, row, column)
+
+
+def with_markdown(call: Any, markdown: str, facts: Sequence[Any]) -> tuple[str, list[Any]]:
+    """Round 48: ``markdown`` (the text as the handler got it, every reference written as its
+    value's text) with each value that has Markdown (:func:`reference_markdown`) written as
+    it: a reference standing alone between blank lines as its Markdown -- its lists and
+    emphasis, as ``from`` writes one field -- and one inside a sentence as its text on one
+    line, escaped, so that its lines and characters stay text there.  The facts, their
+    places and texts in the new Markdown.  A value without Markdown is left as it is."""
+    from ooxml_edit.markdown import Run, inline_markdown
+
+    out: list[str] = []
+    placed: list[Any] = []
+    at = shift = 0
+    for fact in sorted(facts, key=lambda f: f.start):
+        found = reference_markdown(call, fact)
+        if found is None:
+            placed.append(textfacts.Fact(fact.field, fact.start + shift, fact.end + shift, fact.text,
+                                         fact.address, fact.record))
+            continue
+        if not _alone(markdown, fact.start, fact.end):
+            line_start = not markdown[:fact.start].rpartition("\n")[2].strip()
+            one_line = " ".join(line.strip() for line in fact.text.splitlines() if line.strip())
+            found = inline_markdown([Run(one_line)], line_start=line_start).replace("|", "\\|")
+        out.append(markdown[at:fact.start])
+        out.append(found)
+        at = fact.end
+        start = fact.start + shift
+        placed.append(textfacts.Fact(fact.field, start, start + len(found), found, fact.address,
+                                     fact.record))
+        shift += len(found) - (fact.end - fact.start)
+    if not out:
+        return markdown, list(facts)
+    out.append(markdown[at:])
+    return "".join(out), placed
 
 
 def _kind(value: Any) -> str:
