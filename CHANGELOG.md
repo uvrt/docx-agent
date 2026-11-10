@@ -5,7 +5,7 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
-## 0.1.88 -- unreleased
+## 0.1.89 -- unreleased
 
 - **Tracked edits run side by side** (production round 50, R97: with tracking on, 7 of 8
   edits waited for the document's lock, "tracked"). An edit of known blocks with tracking
@@ -30,6 +30,32 @@ snapshot commit; the development history before it is summarised here.
 - `tests/block_stress.py --tracked`: the serial-replay stress with every edit tracked, and
   every run checks that no annotation id is written twice. No tool definition changed:
   token delta 0.
+
+## 0.1.88 -- unreleased
+
+- **Edits that read a workbook table draft** (production round 50, R100: with block edits on,
+  inserts from `t:` -- a whole table, or values in text -- ran under the document's lock;
+  only `d:` datasets drafted). `word_insert_markdown`, `word_set_text`, `word_edit_table`
+  (`set_cells`, `sync`) and `replace_text` in a range admit `from: "t:..."` (also `d2/t:...`)
+  and `{{t:...}}` as they admit `d:`; a fill from a table is worth a draft alone, as one
+  from a dataset (`blocks.alone`). ooxml-edit 0.107.0 reads the table at its committed
+  version and applies the change only while the workbook is at that version still (else
+  prepared again). tests/test_block_sources.py: what is admitted; off and on a draft the
+  same results and bytes; a table changed while a draft is held is read again; a short
+  threaded run (three writers by reference, one changing the table) replays serially to
+  the same results and bytes.
+- **A paragraph's provenance entry written anew lands where the call puts it** (found by
+  that replay; datasets too). When another call changed the provenance item while a draft
+  was prepared, an entry the draft rewrote whole (no value of it outlived the new text)
+  was merged in its old place, where the call run on the document drops it and adds it
+  after the others: the same entries, in another order, so the bytes differed from the
+  serial run (2 of 3 short `d:` runs before, 0 of 15 after).
+- **Braces shaped like a reference are refused, naming the one meant** (R101; ooxml-edit
+  0.107.0): `{{rows/#1/name}}` without `d:` was inserted as text; now "did you mean
+  {{d:rows/#1/name}}?", with `\{{...}}` to keep braces as text. A document's own
+  `{{name}}`, `{{TODO: a/b}}` stay text, and `replace_text` finds them as before.
+- **`replace_text` in a batch without `expect`** (R102) is `expect: "one"`, as a call alone
+  now is, with a warning; before, both were refused. No definition changed (0 tokens).
 
 ## 0.1.87 -- unreleased
 

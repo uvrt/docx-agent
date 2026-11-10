@@ -12,7 +12,9 @@ protocol).  What runs on a draft: ``word_set_text``, ``word_insert_markdown`` (`
 blocks, runs, spans or text found within them, ``word_format_table``, ``word_delete`` of a
 block, span or text found within one, ``word_links`` adding a link or a bookmark to a range --
 and batches of any of them; text written by reference only from datasets (``{{d:...}}``,
-``from: d:...``).  Whatever reads or changes the whole document keeps the document's lock for
+``from: d:...``) or, round 50 (R100), another open document's table (``{{t:...}}``,
+``from: t:...``: ooxml-edit reads it at its committed version and applies the change only
+while it is at that version still).  Whatever reads or changes the whole document keeps the document's lock for
 its whole run, as before: text found anywhere, a story other than the body, a section, a
 heading's range or a bookmark as an address (named, or a ref to one: found on the draft); a
 style given by name that has to be made, a style or list definition changed, the settings.
@@ -170,7 +172,8 @@ _ID_CONTEXTS = (b'w14:paraId="', b'w14:textId="', b"p:", b"t:", b"tr:")
 
 def admits(tool: str, arguments: Mapping[str, Any]) -> bool:
     """Whether a validated changing call may run on a draft: one of :data:`TOOLS`, naming
-    blocks by id (or ``$ref``), text by reference only from datasets."""
+    blocks by id (or ``$ref``), text by reference only from datasets and other documents'
+    tables (:func:`_source`)."""
     if tool == "word_set_text":
         items = arguments.get("items") or []
         targets = [arguments.get("target")] + [item.get("target") for item in items if isinstance(item, Mapping)]
@@ -244,12 +247,13 @@ def _listed(value: Any) -> list:
 
 def alone(tool: str, arguments: Mapping[str, Any]) -> bool:
     """Whether an admitted call is worth a draft with no other edit in flight: a fill from
-    a dataset (a ``from: "d:..."`` of ``word_edit_table`` or ``word_insert_markdown``, or of
-    a cell), whose rows may be many, so an edit that comes while it runs need not wait."""
+    a dataset or another document's table (a ``from: "d:..."`` or ``"t:..."`` of
+    ``word_edit_table`` or ``word_insert_markdown``, or of a cell), whose rows may be many,
+    so an edit that comes while it runs need not wait."""
     if tool not in ("word_edit_table", "word_insert_markdown"):
         return False
     cells = arguments.get("cells") or [] if tool == "word_edit_table" else []
-    return any(isinstance(value, str) and value.startswith("d:")
+    return any(isinstance(value, str) and value != "" and _source(value)
                for value in [arguments.get("from")] + [cell.get("from") for cell in cells
                                                         if isinstance(cell, Mapping)])
 
@@ -269,16 +273,22 @@ def _place(at: str) -> bool:
     return kind not in ("replace", "end") and _plain(at)
 
 
+#: Rows a draft may read (round 50, R100): a dataset (``d:``) or a table of another open
+#: document (``t:``; ``d2/t:`` once the dispatcher has named its document) -- read there at
+#: its committed version, the change applied while it is at that version still.
+_ROWS = re.compile(r"d:|(?:d[0-9]+/)?t:")
+
+
 def _source(value: Any) -> bool:
-    """No source, or a dataset (``d:``): rows of a table of a document are read now."""
-    return value is None or value == "" or (isinstance(value, str) and value.startswith("d:"))
+    """No source, a dataset (``d:``) or another document's table (``t:``)."""
+    return value is None or value == "" or (isinstance(value, str) and _ROWS.match(value) is not None)
 
 
 def _from_datasets(text: Any) -> bool:
-    """Text whose references (``{{...}}``) all name datasets."""
+    """Text whose references (``{{...}}``) all name datasets or other documents' tables."""
     if not isinstance(text, str) or "{{" not in text:
         return True
-    return all(found.startswith("d:") for found in _REFERENCE.findall(text))
+    return all(_ROWS.match(found) is not None for found in _REFERENCE.findall(text))
 
 
 # -- what a draft records ------------------------------------------------------------------------
@@ -1586,6 +1596,26 @@ def _source_entries(data: bytes) -> tuple[Any, dict[tuple[str, str], Any]]:
     return root, entries
 
 
+def _kept_anew(name: tuple[str, str], before: Any, after: Any) -> bool:
+    """Whether the call's change of a paragraph's text entry (``edit/provenance.py``) was the
+    entry dropped -- no value written by reference outlived the paragraph's new text
+    (``_follow_text_facts``) -- and kept again (``_keep_text``): on the document it then comes
+    after every other entry, not in its old place."""
+    from ooxml_edit import provenance as _records
+
+    if name[0] != "text":
+        return False
+    try:
+        old, new = _records.loads(before.text or ""), _records.loads(after.text or "")
+    except _records.RecordError:
+        return False
+    kept, now = old.get("paragraph"), new.get("paragraph")
+    if not isinstance(kept, str) or not isinstance(now, str) or kept == now:
+        return False
+    return not (_records.facts_after_edit(old.get("facts") or [], kept, now)
+                or _records.labels_after_edit(old.get("labels") or [], kept, now))
+
+
 def _merge_sources(live: bytes | None, before: bytes | None, after: bytes | None) -> tuple[bytes, bytes]:
     """The provenance item (``edit/provenance.py``) another call changed since the draft's
     version, with the call's own change of it: ``(the document's bytes, the merged bytes)``.
@@ -1593,7 +1623,9 @@ def _merge_sources(live: bytes | None, before: bytes | None, after: bytes | None
     dropped, as it did -- where the document's entry is still the one the call saw (else a
     :class:`BlockConflict`: both changed it); every other entry as the document has it, in
     its order, the call's new ones after them, as the call run on the document now adds
-    them.  Never an item left empty (the call would have removed it): a conflict."""
+    them -- and (round 50) a paragraph's entry the call wrote anew (:func:`_kept_anew`) with
+    them, where the call run on the document now puts it.  Never an item left empty (the call
+    would have removed it): a conflict."""
     if live is None or before is None or after is None:
         raise BlockConflict("the provenance item came or went meanwhile")
     root, now = _source_entries(live)
@@ -1613,12 +1645,14 @@ def _merge_sources(live: bytes | None, before: bytes | None, after: bytes | None
             raise BlockConflict(f"the provenance of {name[1]} changed meanwhile")
         if mine_after is None:
             root.remove(theirs)                             # dropped by the call
+        elif theirs is not None and _kept_anew(name, mine_before, mine_after):
+            root.remove(theirs)                             # dropped and kept again: below
         elif theirs is not None:
             theirs.text = mine_after.text                   # changed by the call, in place
             for attribute, value in mine_after.attrib.items():
                 theirs.set(attribute, value)
     for name, node in new.items():
-        if name not in old:
+        if name not in old or (not same(old[name], node) and _kept_anew(name, old[name], node)):
             copy = etree.SubElement(root, node.tag)         # added by the call: after the others
             for attribute, value in node.attrib.items():
                 copy.set(attribute, value)

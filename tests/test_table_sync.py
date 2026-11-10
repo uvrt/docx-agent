@@ -415,7 +415,8 @@ def test_dates_in_a_pattern(toolbox):
 def test_a_sync_from_a_dataset_runs_on_a_draft():
     assert _blocks.admits("word_edit_table", {"action": "sync", "table": "t:1A2B3C4D", "from": "d:next"})
     assert _blocks.alone("word_edit_table", {"action": "sync", "table": "t:1A2B3C4D", "from": "d:next"})
-    assert not _blocks.admits("word_edit_table", {"action": "sync", "table": "t:1A2B3C4D", "from": "d2/t:x"})
+    # Round 50 (R100): from another document's table too (test_block_sources.py).
+    assert _blocks.admits("word_edit_table", {"action": "sync", "table": "t:1A2B3C4D", "from": "d2/t:x"})
     assert not _blocks.admits("word_edit_table", {"action": "delete_row", "table": "t:1A2B3C4D", "index": 1})
 
 
