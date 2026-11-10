@@ -18,7 +18,7 @@ from ..edit.pictures import PictureError
 from . import positions
 from ._base import Timing, engage, need, note_small_text, outcome, remember, resolve, short, word_tool
 from .structure import _position
-from .table_data import DATE_FORMAT, FROM_COLUMNS, HEADER, MAX_COLUMNS, MAX_ROWS, cell_text, fits, no_source, placed
+from .table_data import DATE_FORMAT, HEADER, MAX_COLUMNS, MAX_ROWS, cell_text, fits, no_source, placed
 
 DOC = string("Document id.")
 TABLE = string("Table (t:...).")
@@ -54,6 +54,9 @@ CELL = obj({"row": integer(minimum=0, optional=True),
             "from": string("Or one value: d:<id>/#12/<column>, :0.0 to round.", optional=True),
             # Round 48, R89: one text or value for a column's rows (:func:`_column_rows`).
             "rows": string("Or a column's rows: 1..40, or * (all but header rows).", optional=True)})
+#: Round 49 (R90): sync reads from_columns as the source column of each table column.
+SYNC_COLUMNS = array(string(), "from's columns, in order (sync: per table column, default by labels). "
+                     "Default all.", optional=True)
 POSITION = obj({"row": integer(minimum=0), "col": integer(minimum=0)},
                "merge, split: first cell, from 0.", optional=True)
 
@@ -87,13 +90,16 @@ def _text(table: Any, row: int, col: int) -> str:
         return ""
 
 
-@word_tool("word_edit_table", "Change a table's cells and structure: set cells by position or labels, insert or delete rows and columns, merge, split. Returns it as Markdown.",
+@word_tool("word_edit_table", "Change a table's cells and structure: set cells by position or labels, insert or delete rows and columns, merge, split, sync rows by key. Returns it as Markdown.",
            {"doc": DOC, "table": TABLE,
             "action": string("What to do.", enum=["set_cells", "insert_row", "delete_row", "insert_column",
-                                                   "delete_column", "merge", "split"]),
+                                                   "delete_column", "merge", "split", "sync"]),
             "cells": array(CELL, "set_cells: the cells.", optional=True),
-            "from": string("set_cells: rows of d:<id> or t:<table>, from row index.", optional=True),
-            "from_columns": FROM_COLUMNS,
+            "from": string("set_cells, sync: rows of d:<id> or t:<table>, from row index.", optional=True),
+            "from_columns": SYNC_COLUMNS,
+            # Round 49 (R90): sync's key column and what becomes of rows whose key is gone.
+            "key": string("sync: key column label or index. Default first.", optional=True),
+            "remove": boolean("sync: delete rows of gone keys.", optional=True),
             "header": HEADER,
             "date_format": DATE_FORMAT,
             "index": integer("insert_*, delete_*: row or column from 0. Default the last. "
@@ -110,11 +116,18 @@ def word_edit_table(call: Any, doc: str, table: str, action: str, cells: list[di
                     index: int | None = None, side: str = "after", first: dict | None = None,
                     last: dict | None = None, rows: int = 1, columns: int = 2,
                     from_columns: list[str] | None = None, header: list[str] | None = None,
-                    date_format: str | None = None, grow: bool | None = None, **given: Any) -> Result:
+                    date_format: str | None = None, grow: bool | None = None, key: str | None = None,
+                    remove: bool | None = None, **given: Any) -> Result:
     document = call.document
     table = resolve(call, table)
     view = document.table(table)
     source = given.get("from") or None  # "": a strict decoder's placeholder for none (rule 1)
+    if action == "sync":
+        return _sync(call, view, source, cells, index, from_columns, header, date_format, grow, key, remove)
+    for name, value in (("key", key), ("remove", remove)):
+        if value not in (None, "", False):
+            raise ToolError("invalid_arguments", f"{name} is for sync (a table kept in step with rows by key)",
+                            field=name, valid_options=["sync"])
     read_as = None
     if source is not None:
         if action != "set_cells":
@@ -217,6 +230,29 @@ def word_edit_table(call: Any, doc: str, table: str, action: str, cells: list[di
     if now != table:
         result.renamed[table] = now
     return note_small_text(call, result, [now]) if action == "set_cells" else result
+
+
+def _sync(call: Any, view: Any, source: str | None, cells: Any, index: Any, from_columns: Any, header: Any,
+          date_format: Any, grow: Any, key: Any, remove: Any) -> Result:
+    """Round 49 (R90): ``sync`` (:mod:`.table_sync`), its arguments read as meant (rule 1)."""
+    from .table_sync import sync
+
+    if source is None:
+        raise ToolError("invalid_arguments", "sync takes from: the rows to keep the table in step with, "
+                        "e.g. {action: 'sync', from: 'd:<id>', key: '<key column label>'}", field="from")
+    notes: list[str] = []
+    if cells:
+        raise ToolError("invalid_arguments", "sync writes the cells from: cells are for set_cells; leave them "
+                        "out (from_columns picks the columns)", field="cells", valid_options=["from_columns"])
+    if header:
+        raise ToolError("invalid_arguments", "sync leaves the header rows as they are: header is for set_cells "
+                        "from; from_columns names the source column of each table column", field="header",
+                        valid_options=["from_columns"])
+    if index not in (None, 0):
+        notes.append(f"index {index} not used: sync places each row by its key")
+    if grow:
+        notes.append("grow not needed: sync adds the rows of new keys")
+    return sync(call, view, source, from_columns, key, bool(remove), date_format, notes)
 
 
 def _by_position(document: Any, view: Any, cells: list[dict], texts: list[str]) -> list[tuple[int, int, str]] | None:
