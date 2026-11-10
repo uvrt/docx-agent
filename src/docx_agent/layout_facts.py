@@ -58,6 +58,19 @@ takes its targets as one list with the values for all, so it is ``calls``, not `
     ``source`` and a ``fix`` setting the language (``word_styles`` ``set_language``), never
     one deleting the spaces.  Read from the document, so listed where the layout failed
     too; :mod:`docx_agent.edit.typography` has the rule.
+``text_language`` (round 49, R94)
+    The language the words are in next to the language Word proofs them in
+    (:mod:`docx_agent.edit.text_language`, measured on made-up text): ``document`` --
+    ``{"tag", "source", "detected", "share", "words", "paragraphs"}``, the default paragraph
+    style's tag and the language most judged words are in; where they differ, ``mismatched``
+    counts the paragraphs that follow it and ``fix`` sets the document's language
+    (``word_styles`` ``set_language``).  ``mismatched``: the other paragraphs in another
+    language than their tag, ``{"para" | "range", "tag", "source", "detected",
+    "confidence", "words"}``; ``too_short`` counts the paragraphs too short to judge
+    (paragraphs that agree are not listed).  A check of some pages or a range says
+    ``checked`` for ``document``: the language of its words, no fix.  Absent where no
+    paragraph has words enough (8) to judge.  Read from the document, so listed where the
+    layout failed too.
 ``keep_with_next_at_foot``
     ``{"para", "style", "page", "next", "next_page"}``: a keep-with-next paragraph drawn
     last on its page, its next block on a later page -- unless that block starts a new page
@@ -169,6 +182,7 @@ from collections.abc import Mapping
 from .edit import effective as _effective
 from .edit.minimums import is_caption, minimum_for, text_minimums
 from .edit.typography import problems as punctuation_spacing
+from .edit.text_language import facts as text_language_facts
 from .edit import text as _text
 from .edit.document import _cells, _find, _int
 from .edit.effective import PathFinder
@@ -349,6 +363,10 @@ class _Facts:
                     "numbering_skips_level", out)
         self.capped([e for e in punctuation_spacing(self.document) if self.shown(self.pages_of(e["para"]))],
                     "punctuation_spacing", out)
+        # Round 49, R94: the text's language next to its tag.
+        found = self.text_language()
+        if found is not None:
+            out["text_language"] = found
         # Round 25, W5: what the document is set to do, not facts to act on.
         settings: dict[str, Any] = {}
         self.capped(self.keep_together(), "keep_together", settings)
@@ -360,6 +378,18 @@ class _Facts:
         self.capped(self.past_margins(), "past_margins", out)
         self.uncertain(out)
         return out
+
+    def text_language(self) -> dict[str, Any] | None:
+        """``text_language`` (:mod:`docx_agent.edit.text_language`): of the paragraphs on
+        the check's pages, in its range."""
+        scoped = self.scope.paragraphs if self.scope is not None else None
+
+        def keep(identifier: str) -> bool:
+            return ((scoped is None or identifier in scoped)
+                    and (self.wanted is None or self.shown(self.pages_of(identifier))))
+
+        return text_language_facts(self.document, keep=keep, whole=scoped is None and self.wanted is None,
+                                   top_level=self.top_level, cap=CAP)
 
     def text_sizes(self, out: dict) -> None:
         smallest: dict[str, float] = {}
