@@ -5,6 +5,23 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.87 -- unreleased
+
+- **A cell's own `from` beside a top-level one-value `from`** (production round 49, R96: 2
+  of 3 such calls failed "from replaces cells: give one", naming neither form).
+  `word_edit_table` `set_cells` with a top-level `from` naming one value and `cells` that
+  give their own `from` or `text`: each such cell keeps its own, and the top-level value
+  fills the cells that give none -- a `rows` entry (a column's rows) included; `""` is a
+  strict decoder's placeholder for none. The warning says how many cells it filled and how
+  many kept their own (or that it filled none). Before, any cell with its own value had the
+  whole call refused ("from ... is one value: set_cells from fills rows").
+- **A top-level `from` naming rows beside `cells` names what to drop** (R96): still refused
+  -- a whole dataset or table, or a run of its rows, fills the table from `index`, which
+  cells cannot say -- now with "to fill the table from d:notes, drop cells; to set single
+  cells, drop the top-level from and give each cell its own value (cells: [{row: 1, col: 2,
+  from: 'd:notes/#1/<column>'}])", the two calls as `valid_options` (it said "from replaces
+  cells: give one"). No definition changed: token delta 0.
+
 ## 0.1.86 -- unreleased
 
 - **A bookmark over blocks, tables included** (round 49, R91): `add_bookmark` (and
