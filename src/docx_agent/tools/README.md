@@ -178,6 +178,20 @@ place some of a source's rows, name them: `d:checks/#2:` (row 2 to the last),
 `t:Sales/#1:#9` (a workbook's rows 1 to 9). Word flows a long table over pages itself,
 the header row repeated. A whole call is one undo step, and tracked while tracking is on.
 
+A column at once (round 48): a `cells` entry with `rows` in place of `row` writes its column's
+cells over those rows with the entry's one `text` or one value (`from`, or a reference in the
+text, read once): `{col: 2, rows: "*", text: "Yes"}`. `rows` is `*` (every row below the
+header rows), or rows from 0 as `row` counts them, both ends written: `1..40`, `5..` (to the
+last), `..9` (from the first below the header), `7`; `a-b` and `a:b` read as `a..b`. The
+header rows are those marked to repeat, else the first row where the table's look has its
+header row on (as `style_by_value` reads a column); a range that names one writes it, with a
+note. The column is `col` or `col_label`. A merged cell is written once; a row with no cell
+at that column is left and said. The cells are written exactly as that many one-cell entries
+write them, and a value by reference is kept on every cell it went into. The result gives,
+per entry, the column, the rows written, the cells and how many changed (`filled`), and a
+reference's value once -- not the table's Markdown or each cell's paragraph (`changed` names
+the table). A range past the last row is refused with the table's rows (rows are not added).
+
 ```json
 {"doc": "d1", "at": "after:p:3B212964", "from": "d:checks",
  "from_columns": ["check", "rating", "due"]}
