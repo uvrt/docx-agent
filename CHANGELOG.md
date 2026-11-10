@@ -5,6 +5,31 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.84 -- unreleased
+
+- **A bookmark over blocks, tables included** (round 49, R91): `add_bookmark` (and
+  `word_links` `add_bookmark`'s `target`) takes a table, a block-level content control, a
+  span of blocks (`p:A..t:B`) or a heading's range, where it refused "is a span of blocks,
+  not text". The markers go where Word's Insert > Bookmark puts them for a selection of
+  those blocks (Word 16.106: 20 selections measured, 15 spans written and compared): the
+  start before the first block's text -- a table's in its first cell; a content control's before `w:sdt`, with
+  `w:displacedByCustomXml="next"`; the end after the last paragraph's text -- after a table
+  that ends the span when text follows it, inside the table after its last row when an
+  empty paragraph does; after a control, or in the first cell of a table that follows it.
+  Word reads each back to the character range of its own bookmark and re-saves it
+  unchanged. A span ending on a paragraph writes what `p:A@0..p:B@<length>` wrote. The
+  bookmark then addresses its blocks (`word_read`, `within`, `to_markdown`). Tracking on or
+  off: the same markers (Word tracks no bookmark). `tests/test_block_bookmarks.py`.
+- **`Document.block_text(id)`** (round 49, R92): any block's plain text -- a paragraph's; a
+  table's rows one per line, cells separated by a tab; a content control's content (block
+  or line); a cell or row; a span, heading's range, section or story, blocks one per line;
+  a text range or bookmark -- in the current, original or markup view. `paragraph()` and
+  `table()` on an id of another kind (a table, a paragraph, a content control) raise a
+  `KeyError` naming its kind, the call that reads it and `block_text` (a paragraph in a
+  table given as a table: its table), where `paragraph()` on a table returned an object that
+  failed later. `to_markdown(range=cc:...)` of a block control now holds its content, not
+  the opening comment alone. `tests/test_block_text.py`.
+
 ## 0.1.83 -- unreleased
 
 - **Edits of known blocks run on drafts too** (round 48, R83: 66 of 81 edit calls took the

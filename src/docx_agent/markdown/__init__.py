@@ -195,7 +195,7 @@ def select(reader: Reader, range: str | None) -> list[tuple[str, list, str]]:
             raise AddressError(f"{range!r} spans two stories: " + SPAN_SYNTAX)
         records = _story(reader, part)
         a = _position(document, records, first) if first else 0
-        b = _position(document, records, last) if last else len(records) - 1
+        b = _through(records, _position(document, records, last)) if last else len(records) - 1
         if b < a:
             raise EditError(f"{range!r} ends before it starts")
         return [(part, records[a:b + 1], "range")]
@@ -242,7 +242,19 @@ def select(reader: Reader, range: str | None) -> list[tuple[str, list, str]]:
             return [(part, alone, "range")]
     records = _story(reader, part)
     k = _position(document, records, range)
-    return [(part, records[k:k + 1], "range")]
+    return [(part, records[k:_through(records, k) + 1], "range")]
+
+
+def _through(records: list, k: int) -> int:
+    """The index of the record that closes the block at ``k``: a block-level content
+    control's end marker for its start marker (round 49: a control read alone is the
+    control with its content), ``k`` itself for any other block."""
+    record = records[k]
+    if isinstance(record, Marker) and record.begin:
+        for j in range(k + 1, len(records)):
+            if isinstance(records[j], Marker) and not records[j].begin and records[j].id == record.id:
+                return j
+    return k
 
 
 def _between(document: "Document", reader: Reader, first: str, last: str) -> list[tuple[str, list, str]]:

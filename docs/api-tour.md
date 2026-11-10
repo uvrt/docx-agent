@@ -68,6 +68,8 @@ item.add_to_list("number")                       # Word's own list, a definition
 item.restart_numbering(at=1)                     # a new instance over the same definition
 
 doc.anchor("operating revenue").add_bookmark("Revenue")
+doc.add_bookmark("p:3A1F09C2..t:5E6F7A8B", "Figures")   # blocks too, tables included, as Word marks them
+doc.block_text("t:5E6F7A8B")                     # any block's text: a table's rows by line, cells by tab
 doc.anchor("see above").add_hyperlink(anchor="Revenue")
 doc.anchor("our site").add_hyperlink("https://example.com/")
 doc.insert_picture("p:1B2C3D4E@0", "chart.png", width=200, alt_text="Revenue by quarter")
