@@ -6,9 +6,15 @@ document's last committed version (:func:`docx_agent.layout.read_copy`'s ``make.
 with no lock of the document held, then applies what it changed to the document under the
 lock, briefly, when what it read is as it was (ooxml-edit's ``tools/blocks.py`` says the
 protocol).  What runs on a draft: ``word_set_text``, ``word_insert_markdown`` (``end``,
-``before:``, ``after:``; no pictures or footnotes) and ``word_edit_table``'s ``set_cells``, and
-batches of them; text written by reference only from datasets (``{{d:...}}``, ``from: d:...``).
-Every other call takes the document's lock for its whole run, as before.
+``before:``, ``after:``; no pictures or footnotes) and ``word_edit_table``'s ``set_cells``; and
+(round 48, R83) the edits of known blocks -- ``replace_text`` in a range, ``word_format`` of
+blocks, runs, spans or text found within them, ``word_format_table``, ``word_delete`` of a
+block, span or text found within one, ``word_links`` adding a link or a bookmark to a range --
+and batches of any of them; text written by reference only from datasets (``{{d:...}}``,
+``from: d:...``).  Whatever reads or changes the whole document keeps the document's lock for
+its whole run, as before: text found anywhere, a story other than the body, a section, a
+heading's range or a bookmark as an address (named, or a ref to one: found on the draft); a
+style given by name that has to be made, a style or list definition changed, the settings.
 
 **What a draft records** (:class:`DraftOps`, :class:`DraftPool`): every block an id named
 (``Document._resolve``; ``_direct``: whether an id names anything), every id drawn from the
@@ -58,20 +64,31 @@ renames (aliases)          must be as they were; a call that renames: whole lock
 stamping                   the document fully stamped (``_fast_ids``); a call that stamps:
                            whole lock
 tracked changes            tracking on: whole lock; revision ids repeated: whole lock
-annotation ids             comments, bookmarks, revisions: whole lock
+annotation ids             a bookmark's drawn again when the patch applies (one above the
+                           document's largest), renamed in its marks; comments', revisions':
+                           whole lock
 footnotes, endnotes        Markdown footnotes: not admitted; the parts: unchanged or conflict
 comments part              unchanged since the draft's version, or conflict
-numbering.xml              unchanged since, or conflict; a list restarted: the part replaced
-styles.xml                 unchanged since, or conflict; a style added: the part replaced
-settings.xml, theme        unchanged since, or conflict
+numbering.xml              unchanged since, or conflict; a list restarted: the part replaced;
+                           a definition changed by the call: whole lock (round 48)
+styles.xml                 styles others only added: merged, the call's after theirs (one
+                           there by its id: theirs); else unchanged since, or conflict; a
+                           style changed, or made for a style given by name: whole lock
+settings.xml, theme        unchanged since, or conflict; changed by the call: whole lock
+bookmarks by name          the names a link or a new bookmark looked for (in any case), the
+                           same; a bookmark as an address: whole lock
+document.xml.rels          relationships others only added: merged (a target there already:
+                           its id; a new one the next rIdN free, r:id renamed in the windows)
 relationships, parts,      unchanged since, or conflict; added or replaced as the draft did,
 [Content_Types]            in its order; ids drawn again renamed in an added XML part as in a
                            changed one (any other part added with ids renamed: conflict)
 provenance item            merged entry by entry: the call's own entries as it left them, the
                            document's others as they are (an entry both changed: conflict);
                            added by the call while another added one: conflict
-sectPr, section breaks     the body's tail as it was; a region holding a section break
-                           changed: whole lock
+sectPr, section breaks     the body's tail as it was, every section break as it was (round
+                           48: a table's width reads its section); a region holding a section
+                           break changed: whole lock
+spans, text ranges         every block between their ends (round 48): one window, in a row
 fields and TOC             in the body's blocks (windows); field updates: whole lock
 docProps                   unchanged since, or conflict (no admitted call writes them)
 list numbering             the list style's numbering counts in Word; no admitted call reads
@@ -124,7 +141,9 @@ W_BODY = _W + "body"
 CONTEXT = 1
 
 #: The calls a draft takes (:func:`admits`).
-TOOLS = ("word_set_text", "word_insert_markdown", "word_edit_table")
+TOOLS = ("word_set_text", "word_insert_markdown", "word_edit_table",
+         # Round 48 (R83): edits of known blocks.
+         "replace_text", "word_format", "word_format_table", "word_delete", "word_links")
 
 #: Drafts kept per document to reuse (each a parsed copy of it).
 KEEP_DRAFTS = 2
@@ -164,7 +183,52 @@ def admits(tool: str, arguments: Mapping[str, Any]) -> bool:
                 and _source(arguments.get("from"))
                 and all(isinstance(cell, Mapping) and _source(cell.get("from")) and _from_datasets(cell.get("text"))
                         for cell in cells))
+    # Round 48 (R83): edits whose effect is confined to the blocks they name.  Text found
+    # anywhere (no range, no within), a story other than the body, a section, a heading's
+    # range or a bookmark named as an address read the whole document: they keep the lock.
+    if tool == "replace_text":
+        return (arguments.get("stories") in (None, "body") and not arguments.get("slides")
+                and _blocky(arguments.get("range")) and _from_datasets(arguments.get("replace")))
+    if tool == "word_format":
+        targets = _listed(arguments.get("targets"))
+        finds = _listed(arguments.get("find"))
+        return (bool(targets) != bool(finds)
+                and all(_blocky(target) for target in targets)
+                and all(isinstance(item, Mapping) and _blocky(item.get("within")) for item in finds)
+                and (arguments.get("like") is None or _plain(arguments.get("like"))))
+    if tool == "word_format_table":
+        return _plain(arguments.get("table"))
+    if tool == "word_delete":
+        target, find = arguments.get("target"), arguments.get("find")
+        return (_blocky(target) and find is None) or (target is None and find is not None
+                                                      and _blocky(arguments.get("within")))
+    if tool == "word_links":
+        return (arguments.get("action") in ("add_hyperlink", "add_bookmark") and arguments.get("find") is None
+                and _blocky(arguments.get("target")))
     return False
+
+
+#: One end of a block address a draft takes (round 48): a paragraph, table, row or control
+#: id, a cell or row of a table, a place or span of text in a paragraph, a picture or note --
+#: in the body or a story (``header1/p:...``); a ref (what it names is resolved on the draft:
+#: a heading's range, a section or a bookmark found there keeps the lock).  Not a section
+#: (``s:``), a heading's range (``h:``) or a bookmark named as such.
+_BLOCK_END = re.compile(r"(?:[A-Za-z]+\d*/)?(?:p|t|tr|cc|d|fn|en):[^\s.$]+|\$[\w-]+")
+
+
+def _blocky(address: Any) -> bool:
+    """A block address (:data:`_BLOCK_END`), or a span of two (``p:A..t:B``, open at
+    neither end): what it covers is the blocks between them, which the draft records."""
+    if not isinstance(address, str) or not address or "h:" in address:
+        return False
+    ends = address.split("..")
+    return len(ends) in (1, 2) and all(_BLOCK_END.fullmatch(end.strip()) for end in ends)
+
+
+def _listed(value: Any) -> list:
+    if value is None:
+        return []
+    return list(value) if isinstance(value, (list, tuple)) else [value]
 
 
 def alone(tool: str, arguments: Mapping[str, Any]) -> bool:
@@ -225,6 +289,8 @@ class _Recording:
         self.exists: dict[str, bool] = {}
         #: Facts of the whole document the call used: ``(name, args) -> value``.
         self.facts: dict[tuple, Any] = {}
+        #: Annotation ids drawn (round 48: a bookmark's), in order.
+        self.annotations: list[int] = []
 
     def read(self, document: Any, part: str, element: Any) -> None:
         """A block an id named, ``element`` in ``part``: its top-level block, if the body's."""
@@ -273,7 +339,21 @@ def _fact(document: Any, name: str, args: tuple) -> Any:
         return _write._document_definition(document, *args)
     if name == "lone_empty_paragraph":
         return _write._lone_empty_paragraph(document)
+    if name == "bookmarks":
+        return _bookmark_names(document)
+    if name == "bookmark_named":
+        return _named(document._bookmark_markers(), *args)
     raise KeyError(name)
+
+
+def _named(markers: Mapping[str, Any], folded: str) -> tuple:
+    return tuple(sorted(name for name in markers if name.casefold() == folded))
+
+
+def _bookmark_names(document: Any) -> tuple:
+    """The document's bookmark names as a call looking one up reads them (round 48)."""
+    with document._unrecorded() if isinstance(document, DraftOps) else contextlib.nullcontext():
+        return tuple(sorted(document._bookmark_markers()))
 
 
 class DraftOps:
@@ -302,6 +382,88 @@ class DraftOps:
         recording = self.__dict__.get("_recording")
         if recording is not None and isinstance(identifier, str) and identifier.startswith(("cc:", "cc@")):
             recording.read(self, found[0], found[1].element)
+        return found
+
+    def _span_elements(self, first: Any, last: Any, movable: Any) -> Any:
+        # Round 48: a span's blocks, every one of them -- one put between them meanwhile is
+        # one the call would have changed too (its window: all of them, in a row).
+        elements, part = super()._span_elements(first, last, movable)  # type: ignore[misc]
+        recording = self.__dict__.get("_recording")
+        if recording is not None:
+            for element in elements:
+                recording.read(self, part, element)
+        return elements, part
+
+    def _scope_paragraphs(self, address: str) -> Any:
+        # Round 48: the paragraphs an address holds (a span, a range, a cell...): their blocks.
+        part, entries = super()._scope_paragraphs(address)  # type: ignore[misc]
+        recording = self.__dict__.get("_recording")
+        if recording is not None:
+            for entry in entries:
+                recording.read(self, part, entry.element)
+        return part, entries
+
+    def range(self, identifier: str, *, view: str = "current") -> Any:
+        # Round 48: a text range's paragraphs, from its first to its last.
+        found = super().range(identifier, view=view)  # type: ignore[misc]
+        recording = self.__dict__.get("_recording")
+        if recording is not None:
+            try:
+                part, entries = found._entries()
+            except (KeyError, ValueError):
+                return found
+            for entry in entries:
+                recording.read(self, part, entry.element)
+        return found
+
+    def _expand_heading(self, address: Any) -> Any:
+        # A heading's range ends where the outline says: what a ref may name too.
+        found = super()._expand_heading(address)  # type: ignore[misc]
+        if found != address:
+            self._draft_cannot("a heading's range")
+        return found
+
+    def _section_paragraphs(self, identifier: str) -> Any:
+        self._draft_cannot("a section's paragraphs")
+        return super()._section_paragraphs(identifier)  # type: ignore[misc]
+
+    def bookmark(self, name: str) -> Any:
+        # A bookmark named as an address (or a ref to one): where it is, the whole
+        # document's to say.  (A link to one only reads the names: _bookmark_markers.)
+        found = super().bookmark(name)  # type: ignore[misc]
+        if self.__dict__.get("_linking") is None:
+            self._draft_cannot("a bookmark's range")
+        return found
+
+    def add_hyperlink(self, where: Any, url: Any = None, **options: Any) -> Any:
+        # A link to a bookmark reads whether one of that name is there.
+        anchor = options.get("anchor")
+        self.__dict__["_linking"] = anchor
+        try:
+            return super().add_hyperlink(where, url, **options)  # type: ignore[misc]
+        finally:
+            self.__dict__.pop("_linking", None)
+
+    def add_bookmark(self, where: Any, name: str) -> Any:
+        # A bookmark added reads whether its name is taken (in any case).
+        self.__dict__["_linking"] = name
+        try:
+            return super().add_bookmark(where, name)  # type: ignore[misc]
+        finally:
+            self.__dict__.pop("_linking", None)
+
+    def _bookmark_markers(self) -> Any:
+        # Round 48: the bookmarks by name, a fact of the whole document -- for a link to one
+        # or a bookmark added, only the names that are that one's (in any case).
+        found = super()._bookmark_markers()  # type: ignore[misc]
+        recording = self.__dict__.get("_recording")
+        if recording is not None:
+            name = self.__dict__.get("_linking")
+            if isinstance(name, str):
+                recording.facts.setdefault(("bookmark_named", (name.casefold(),)),
+                                           _named(found, name.casefold()))
+            else:
+                recording.facts.setdefault(("bookmarks", ()), tuple(sorted(found)))
         return found
 
     def _direct(self, identifier: str) -> Any:
@@ -355,8 +517,13 @@ class DraftOps:
         return super()._unique_revision_ids(before)  # type: ignore[misc]
 
     def _next_annotation_id(self) -> Any:
-        self._draft_cannot("annotation ids")
-        return super()._next_annotation_id()  # type: ignore[misc]
+        # Round 48: drawn on the draft, drawn again on the document when the patch applies
+        # (a bookmark's: renamed in what the call wrote); any other use keeps the lock.
+        value = super()._next_annotation_id()  # type: ignore[misc]
+        recording = self.__dict__.get("_recording")
+        if recording is not None:
+            recording.annotations.append(value)
+        return value
 
     def _remember_ids(self, values: Any) -> Any:
         self._draft_cannot("ids kept")
@@ -678,6 +845,10 @@ class Patch:
     #: The provenance item (``edit/provenance.py``) as the draft's version had it, by path;
     #: ``None``: it had none.  Its entries are merged with the document's (:func:`_merge_sources`).
     provenance: str | None = None
+    #: The committed version's bytes (the parts the call did not change, as it read them).
+    committed_data: bytes | None = None
+    #: Annotation ids the call drew (bookmarks'), in order.
+    annotations: list[int] = field(default_factory=list)
 
 
 @dataclass
@@ -694,6 +865,19 @@ class Plan:
     before: bytes | None = None
     moved: dict[str, str] = field(default_factory=dict)
     placed: list = field(default_factory=list)
+    #: Round 48: the parts merged with others' changes (path -> ``"sources"``, ``"rels"``,
+    #: ``"styles"``), the call's relationships and bookmark ids as the document gives them.
+    merged: dict[str, str] = field(default_factory=dict)
+    relinked: dict[str, str] = field(default_factory=dict)
+    remarked: dict[str, str] = field(default_factory=dict)
+
+    def rewritten(self, window: "_Window") -> "_Window":
+        """An op's window as the call's apply writes it (relationship and bookmark ids)."""
+        if self.relinked:
+            window = _relinked_window(window, self.relinked)
+        if self.remarked:
+            window = _remarked_window(window, self.remarked)
+        return window
 
 
 def _renamable(draws: list[tuple[str, list[str]]], arguments: Mapping[str, Any], outputs: list[bytes]) -> bool:
@@ -820,8 +1004,26 @@ class Blocks:
         order = {path: k for k, path in enumerate(_entry_names(document.package))}
         for path in sorted(change.parts - {body}, key=lambda p: (order.get(p, len(order)), p)):
             parts.append((path, change.before(path), change.after(path)))
+        styled = _names_styles(arguments)
+        whole = next((path for path, old, new in parts if _whole_document_part(path, old, new, styled)), None)
+        if whole is not None:
+            # A style made or changed, a list definition changed, the settings: what every
+            # block reads (round 48: such a call keeps the lock).
+            draft.why = f"{whole} changed"
+            return None
         outputs = [window.after for window in windows] + [after for _p, _b, after in parts if after]
         outputs.append(json.dumps(_said(result), ensure_ascii=False, default=str).encode("utf-8"))
+        if recording.annotations:
+            # Ids drawn for anything but bookmarks (a comment's, a revision's) cannot be
+            # drawn again by their text alone: the lock.
+            drawn = {str(value).encode() for value in recording.annotations}
+            written = [window.after for window in windows] + [after for _p, _b, after in parts if after]
+            every = sum(1 for data in written for found in re.finditer(rb'\bw:id="(\d+)"', data)
+                        if found.group(1) in drawn)
+            marks = sum(1 for data in written for found in _BOOKMARK_ID.finditer(data) if found.group(2) in drawn)
+            if every != marks:
+                draft.why = "annotation ids"
+                return None
         item = document._provenance_item()
         if item is not None and change.before(item) is None:
             item = None             # added by the call: the document's version had none
@@ -835,7 +1037,9 @@ class Blocks:
                      spaced=getattr(document, "typography_spaced", 0) - draft.spaced,
                      engine=document.__dict__.get("_checks_engine"), after_body=after_bytes,
                      version=draft.committed.version, pool_before=draft.pool,
-                     pool_after=document._ledger.pool, before_body=before_bytes, provenance=item)
+                     pool_after=document._ledger.pool, before_body=before_bytes, provenance=item,
+                     committed_data=getattr(draft.committed, "data", None),
+                     annotations=list(recording.annotations))
 
     def check(self, document: Any, patch: Patch, changed: frozenset[str] | None) -> Plan:
         if changed is None:
@@ -848,6 +1052,24 @@ class Blocks:
             # document's (each kept for the call's own blocks), not a conflict.
             others.remove(patch.provenance)
             merge = patch.provenance
+        # Round 48: the document part's relationships (a hyperlink's) and the styles (a style
+        # made on first use) others only added to: merged -- the call's additions after
+        # theirs, as the call run now adds them -- or, where the call did not change them,
+        # nothing the call read.
+        merges: dict[str, Any] = {}
+        drafted = {path: (before, after) for path, before, after in patch.parts}
+        for path in list(others):
+            kind = _additive_kind(path)
+            if kind is None or not document.package.has_part(path):
+                continue
+            live_bytes = document.package.read(path)
+            mine = drafted.get(path)
+            base = mine[0] if mine is not None else _part_before(patch, path)
+            if base is None or not _only_added(kind, base, live_bytes):
+                continue
+            others.remove(path)
+            if mine is not None:
+                merges[path] = kind
         if others:
             raise BlockConflict(f"{', '.join(others[:3])} changed")
         if document._aliases != patch.aliases:
@@ -858,6 +1080,10 @@ class Blocks:
             raise BlockConflict("the document is not fully stamped")
         if live.head() != patch.head or live.tail() != patch.tail:
             raise BlockConflict("the body's namespaces or last section changed")
+        if patch.before_body is not None and (b"<w:sectPr" in data or b"<w:sectPr" in patch.before_body) \
+                and _section_breaks(data) != _section_breaks(patch.before_body):
+            # A section's page and margins: what a table's width, a layout of any block reads.
+            raise BlockConflict("a section changed")
         if (b"<wp:inline" in data or b"<wp:anchor" in data) and document._stamping_due():
             raise BlockConflict("a drawing needs ids")
         placed = _placed(live, data, patch.windows, patch.count)
@@ -894,10 +1120,35 @@ class Blocks:
             parts = [(path, before, after) if path != merge
                      else (path, *_merge_sources(document.package.read(path), before, after))
                      for path, before, after in parts]
+        relinked: dict[str, str] = {}
+        if merges:
+            merged_parts = []
+            for path, before, after in parts:
+                kind = merges.get(path)
+                if kind is not None:
+                    live_bytes = document.package.read(path)
+                    after, ids = _merge_added(kind, live_bytes, before, after)
+                    before = live_bytes
+                    relinked.update(ids)
+                merged_parts.append((path, before, after))
+            parts = merged_parts
+            if relinked:
+                # The call's new relationships under the ids the document gives them now.
+                placed = [(begin, end, _relinked_window(window, relinked)) for begin, end, window in placed]
+        ids: dict[str, str] = {}
+        if patch.annotations:
+            # Its bookmarks' ids, drawn again: one above the largest the document has now.
+            offset = document._next_annotation_id() - patch.annotations[0]
+            if offset:
+                ids = {str(value): str(value + offset) for value in patch.annotations}
+                placed = [(begin, end, _remarked_window(window, ids)) for begin, end, window in placed]
+                parts = [(path, before, _remarked(after, ids) if after is not None and path.endswith(".xml") else after)
+                         for path, before, after in parts]
         if moved and any(before is None for _p, before, _a in parts):
             parts = _named_again(patch.parts, parts, moved)
+        merged = {**{path: kind for path, kind in merges.items()}, **({merge: "sources"} if merge else {})}
         return Plan(patch, _spliced(data, live, placed, moved), renames, pool, parts, before=data, moved=moved,
-                    placed=placed)
+                    placed=placed, merged=merged, relinked=relinked, remarked=ids)
 
     def replay_changes(self, document: Any, plan: Plan, op_changes: list[tuple[int, str, Any]]
                        ) -> list[tuple[int, str, Any]] | None:
@@ -909,23 +1160,40 @@ class Blocks:
         where the patch applies: each op's blocks lie in its windows)."""
         body = plan.patch.body
         current = plan.before
-        if current == plan.patch.before_body and not plan.moved:
+        if current == plan.patch.before_body and not plan.moved and not plan.merged \
+                and not plan.relinked and not plan.remarked:
             return None             # the body as the draft's: the draft's changes are the document's
+        # Parts merged with others' changes: each op's additions merged in turn into the
+        # document's (an op that adds what the document has already changed nothing there).
+        states = {path: before for path, before, _after in plan.parts if path in plan.merged}
         out: list[tuple[int, str, Any]] = []
         for op, doc, change in sorted(op_changes, key=lambda item: item[0]):
-            parts = frozenset(change.parts)
+            parts = set(change.parts)
             befores: dict[str, bytes | None] = {path: change.before(path) for path in parts - {body}}
             afters: dict[str, bytes | None] = {path: change.after(path) for path in parts - {body}}
+            for path in list(parts - {body}):
+                kind = plan.merged.get(path)
+                if kind is None:
+                    continue
+                state = states[path]
+                if kind == "sources":
+                    made_part = _merge_sources(state, befores[path], afters[path])[1]
+                else:
+                    made_part = _merge_added(kind, state, befores[path], afters[path])[0]
+                if made_part == state:
+                    parts.discard(path)
+                    continue
+                befores[path], afters[path], states[path] = state, made_part, made_part
             if body in parts:
                 old, new = read_body(change.before(body)), read_body(change.after(body))
                 live = read_body(current)
                 if old is None or new is None or live is None:
                     raise BlockConflict("an op's change cannot be read by blocks")
-                windows = _windows(old, new, _regions(old, new), [], CONTEXT)
+                windows = [plan.rewritten(window) for window in _windows(old, new, _regions(old, new), [], CONTEXT)]
                 made = _spliced(current, live, _placed(live, current, windows, old.count), plan.moved)
                 befores[body], afters[body] = current, made
                 current = made
-            out.append((op, doc, _Replayed(parts, befores, afters)))
+            out.append((op, doc, _Replayed(frozenset(parts), befores, afters)))
         if current != plan.data:
             raise BlockConflict("the ops' changes do not add up to the call's")
         return out
@@ -1060,8 +1328,8 @@ def _body_touches(before: bytes | None, after: bytes | None, blocks: frozenset, 
 
 
 def _numbering_added(before: bytes | None, after: bytes | None) -> bool:
-    """Whether ``numbering.xml`` only gained definitions and instances (lists added
-    elsewhere): every element it had is there as it was."""
+    """Whether ``numbering.xml`` (or ``styles.xml``) only gained definitions and instances
+    (lists, styles added): every element it had is there as it was."""
     if before is None or after is None:
         return False
     try:
@@ -1098,6 +1366,165 @@ def _named_again(drafted: list, parts: list, moved: Mapping[str, str]) -> list:
                 after = serialize(root)
         out.append((path, before, after))
     return out
+
+
+#: Parts every block reads (round 48): a call that changes one keeps the document's lock.
+_WHOLE_DOCUMENT_PARTS = re.compile(r"(^|/)(stylesWithEffects|settings|webSettings|fontTable)\.xml$"
+                                   r"|(^|/)theme/")
+
+#: The arguments that name a style to give blocks (``word_format``, ``word_format_table``).
+_STYLE_KEYS = ("paragraph_style", "character_style", "style")
+
+
+def _names_styles(arguments: Mapping[str, Any]) -> bool:
+    ops = [op.get("arguments") for op in arguments.get("ops") or [] if isinstance(op, Mapping)]
+    return any(isinstance(found, Mapping) and any(found.get(key) for key in _STYLE_KEYS)
+               for found in [arguments, *ops])
+
+
+def _whole_document_part(path: str, before: bytes | None, after: bytes | None, styled: bool = False) -> bool:
+    """Whether a draft's change of ``path`` is one of the whole document: settings, theme,
+    fonts; a style changed, or made for a call that gives blocks a style by name (a
+    Markdown heading's style added on its first use stays a patch, as before); the
+    numbering but for lists only added to it."""
+    if _WHOLE_DOCUMENT_PARTS.search(path):
+        return True
+    if path.endswith("styles.xml") and before is not None:
+        return styled or not _numbering_added(before, after)
+    if path.endswith("numbering.xml") and before is not None:
+        return not _numbering_added(before, after)
+    return False
+
+
+# -- parts others only added to (round 48) ---------------------------------------------------
+
+_RELS_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
+
+
+def _additive_kind(path: str) -> str | None:
+    """How a part others only added to merges with a call's change: ``"rels"`` -- the main
+    document part's relationships, by ``Id`` -- or ``"styles"`` (by ``w:styleId``)."""
+    if path.endswith("_rels/document.xml.rels"):
+        return "rels"
+    if path.endswith("/styles.xml") or path == "styles.xml":
+        return "styles"
+    return None
+
+
+def _part_before(patch: "Patch", path: str) -> bytes | None:
+    """``path`` as the draft's version had it, for a part the call did not change: the
+    committed version's bytes (a part unchanged by the call is the version's)."""
+    data = getattr(patch, "committed_data", None)
+    if data is None:
+        return None
+    import io
+    import zipfile
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            return archive.read(path)
+    except KeyError:
+        return None
+
+
+def _keyed(kind: str, data: bytes) -> tuple[Any, list[tuple[Any, Any]]]:
+    root = parse_xml(data)
+    if kind == "rels":
+        return root, [(node.get("Id"), node) for node in root]
+    return root, [(node.get(_W + "styleId") if node.tag == _W + "style" else (node.tag, k), node)
+                  for k, node in enumerate(root)]
+
+
+def _same(a: Any, b: Any) -> bool:
+    return etree.tostring(a, with_tail=False) == etree.tostring(b, with_tail=False)
+
+
+def _only_added(kind: str, before: bytes, after: bytes) -> bool:
+    """Whether ``after`` is ``before`` with elements added (each it had there as it was)."""
+    _root, old = _keyed(kind, before)
+    _made, new = _keyed(kind, after)
+    found = dict(new)
+    return all(key in found and _same(node, found[key]) for key, node in old)
+
+
+def _merge_added(kind: str, live: bytes, before: bytes | None, after: bytes | None) -> tuple[bytes, dict]:
+    """The call's additions to a part (``before`` -> ``after``, additions only, else a
+    :class:`BlockConflict`) made to the document's ``live`` bytes, as the call run on them
+    would: a relationship to a target the document has already is that one (its ``Id``), a
+    new one the next ``rIdN`` the document has free, after the others; a style the document
+    has already is its, a new one after the others.  The merged bytes and the ids renamed."""
+    from ooxml_edit.opc import _match_tail
+
+    if before is None or after is None or not _only_added(kind, before, after):
+        raise BlockConflict(f"a {kind} part changed in place by the call and meanwhile")
+    root, now = _keyed(kind, live)
+    _old_root, old = _keyed(kind, before)
+    _new_root, new = _keyed(kind, after)
+    had = {key for key, _node in old}
+    present = dict(now)
+    renamed: dict[str, str] = {}
+    for key, node in new:
+        if key in had:
+            continue
+        if kind == "rels":
+            same = next((other for _k, other in now
+                         if other.get("Type") == node.get("Type") and other.get("Target") == node.get("Target")
+                         and (other.get("TargetMode") == "External") == (node.get("TargetMode") == "External")),
+                        None)
+            if same is not None:
+                renamed[key] = same.get("Id")
+                continue
+            used = {other.get("Id") for other in root}
+            index = len(used) + 1
+            while f"rId{index}" in used:
+                index += 1
+            identifier = f"rId{index}"
+            copy = etree.SubElement(root, node.tag)
+            for attribute, value in node.attrib.items():
+                copy.set(attribute, identifier if attribute == "Id" else value)
+            _match_tail(copy)
+            now.append((identifier, copy))
+            if identifier != key:
+                renamed[key] = identifier
+        else:
+            if key in present:
+                continue            # the document has it now: the call would have used it
+            copy = etree.fromstring(etree.tostring(node, with_tail=False))
+            root.append(copy)
+            _match_tail(copy)
+            present[key] = copy
+    return serialize(root), renamed
+
+
+_REL_REFERENCE = re.compile(rb'(r:(?:id|embed|link|pict)=")(rId\d+)(")')
+
+
+def _relinked_window(window: "_Window", renamed: Mapping[str, str]) -> "_Window":
+    """``window`` with the call's new relationship ids as the document gives them."""
+    def relink(data: bytes) -> bytes:
+        return _REL_REFERENCE.sub(lambda m: m.group(1) + renamed.get(m.group(2).decode(), m.group(2).decode()).encode()
+                                  + m.group(3), data)
+
+    import dataclasses
+
+    return dataclasses.replace(window, after=relink(window.after),
+                               blocks_after=[relink(block) for block in window.blocks_after])
+
+
+_BOOKMARK_ID = re.compile(rb'(<w:bookmark(?:Start|End)\b[^>]*?\bw:id=")(\d+)(")')
+
+
+def _remarked(data: bytes, ids: Mapping[str, str]) -> bytes:
+    """``data`` with the bookmarks of the ids drawn (``ids``) under the ones drawn again."""
+    return _BOOKMARK_ID.sub(lambda m: m.group(1) + ids.get(m.group(2).decode(), m.group(2).decode()).encode()
+                            + m.group(3), data)
+
+
+def _remarked_window(window: "_Window", ids: Mapping[str, str]) -> "_Window":
+    import dataclasses
+
+    return dataclasses.replace(window, after=_remarked(window.after, ids),
+                               blocks_after=[_remarked(block, ids) for block in window.blocks_after])
 
 
 def _is_sources(data: bytes) -> bool:

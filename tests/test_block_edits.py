@@ -108,7 +108,26 @@ def _text(session, doc, identifier):
     ("word_edit_table", {"table": "t:1A", "action": "set_cells", "from": "d:rows"}, True),
     ("word_edit_table", {"table": "t:1A", "action": "set_cells", "cells": [{"row": 0, "col": 0, "from": ""}]}, True),
     ("word_edit_table", {"table": "t:1A", "action": "insert_row"}, False),
-    ("word_format", {"targets": ["p:1A"], "bold": True}, False),
+    # Round 48 (R83): edits of known blocks.
+    ("word_format", {"targets": ["p:1A"], "bold": True}, True),
+    ("word_format", {"targets": ["p:1A@2:7", "p:1A..t:2B"], "italic": True}, True),
+    ("word_format", {"find": [{"text": "x", "within": "p:1A..p:2B"}], "bold": True}, True),
+    ("word_format", {"find": [{"text": "x"}], "bold": True}, False),               # anywhere: the whole document
+    ("word_format", {"targets": ["s:2"], "bold": True}, False),                     # a section
+    ("word_format", {"targets": ["h:p:1A"], "bold": True}, False),                  # a heading's range
+    ("word_format", {"targets": ["$intro"], "bold": True}, True),                   # a ref: resolved on the draft
+    ("word_format", {"targets": ["Revenue"], "bold": True}, False),                 # a bookmark
+    ("replace_text", {"find": "a", "replace": "b", "expect": "all", "range": "p:1A..p:2B"}, True),
+    ("replace_text", {"find": "a", "replace": "b", "expect": "all"}, False),         # the whole document
+    ("replace_text", {"find": "a", "replace": "b", "expect": "all", "range": "p:1A", "stories": "all"}, False),
+    ("word_format_table", {"table": "t:1A", "scope": "table", "width_of": "body"}, True),
+    ("word_delete", {"target": "p:1A..p:2B"}, True),
+    ("word_delete", {"find": "x", "within": "p:1A"}, True),
+    ("word_delete", {"find": "x"}, False),
+    ("word_links", {"action": "add_hyperlink", "target": "p:1A@0:4", "url": "https://example.com"}, True),
+    ("word_links", {"action": "add_bookmark", "target": "p:1A", "bookmark": "here"}, True),
+    ("word_links", {"action": "add_hyperlink", "find": "x", "url": "https://example.com"}, False),
+    ("word_links", {"action": "remove_bookmark", "bookmark": "here"}, False),
     ("word_fields", {"action": "update"}, False),
 ])
 def test_what_a_draft_takes(tool, arguments, admitted):
@@ -880,3 +899,201 @@ def test_a_call_that_draws_ids_then_fails_spends_them_as_under_the_lock():
                                  {"doc": doc, "at": f"before:{layout.ends[1]}", "markdown": "C."})
             found.append((after.created, session.entry(doc).document.id_state()))
     assert found[0] == found[1]
+
+
+# -- round 48 (R83): edits of known blocks ---------------------------------------------------------
+
+
+def _round48_calls(doc, layout):
+    """Each newly admitted kind, and a batch mixing them as callers send them."""
+    body, other, span = layout.bodies[1], layout.bodies[2], f"{layout.heads[1]}..{layout.ends[1]}"
+    word = Document.open(block_stress.made(3)).paragraph(body[0]).text.split()[1].strip(".,").lower()
+    return [
+        ("replace_text", {"doc": doc, "find": word, "replace": word.upper(), "expect": "all", "range": span}),
+        ("word_format", {"doc": doc, "targets": [body[0]], "bold": True}),
+        ("word_format", {"doc": doc, "targets": [f"{body[1]}@0:5", span], "italic": True}),
+        ("word_format", {"doc": doc, "find": [{"text": word.upper(), "within": span, "expect": "all"}],
+                         "underline": True}),
+        ("word_format_table", {"doc": doc, "table": layout.tables[1], "scope": "table", "width_of": "body"}),
+        ("word_format_table", {"doc": doc, "table": layout.tables[1], "scope": "row", "row": 0, "shading": "DDEEFF"}),
+        ("word_delete", {"doc": doc, "target": f"{body[2]}@0:3"}),
+        ("word_links", {"doc": doc, "action": "add_hyperlink", "target": f"{body[3]}@0:4",
+                        "url": "https://example.com/a"}),
+        ("word_links", {"doc": doc, "action": "add_hyperlink", "target": f"{body[3]}@6:9", "bookmark": "first_section"}),
+        ("word_links", {"doc": doc, "action": "add_bookmark", "target": f"{body[0]}@1:6", "bookmark": "a_mark"}),
+        ("batch", {"ops": [
+            {"tool": "replace_text", "arguments": {"doc": doc, "find": word.upper(), "replace": word, "expect": "all",
+                                                   "range": span}},
+            {"tool": "word_format", "arguments": {"doc": doc, "targets": [body[1]], "bold": True}},
+            {"tool": "word_format_table", "arguments": {"doc": doc, "table": layout.tables[1], "scope": "table",
+                                                        "borders": "single"}},
+            {"tool": "word_delete", "arguments": {"doc": doc, "target": other[0]}},
+            {"tool": "word_links", "arguments": {"doc": doc, "action": "add_hyperlink", "target": f"{body[0]}@0:3",
+                                                 "url": "https://example.com/b"}}]}),
+        ("word_delete", {"doc": doc, "target": other[2]}),
+    ]
+
+
+def test_edits_of_known_blocks_answer_and_write_on_a_draft_as_on_the_document():
+    """Round 48 (R83): replace_text in a span, word_format, word_format_table, word_delete and
+    word_links (a link, a bookmark) -- alone and mixed in one batch -- each run on a draft:
+    the same results, touched, bytes and id state as on the document, and none of them on
+    the lock."""
+    out = {}
+    for mode in ("off", "always"):
+        with opened(mode) as (box, session, doc, layout):
+            results = []
+            for name, arguments in _round48_calls(doc, layout):
+                found = box.dispatch(session, name, arguments)
+                assert found.ok, (name, found.to_json())
+                results.append((block_stress.normal(found), found.block))
+            entry = session.entry(doc)
+            out[mode] = ([r for r, _ in results], [b for _, b in results],
+                         hashlib.sha256(entry.document.to_bytes()).hexdigest(), entry.document.id_state())
+    assert out["off"][0] == out["always"][0]
+    assert out["off"][2:] == out["always"][2:]
+    assert [(b or {}).get("lock") for b in out["always"][1]] == [None] * len(out["always"][1]), out["always"][1]
+
+
+@pytest.mark.parametrize("name, arguments, why", [
+    ("replace_text", {"find": "the", "replace": "a", "expect": "all"}, None),           # not admitted
+    ("word_format", {"targets": ["{span}"], "paragraph_style": "Caption"}, "styles.xml"),  # a style made
+    ("word_format", {"targets": ["h:{head}"], "bold": True}, None),                      # not admitted
+])
+def test_what_reads_or_changes_the_whole_document_keeps_the_lock(name, arguments, why):
+    with opened("always") as (box, session, doc, layout):
+        def fill(value):
+            if isinstance(value, str):
+                return value.format(span=f"{layout.heads[1]}..{layout.ends[1]}", head=layout.heads[1])
+            return [fill(v) for v in value] if isinstance(value, list) else value
+
+        filled = {key: fill(value) for key, value in arguments.items()}
+        found = box.dispatch(session, name, {"doc": doc, **filled})
+        if why is None:
+            assert found.block is None
+        else:
+            assert why in found.block["lock"], found.block
+
+
+def _held_and_serial(monkeypatch, first, then):
+    """``first`` held on its draft while ``then`` runs; then the two run one at a time in the
+    order they committed (``then`` first) on a fresh session: both results and whether the
+    bytes and id state are the same."""
+    with opened() as (box, session, doc, layout), held(monkeypatch) as hold:
+        name, arguments = first(doc, layout)
+        thread, slow = _in_thread(lambda: box.dispatch(session, name, arguments))
+        assert hold.ready.wait(60)
+        other = box.dispatch(session, *then(doc, layout))
+        hold.release()
+        thread.join()
+        result = slow["result"]
+        entry = session.entry(doc)
+        concurrent = (entry.document.to_bytes(), entry.document.id_state(), block_stress.normal(result))
+    with opened("off") as (box, session, doc, layout):
+        assert box.dispatch(session, *then(doc, layout)).ok
+        alone = box.dispatch(session, *first(doc, layout))
+        entry = session.entry(doc)
+        serial = (entry.document.to_bytes(), entry.document.id_state(), block_stress.normal(alone))
+    return result, other, concurrent == serial
+
+
+def test_links_added_meanwhile_merge_their_relationships(monkeypatch):
+    """Two links to different addresses in different chapters: the held one's relationship
+    is the next the document has free when it applies (its r:id renamed), the bytes those of
+    the two calls one at a time."""
+    result, other, same = _held_and_serial(
+        monkeypatch,
+        lambda doc, layout: ("word_links", {"doc": doc, "action": "add_hyperlink",
+                                            "target": f"{layout.bodies[0][0]}@0:4", "url": "https://example.com/x"}),
+        lambda doc, layout: ("word_links", {"doc": doc, "action": "add_hyperlink",
+                                            "target": f"{layout.bodies[2][0]}@0:4", "url": "https://example.com/y"}))
+    assert other.ok and result.ok and _shape(result.block) == {"tries": 1, "conflicts": []}
+    assert same
+
+
+def test_a_link_to_an_address_linked_meanwhile_shares_its_relationship(monkeypatch):
+    result, other, same = _held_and_serial(
+        monkeypatch,
+        lambda doc, layout: ("word_links", {"doc": doc, "action": "add_hyperlink",
+                                            "target": f"{layout.bodies[0][0]}@0:4", "url": "https://example.com/x"}),
+        lambda doc, layout: ("word_links", {"doc": doc, "action": "add_hyperlink",
+                                            "target": f"{layout.bodies[2][0]}@0:4", "url": "https://example.com/x"}))
+    assert other.ok and result.ok and _shape(result.block) == {"tries": 1, "conflicts": []}
+    assert same
+
+
+def test_bookmarks_added_meanwhile_draw_their_ids_again(monkeypatch):
+    result, other, same = _held_and_serial(
+        monkeypatch,
+        lambda doc, layout: ("word_links", {"doc": doc, "action": "add_bookmark",
+                                            "target": f"{layout.bodies[0][0]}@0:4", "bookmark": "held_mark"}),
+        lambda doc, layout: ("word_links", {"doc": doc, "action": "add_bookmark",
+                                            "target": f"{layout.bodies[2][0]}@0:4", "bookmark": "other_mark"}))
+    assert other.ok and result.ok and _shape(result.block) == {"tries": 1, "conflicts": []}
+    assert same
+
+
+def test_a_bookmark_of_the_same_name_added_meanwhile_prepares_again(monkeypatch):
+    result, other, same = _held_and_serial(
+        monkeypatch,
+        lambda doc, layout: ("word_links", {"doc": doc, "action": "add_bookmark",
+                                            "target": f"{layout.bodies[0][0]}@0:4", "bookmark": "Mark"}),
+        lambda doc, layout: ("word_links", {"doc": doc, "action": "add_bookmark",
+                                            "target": f"{layout.bodies[2][0]}@0:4", "bookmark": "mark"}))
+    assert other.ok and result.block["tries"] == 2 and "bookmark" in result.block["conflicts"][0]
+    assert not result.ok and same            # as one at a time: the name is taken
+
+
+def test_text_replaced_in_a_span_a_block_was_put_into_meanwhile_prepares_again(monkeypatch):
+    """A span's blocks are what a replace in it reads: one put between them meanwhile is one
+    the call would have changed too."""
+    result, other, same = _held_and_serial(
+        monkeypatch,
+        lambda doc, layout: ("replace_text", {"doc": doc, "find": "Section", "replace": "Part", "expect": "all",
+                                              "range": f"{layout.heads[1]}..{layout.ends[1]}"}),
+        lambda doc, layout: ("word_insert_markdown", {"doc": doc, "at": f"after:{layout.bodies[1][0]}",
+                                                      "markdown": "Section inserted meanwhile."}))
+    assert other.ok and result.ok and result.block["tries"] == 2
+    assert same
+
+
+def test_edits_of_other_chapters_apply_beside_a_held_batch_of_block_edits(monkeypatch):
+    result, other, same = _held_and_serial(
+        monkeypatch,
+        lambda doc, layout: ("batch", {"ops": [
+            {"tool": "word_format", "arguments": {"doc": doc, "targets": [layout.bodies[0][0]], "bold": True}},
+            {"tool": "word_format_table", "arguments": {"doc": doc, "table": layout.tables[0], "scope": "table",
+                                                        "shading": "DDEEFF"}},
+            {"tool": "word_delete", "arguments": {"doc": doc, "target": f"{layout.bodies[0][1]}@0:3"}}]}),
+        lambda doc, layout: ("batch", {"ops": [
+            {"tool": "replace_text", "arguments": {"doc": doc, "find": "Section", "replace": "Part", "expect": "all",
+                                                   "range": f"{layout.heads[2]}..{layout.ends[2]}"}},
+            {"tool": "word_format", "arguments": {"doc": doc, "targets": [layout.bodies[2][0]], "italic": True}}]}))
+    assert other.ok and result.ok and _shape(result.block) == {"tries": 1, "conflicts": []}
+    assert same
+
+
+@pytest.mark.parametrize("first_fill", [False, True])
+def test_a_dataset_table_put_alone_after_edits_side_by_side_is_prepared_once(first_fill):
+    """Round 48 (R85, the team's case): after callers edited side by side, a table from a
+    dataset put in alone (`from: "d:..."`, nothing else in flight) is prepared once -- 0.1.74
+    looked for its own table's id in the document ("t:... is gone", three times)."""
+    with opened("auto", first_fill=first_fill) as (box, session, doc, layout):
+        def edit(k):
+            view = session.view(context={"agent": f"c{k}"})
+            for c in range(3):
+                assert box.dispatch(view, "batch", {"ops": [
+                    {"tool": "word_insert_markdown", "arguments": {"doc": doc, "at": f"before:{layout.ends[k]}",
+                                                                   "markdown": f"Note {k}.{c}"}},
+                    {"tool": "word_set_text", "arguments": {"doc": doc, "target": layout.bodies[k][c],
+                                                            "text": f"Text {k}.{c}."}}]}).ok
+
+        threads = [threading.Thread(target=edit, args=(k,)) for k in range(3)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        result = box.dispatch(session.view(context={"agent": "alone"}), "word_insert_markdown",
+                              {"doc": doc, "at": f"before:{layout.ends[1]}", "from": "d:rows"})
+        assert result.ok and result.created[0].startswith("t:")
+        assert _shape(result.block) == {"tries": 1, "conflicts": []}

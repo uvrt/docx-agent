@@ -194,6 +194,13 @@ def plan_short(seed: int, threads: int, calls: int, layout: ShortLayout, doc: st
                 ops = [{"tool": "word_insert_markdown", "arguments": {"doc": doc, "at": place, "markdown": md}},
                        {"tool": "word_read", "arguments": {"doc": doc, "range": f"{head}..{bound}"}}]
                 mine.append(("batch", {"ops": ops}))
+            elif roll < 0.66:
+                # The round 48 mix: edits of the part's blocks in one batch.
+                if body:
+                    mine.append(("batch", {"ops": [block_edit(rng, doc, f"{head}..{bound}", body[0], None)
+                                                   for _ in range(rng.choice([1, 2, 3]))]}))
+                else:
+                    mine.append(("word_format", {"doc": doc, "targets": [head], "italic": True}))
             elif roll < 0.72:
                 mine.append(("check", {"doc": doc, "range": [f"{head}..{bound}"]}))
             elif roll < 0.80:
@@ -215,12 +222,44 @@ def plan_short(seed: int, threads: int, calls: int, layout: ShortLayout, doc: st
     return out
 
 
+def block_edit(rng: random.Random, doc: str, span: str, target: str, table: str | None) -> dict:
+    """One edit of known blocks (round 48, R83) as a batch op: text replaced in a span, a
+    paragraph, part of one, a span or found text formatted, a table formatted, text or a
+    paragraph deleted, a link or a bookmark added -- the mix callers send in one batch."""
+    word = rng.choice(WORDS)
+    kind = rng.random()
+    if kind < 0.2:
+        return {"tool": "replace_text", "arguments": {"doc": doc, "find": word, "replace": word.upper(),
+                                                      "expect": "all", "range": span}}
+    if kind < 0.45:
+        how = rng.random()
+        where = ({"targets": [target]} if how < 0.4 else {"targets": [f"{target}@0:5"]} if how < 0.6
+                 else {"targets": [span]} if how < 0.8 else {"find": [{"text": word, "within": span, "expect": "all"}]})
+        return {"tool": "word_format", "arguments": {"doc": doc, **where, rng.choice(["bold", "italic", "underline"]):
+                                                     rng.random() < 0.7}}
+    if kind < 0.6 and table is not None:
+        return {"tool": "word_format_table", "arguments": {"doc": doc, "table": table, "scope": "table",
+                                                           **rng.choice([{"width_of": "body"}, {"shading": "DDEEFF"},
+                                                                         {"borders": "single"}, {"header_rows": 1}])}}
+    if kind < 0.75:
+        return {"tool": "word_delete", "arguments": {"doc": doc, "find": word, "within": target}
+                if rng.random() < 0.7 else {"doc": doc, "target": f"{target}@0:3"}}
+    if kind < 0.9:
+        return {"tool": "word_links", "arguments": {"doc": doc, "action": "add_hyperlink", "target": f"{target}@0:4",
+                                                    **({"url": "https://example.com/a"} if rng.random() < 0.6
+                                                       else {"bookmark": "first_section"})}}
+    return {"tool": "word_links", "arguments": {"doc": doc, "action": "add_bookmark", "target": f"{target}@1:6",
+                                                "bookmark": f"mark_{rng.randrange(10_000)}"}}
+
+
 def plan(seed: int, threads: int, calls: int, layout: Layout, doc: str) -> list[list[tuple[str, dict]]]:
     """Each thread's calls, from ``seed``: mostly its own chapter's, often another's."""
     out = []
     chapters = len(layout.heads)
     for k in range(threads):
         rng = random.Random(seed * 1000 + k)
+        # Round 48's edits of known blocks drawn from their own sequence: the calls as before.
+        extra = random.Random((seed * 1000 + k) * 31 + 7)
         own = k % chapters
         mine: list[tuple[str, dict]] = []
         for c in range(calls):
@@ -238,9 +277,11 @@ def plan(seed: int, threads: int, calls: int, layout: Layout, doc: str) -> list[
                 ops = [{"tool": "word_insert_markdown", "arguments": {"doc": doc, "at": place, "markdown": md}},
                        {"tool": "word_set_text", "arguments": {"doc": doc, "target": rng.choice(body),
                                                                "text": sentence(rng, 14)}}]
+                span = f"{layout.heads[chapter]}..{layout.ends[chapter]}"
+                for _ in range(extra.choice([0, 1, 2, 3])):
+                    ops.append(block_edit(extra, doc, span, extra.choice(body), layout.tables[chapter]))
                 if rng.random() < 0.3:
-                    ops.append({"tool": "word_read", "arguments": {"doc": doc, "range": f"{layout.heads[chapter]}.."
-                                                                                       f"{layout.ends[chapter]}"}})
+                    ops.append({"tool": "word_read", "arguments": {"doc": doc, "range": span}})
                 mine.append(("batch", {"ops": ops}))
             elif roll < 0.45:
                 text = sentence(rng, 12) if rng.random() < 0.8 else f"{sentence(rng, 5)}\n{sentence(rng, 4)}"
