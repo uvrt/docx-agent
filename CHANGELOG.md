@@ -5,6 +5,26 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.79 -- unreleased
+
+- **A column at once** (round 48, R89). `word_edit_table` `set_cells` takes one entry for a
+  column's rows: `{col: 2, rows: "*", text: "Yes"}` -- or `from` (one value), or a reference
+  in the text -- read once and written in every cell. `rows` is `*` (every row below the
+  header rows: those marked to repeat, else the first where the table's look has its header
+  row on) or a range from 0 as `row` counts (`1..40`, `5..`, `..9`, `7`); a range naming a
+  header row writes it, with a note. The column is `col` or `col_label`; a merged cell is
+  written once, a row with no cell at that column is left and said, a range past the last row
+  is refused with the table's rows. The cells are written exactly as that many one-cell
+  entries write them (same bytes); a value by reference is kept on every cell. The result
+  says per entry the column, rows, cells and how many changed (`filled`), not the table's
+  Markdown or each paragraph's id (`changed` names the table). No new top-level parameter:
+  `cells[].rows` (+28 tokens to every definition, none to the core); word_edit_table is not
+  strict for Claude, so the strict set is unchanged (6 tools, 24 optional parameters).
+- **Values kept in many cells in one edit.** A value written by reference into many cells
+  (`cells[].from`) was kept one edit per cell, each following every value kept so far again:
+  431 cells took about 15 s CPU, now about 2 s, the same bytes
+  (`Document.keep_text_facts_in`).
+
 ## 0.1.78 -- unreleased
 
 - Tests: the check-timing test that tells the wait for the layout's worker from the layout

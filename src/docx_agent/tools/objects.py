@@ -51,7 +51,9 @@ CELL = obj({"row": integer(minimum=0, optional=True),
             "col_label": string("Or the column's header text.", optional=True),
             "text": string("Lines are paragraphs.", optional=True),
             # Round 45, R66: one value of a source, as a text reference names one.
-            "from": string("Or one value: d:<id>/#12/<column>, :0.0 to round.", optional=True)})
+            "from": string("Or one value: d:<id>/#12/<column>, :0.0 to round.", optional=True),
+            # Round 48, R89: one text or value for a column's rows (:func:`_column_rows`).
+            "rows": string("Or a column's rows: 1..40, or * (all but header rows).", optional=True)})
 POSITION = obj({"row": integer(minimum=0), "col": integer(minimum=0)},
                "merge, split: first cell, from 0.", optional=True)
 
@@ -140,12 +142,18 @@ def word_edit_table(call: Any, doc: str, table: str, action: str, cells: list[di
     kept = _Kept(document, table)
     edits = []
     facts: list[dict[str, Any]] | None = None
+    fills: list[dict[str, Any]] = []
+    held: set[str] = set()
     if action == "set_cells":
         cells = need(cells, "cells")
-        _limit_cells(call, len(cells))
-        values = [_cell_value(call, cell, k) for k, cell in enumerate(cells)]   # all read first
+        # Round 48 (R89): an entry with rows is a cell per row of its column, one value for all.
+        places, owners, fills = _column_rows(document, view, cells)
+        held = _paragraphs_of(document, table) if fills else set()
+        _limit_cells(call, len(places))
+        values = [_cell_value(call, cell, k) for k, cell in enumerate(cells)]   # all read first, once each
+        texts = [values[k][0] for k in owners]
         placed_at: list[tuple[int, int]] = []
-        writes = _by_position(document, view, cells, [text for text, _record in values])
+        writes = _by_position(document, view, places, texts)
         if writes is not None:
             # Round 45 (R67): every cell by its position, each on the table -- in one pass, the
             # same edits in the same order (a thousand cells took 80 s one by one).
@@ -154,13 +162,15 @@ def word_edit_table(call: Any, doc: str, table: str, action: str, cells: list[di
                 placed_at.append((row, col))
             edits.extend(document._fill_cells(table, writes)[0])
         else:
-            for cell, (text, _record) in zip(cells, values):  # in order: a label set by an earlier cell is found by a later one
+            for cell, text in zip(places, texts):  # in order: a label set by an earlier cell is found by a later one
                 current = document.table(table)
                 row, col = _locate(current, cell)
                 kept.cell(row, col)
                 edits.extend(_set_cell(document, current, row, col, text))
                 placed_at.append((row, col))
-        facts = _cell_facts(call, cells, values, placed_at, lambda: kept.current_id() or table)
+        if fills:
+            _count_fills(fills, values)
+        facts = _cell_facts(call, cells, values, placed_at, lambda: kept.current_id() or table, owners)
     elif action == "insert_row":
         edits.append(document.insert_row(table, index, below=side == "after"))
     elif action == "delete_row":
@@ -180,12 +190,24 @@ def word_edit_table(call: Any, doc: str, table: str, action: str, cells: list[di
     kept.follow(call, action, index, side)
     # A row inserted or deleted at the top renames the table (its id is its first row's).
     now = kept.current_id() or table
-    data = table_json(document, now)
+    # Round 48 (R89): a column filled is said by its range and counts, not the table's text.
+    data = table_json(document, now, markdown=not fills)
+    if fills:
+        data["filled"] = [_fill_brief(fill) for fill in fills]
     if facts is not None:
         data["facts"] = facts
     result = outcome(edits, f"{action} on {table}", data=data, changed=[now])
     if read_as:
         result.warnings.insert(0, read_as)
+    if fills:
+        # The cells' paragraphs (changed, made and removed) are the table's: named by it, not
+        # one by one (rule 4; a 431-row column listed 431 ids).
+        inside = held | _paragraphs_of(document, now)
+        for key in ("changed", "created", "removed"):
+            kept_ids = [i for i in getattr(result, key) if i not in inside and not i.startswith(f"{now}/")]
+            setattr(result, key, ([now] if key == "changed" else []) + [i for i in kept_ids if i != now])
+        for fill in fills:
+            result.warnings.extend(fill["notes"])
     if now != table:
         result.renamed[table] = now
     return note_small_text(call, result, [now]) if action == "set_cells" else result
@@ -207,6 +229,164 @@ def _by_position(document: Any, view: Any, cells: list[dict], texts: list[str]) 
     if document._stamping_due():
         return None
     return [(c["row"], c["col"], text) for c, text in zip(cells, texts)]
+
+
+#: A cells entry's ``rows`` (round 48, R89): ``*`` (or ``all``), ``a..b``, ``a..``, ``..b`` or
+#: ``a``, rows from 0 as ``row`` counts them, both ends included (``a-b`` and ``a:b`` too).
+_ROWS = re.compile(r"^\s*(?:(?P<all>\*|all)|(?P<a>\d+)?\s*(?P<to>\.\.|-|:)?\s*(?P<b>\d+)?)\s*$", re.IGNORECASE)
+#: Rows a column's result lists by number where some were not written (rule 4).
+_LISTED = 20
+
+
+def _header_rows(document: Any, table: str) -> int:
+    """The table's header rows, as a column's body leaves them out: the rows marked to repeat
+    as a header (``w:tblHeader``), else the first row where the table's look has its header
+    row on (as Word draws it) -- as ``style_by_value`` reads a column (:mod:`.scales`)."""
+    properties = document.table_properties(table)
+    count = properties.get("header_rows") or 0
+    if not count and (properties.get("look") or {}).get("first_row"):
+        count = 1
+    return count
+
+
+def _column_rows(document: Any, view: Any, cells: list[dict]) -> tuple[list[dict], list[int], list[dict]]:
+    """``set_cells``' cells as places, one per cell to write, each with the index of the
+    entry it comes from, and the column fills (round 48, R89).
+
+    An entry with ``rows`` is its column's cells over those rows, each given the entry's
+    one value: a merged cell once (where its rows begin, or the range's first row for one
+    merged from above), a row without a cell at that column left out and said.  ``*`` and an
+    open start leave the header rows (:func:`_header_rows`) out; a range that names one is
+    written as asked, with a note.  Its column is ``col`` or ``col_label`` (the first row's
+    text), as for one cell.  Other entries are as given."""
+    if not any(isinstance(c, dict) and c.get("rows") not in (None, "") for c in cells):
+        return list(cells), list(range(len(cells))), []
+    grid = view.grid()
+    height = len(grid)
+    header = _header_rows(document, view.id)
+    places: list[dict] = []
+    owners: list[int] = []
+    fills: list[dict] = []
+    for k, cell in enumerate(cells):
+        said = cell.get("rows")
+        if said in (None, ""):          # "": a strict decoder's placeholder for none (rule 1)
+            places.append(cell)
+            owners.append(k)
+            continue
+        col = _fill_column(view, cell, k)
+        first, last, notes = _fill_range(view.id, str(said), cell, k, height, header)
+        written: list[tuple[int, int]] = []
+        missing: list[int] = []
+        seen: set[tuple[int, int]] = set()
+        for row in range(first, last + 1):
+            found = grid[row][col] if col < len(grid[row]) else None
+            if found is None:
+                missing.append(row)
+                continue
+            origin = (found.row, found.column)
+            if origin in seen:
+                continue                 # merged with a row above it in the range
+            seen.add(origin)
+            places.append({"row": row, "col": col})
+            owners.append(k)
+            written.append((row, col))
+        if missing:
+            shown = ", ".join(str(r) for r in missing[:_LISTED]) + (
+                f" and {len(missing) - _LISTED} more" if len(missing) > _LISTED else "")
+            notes.append(f"cells[{k}]: row(s) {shown} have no cell at column {col} (left as they are)")
+        if not written:
+            raise ToolError("not_found", f"cells[{k}]: rows {first}..{last} have no cell at column {col}",
+                            field=f"cells[{k}].rows", valid_options=[f"{header}..{height - 1}"])
+        fills.append({"entry": k, "col": col, "first": first, "last": last, "header": header,
+                      "before": [grid[r][c].text for r, c in written], "missing": missing,
+                      "notes": notes})
+    return places, owners, fills
+
+
+def _paragraphs_of(document: Any, table: str) -> set[str]:
+    """The ids of the table's cells' paragraphs."""
+    return {p.id for line in document.table(table).grid() for cell in line if cell is not None
+            for p in cell.paragraphs}
+
+
+def _fill_column(view: Any, cell: dict, k: int) -> int:
+    """The grid column a column fill writes: ``col`` or ``col_label`` -- refused with the
+    table's columns (rule 2)."""
+    width = view.column_count
+    if cell.get("col") is not None and cell.get("col_label") in (None, ""):
+        col = cell["col"]
+        if not 0 <= col < width:
+            raise ToolError("not_found", f"cells[{k}].col {col}: {view.id} has grid columns 0 to {width - 1}",
+                            field=f"cells[{k}].col", valid_options=[str(c) for c in range(width)][:50])
+        return col
+    if cell.get("col_label") in (None, ""):
+        raise ToolError("invalid_arguments", f"cells[{k}] gives rows but no column: give col (from 0) or "
+                        f"col_label (its header text), e.g. {{col: 2, rows: '*', text: 'Yes'}}",
+                        field=f"cells[{k}].col", valid_options=["col", "col_label"])
+    return _locate(view, {"row": 0, "col_label": cell["col_label"]})[1]
+
+
+def _fill_range(table: str, said: str, cell: dict, k: int, height: int, header: int) -> tuple[int, int, list[str]]:
+    """The first and last row (both written) of a cells entry's ``rows``, and the notes."""
+    body = f"{header}..{height - 1}" if header < height else f"0..{height - 1}"
+    shape = (f"{table} has rows 0 to {height - 1}" + (f" ({header} header row(s))" if header else "")
+             + f": rows '*' (every row below the header), '{body}', or a range of them")
+    if cell.get("row") is not None or cell.get("row_label") not in (None, ""):
+        raise ToolError("invalid_arguments", f"cells[{k}] gives rows and {'row' if cell.get('row') is not None else 'row_label'}: "
+                        "rows names the rows; give one (for one cell, row and no rows)",
+                        field=f"cells[{k}].rows", valid_options=["rows", "row", "row_label"])
+    found = _ROWS.match(said)
+    if found is None or not (found["all"] or found["a"] or found["b"]):
+        raise ToolError("invalid_arguments", f"cells[{k}].rows {said!r} is not rows: {shape}",
+                        field=f"cells[{k}].rows", valid_options=["*", body])
+    notes: list[str] = []
+    if found["all"]:
+        first, last = header, height - 1
+    else:
+        a = int(found["a"]) if found["a"] else None
+        b = int(found["b"]) if found["b"] else None
+        if found["to"] is None:
+            first = last = a
+        else:
+            first = header if a is None else a
+            last = height - 1 if b is None else b
+        if first > last:
+            raise ToolError("invalid_arguments", f"cells[{k}].rows {said!r} runs backwards: {shape}",
+                            field=f"cells[{k}].rows", valid_options=[f"{last}..{first}", "*"])
+        if last >= height:
+            raise ToolError("not_found", f"cells[{k}].rows {said!r}: no row {last}; {shape}. Rows are not "
+                            "added: insert_row first, or set_cells from with grow", field=f"cells[{k}].rows",
+                            valid_options=["*", f"{first}..{height - 1}" if first < height else body])
+        if a is not None and a < header:
+            notes.append(f"cells[{k}]: rows {first}..{last} include header row(s) {first}.."
+                         f"{min(header, last + 1) - 1}, written as asked ('*' leaves them out)")
+    if first > last:                    # '*' on a table of header rows only
+        raise ToolError("not_found", f"cells[{k}].rows {said!r}: {table} has no rows below its "
+                        f"{header} header row(s); name them to write them: rows '0..{height - 1}'",
+                        field=f"cells[{k}].rows", valid_options=[f"0..{height - 1}"])
+    return first, last, notes
+
+
+def _count_fills(fills: list[dict], values: list[tuple[str, Any]]) -> None:
+    """Each column fill's cells written, and how many held its value already (rule 3)."""
+    for fill in fills:
+        text = values[fill["entry"]][0]
+        fill["cells"] = len(fill["before"])
+        fill["already"] = sum(1 for held in fill["before"] if held == text)
+        if fill["already"] == fill["cells"]:
+            fill["notes"].append(f"cells[{fill['entry']}]: the {fill['cells']} cell(s) held that text already "
+                                 "(nothing to change)")
+
+
+def _fill_brief(fill: dict) -> dict[str, Any]:
+    """What a result says of a column fill: the range written and counts (rule 4)."""
+    out: dict[str, Any] = {"entry": fill["entry"], "col": fill["col"], "rows": f"{fill['first']}..{fill['last']}",
+                           "cells": fill["cells"], "changed": fill["cells"] - fill["already"]}
+    if fill["header"] and fill["first"] >= fill["header"]:
+        out["header_rows"] = fill["header"]       # left out above the range
+    if fill["missing"]:
+        out["no_cell"] = len(fill["missing"])
+    return out
 
 
 def _one_value_cells(source: str, cells: list[dict] | None, action: str) -> list[dict]:
@@ -249,12 +429,18 @@ def _cell_value(call: Any, cell: dict, k: int) -> tuple[str, dict[str, Any] | No
 
 
 def _cell_facts(call: Any, cells: list[dict], values: list[tuple[str, Any]], placed_at: list[tuple[int, int]],
-                table: Any) -> list[dict[str, Any]] | None:
+                table: Any, owners: list[int] | None = None) -> list[dict[str, Any]] | None:
     """The values set_cells wrote by reference -- a cell's ``from`` and references in a
     cell's ``text`` -- each with its cell, in order; a ``from`` kept as its cell's
-    paragraphs' source.  ``None`` without any (the result as before)."""
+    paragraphs' source.  ``None`` without any (the result as before).
+
+    Round 48 (R89): ``placed_at`` lists the cells written, ``owners`` the entry each came
+    from; an entry written in many cells (``rows``) is said once, with its rows and count,
+    and its value kept in each cell -- a reference in its text too, which the dispatcher's
+    keeping (:func:`.textfacts.keep_written`) leaves where the same text is in many places."""
     from . import field_text
 
+    owners = list(range(len(cells))) if owners is None else owners
     by_cell: dict[int, list[Any]] = {}
     for fact in getattr(call, "facts", None) or ():
         found = re.match(r"cells\[(\d+)\]\.text$", fact.field)
@@ -264,17 +450,70 @@ def _cell_facts(call: Any, cells: list[dict], values: list[tuple[str, Any]], pla
         return None
     document = call.document
     view = document.table(table())     # its id now (a first row's change renames it)
+    grid = view.grid()
+    where: dict[int, list[tuple[int, int]]] = {}
+    for k, at in zip(owners, placed_at):
+        where.setdefault(k, []).append(at)
     out: list[dict[str, Any]] = []
+    keeps: list[tuple[str, list[dict[str, Any]]]] = []
     for k, (text, record) in enumerate(values):
         if record is None and k not in by_cell:
             continue
-        cell = view.cell(*placed_at[k]).id
+        found_cells = [grid[r][c] for r, c in where.get(k, ())]
+        many = cells[k].get("rows") not in (None, "")
+        if many:
+            rows = f"{found_cells[0].row}..{found_cells[-1].row}" if found_cells else ""
+            said = {"col": placed_at[owners.index(k)][1], "rows": rows, "cells": len(found_cells)}
+        else:
+            said = {"cell": found_cells[0].id}
+        paragraphs = [[p.id for p in cell.paragraphs] for cell in found_cells]
         if record is not None:
             fact = field_text.as_fact(cells[k]["from"], f"cells[{k}].from", text, record)
-            field_text.keep_in_paragraphs(document, record, [p.id for p in document.get(cell).paragraphs])
-            out.append(field_text.brief(fact, cell=cell))
-        out += [field_text.brief(fact, cell=cell) for fact in by_cell.get(k, ())]
+            for ids in paragraphs:
+                keeps += _whole_paragraphs(document, record, ids)
+            out.append(_said_fact(field_text.brief(fact), said))
+        for fact in by_cell.get(k, ()):
+            if many:
+                keeps += _in_each(fact, cells[k].get("text"), paragraphs)
+            out.append(_said_fact(field_text.brief(fact), said))
+    if keeps:
+        # Round 48: kept in one edit -- one per cell followed every value kept again.
+        document.keep_text_facts_in(keeps)
     return out
+
+
+def _said_fact(brief: dict[str, Any], said: dict[str, Any]) -> dict[str, Any]:
+    """A fact's brief with where it went in place of ``cell``, before its sources."""
+    out = {k: v for k, v in brief.items() if k in ("from", "text", "chars")}
+    out.update(said)
+    out.update({k: v for k, v in brief.items() if k in ("sources", "stale")})
+    return out
+
+
+def _whole_paragraphs(document: Any, record: dict[str, Any], ids: list[str]) -> list[tuple[str, list[dict]]]:
+    """A value's record to keep as the source of each paragraph of ``ids`` with text, its
+    whole text the part written (as :func:`.field_text.keep_in_paragraphs` keeps it)."""
+    out = []
+    for block in ids:
+        if not block.startswith("p:"):
+            continue
+        try:
+            text = document.paragraph(block).text
+        except (KeyError, ValueError):
+            continue
+        if text:
+            out.append((block, [{**record, "text": text, "p": 0, "at": 0}]))
+    return out
+
+
+def _in_each(fact: Any, text: Any, paragraphs: list[list[str]]) -> list[tuple[str, list[dict]]]:
+    """A reference written in a column fill's text, to keep on each cell it went into: the
+    paragraph of its line, at its place in the line."""
+    if not isinstance(text, str) or text[fact.start:fact.end] != fact.text or not fact.text:
+        return []
+    line = text.count("\n", 0, fact.start)
+    at = fact.start - (text.rfind("\n", 0, fact.start) + 1)
+    return [(ids[line], [{**fact.record, "p": 0, "at": at}]) for ids in paragraphs if line < len(ids)]
 
 
 def _set_from(call: Any, view: Any, source: str, from_columns: list[str] | None,
