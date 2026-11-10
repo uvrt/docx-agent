@@ -123,12 +123,18 @@ def word_edit_table(call: Any, doc: str, table: str, action: str, cells: list[di
         from . import field_text
 
         if field_text.names_one_value(source):
-            # Round 45, R66: one value is a cell's, not rows to fill from.
-            cells = _one_value_cells(source, cells, action)
-            read_as = f"from {source} (one value) read as the from of each of the {len(cells)} cell(s) given"
+            # Round 45, R66: one value is a cell's, not rows to fill from.  Round 49, R96: a
+            # cell with its own from (or text) keeps it; the others get this one.
+            cells, filled = _one_value_cells(source, cells, action)
+            own = len(cells) - filled
+            read_as = (f"from {source} (one value) read as the from of each of the {filled} cell(s) given"
+                       + (f" without their own; {own} kept their own" if own else ""))
+            if not filled:
+                read_as = (f"from {source} (one value) filled no cell: each of the {own} cell(s) gives its "
+                           "own from or text, which it keeps")
             source = None
         elif cells is not None:
-            raise ToolError("invalid_arguments", "from replaces cells: give one", field="cells")
+            raise _rows_beside_cells(source)
     if source is not None:
         asked = {"doc": doc, "table": table, "action": action, "from": source, "from_columns": from_columns,
                  "header": header, "date_format": date_format, "index": index}
@@ -389,17 +395,39 @@ def _fill_brief(fill: dict) -> dict[str, Any]:
     return out
 
 
-def _one_value_cells(source: str, cells: list[dict] | None, action: str) -> list[dict]:
+def _one_value_cells(source: str, cells: list[dict] | None, action: str) -> tuple[list[dict], int]:
     """Round 45, R66: a top-level ``from`` naming one value with ``cells`` that give only
     places is each place's value (rule 1, read so, with a note in ``cells[].from``'s place);
-    without them it is refused with the call that works."""
+    without cells it is refused with the call that works.  Round 49, R96: a cell that gives
+    its own ``from`` or ``text`` keeps it (the cell's own wins for its cell), a ``rows``
+    entry included; the top-level value fills the others.  The cells, and how many it
+    filled."""
     example = f"cells: [{{row: 1, col: 2, from: '{source}'}}]"
-    if action != "set_cells" or not cells or any(c.get("text") not in (None, "") or c.get("from") not in (None, "")
-                                                 for c in cells):
+    if action != "set_cells" or not cells:
         raise ToolError("invalid_arguments", f"from {source} is one value: set_cells from fills rows (d:<id>, "
                         f"d:<id>/#9:#16); one value goes in a cell: {example}", field="from",
                         valid_options=[example, source.split("/", 1)[0]])
-    return [{**cell, "from": source} for cell in cells]
+    out, filled = [], 0
+    for cell in cells:
+        if cell.get("text") not in (None, "") or cell.get("from") not in (None, ""):
+            out.append(cell)
+        else:
+            out.append({**cell, "from": source})
+            filled += 1
+    return out, filled
+
+
+def _rows_beside_cells(source: str) -> ToolError:
+    """Round 49, R96: a top-level ``from`` naming rows (a whole dataset or table, or a run of
+    rows) beside ``cells``: two forms of set_cells at once, so refused, naming what to drop
+    for each intent, with the call each would be."""
+    base = source.split("/", 1)[0] if source.startswith("d:") else source
+    one = f"{base}/#1/<column>" if source.startswith("d:") else f"{base}/<row>/<column>"
+    example = f"cells: [{{row: 1, col: 2, from: '{one}'}}]"
+    return ToolError("invalid_arguments", f"from {source} names rows, which fill the table from index, and cells "
+                     f"are given too: to fill the table from {source}, drop cells; to set single cells, drop the "
+                     f"top-level from and give each cell its own value ({example})", field="cells",
+                     valid_options=[source, example])
 
 
 def _cell_value(call: Any, cell: dict, k: int) -> tuple[str, dict[str, Any] | None]:

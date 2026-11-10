@@ -6,11 +6,13 @@ template's styles at their levels, emphasis -- verbatim; several fields go in on
 references standing alone in ``markdown``; the result says which field made which blocks
 and no longer echoes a long text.  ``word_set_text`` writes a field the same way.
 R66: ``word_edit_table``'s ``set_cells`` takes one value per cell (``from``, a number
-format after it) and references in a cell's text.
+format after it) and references in a cell's text; round 49, R96: a cell's own ``from`` or
+``text`` beside a top-level one-value ``from`` wins for its cell, the top-level value fills the
+others; a top-level ``from`` of rows beside cells is refused naming what to drop for each intent.
 R68: ``word_comments`` add on a table or a row: the comment covers it as Word's does when
 it is selected (measured with Word 16.106: ``test_word_anchors_a_selected_table_so``).
 
-Tool design rules: 1 (a top-level one-value ``from`` with places), 2 (every refusal names what
+Tool design rules: 1 (a top-level one-value ``from`` with places, and beside cells' own), 2 (every refusal names what
 there is and the call that works; ``markdown_from`` refused naming ``from``), 4 (a long value counted, not echoed),
 5 (several fields in one call), 6 (lists in the template's styles; Word's comment form).
 The data is made up.
@@ -287,6 +289,59 @@ def test_set_cells_text_without_references_is_unchanged(toolbox, session):
                      cells=[{"row": 1, "col": 1, "text": "plain {{name}}"}]))
     assert "facts" not in result.data
     assert document(session).table(table).cell(1, 1).text == "plain {{name}}"
+
+
+# -- round 49, R96: a cell's own from beside a top-level one-value from -------------------------
+
+
+def test_a_cells_own_from_or_text_wins_and_the_top_level_value_fills_the_rest(toolbox, session):
+    table = _table(toolbox, session)
+    result = ok(call(toolbox, session, "word_edit_table", doc="d1", table=table, action="set_cells",
+                     cells=[{"row": 1, "col": 1},
+                            {"row": 2, "col": 1, "from": "d:notes/#3/score:0.0"},
+                            {"row": 2, "col": 0, "text": "plain"},
+                            {"row": 1, "col": 0, "text": "", "from": ""}],         # strict placeholders: none
+                     **{"from": "d:notes/#2/score:0.0"}))
+    view = document(session).table(table)
+    assert [view.cell(r, c).text for r in (1, 2) for c in (0, 1)] == ["4.0", "4.0", "plain", "3.5"]
+    assert result.warnings[0] == ("from d:notes/#2/score:0.0 (one value) read as the from of each of the 2 "
+                                  "cell(s) given without their own; 2 kept their own")
+    assert [fact["from"] for fact in result.data["facts"]] == ["d:notes/#2/score", "d:notes/#3/score",
+                                                               "d:notes/#2/score"]
+
+
+def test_the_top_level_value_fills_a_column_entry_with_rows(toolbox, session):
+    table = _table(toolbox, session)
+    ok(call(toolbox, session, "word_edit_table", doc="d1", table=table, action="set_cells",
+            cells=[{"col": 1, "rows": "1..2"}, {"row": 2, "col": 0, "from": "d:notes/#1/topic"}],
+            **{"from": "d:notes/Walls/score:0.00"}))
+    view = document(session).table(table)
+    assert [view.cell(r, c).text for r in (1, 2) for c in (0, 1)] == ["a", "3.50", "Doors", "3.50"]
+
+
+def test_every_cell_with_its_own_value_leaves_the_top_level_one_unused_said(toolbox, session):
+    table = _table(toolbox, session)
+    result = ok(call(toolbox, session, "word_edit_table", doc="d1", table=table, action="set_cells",
+                     cells=[{"row": 1, "col": 1, "from": "d:notes/#1/topic"}], **{"from": "d:notes/#2/topic"}))
+    assert document(session).table(table).cell(1, 1).text == "Doors"
+    assert result.warnings[0] == ("from d:notes/#2/topic (one value) filled no cell: each of the 1 cell(s) "
+                                  "gives its own from or text, which it keeps")
+
+
+@pytest.mark.parametrize("source", ["d:notes", "d:notes/#1:#2"])
+def test_a_top_level_from_of_rows_beside_cells_names_what_to_drop_for_each_intent(toolbox, session, source):
+    table = _table(toolbox, session)
+    before = body_xml(session)
+    error = failed(call(toolbox, session, "word_edit_table", doc="d1", table=table, action="set_cells",
+                        cells=[{"row": 1, "col": 1, "from": "d:notes/#1/score"}], **{"from": source}),
+                   "invalid_arguments")
+    assert error.message == (f"from {source} names rows, which fill the table from index, and cells are given "
+                             f"too: to fill the table from {source}, drop cells; to set single cells, drop the "
+                             "top-level from and give each cell its own value (cells: [{row: 1, col: 2, from: "
+                             "'d:notes/#1/<column>'}])")
+    assert error.field == "cells"
+    assert error.valid_options == [source, "cells: [{row: 1, col: 2, from: 'd:notes/#1/<column>'}]"]
+    assert body_xml(session) == before
 
 
 # -- R68: a comment on a table or a row ---------------------------------------------------------

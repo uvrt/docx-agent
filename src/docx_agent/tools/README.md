@@ -192,6 +192,14 @@ per entry, the column, the rows written, the cells and how many changed (`filled
 reference's value once -- not the table's Markdown or each cell's paragraph (`changed` names
 the table). A range past the last row is refused with the table's rows (rows are not added).
 
+One value for several cells (round 45; round 49): a top-level `from` naming one value
+(`d:notes/#2/score`) beside `cells` is the value of each cell that gives none of its own; a
+cell with its own `from` or `text` keeps it, a `rows` entry included, and the warning says how
+many cells each filled. A top-level `from` naming rows (`d:notes`, `d:notes/#1:#9`,
+`t:Sales`) beside `cells` is two forms at once and is refused, naming what to drop: `cells`
+to fill the table from the rows, the top-level `from` to set single cells (each with its own
+`from: d:notes/#1/<column>`).
+
 ```json
 {"doc": "d1", "at": "after:p:3B212964", "from": "d:checks",
  "from_columns": ["check", "rating", "due"]}
