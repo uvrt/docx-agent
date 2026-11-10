@@ -21,6 +21,17 @@ snapshot commit; the development history before it is summarised here.
   count the Markdown's characters. With an ooxml-edit before 0.106.0 nothing changes.
   tests/test_dataset_markdown.py; no tool definition changed (0 tokens).
 
+## 0.1.79 -- unreleased
+
+- **The application's own edits under `session.lock` are committed** (round 48, R84;
+  ooxml-edit 0.104.0). An application that edits a document through `Document` while holding
+  `session.lock` no longer sends the next edit on a draft through three conflicts ("the
+  document changed outside the tools") to the whole-document lock: letting the lock go
+  commits the change (by the parts it changed), and `session.commit(doc)` does it without
+  letting go. The serial-replay stress gains such edits (`tests/host_stress.py`: a paragraph
+  added, a block's text set, both in one `batch()`, or the lock held with nothing changed);
+  `python tests/host_stress.py --seeds 0-19 --threads 8 --calls 16` replays every run the same.
+
 ## 0.1.78 -- unreleased
 
 - Tests: the check-timing test that tells the wait for the layout's worker from the layout
