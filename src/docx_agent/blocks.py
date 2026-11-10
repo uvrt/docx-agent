@@ -75,7 +75,10 @@ annotation ids             drawn on the draft from one above its largest; every 
                            wrote from there (bookmarks', revisions', records an edit repeated)
                            drawn again when the patch applies -- one above the document's
                            largest then, in the order drawn -- renamed in what it wrote (each
-                           op's blocks of a batch read under them); a comment's: whole lock
+                           op's blocks of a batch read under them); a comment's, or a call
+                           that freed the largest and drew below its version's: whole lock;
+                           a draft whose patch applied otherwise than it made it is not kept
+                           to reuse as the new version
 people part                the author listed by the first tracked edit: changed since (made by
                            another's first), a conflict -- prepared again, it finds the author;
                            a person dropped (an author's last change gone): whole lock
@@ -139,6 +142,7 @@ from lxml import etree
 from ooxml_edit.xml import parse_xml, serialize
 
 from .edit import ids as _ids
+from .edit.links import ANNOTATIONS as _ANNOTATION_TAGS
 
 _W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 W_BODY = _W + "body"
@@ -874,8 +878,10 @@ class Patch:
     provenance: str | None = None
     #: The committed version's bytes (the parts the call did not change, as it read them).
     committed_data: bytes | None = None
-    #: Annotation ids the call drew (bookmarks'), in order.
+    #: Annotation ids the call drew (bookmarks', revisions'), in order.
     annotations: list[int] = field(default_factory=list)
+    #: Whether it applied as the draft made it (:meth:`Blocks.apply`; round 50).
+    exact: bool = True
 
 
 @dataclass
@@ -944,6 +950,9 @@ class Draft:
         self.committed = committed
         self.recording = _Recording(document.package.document_part())
         self.why: str | None = None
+        #: The patch made of the call (:meth:`Blocks.prepared`); whether it applied as the
+        #: draft made it (round 50: else the draft is not the version it made).
+        self.patch: "Patch | None" = None
         document.__dict__["_recording"] = self.recording
         pool = document._ledger.pool
         if isinstance(pool, DraftPool):
@@ -1049,18 +1058,23 @@ class Blocks:
             # comment's cannot be drawn again by its text alone (the comments part holds it
             # too): the lock.
             base = min(recording.annotations)
+            # The draft's next id when the call began (its version's): a call that drew
+            # below it removed the record holding the largest first, so its ids are not
+            # all new ones above the version's -- the lock.
+            start = _next_annotation_at_start(document, change)
             written = [window.after for window in windows] + [after for _p, _b, after in parts if after]
-            if any(int(found.group(1)) >= base for data in written for found in _COMMENT_ID.finditer(data)):
+            if base < start or any(int(found.group(1)) >= base for data in written
+                                   for found in _COMMENT_ID.finditer(data)):
                 draft.why = "annotation ids"
                 return None
             drawn = sorted({value for data in written for found in _ANNOTATION_ID.finditer(data)
-                            if (value := int(found.group(2))) >= base} | {base})
+                            if (value := int(found.group(2))) >= base} | {start})
         item = document._provenance_item()
         if item is not None and change.before(item) is None:
             item = None             # added by the call: the document's version had none
         if item is None:
             item = next((path for path, old, _new in parts if old is not None and _is_sources(old)), None)
-        return Patch(body=body, head=before.head(), tail=before.tail(), count=before.count, windows=windows,
+        draft.patch = Patch(body=body, head=before.head(), tail=before.tail(), count=before.count, windows=windows,
                      parts=parts,
                      draws=list(recording.draws), renamable=_renamable(recording.draws, arguments, outputs),
                      missing=set(recording.missing), exists=dict(recording.exists), facts=dict(recording.facts),
@@ -1071,6 +1085,7 @@ class Blocks:
                      pool_after=document._ledger.pool, before_body=before_bytes, provenance=item,
                      committed_data=getattr(draft.committed, "data", None),
                      annotations=drawn)
+        return draft.patch
 
     def check(self, document: Any, patch: Patch, changed: frozenset[str] | None) -> Plan:
         if changed is None:
@@ -1253,6 +1268,14 @@ class Blocks:
                 package.replace_part(path, after)
         document._ledger.pool = plan.pool
         document._invalidate()
+        # Round 50: the document as the draft left it -- the body its bytes, every other part
+        # the call changed as it wrote it -- or not: annotation ids drawn again, relationships
+        # given others' ids, parts merged with others' changes.  ooxml-edit keeps a draft to
+        # reuse as the new version only when no id was renamed; it must not be kept either
+        # when the version differs from it so (:meth:`release`).
+        patch.exact = (not plan.remarked and not plan.relinked and not plan.merged
+                       and (plan.data is None or plan.data == patch.after_body)
+                       and all(after == mine for (_p, _b, after), (_q, _c, mine) in zip(plan.parts, patch.parts)))
         return plan.renames
 
     def settle(self, document: Any, plan: Plan, *, touched: list[Any], before: bytes) -> None:
@@ -1285,6 +1308,8 @@ class Blocks:
     def release(self, draft: Draft, *, current: Any = None) -> None:
         if draft.recording is not None and "_recording" in draft.document.__dict__:
             draft.stop()
+        if draft.patch is not None and not draft.patch.exact:
+            current = None          # the version it made is not the draft (round 50)
         if current is None:
             return
         document = draft.document
@@ -1557,6 +1582,22 @@ _ANNOTATION_ID = re.compile(
     rb'|tblGridChange|numberingChange|cellIns|cellDel|cellMerge|customXml(?:Ins|Del|MoveFrom|MoveTo)Range'
     rb'(?:Start|End)|permStart|permEnd)\b[^>]*?\bw:id=")(\d+)(")')
 _COMMENT_ID = re.compile(rb'<w:comment(?:RangeStart|RangeEnd|Reference)?\b[^>]*?\bw:id="(\d+)"')
+
+
+_ANY_ANNOTATION_ID = re.compile(
+    rb'<w:(?:' + b"|".join(sorted({name.rpartition("}")[2].encode() for name in _ANNOTATION_TAGS}))
+    + rb')\b[^>]*?\bw:id="(-?\d+)"')
+
+
+def _next_annotation_at_start(document: Any, change: Any) -> int:
+    """``Document._next_annotation_id`` of the draft as the call found it: every story's
+    annotation ids, each part as it was before the call (round 50)."""
+    largest = -1
+    for part in document._parts():
+        data = change.before(part) if part in change.parts else document.package.read(part)
+        for found in _ANY_ANNOTATION_ID.finditer(data or b""):
+            largest = max(largest, int(found.group(1)))
+    return largest + 1
 
 
 def _remarked(data: bytes, ids: Mapping[str, str]) -> bytes:

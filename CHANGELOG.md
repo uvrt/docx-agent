@@ -21,6 +21,20 @@ snapshot commit; the development history before it is summarised here.
   from it (their last change gone) and `w16du` declared on the document (its first
   tracked edit, in a document without it) keep the lock. Tracking switched meanwhile is a
   conflict (ooxml-edit, as before).
+- **Two guards found by the tracked stress on 3.15t** (both reach bookmarks too, since round
+  48). A call that first removes what holds the document's largest annotation id (a
+  paragraph with the last bookmark, say) and then draws one draws below its version's ids:
+  it keeps the lock (before: its ids were shifted even with no other change meanwhile, and
+  it conflicted with itself three times). A draft whose patch applied otherwise than it
+  made it (ids drawn again, relationships given others' ids, parts merged) is no longer
+  kept to reuse as the new version: the next call could have drafted on a copy that was
+  not the document (seen as a check reporting an unknown relationship id, and `touched`
+  differing from one call at a time).
+- **A tracked property change leaves other paragraphs as they were.** Recording one read
+  every paragraph of the part and removed any empty `w:pPr` it found, in paragraphs the
+  edit never changed -- a change outside the call's blocks, which a draft cannot carry in
+  step (found by the tracked stress on 3.15t as `touched` differing from one call at a
+  time). Now only a `w:pPr` the recording made or emptied goes.
 - **A revision record a tool call repeated gets an id of its own.** Every tool call is one
   batch, and a batch did not do what a single library edit does at its end: a run with a
   property change split by a tracked text change kept two records with one `w:id` (seen in

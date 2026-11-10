@@ -1226,3 +1226,46 @@ def test_a_dataset_table_put_alone_after_edits_side_by_side_is_prepared_once(fir
                               {"doc": doc, "at": f"before:{layout.ends[1]}", "from": "d:rows"})
         assert result.ok and result.created[0].startswith("t:")
         assert _shape(result.block) == {"tries": 1, "conflicts": []}
+
+
+@pytest.mark.parametrize("batch", [False, True])
+def test_tracked_links_to_one_address_meanwhile_share_its_relationship(monkeypatch, batch):
+    """Round 50: two tracked links to the same address, one held on its draft while the
+    other commits: the held one's relationship is the one the document has by then -- the
+    result, its checks and what it touched those of the two calls one at a time."""
+    def link(target):
+        return lambda doc, layout: (("batch", {"ops": [
+            {"tool": "word_set_text", "arguments": {"doc": doc, "target": layout.bodies[0][1], "text": "Text first."}},
+            {"tool": "word_links", "arguments": {"doc": doc, "action": "add_hyperlink", "url": "https://example.com/a",
+                                                 "target": f"{target(layout)}@0:4"}}]})
+            if batch else ("word_links", {"doc": doc, "action": "add_hyperlink", "url": "https://example.com/a",
+                                          "target": f"{target(layout)}@0:4"}))
+
+    final: list = []
+    result, other, same = _held_and_serial(
+        monkeypatch, link(lambda layout: layout.bodies[0][0]), link(lambda layout: layout.bodies[2][0])
+        if not batch else (lambda doc, layout: ("word_links", {"doc": doc, "action": "add_hyperlink",
+                                                               "url": "https://example.com/a",
+                                                               "target": f"{layout.bodies[2][0]}@0:4"})),
+        tracked="Writer", keep=final)
+    assert other.ok and result.ok, result.to_json()
+    assert result.checks["validate"]["new"] == [], result.checks
+    assert same
+
+
+
+def test_a_call_that_frees_the_largest_annotation_id_then_draws_keeps_the_lock():
+    """Round 50: a batch that first removes what holds the document's largest annotation id
+    (a paragraph with the last bookmark) and then draws one (a bookmark added) draws below
+    the ids its version had -- not ids all above them, which a patch draws again: the lock,
+    and every id once, as one call at a time."""
+    with opened() as (box, session, doc, layout):
+        marked = box.dispatch(session, "word_links", {"doc": doc, "action": "add_bookmark",
+                                                      "target": f"{layout.bodies[2][1]}@0:4", "bookmark": "last_mark"})
+        assert marked.ok
+        result = box.dispatch(session, "batch", {"ops": [
+            {"tool": "word_delete", "arguments": {"doc": doc, "target": layout.bodies[2][1]}},
+            {"tool": "word_links", "arguments": {"doc": doc, "action": "add_bookmark",
+                                                 "target": f"{layout.bodies[0][0]}@0:4", "bookmark": "new_mark"}}]})
+        assert result.ok and result.block.get("lock") == "annotation ids", result.block
+        assert not block_stress.repeated_ids(session.entry(doc).document.to_bytes())
