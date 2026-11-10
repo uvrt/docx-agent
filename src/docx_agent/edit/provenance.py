@@ -77,7 +77,8 @@ removed takes all three away.
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING, Any, Mapping
+from contextlib import nullcontext
+from typing import TYPE_CHECKING, Any, Iterable, Mapping
 
 from lxml import etree
 from ooxml_edit import provenance as _records
@@ -263,10 +264,23 @@ class ProvenanceOps:
         kept: the paragraph has no durable id (a positional ``p@...`` one)."""
         return self._keep_text(paragraph, facts, [])
 
+    def keep_text_facts_in(self: "Document", kept: Iterable[tuple[str, list[Mapping[str, Any]]]]) -> int:
+        """:meth:`keep_text_facts` for each ``(paragraph, facts)`` of ``kept``, in order, in
+        one edit (round 48: a value kept in each of a column's 431 cells was 431 edits, each
+        following every paragraph's facts again -- the same entries, kept at once); how many
+        paragraphs kept them."""
+        count = 0
+        with self._edit():
+            for paragraph, facts in kept:
+                if self._keep_text(paragraph, facts, [], edit=False):
+                    count += 1
+        return count
+
     def _keep_text(self: "Document", paragraph: str, facts: list[Mapping[str, Any]],
-                   labels: list[Mapping[str, Any]]) -> bool:
+                   labels: list[Mapping[str, Any]], *, edit: bool = True) -> bool:
         """:meth:`keep_text_facts` and :meth:`keep_text_label`: the new facts and labels
-        kept, with the ones the paragraph kept that they do not overlap."""
+        kept, with the ones the paragraph kept that they do not overlap; ``edit``: in an
+        edit of its own (else in the caller's, which is open)."""
         try:
             _part, entry = self._resolve(paragraph)
         except KeyError:
@@ -278,7 +292,7 @@ class ProvenanceOps:
         new_labels = _records.labels_found([{**dict(f), "p": 0} for f in labels], now)
         if labels and not new_labels:
             return False
-        with self._edit():
+        with self._edit() if edit else nullcontext():
             item = self._provenance_item()
             root = self.package.tree(item) if item is not None else None
             node = next((n for n in _entries(root) if n.get("key") == entry.id
