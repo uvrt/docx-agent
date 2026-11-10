@@ -28,7 +28,7 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS
 from test_tables_from_data import GRID, _session, call, ok
 
 if not hasattr(Dataset, "markdown_at"):
-    pytest.skip("needs ooxml-edit 0.106 (Dataset.markdown)", allow_module_level=True)
+    pytest.skip("needs ooxml-edit 0.105 (Dataset.markdown)", allow_module_level=True)
 
 #: A cell's text as the workbook holds it, and its Markdown (as xlsx-agent reads it).
 LISTED = "Doors need work:\n\n• hinges\n• locks\n    • front\n    • back\n• paint"
