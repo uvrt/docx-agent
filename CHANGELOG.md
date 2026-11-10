@@ -5,6 +5,46 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.90 -- unreleased
+
+- **Tracked edits run side by side** (production round 50, R97: with tracking on, 7 of 8
+  edits waited for the document's lock, "tracked"). An edit of known blocks with tracking
+  on now runs on a draft like an untracked one. The revision ids it writes are provisional
+  on the draft and drawn again when its change applies -- one above the largest annotation
+  id the document has then, in the order drawn, renamed in what it wrote (as bookmark ids
+  are since round 48), so every revision id stays unique after concurrent commits; in a
+  batch, each op's blocks are read under those ids. `w:date` is the session clock when the
+  call ran on the draft (the edit's time, as under the lock), `w:author` the tracking's.
+  What tracking writes outside the blocks: the people part (the author listed by the first
+  tracked edit) is the call's own change -- made meanwhile by another call's first tracked
+  edit, a conflict, and the call prepared again finds the author listed; an author dropped
+  from it (their last change gone) and `w16du` declared on the document (its first
+  tracked edit, in a document without it) keep the lock. Tracking switched meanwhile is a
+  conflict (ooxml-edit, as before).
+- **Two guards found by the tracked stress on 3.15t** (both reach bookmarks too, since round
+  48). A call that first removes what holds the document's largest annotation id (a
+  paragraph with the last bookmark, say) and then draws one draws below its version's ids:
+  it keeps the lock (before: its ids were shifted even with no other change meanwhile, and
+  it conflicted with itself three times). A draft whose patch applied otherwise than it
+  made it (ids drawn again, relationships given others' ids, parts merged) is no longer
+  kept to reuse as the new version: the next call could have drafted on a copy that was
+  not the document (seen as a check reporting an unknown relationship id, and `touched`
+  differing from one call at a time).
+- **A tracked property change leaves other paragraphs as they were.** Recording one read
+  every paragraph of the part and removed any empty `w:pPr` it found, in paragraphs the
+  edit never changed -- a change outside the call's blocks, which a draft cannot carry in
+  step (found by the tracked stress on 3.15t as `touched` differing from one call at a
+  time). Now only a `w:pPr` the recording made or emptied goes.
+- **A revision record a tool call repeated gets an id of its own.** Every tool call is one
+  batch, and a batch did not do what a single library edit does at its end: a run with a
+  property change split by a tracked text change kept two records with one `w:id` (seen in
+  the stress run under the lock as well). `Document.batch` now gives each repeated record
+  an id of its own at its end, as `Document._edit` does; repeats a document had before
+  are left alone.
+- `tests/block_stress.py --tracked`: the serial-replay stress with every edit tracked, and
+  every run checks that no annotation id is written twice. No tool definition changed:
+  token delta 0.
+
 ## 0.1.89 -- unreleased
 
 - **Sections appended at the end, tracked, no longer leave a formatting change on each**

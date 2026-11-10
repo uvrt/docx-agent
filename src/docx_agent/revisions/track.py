@@ -472,11 +472,15 @@ class PropertyTracker:
                     record_paragraph_change(node, old_paragraph, stamp, part)
                     properties = node.find(W_PPR)
                     if properties is not None or len(old_mark):
+                        # Round 50: an empty w:pPr the edit found is left alone -- only one it
+                        # made here, or emptied, goes (a paragraph the edit did not change
+                        # stays byte for byte as it was).
+                        found = len(properties) if properties is not None else None
                         if properties is None:
                             properties = make("w:pPr")
                             node.insert(0, properties)
                         record_run_change(properties, old_mark, stamp, part)
-                        if not len(properties):
+                        if not len(properties) and found != 0:
                             remove(properties)
                 elif node.tag == W_R and key in self.runs:
                     owner = revision_owner(node)

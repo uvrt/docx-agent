@@ -175,6 +175,23 @@ def test_set_text_tracked_records_only_the_changed_words(box, session):
     assert result.checks["validate"]["new"] == []
 
 
+def test_a_tracked_call_splitting_a_recorded_run_gives_the_copy_an_id_of_its_own(box, session):
+    """Round 50: a tool call is one batch; a record an edit in it repeated (a run with a
+    property change split by a tracked text change) gets an id of its own when it ends, as a
+    library edit's does -- every revision id once."""
+    import re
+
+    d = open_doc(session)
+    ok(box, session, "word_set_tracking", doc=d, on=True, author="Claude")
+    ok(box, session, "word_format", doc=d, targets=["p:3B212964"], bold=True)
+    paragraph = document(session).paragraph("p:3B212964")
+    ok(box, session, "word_set_text", doc=d, target="p:3B212964",
+       text=paragraph.text.replace("24 months", "36 months"))
+    data = document(session).package.read("word/document.xml")
+    ids = re.findall(rb'<w:(?:ins|del|rPrChange|pPrChange)\b[^>]*?\bw:id="(\d+)"', data)
+    assert len(ids) > 3 and len(ids) == len(set(ids))
+
+
 def test_set_text_takes_items_and_refuses_both_forms(box, session):
     d = open_doc(session)
     ok(box, session, "word_set_text", doc=d, items=[{"target": "p:16425160", "text": "Scope of work"},
@@ -1466,3 +1483,29 @@ def test_a_table_as_wide_as_the_body_lines_is_not_past_the_margins(box, session)
     assert [entry["table"] for entry in past] == [table] and past[0]["past"]["right"] > 60
     fails(box, session, "word_format_table", "invalid_arguments", doc=d, table=table, scope="table",
           width_of="body", width=300)
+
+
+def test_a_tracked_format_leaves_other_paragraphs_as_they_were(box, session):
+    """Round 50: recording a tracked property change reads every paragraph of the part; a
+    paragraph the edit did not change keeps its bytes (an empty ``w:pPr`` there stays)."""
+    import re
+
+    w = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+    d = open_doc(session)
+    doc = document(session)
+    root = doc.package.tree("word/document.xml")
+    other = next(p for p in root.iter(w + "p")
+                 if p.get("{http://schemas.microsoft.com/office/word/2010/wordml}paraId") == "12972045")
+    properties = other.find(w + "pPr")
+    if properties is None:
+        properties = other.makeelement(w + "pPr", {})
+        other.insert(0, properties)
+    for child in list(properties):
+        properties.remove(child)
+    doc.package.mark_dirty("word/document.xml")
+    pattern = rb'<w:p [^>]*w14:paraId="12972045".*?</w:p>'
+    before = re.search(pattern, doc.package.read("word/document.xml")).group(0)
+    assert b"<w:pPr/>" in before
+    ok(box, session, "word_set_tracking", doc=d, on=True, author="Claude")
+    ok(box, session, "word_format", doc=d, targets=["p:3B212964"], bold=True)
+    assert re.search(pattern, document(session).package.read("word/document.xml")).group(0) == before

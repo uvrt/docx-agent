@@ -533,12 +533,124 @@ def test_a_section_change_since_makes_it_prepare_again(monkeypatch):
     assert result.ok and result.block["tries"] == 2
 
 
-def test_tracked_changes_keep_the_lock():
+def test_tracked_edits_run_on_a_draft():
+    """Round 50 (R97): with tracking on, an edit of known blocks runs on a draft like any
+    other; its revisions are by the tracking's author, dated when the call ran (the session
+    clock, read on the draft: the edit's time)."""
     with opened() as (box, session, doc, layout):
         assert box.dispatch(session, "word_set_tracking", {"doc": doc, "on": True, "author": "Writer"}).ok
         result = box.dispatch(session, "word_set_text", {"doc": doc, "target": layout.bodies[0][0], "text": "Tracked."})
-        assert result.ok and "tracked" in result.block["lock"]
-        assert session.entry(doc).document.revisions()
+        assert result.ok and _shape(result.block) == {"tries": 1, "conflicts": []}
+        revisions = session.entry(doc).document.revisions()
+        assert revisions and {r.author for r in revisions} == {"Writer"}
+        assert {r.date for r in revisions} == {"2026-11-09T09:00:00Z"}
+
+
+def _annotation_ids(data: bytes) -> list[str]:
+    """Every annotation id (a revision's, a bookmark's...) in every part of ``data``."""
+    import io
+    import re
+    import zipfile
+
+    pattern = re.compile(rb'<w:(?:bookmarkStart|ins|del|moveFrom|moveTo|rPrChange|pPrChange|tblPrChange|trPrChange'
+                         rb'|tcPrChange|tblGridChange|sectPrChange|numberingChange|cellIns|cellDel)\b[^>]*?\bw:id="(\d+)"')
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        return [found.decode() for name in archive.namelist() if name.endswith(".xml")
+                for found in pattern.findall(archive.read(name))]
+
+
+def test_tracked_edits_made_meanwhile_draw_their_revision_ids_again(monkeypatch):
+    """Round 50 (R97): two tracked edits prepared from the same version draw the same
+    revision ids on their drafts; the one that commits second draws its ids again (one above
+    the largest the document has then), renamed in what it wrote -- every id unique, the
+    bytes those of the two calls one at a time, Word's checks clean."""
+    final: list = []
+    result, other, same = _held_and_serial(
+        monkeypatch,
+        lambda doc, layout: ("word_set_text", {"doc": doc, "target": layout.bodies[0][0], "text": "Held, tracked."}),
+        lambda doc, layout: ("word_insert_markdown", {"doc": doc, "at": f"after:{layout.bodies[2][0]}",
+                                                      "markdown": "## Meanwhile\n\nA **tracked** paragraph."}),
+        tracked="Writer", keep=final)
+    assert other.ok and result.ok and _shape(result.block) == {"tries": 1, "conflicts": []}
+    assert _shape(other.block) == {"tries": 1, "conflicts": []}
+    assert same
+    ids = _annotation_ids(final[0])
+    assert len(ids) > 4 and len(ids) == len(set(ids))
+    document = Document.open(final[0])
+    assert document.validate() == []
+
+
+def test_a_tracked_batch_and_a_tracked_format_meanwhile(monkeypatch):
+    """A batch of tracked edits (an insert, text set, a format: insertions, deletions,
+    property changes) held while another tracked format commits."""
+    final: list = []
+    result, other, same = _held_and_serial(
+        monkeypatch,
+        lambda doc, layout: ("batch", {"ops": [
+            {"tool": "word_insert_markdown", "arguments": {"doc": doc, "at": f"after:{layout.bodies[0][0]}",
+                                                           "markdown": "- one\n- two"}},
+            {"tool": "word_set_text", "arguments": {"doc": doc, "target": layout.bodies[0][1], "text": "Changed."}},
+            {"tool": "word_format", "arguments": {"doc": doc, "targets": [layout.bodies[0][0]], "italic": True}}]}),
+        lambda doc, layout: ("word_format", {"doc": doc, "targets": [layout.bodies[2][0]], "bold": True}),
+        tracked="Writer", keep=final)
+    assert other.ok and result.ok, result.to_json()
+    assert _shape(result.block) == {"tries": 1, "conflicts": []}
+    assert same
+    ids = _annotation_ids(final[0])
+    assert len(ids) == len(set(ids))
+    assert Document.open(final[0]).validate() == []
+
+
+def test_tracked_edits_made_side_by_side_are_accepted_and_rejected_by_id():
+    """Revisions of edits committed side by side are each the document's own: accepted or
+    rejected by id, by author, all."""
+    with opened() as (box, session, doc, layout):
+        assert box.dispatch(session, "word_set_tracking", {"doc": doc, "on": True, "author": "Writer"}).ok
+        calls = [("word_set_text", {"doc": doc, "target": layout.bodies[k][0], "text": f"Tracked {k}."})
+                 for k in range(3)]
+        threads = [_in_thread(lambda call=call: box.dispatch(session, *call)) for call in calls]
+        for thread, _out in threads:
+            thread.join()
+        assert all(out["result"].ok for _t, out in threads)
+        document = session.entry(doc).document
+        data = document.to_bytes()
+        ids = _annotation_ids(data)
+        assert len(ids) == len(set(ids)) and document.validate() == []
+        listed = box.dispatch(session, "word_changes", {"doc": doc, "action": "list"})
+        assert listed.ok
+        first = document.revisions()[0].id
+        assert box.dispatch(session, "word_changes", {"doc": doc, "action": "accept", "ids": [first]}).ok
+        assert box.dispatch(session, "word_changes", {"doc": doc, "action": "reject", "all": True}).ok
+        assert not document.revisions() and document.validate() == []
+        texts = [_text(session, doc, layout.bodies[k][0]) for k in range(3)]
+        assert sum(text.startswith("Tracked ") for text in texts) <= 1
+
+
+def test_a_tracked_edit_dropping_a_person_keeps_the_lock():
+    """The people part drops an author an edit left with no revision -- read from every
+    story, the whole document's to say: on a draft, what a patch cannot carry."""
+    from docx_agent.layout import _draft_class
+
+    draft = _draft_class(Document).open(block_stress.made(2))
+    recording = blocks._Recording(draft.package.document_part())
+    draft.__dict__["_recording"] = recording
+    draft._ensure_person("Ghost")
+    draft._tidy_people({"Writer"})
+    assert recording.cannot == []
+    draft._tidy_people({"Ghost"})
+    assert recording.cannot == ["a person removed"]
+
+
+def test_a_first_tracked_edit_while_another_lists_the_author_prepares_again(monkeypatch):
+    """The people part, made by the first tracked edit: made meanwhile by another, the held
+    call prepares again and finds its author listed."""
+    result, other, same = _held_and_serial(
+        monkeypatch,
+        lambda doc, layout: ("word_set_text", {"doc": doc, "target": layout.bodies[0][0], "text": "Held."}),
+        lambda doc, layout: ("word_set_text", {"doc": doc, "target": layout.bodies[2][0], "text": "Meanwhile."}),
+        tracked="Writer", warm=False)
+    assert other.ok and result.ok and same
+    assert result.block["tries"] == 2 and "people.xml" in result.block["conflicts"][0]
 
 
 def test_a_document_not_yet_stamped_takes_the_lock_for_its_first_edit():
@@ -976,21 +1088,37 @@ def test_what_reads_or_changes_the_whole_document_keeps_the_lock(name, arguments
             assert why in found.block["lock"], found.block
 
 
-def _held_and_serial(monkeypatch, first, then):
+def _held_and_serial(monkeypatch, first, then, *, tracked: str | None = None, warm: bool = True,
+                     keep: list | None = None):
     """``first`` held on its draft while ``then`` runs; then the two run one at a time in the
     order they committed (``then`` first) on a fresh session: both results and whether the
-    bytes and id state are the same."""
-    with opened() as (box, session, doc, layout), held(monkeypatch) as hold:
-        name, arguments = first(doc, layout)
-        thread, slow = _in_thread(lambda: box.dispatch(session, name, arguments))
-        assert hold.ready.wait(60)
-        other = box.dispatch(session, *then(doc, layout))
-        hold.release()
-        thread.join()
+    bytes and id state are the same.  ``tracked``: with tracking on, by that author (round
+    50) -- after one tracked edit first, which lists the author, unless ``warm`` is false;
+    ``keep``: given the concurrent run's final bytes."""
+
+    def track(box, session, doc, layout):
+        if tracked:
+            assert box.dispatch(session, "word_set_tracking", {"doc": doc, "on": True, "author": tracked}).ok
+            if warm:
+                assert box.dispatch(session, "word_set_text", {"doc": doc, "target": layout.bodies[1][1],
+                                                               "text": "First tracked."}).ok
+
+    with opened() as (box, session, doc, layout):
+        track(box, session, doc, layout)
+        with held(monkeypatch) as hold:
+            name, arguments = first(doc, layout)
+            thread, slow = _in_thread(lambda: box.dispatch(session, name, arguments))
+            assert hold.ready.wait(60)
+            other = box.dispatch(session, *then(doc, layout))
+            hold.release()
+            thread.join()
         result = slow["result"]
         entry = session.entry(doc)
         concurrent = (entry.document.to_bytes(), entry.document.id_state(), block_stress.normal(result))
+        if keep is not None:
+            keep.append(concurrent[0])
     with opened("off") as (box, session, doc, layout):
+        track(box, session, doc, layout)
         assert box.dispatch(session, *then(doc, layout)).ok
         alone = box.dispatch(session, *first(doc, layout))
         entry = session.entry(doc)
@@ -1098,3 +1226,46 @@ def test_a_dataset_table_put_alone_after_edits_side_by_side_is_prepared_once(fir
                               {"doc": doc, "at": f"before:{layout.ends[1]}", "from": "d:rows"})
         assert result.ok and result.created[0].startswith("t:")
         assert _shape(result.block) == {"tries": 1, "conflicts": []}
+
+
+@pytest.mark.parametrize("batch", [False, True])
+def test_tracked_links_to_one_address_meanwhile_share_its_relationship(monkeypatch, batch):
+    """Round 50: two tracked links to the same address, one held on its draft while the
+    other commits: the held one's relationship is the one the document has by then -- the
+    result, its checks and what it touched those of the two calls one at a time."""
+    def link(target):
+        return lambda doc, layout: (("batch", {"ops": [
+            {"tool": "word_set_text", "arguments": {"doc": doc, "target": layout.bodies[0][1], "text": "Text first."}},
+            {"tool": "word_links", "arguments": {"doc": doc, "action": "add_hyperlink", "url": "https://example.com/a",
+                                                 "target": f"{target(layout)}@0:4"}}]})
+            if batch else ("word_links", {"doc": doc, "action": "add_hyperlink", "url": "https://example.com/a",
+                                          "target": f"{target(layout)}@0:4"}))
+
+    final: list = []
+    result, other, same = _held_and_serial(
+        monkeypatch, link(lambda layout: layout.bodies[0][0]), link(lambda layout: layout.bodies[2][0])
+        if not batch else (lambda doc, layout: ("word_links", {"doc": doc, "action": "add_hyperlink",
+                                                               "url": "https://example.com/a",
+                                                               "target": f"{layout.bodies[2][0]}@0:4"})),
+        tracked="Writer", keep=final)
+    assert other.ok and result.ok, result.to_json()
+    assert result.checks["validate"]["new"] == [], result.checks
+    assert same
+
+
+
+def test_a_call_that_frees_the_largest_annotation_id_then_draws_keeps_the_lock():
+    """Round 50: a batch that first removes what holds the document's largest annotation id
+    (a paragraph with the last bookmark) and then draws one (a bookmark added) draws below
+    the ids its version had -- not ids all above them, which a patch draws again: the lock,
+    and every id once, as one call at a time."""
+    with opened() as (box, session, doc, layout):
+        marked = box.dispatch(session, "word_links", {"doc": doc, "action": "add_bookmark",
+                                                      "target": f"{layout.bodies[2][1]}@0:4", "bookmark": "last_mark"})
+        assert marked.ok
+        result = box.dispatch(session, "batch", {"ops": [
+            {"tool": "word_delete", "arguments": {"doc": doc, "target": layout.bodies[2][1]}},
+            {"tool": "word_links", "arguments": {"doc": doc, "action": "add_bookmark",
+                                                 "target": f"{layout.bodies[0][0]}@0:4", "bookmark": "new_mark"}}]})
+        assert result.ok and result.block.get("lock") == "annotation ids", result.block
+        assert not block_stress.repeated_ids(session.entry(doc).document.to_bytes())
