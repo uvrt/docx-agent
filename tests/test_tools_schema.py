@@ -272,10 +272,15 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 #: description only, so the strict set is unchanged (6 tools, 24 optional parameters); the
 #: other two are not strict for Claude (on OpenAI, where every tool is, a cell's ``from`` is
 #: one more nullable string).
+#: Round 48, R89: word_edit_table's cells take ``rows`` (one entry for a column's rows, one
+#: text or value) +28 to every definition (15,516 -> 15,544), none to the core (3,192).  The
+#: limit rises to 15,545.  word_edit_table is not strict for Claude (19 optional parameters of
+#: its own): the strict set is unchanged (6 tools, 24 optional parameters); on OpenAI a cell's
+#: ``rows`` is one more nullable string.
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 6500
-ALL_GUARD = 15520
+ALL_GUARD = 15545
 
 
 @pytest.fixture(scope="module")

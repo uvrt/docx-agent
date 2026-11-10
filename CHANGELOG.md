@@ -5,7 +5,7 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
-## 0.1.79 -- unreleased
+## 0.1.81 -- unreleased
 
 - **Edits of known blocks run on drafts too** (round 48, R83: 66 of 81 edit calls took the
   whole lock, batches mixing these tools). `replace_text` with a `range`, `word_format` of
@@ -26,6 +26,37 @@ snapshot commit; the development history before it is summarised here.
   `block_stress` plans these edits in both shapes.
 - R85 checked: a table from a dataset put in alone after side-by-side edits is prepared once
   (since 0.1.77); a test of the team's shape.
+
+## 0.1.80 -- unreleased
+
+- **A column at once** (round 48, R89). `word_edit_table` `set_cells` takes one entry for a
+  column's rows: `{col: 2, rows: "*", text: "Yes"}` -- or `from` (one value), or a reference
+  in the text -- read once and written in every cell. `rows` is `*` (every row below the
+  header rows: those marked to repeat, else the first where the table's look has its header
+  row on) or a range from 0 as `row` counts (`1..40`, `5..`, `..9`, `7`); a range naming a
+  header row writes it, with a note. The column is `col` or `col_label`; a merged cell is
+  written once, a row with no cell at that column is left and said, a range past the last row
+  is refused with the table's rows. The cells are written exactly as that many one-cell
+  entries write them (same bytes); a value by reference is kept on every cell. The result
+  says per entry the column, rows, cells and how many changed (`filled`), not the table's
+  Markdown or each paragraph's id (`changed` names the table). No new top-level parameter:
+  `cells[].rows` (+28 tokens to every definition, none to the core); word_edit_table is not
+  strict for Claude, so the strict set is unchanged (6 tools, 24 optional parameters).
+- **Values kept in many cells in one edit.** A value written by reference into many cells
+  (`cells[].from`) was kept one edit per cell, each following every value kept so far again:
+  431 cells took about 15 s CPU, now about 2 s, the same bytes
+  (`Document.keep_text_facts_in`).
+
+## 0.1.79 -- unreleased
+
+- **The application's own edits under `session.lock` are committed** (round 48, R84;
+  ooxml-edit 0.104.0). An application that edits a document through `Document` while holding
+  `session.lock` no longer sends the next edit on a draft through three conflicts ("the
+  document changed outside the tools") to the whole-document lock: letting the lock go
+  commits the change (by the parts it changed), and `session.commit(doc)` does it without
+  letting go. The serial-replay stress gains such edits (`tests/host_stress.py`: a paragraph
+  added, a block's text set, both in one `batch()`, or the lock held with nothing changed);
+  `python tests/host_stress.py --seeds 0-19 --threads 8 --calls 16` replays every run the same.
 
 ## 0.1.78 -- unreleased
 
