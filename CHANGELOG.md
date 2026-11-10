@@ -5,6 +5,26 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.85 -- unreleased
+
+- **`check` says when the words are another language than their tag** (round 49, R94): the
+  layout fact `text_language` (`include: ["layout"]`; read from the document, so there where
+  the layout failed too). `document`: the default paragraph style's tag next to the
+  language most of the text is in by its words; where they differ, the paragraphs that
+  follow that are counted (`mismatched`), not listed, and `fix` sets the document's
+  language (`word_styles` `set_language`). `mismatched`: the other paragraphs in another
+  language than the tag most of their text has (`source`: `default`, `style:<name>`,
+  `run`), consecutive top-level ones as one `range`, with `confidence` and `words`; at most
+  20, the rest counted. A check of pages or a range says `checked` (its words), with no
+  document fix. The detector is new and has no dependency: function-word profiles and
+  spelling cues written for it (English, French, Dutch, German, Spanish, Italian,
+  Portuguese), scoring a paragraph of at least 8 words with function words among them
+  (names, placeholder Latin: `unclear`, counted). Measured on made-up text written for it
+  (`tools/language_accuracy.py`, three sets, 126 paragraphs, windows cut anywhere): at 8
+  words 97.3% of the windows judged are right and none is listed as another language
+  (wrong and sure); from 15 words 99.6%; every whole paragraph right. 9 ms for a
+  127-paragraph document. Tool definitions unchanged. tests/test_text_language.py.
+
 ## 0.1.84 -- unreleased
 
 - **A table kept in step with a dataset by key** (round 49, R90: a 127-row table had every row
