@@ -5,6 +5,28 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.79 -- unreleased
+
+- **Edits of known blocks run on drafts too** (round 48, R83: 66 of 81 edit calls took the
+  whole lock, batches mixing these tools). `replace_text` with a `range`, `word_format` of
+  blocks, runs, spans or text found `within` them, `word_format_table`, `word_delete` of a
+  block, span or text found `within` one, and `word_links` `add_hyperlink` / `add_bookmark`
+  on a range -- alone, or mixed in a batch with the edits drafted before -- run on a draft
+  beside other callers. What they read is recorded on the draft: every block of a span, a
+  text range's paragraphs, an address's paragraphs; a bookmark's name (a link to one, one
+  added: taken or not); the sections (page and margins) are compared too. A link's new
+  relationship merges with those others added meanwhile (an address linked already: its
+  relationship; else the next `rIdN` free, its `r:id` renamed), a style made on first use
+  with those others made, a bookmark's id is drawn again from the document's largest. The
+  whole lock stays for what reads or changes the whole document: text found anywhere, a
+  story other than the body, a section, a heading's range or a bookmark as an address
+  (named, or a ref found to be one on the draft), a style given by name that has to be made,
+  a style or list definition changed, the settings. tests/test_block_edits.py (each kind and
+  their batch on a draft as on the document; links, bookmarks and spans meanwhile);
+  `block_stress` plans these edits in both shapes.
+- R85 checked: a table from a dataset put in alone after side-by-side edits is prepared once
+  (since 0.1.77); a test of the team's shape.
+
 ## 0.1.78 -- unreleased
 
 - Tests: the check-timing test that tells the wait for the layout's worker from the layout

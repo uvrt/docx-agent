@@ -60,7 +60,7 @@ from .revisions.changes import Change
 from .revisions.review import Revision
 from .revisions.stamp import Tracking
 
-__version__ = "0.1.78"
+__version__ = "0.1.79"
 
 __all__ = ["AmbiguousAnchor", "AnchorNotFound", "Bookmark", "Cell", "Change", "Chart", "ChartDataWarning", "ChartEditError",
            "Comment", "ContentControl", "DEFAULT_STYLE_MAP", "DeletedId", "Diagram", "DiagramDrawingDropped", "Document", "Drawing", "EditError",
