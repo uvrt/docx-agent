@@ -17,9 +17,13 @@ snapshot commit; the development history before it is summarised here.
   likeness made a body row), in key order where the table's keys are (digit runs compared as
   numbers), else in the source's order; matched rows' cells that differ are rewritten as
   `set_cells` writes them, equal cells and the key cell never; keys gone are listed
-  (`missing`), or deleted with `remove: true`. Header rows, a total row (the look's last row),
-  rows with no key and rows deleted as tracked changes are left as they are. Tracked when
-  tracking is on. Duplicate keys in the table or the source are refused naming them. Values
+  (`missing`), or deleted with `remove: true`. Header rows, total rows (the look's last row;
+  any row holding a formula field such as `=SUM(ABOVE)`), rows with no key and rows deleted
+  as tracked changes are left as they are. Tracked when tracking is on. Keys are compared with
+  their case; a table and a source key that differ only by case are said in a note. Duplicate
+  keys in the table or the source are refused naming them; rows to add like a row whose one
+  cell spans two columns taken are refused before any change, with the `from_columns` that
+  takes one of them. Values
   keep their source: the table's record when every data row is a source row afterwards, else
   each cell written (a table record made untrue dropped, with a note). The result counts
   `added`, `changed` (keys and the columns changed) and `missing` / `removed`, 20 keys listed

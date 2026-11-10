@@ -20,10 +20,13 @@ The columns taken (``from_columns``): one source column per table column, in the
 order from its first, ``""`` for a column left as it is; by default each table column whose
 header label is a source column's name (the case aside).  The header rows (marked to repeat,
 else the first where the table's look has its header row on; else the first row when its
-labels named the columns) and the total row (the look's last row on) are left as they are,
-as are rows with no key (an empty key cell) -- counted, not matched.  A row deleted as a
-tracked change is not a data row.  Values are written as ``set_cells`` ``from`` writes them
-(``date_format`` too).  Duplicate keys, in the table or the source, are refused naming them.
+labels named the columns) and the total rows (the look's last row on; any row holding a
+formula field, ``=SUM(ABOVE)``) are left as they are, as are rows with no key (an empty key
+cell) -- counted, not matched.  A row deleted as a tracked change is not a data row.  Values
+are written as ``set_cells`` ``from`` writes them (``date_format`` too).  Keys are compared
+with their case: a table key and a source key that differ only by case are said in a note.
+Duplicate keys, in the table or the source, are refused naming them; rows to add like a row
+whose one cell spans two columns taken are refused before any change, with the way out.
 With tracking on, every change is tracked (rows inserted and deleted, text written).
 
 Where the values came from is kept as ``set_cells`` keeps it: when every data row of the table
@@ -48,6 +51,7 @@ from .table_data import cell_text, placed
 LISTED = 20
 
 _PARTS = re.compile(r"(\d+)")
+_W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 
 
 def _norm(text: str) -> str:
@@ -79,6 +83,7 @@ class _Plan:
         self.by_key: dict[str, int] = {}            # table key -> row
         self.order: list[str] = []                  # table keys, in table order
         self.keyless: list[int] = []                # body rows with no key
+        self.totals: list[int] = []                 # body rows computed by a formula field
         self.mapped_by = "labels"
 
 
@@ -131,6 +136,8 @@ def sync(call: Any, view: Any, source: str, from_columns: list[str] | None, key:
             if cell is None or (cell.row, cell.column) != (row, col):
                 if cell is not None and cell.text == new:
                     continue
+                if cell is not None and cell.row == row:
+                    _merged_refusal(f"row {row} of {table} (key {found!r})", row, grid, plan, rows, fields, table)
                 raise ToolError("refused", f"({row}, {col}) of {table} is "
                                 f"{'not a cell' if cell is None else 'merged with (%d, %d)' % (cell.row, cell.column)}"
                                 f": sync writes one value per cell; split it first", field="from")
@@ -141,6 +148,16 @@ def sync(call: Any, view: Any, source: str, from_columns: list[str] | None, key:
     gone = [k for k in plan.order if k not in wanted]
     placement = "key order" if _sorted(plan.order) else "source order"
     slots = _slots(plan, source_keys, added, placement)
+    _merged_likeness(slots, grid, plan, rows, fields, table)
+    key_of = dict(source_keys)
+    folded = {k.casefold(): k for k in gone}
+    pairs = [(folded[key_of[i].casefold()], key_of[i]) for i in added if key_of[i].casefold() in folded]
+    if pairs:
+        shown = ", ".join(f"{a!r} / {b!r}" for a, b in pairs[:LISTED]) + (
+            f" and {len(pairs) - LISTED} more" if len(pairs) > LISTED else "")
+        notes.append(f"{len(pairs)} table key(s) differ from a source key only by case, compared as different "
+                     f"keys (the source's added, the table's {'removed' if remove else 'missing'}): {shown} "
+                     "(table / source); make them equal with set_cells to match them")
     timing.add("compare", time.perf_counter() - started)
     if not writes and not added and not (gone and remove):
         said = _said(block, plan, grid, header, rows, fields, [], source_keys, {}, [], False, placement, [])
@@ -312,14 +329,30 @@ def _body(document: Any, table: str, plan: _Plan, grid: list, header: int, heigh
     end = height
     if (document.table_properties(table).get("look") or {}).get("last_row") and height - 1 > body:
         end = height - 1
+    # A row holding a formula field (=SUM(ABOVE), any = field) computes over the table: a
+    # total row, never matched, added to or removed; those at the bottom end the body.
+    _part, entry = document._resolve(table)
+    plan.totals = [r for r in range(body, end) if _formula_row(entry.rows[r][0])]
+    while end - 1 > body and end - 1 in plan.totals:
+        end -= 1
     plan.body, plan.end = body, end
+
+
+def _formula_row(row: Any) -> bool:
+    """Whether a table row holds a formula field: a ``w:fldSimple`` or a field's instruction
+    text starting with ``=``."""
+    for node in row.iter(_W + "fldSimple", _W + "instrText"):
+        said = node.get(_W + "instr") if node.tag == _W + "fldSimple" else node.text
+        if said and said.lstrip().startswith("="):
+            return True
+    return False
 
 
 def _table_keys(plan: _Plan, grid: list, accepted: set[int], table: str) -> None:
     duplicate: dict[str, list[int]] = {}
     for row in range(plan.body, plan.end):
-        if row not in accepted:
-            continue                 # deleted as a tracked change
+        if row not in accepted or row in plan.totals:
+            continue                 # deleted as a tracked change, or a total row
         cell = grid[row][plan.key_col] if plan.key_col < len(grid[row]) else None
         text = _norm(cell.text) if cell is not None and cell.row == row else ""
         if not text:
@@ -357,6 +390,37 @@ def _source_keys(texts: list[list[str]], pick: int, address: str) -> list[tuple[
                         + ": a key names one row; derive a dataset with one row per key, or sync by another "
                           "key column", field="from", valid_options=list(duplicate)[:50])
     return out
+
+
+def _merged_likeness(slots: list, grid: list, plan: _Plan, rows: Any, fields: list[int], table: str) -> None:
+    """Refuse, before any change, rows to add like a row whose one cell spans two or more of
+    the columns taken: a value each would go in one cell (rule 2: the way out)."""
+    for row, _below, _rows in slots:
+        _merged_refusal(f"new rows are made like row {row} of {table}", row, grid, plan, rows, fields, table)
+
+
+def _merged_refusal(what: str, row: int, grid: list, plan: _Plan, rows: Any, fields: list[int], table: str) -> None:
+    """Refuse where one cell of ``row`` spans two or more columns taken: which, and the
+    ``from_columns`` that takes only the first of them (rule 2)."""
+    by_cell: dict[tuple[int, int], list[int]] = {}
+    for col, _pick in plan.pairs:
+        cell = grid[row][col] if col < len(grid[row]) else None
+        if cell is not None:
+            by_cell.setdefault((cell.row, cell.column), []).append(col)
+    for origin, cols in by_cell.items():
+        if len(cols) < 2:
+            continue
+        picks = dict(plan.pairs)
+        names = [str(rows.dataset.columns[fields[picks[c]]]) for c in cols]
+        example = ["" for _ in range(max(c for c, _ in plan.pairs) + 1)]
+        for c, pick in plan.pairs:
+            if c not in cols[1:]:
+                example[c] = str(rows.dataset.columns[fields[pick]])
+        raise ToolError("refused", f"{what}: its cell ({origin[0]}, {origin[1]}) is merged across columns "
+                        f"{', '.join(map(str, cols))}, each taken ({', '.join(names)}), one value each: take only "
+                        f"one of them -- '' for the others in from_columns, e.g. {example} -- or split the cell "
+                        "first (nothing was changed)", field="from_columns", valid_options=names,
+                        details={"from_columns": example})
 
 
 def _sorted(keys: list[str]) -> bool:
@@ -534,6 +598,8 @@ def _said(block: Any, plan: _Plan, grid: list, header: int, rows: Any, fields: l
         out["added"].pop("placed")
     if plan.keyless:
         out["no_key_rows"] = len(plan.keyless)
+    if plan.totals:
+        out["total_rows"] = len(plan.totals)
     return out
 
 
@@ -546,6 +612,8 @@ def _unchanged(call: Any, view: Any, block: Any, plan: _Plan, gone: list[str], s
                             "timing": timing.parts}
     if plan.keyless:
         data["no_key_rows"] = len(plan.keyless)
+    if plan.totals:
+        data["total_rows"] = len(plan.totals)
     result = Result(summary=f"sync of {view.id} with {block.rows.address}: nothing to change"
                     + (f"; {len(gone)} missing (left; remove: true deletes them)" if gone else ""), data=data)
     result.warnings.append("the table holds the source's values already: nothing changed")

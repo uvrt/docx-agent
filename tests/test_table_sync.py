@@ -195,6 +195,60 @@ def test_header_rows_and_the_total_row_are_kept(toolbox):
     assert "Total" not in str(result.data["removed"])
 
 
+def test_a_row_with_a_formula_field_is_a_total_row(toolbox):
+    # a "Sum" row computing over the table (=SUM(ABOVE)), no look's total row: never matched,
+    # added to or removed -- also with remove
+    session, table = _table(toolbox, made(4) + [("Sum", "", "", "")], {})
+    document = Document.open(session.entry("d1").document.to_bytes())
+    cell = document.table(table).cell(5, 2).paragraphs[0].id
+    document.insert_field(f"{cell}@0", "=SUM(ABOVE)", result="0")
+    session = toolbox.session(clock=CLOCK)
+    session.open(document.to_bytes(), "leaflets.docx")
+    SETS["next"] = (COLUMNS, made(6, drop=(1,), change=(2,)))
+    assert toolbox.dispatch(session, "rows_put", {"id": "next"}).ok
+    result = _sync(toolbox, session, table, **{"from": "d:next", "remove": True})
+    assert result.ok, result.to_json()
+    assert result.data["removed"] == {"count": 1, "keys": ["Q7-001"]} and result.data["total_rows"] == 1
+    assert result.data["added"]["keys"] == ["Q7-005", "Q7-006"]
+    texts = _texts(session, table)
+    assert texts[1:-1] == made(6, drop=(1,), change=(2,)) and texts[-1][0] == "Sum"
+    assert b"SUM(ABOVE)" in _row_xml(session, table)[-1]
+
+
+def test_keys_differing_only_by_case_are_said(toolbox):
+    session, table = _table(toolbox, made(3), {"next": [("q7-001",) + made(3)[0][1:]] + made(3)[1:]})
+    result = _sync(toolbox, session, table, **{"from": "d:next"})
+    assert result.ok, result.to_json()
+    assert result.data["added"]["keys"] == ["q7-001"] and result.data["missing"]["keys"] == ["Q7-001"]
+    assert any("only by case" in w and "'Q7-001' / 'q7-001'" in w for w in result.warnings)
+
+
+def test_rows_like_a_row_merged_across_columns_taken_are_refused_first(toolbox):
+    # Q7-003 (the merged row) gone from the source, so only the new row, made like it, is refused
+    session, table = _table(toolbox, made(3), {"next": made(4, drop=(3,))})
+    assert toolbox.dispatch(session, "word_edit_table", {"doc": "d1", "table": table, "action": "merge",
+                                                         "first": {"row": 3, "col": 1},
+                                                         "last": {"row": 3, "col": 2}}).ok
+    version = session.entry("d1").version
+    result = _sync(toolbox, session, table, **{"from": "d:next"})
+    assert not result.ok and result.error.field == "from_columns", result.to_json()
+    assert result.error.message.startswith("new rows are made like row 3")
+    assert "merged across columns 1, 2" in result.error.message and "title, issue" in result.error.message
+    assert result.error.details["from_columns"] == ["code", "title", "", "checked"]
+    assert session.entry("d1").version == version                       # nothing changed
+    # the way out works
+    result = _sync(toolbox, session, table, **{"from": "d:next", "from_columns": ["code", "title", "", "checked"]})
+    assert result.ok and result.data["added"]["keys"] == ["Q7-004"], result.to_json()
+    # a matched row whose merged cell would take two values: refused the same way
+    session, table = _table(toolbox, made(3), {"next": made(3, change=(3,))})
+    assert toolbox.dispatch(session, "word_edit_table", {"doc": "d1", "table": table, "action": "merge",
+                                                         "first": {"row": 3, "col": 1},
+                                                         "last": {"row": 3, "col": 2}}).ok
+    result = _sync(toolbox, session, table, **{"from": "d:next"})
+    assert not result.ok and result.error.message.startswith("row 3 of")
+    assert result.error.details["from_columns"] == ["code", "title", "", "checked"]
+
+
 def test_rows_with_no_key_are_left_and_counted(toolbox):
     session, table = _table(toolbox, made(3) + [("", "a note row", "", "")], {"next": made(3)})
     result = _sync(toolbox, session, table, **{"from": "d:next"})
