@@ -21,7 +21,8 @@ from ..edit.document import Document
 from ..edit.properties import refreshed_app
 from ..layout import (affinity, canon_of, check_facts, font_dirs_of, held_state, keep_layout, kept_layout,
                       lay_out_unlocked, layout_key, layout_options, locale_of, note_made, summary_for)
-from ..layout_facts import CAP, empty_paragraphs, layout_facts, numbering_skips_level, punctuation_spacing
+from ..layout_facts import (CAP, empty_paragraphs, layout_facts, numbering_skips_level, punctuation_spacing,
+                            text_language_facts)
 from ..scope import MAX_RANGES, Scope, ranges_of, read_scope
 from .render import RENDERER
 from . import keep_trials
@@ -621,7 +622,8 @@ def check(call: Any, doc: str, slides: list | None = None, pages: list[int] | No
                                  "numbering_skips_level": [e for e in numbering_skips_level(document)
                                                            if scope is None or scope.about(e)][:CAP],
                                  "punctuation_spacing": [e for e in punctuation_spacing(document)
-                                                         if scope is None or scope.about(e)][:CAP]})
+                                                         if scope is None or scope.about(e)][:CAP],
+                                 **_text_language(document, scope)})
         # The rest of the layout's facts here, beside what the worker timed (layout, facts, waits).
         inner = sum(timing.parts.values()) - inner
         timing.add("facts", max(0.0, time.perf_counter() - started - inner))
@@ -639,6 +641,14 @@ def check(call: Any, doc: str, slides: list | None = None, pages: list[int] | No
                     f"{found['with_example_text']} with its example text")
     report["timing"] = timing.parts
     return Result(summary=summary, data=report)
+
+
+def _text_language(document: Document, scope: Any) -> dict[str, Any]:
+    """``text_language`` where the layout failed (round 49, R94): read from the document."""
+    scoped = scope.paragraphs if scope is not None else None
+    found = text_language_facts(document, keep=None if scoped is None else scoped.__contains__,
+                                whole=scoped is None, cap=CAP)
+    return {} if found is None else {"text_language": found}
 
 
 def _validate(document: Document, entry: Any, scope: Any, report: dict[str, Any]) -> None:

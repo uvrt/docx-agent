@@ -1,0 +1,177 @@
+{
+  "about": "Made-up text in each language text_language detects (round 49, R94), written for the measurement; tools/language_accuracy.py reads it. 'tuning': the texts the cues were looked at with; 'held_out': written after, looked at once (it showed French à missing); 'fresh': written after the last change, measured once.",
+  "tuning": {
+    "en": [
+      "The new office opens on the second floor next month. Staff who work near the stairs will move first, and the others follow in the week after. Please pack your desk before Friday and label each box with your name and your new room number.",
+      "When the printer stops with a red light, open the front cover and take out the paper that is stuck. If the light is still on after that, switch the machine off for a minute and call the help desk on the number written above the tray.",
+      "Our garden club meets every Tuesday evening in the library hall. This season we are planting herbs along the south wall, and anyone who has spare pots or seeds is welcome to bring them along. Tea and biscuits are provided by the volunteers.",
+      "The release adds a dark theme, faster search and a way to export notes as plain text. Some older settings have been removed because they were rarely used. If you depend on one of them, tell us before the next update so that we can plan a replacement.",
+      "Heavy rain is expected across the region from Thursday afternoon until late on Saturday. Drivers should allow extra time for their journeys, and people living close to the river are advised to move valuable items off the ground floor.",
+      "To make the soup, soften the onions in a little butter, then add the carrots and the stock. Let it simmer for twenty minutes until the vegetables are tender, blend it until smooth and season it with salt, pepper and a pinch of nutmeg.",
+      "Each team will present its plan at the meeting on Monday. Keep the slides short and focus on what you need from the other teams, since we only have an hour and there are six groups who want to speak before lunch.",
+      "The museum is open daily except on public holidays. Children under twelve enter for free when they are accompanied by an adult, and guided tours in several languages can be booked at the front desk or through the website.",
+      "We noticed that the battery drains quickly when the screen stays on during long trips. A fix is being tested now, and in the meantime you can lower the brightness or turn off the location service to make the charge last longer.",
+      "After three years of planning, the bridge between the two villages was finally opened by the mayor, who thanked the workers and the families nearby for their patience during the long months of noise and closed roads."
+    ],
+    "fr": [
+      "Le nouveau bureau ouvrira au deuxième étage le mois prochain. Les équipes qui travaillent près de l'escalier déménageront en premier, et les autres suivront la semaine d'après. Merci de vider votre bureau avant vendredi et de noter votre nom sur chaque carton.",
+      "Quand l'imprimante s'arrête avec un voyant rouge, ouvrez le capot avant et retirez le papier coincé. Si le voyant reste allumé, éteignez la machine pendant une minute puis appelez le service d'assistance au numéro écrit au-dessus du bac.",
+      "Notre club de jardinage se réunit tous les mardis soir dans la salle de la bibliothèque. Cette saison, nous plantons des herbes le long du mur sud, et ceux qui ont des pots ou des graines en trop peuvent les apporter. Le thé est offert par les bénévoles.",
+      "La nouvelle version ajoute un thème sombre, une recherche plus rapide et un moyen d'exporter les notes en texte simple. Certains anciens réglages ont été supprimés car ils étaient peu utilisés. Si vous en avez besoin, dites-le-nous avant la prochaine mise à jour.",
+      "De fortes pluies sont attendues sur toute la région de jeudi après-midi jusqu'à samedi soir. Les conducteurs doivent prévoir plus de temps pour leurs trajets, et les habitants proches de la rivière sont invités à monter leurs objets de valeur à l'étage.",
+      "Pour préparer la soupe, faites revenir les oignons dans un peu de beurre, puis ajoutez les carottes et le bouillon. Laissez mijoter vingt minutes jusqu'à ce que les légumes soient tendres, mixez et assaisonnez avec du sel, du poivre et une pincée de muscade.",
+      "Chaque équipe présentera son plan lors de la réunion de lundi. Gardez des diapositives courtes et parlez surtout de ce dont vous avez besoin des autres équipes, car nous n'avons qu'une heure et six groupes veulent prendre la parole avant le déjeuner.",
+      "Le musée est ouvert tous les jours sauf les jours fériés. Les enfants de moins de douze ans entrent gratuitement lorsqu'ils sont accompagnés d'un adulte, et des visites guidées en plusieurs langues peuvent être réservées à l'accueil ou sur le site.",
+      "Nous avons remarqué que la batterie se vide vite quand l'écran reste allumé pendant les longs trajets. Une correction est en cours de test, et en attendant vous pouvez baisser la luminosité ou couper la localisation pour que la charge dure plus longtemps.",
+      "Après trois ans de préparation, le pont entre les deux villages a enfin été inauguré par le maire, qui a remercié les ouvriers et les familles du quartier pour leur patience pendant ces longs mois de bruit et de routes fermées."
+    ],
+    "nl": [
+      "Het nieuwe kantoor gaat volgende maand open op de tweede verdieping. Wie bij de trap werkt, verhuist als eerste, en de anderen volgen een week later. Ruim je bureau voor vrijdag op en zet op elke doos je naam en het nummer van je nieuwe kamer.",
+      "Als de printer stopt met een rood lampje, open dan de klep aan de voorkant en haal het vastgelopen papier eruit. Blijft het lampje daarna branden, zet het toestel dan een minuut uit en bel de helpdesk op het nummer dat boven de lade staat.",
+      "Onze tuinclub komt elke dinsdagavond samen in de zaal van de bibliotheek. Dit seizoen planten we kruiden langs de zuidmuur, en wie nog potten of zaden over heeft, mag die meebrengen. Thee en koekjes worden verzorgd door de vrijwilligers.",
+      "De nieuwe versie heeft een donker thema, sneller zoeken en een manier om notities als gewone tekst te bewaren. Enkele oude instellingen zijn verdwenen omdat ze bijna niet gebruikt werden. Heb je er een nodig, laat het ons dan weten voor de volgende update.",
+      "Vanaf donderdagmiddag tot zaterdagavond wordt in de hele regio zware regen verwacht. Bestuurders moeten meer tijd voor hun rit uittrekken, en wie dicht bij de rivier woont, wordt aangeraden waardevolle spullen naar boven te brengen.",
+      "Voor de soep fruit je de uien in een beetje boter, daarna voeg je de wortels en de bouillon toe. Laat alles twintig minuten zachtjes koken tot de groenten gaar zijn, mix het glad en breng het op smaak met zout, peper en een snufje nootmuskaat.",
+      "Elk team stelt zijn plan voor op de vergadering van maandag. Houd de dia's kort en vertel vooral wat je van de andere teams nodig hebt, want we hebben maar een uur en er zijn zes groepen die voor de lunch nog het woord willen nemen.",
+      "Het museum is elke dag open behalve op feestdagen. Kinderen onder de twaalf jaar mogen gratis binnen als ze door een volwassene begeleid worden, en rondleidingen in verschillende talen kun je aan de balie of via de website boeken.",
+      "We merkten dat de batterij snel leegloopt als het scherm tijdens lange ritten aan blijft. Er wordt nu een oplossing getest, en intussen kun je de helderheid verlagen of de locatiedienst uitzetten zodat de lading langer meegaat.",
+      "Na drie jaar voorbereiding werd de brug tussen de twee dorpen eindelijk geopend door de burgemeester, die de arbeiders en de gezinnen in de buurt bedankte voor hun geduld tijdens de lange maanden met lawaai en afgesloten wegen."
+    ],
+    "de": [
+      "Das neue Büro im zweiten Stock wird nächsten Monat eröffnet. Wer in der Nähe der Treppe arbeitet, zieht zuerst um, die anderen folgen eine Woche später. Bitte räumen Sie Ihren Schreibtisch bis Freitag und beschriften Sie jeden Karton mit Ihrem Namen.",
+      "Wenn der Drucker mit einem roten Licht stehen bleibt, öffnen Sie die vordere Klappe und nehmen Sie das eingeklemmte Papier heraus. Leuchtet das Licht danach noch, schalten Sie das Gerät eine Minute aus und rufen Sie den Support unter der Nummer über dem Fach an.",
+      "Unser Gartenverein trifft sich jeden Dienstagabend im Saal der Bibliothek. In dieser Saison pflanzen wir Kräuter entlang der Südmauer, und wer noch Töpfe oder Samen übrig hat, kann sie gern mitbringen. Tee und Kekse stellen die Freiwilligen bereit.",
+      "Die neue Version bringt ein dunkles Design, eine schnellere Suche und eine Möglichkeit, Notizen als reinen Text zu speichern. Einige alte Einstellungen wurden entfernt, weil sie kaum genutzt wurden. Wenn Sie eine davon brauchen, sagen Sie uns vor dem nächsten Update Bescheid.",
+      "Von Donnerstagnachmittag bis Samstagabend wird in der ganzen Region starker Regen erwartet. Autofahrer sollten mehr Zeit für ihre Fahrten einplanen, und wer nahe am Fluss wohnt, sollte wertvolle Dinge aus dem Erdgeschoss nach oben bringen.",
+      "Für die Suppe die Zwiebeln in etwas Butter andünsten, dann die Karotten und die Brühe dazugeben. Alles zwanzig Minuten leise köcheln lassen, bis das Gemüse weich ist, fein pürieren und mit Salz, Pfeffer und einer Prise Muskat abschmecken.",
+      "Jedes Team stellt seinen Plan bei der Besprechung am Montag vor. Halten Sie die Folien kurz und sagen Sie vor allem, was Sie von den anderen Teams brauchen, denn wir haben nur eine Stunde und sechs Gruppen möchten vor dem Mittagessen sprechen.",
+      "Das Museum ist täglich geöffnet, außer an Feiertagen. Kinder unter zwölf Jahren haben in Begleitung eines Erwachsenen freien Eintritt, und Führungen in mehreren Sprachen können am Empfang oder über die Webseite gebucht werden.",
+      "Wir haben bemerkt, dass sich der Akku schnell leert, wenn der Bildschirm auf langen Fahrten eingeschaltet bleibt. Eine Korrektur wird gerade getestet, und bis dahin können Sie die Helligkeit senken oder die Ortung ausschalten, damit die Ladung länger hält.",
+      "Nach drei Jahren Planung wurde die Brücke zwischen den beiden Dörfern endlich vom Bürgermeister eröffnet, der den Arbeitern und den Familien in der Nähe für ihre Geduld während der langen Monate mit Lärm und gesperrten Straßen dankte."
+    ],
+    "es": [
+      "La nueva oficina abrirá en la segunda planta el mes que viene. Quienes trabajan cerca de la escalera se mudarán primero, y los demás seguirán una semana después. Por favor, vacíe su mesa antes del viernes y escriba su nombre en cada caja.",
+      "Cuando la impresora se detiene con una luz roja, abra la tapa delantera y saque el papel atascado. Si la luz sigue encendida, apague la máquina durante un minuto y llame al servicio de ayuda al número que aparece encima de la bandeja.",
+      "Nuestro club de jardinería se reúne todos los martes por la tarde en la sala de la biblioteca. Esta temporada plantamos hierbas a lo largo del muro sur, y quien tenga macetas o semillas de sobra puede traerlas. Los voluntarios ofrecen té y galletas.",
+      "La nueva versión añade un tema oscuro, una búsqueda más rápida y una forma de exportar las notas como texto simple. Se han quitado algunos ajustes antiguos porque casi no se usaban. Si necesita alguno, díganoslo antes de la próxima actualización.",
+      "Se esperan lluvias fuertes en toda la región desde el jueves por la tarde hasta el sábado por la noche. Los conductores deben calcular más tiempo para sus viajes, y quienes viven cerca del río deben subir sus objetos de valor al piso de arriba.",
+      "Para hacer la sopa, rehogue las cebollas en un poco de mantequilla y luego añada las zanahorias y el caldo. Deje que hierva despacio durante veinte minutos hasta que las verduras estén tiernas, tritúrela y sazone con sal, pimienta y una pizca de nuez moscada.",
+      "Cada equipo presentará su plan en la reunión del lunes. Mantenga las diapositivas breves y hable sobre todo de lo que necesita de los otros equipos, porque solo tenemos una hora y hay seis grupos que quieren hablar antes de la comida.",
+      "El museo abre todos los días excepto los festivos. Los niños menores de doce años entran gratis si van acompañados de un adulto, y las visitas guiadas en varios idiomas se pueden reservar en la recepción o a través de la página web.",
+      "Hemos notado que la batería se agota rápido cuando la pantalla sigue encendida durante los viajes largos. Ya se está probando una solución, y mientras tanto puede bajar el brillo o desactivar la ubicación para que la carga dure más.",
+      "Tras tres años de preparación, el puente entre los dos pueblos fue inaugurado por fin por la alcaldesa, que dio las gracias a los obreros y a las familias del barrio por su paciencia durante los largos meses de ruido y calles cortadas."
+    ],
+    "it": [
+      "Il nuovo ufficio aprirà al secondo piano il mese prossimo. Chi lavora vicino alle scale si trasferirà per primo, e gli altri seguiranno la settimana dopo. Vi preghiamo di svuotare la scrivania entro venerdì e di scrivere il vostro nome su ogni scatola.",
+      "Quando la stampante si ferma con una luce rossa, aprite il coperchio anteriore e togliete la carta inceppata. Se la luce resta accesa, spegnete la macchina per un minuto e chiamate l'assistenza al numero scritto sopra il cassetto.",
+      "Il nostro club di giardinaggio si riunisce ogni martedì sera nella sala della biblioteca. In questa stagione piantiamo erbe aromatiche lungo il muro a sud, e chi ha vasi o semi in più può portarli. Tè e biscotti sono offerti dai volontari.",
+      "La nuova versione aggiunge un tema scuro, una ricerca più veloce e un modo per esportare le note come testo semplice. Alcune vecchie impostazioni sono state tolte perché erano poco usate. Se ne avete bisogno, ditecelo prima del prossimo aggiornamento.",
+      "Sono previste forti piogge su tutta la regione da giovedì pomeriggio fino a sabato sera. Gli automobilisti dovrebbero calcolare più tempo per i loro viaggi, e chi abita vicino al fiume è invitato a portare gli oggetti di valore al piano di sopra.",
+      "Per preparare la zuppa, fate appassire le cipolle in un po' di burro, poi aggiungete le carote e il brodo. Lasciate cuocere a fuoco lento per venti minuti finché le verdure sono tenere, frullate e condite con sale, pepe e un pizzico di noce moscata.",
+      "Ogni squadra presenterà il suo piano alla riunione di lunedì. Tenete le slide brevi e parlate soprattutto di ciò che vi serve dalle altre squadre, perché abbiamo solo un'ora e ci sono sei gruppi che vogliono intervenire prima di pranzo.",
+      "Il museo è aperto tutti i giorni tranne i festivi. I bambini sotto i dodici anni entrano gratis se accompagnati da un adulto, e le visite guidate in diverse lingue si possono prenotare alla reception o sul sito.",
+      "Abbiamo notato che la batteria si scarica in fretta quando lo schermo resta acceso durante i viaggi lunghi. Una correzione è in prova, e nel frattempo potete abbassare la luminosità o spegnere la localizzazione perché la carica duri di più.",
+      "Dopo tre anni di preparazione, il ponte tra i due paesi è stato finalmente inaugurato dal sindaco, che ha ringraziato gli operai e le famiglie della zona per la loro pazienza durante i lunghi mesi di rumore e strade chiuse."
+    ],
+    "pt": [
+      "O novo escritório vai abrir no segundo andar no próximo mês. Quem trabalha perto da escada muda primeiro, e os outros seguem na semana seguinte. Por favor, esvazie a sua secretária até sexta-feira e escreva o seu nome em cada caixa.",
+      "Quando a impressora para com uma luz vermelha, abra a tampa da frente e retire o papel encravado. Se a luz continuar acesa, desligue a máquina durante um minuto e ligue para o apoio técnico pelo número escrito por cima da gaveta.",
+      "O nosso clube de jardinagem reúne-se todas as terças-feiras à noite na sala da biblioteca. Esta época plantamos ervas ao longo do muro sul, e quem tiver vasos ou sementes a mais pode trazê-los. Os voluntários oferecem chá e bolachas.",
+      "A nova versão traz um tema escuro, uma pesquisa mais rápida e uma forma de exportar as notas como texto simples. Algumas definições antigas foram retiradas porque quase não eram usadas. Se precisar de alguma, diga-nos antes da próxima atualização.",
+      "São esperadas chuvas fortes em toda a região desde quinta-feira à tarde até sábado à noite. Os condutores devem contar com mais tempo para as suas viagens, e quem vive perto do rio deve levar os objetos de valor para o andar de cima.",
+      "Para fazer a sopa, aloure as cebolas num pouco de manteiga e depois junte as cenouras e o caldo. Deixe ferver em lume brando durante vinte minutos até os legumes estarem macios, triture e tempere com sal, pimenta e uma pitada de noz-moscada.",
+      "Cada equipa vai apresentar o seu plano na reunião de segunda-feira. Mantenha os diapositivos curtos e fale sobretudo do que precisa das outras equipas, porque só temos uma hora e há seis grupos que querem falar antes do almoço.",
+      "O museu está aberto todos os dias exceto nos feriados. As crianças com menos de doze anos entram de graça quando acompanhadas por um adulto, e as visitas guiadas em várias línguas podem ser marcadas na receção ou no sítio da internet.",
+      "Reparámos que a bateria se esgota depressa quando o ecrã fica ligado durante viagens longas. Uma correção já está a ser testada, e entretanto pode baixar o brilho ou desligar a localização para que a carga dure mais tempo.",
+      "Depois de três anos de preparação, a ponte entre as duas aldeias foi finalmente inaugurada pelo presidente da câmara, que agradeceu aos trabalhadores e às famílias da zona a paciência durante os longos meses de barulho e estradas cortadas."
+    ]
+  },
+  "held_out": {
+    "en": [
+      "Backups of the shared drive run every night at 02:00 and are kept for thirty days. Files deleted by mistake can be restored from the web portal, but anything older than a month has to be requested from the IT team, which may take up to a week.",
+      "Annual leave must be booked at least two weeks ahead through the HR app. Requests that overlap with a colleague in the same role are approved in the order they arrive, so check the team calendar before you choose your dates.",
+      "To install the client, download the package for your system, unzip it and run the setup file as an administrator. The wizard asks for the server address and your login; once it has finished, restart the laptop so that the drivers are loaded.",
+      "Sales in the third quarter grew by 4.2% compared with last year, mainly thanks to the online shop and two new partners in the north. Margins were slightly lower because of higher shipping costs, which we expect to settle early next year.",
+      "In case of fire, leave the building by the nearest exit and do not use the lifts. Gather at the assembly point in the car park, where the floor wardens will check that everyone is out before the fire service arrives."
+    ],
+    "fr": [
+      "Les sauvegardes du lecteur partagé tournent chaque nuit à 02:00 et sont gardées trente jours. Un fichier supprimé par erreur peut être restauré depuis le portail web, mais pour tout ce qui a plus d'un mois il faut passer par l'équipe IT, ce qui peut prendre une semaine.",
+      "Les congés annuels se réservent au moins deux semaines à l'avance dans l'application RH. Les demandes qui se chevauchent avec celles d'un collègue au même poste sont acceptées dans l'ordre d'arrivée : consultez donc le calendrier de l'équipe avant de choisir vos dates.",
+      "Pour installer le client, téléchargez le package pour votre système, décompressez-le et lancez le fichier setup en tant qu'administrateur. L'assistant demande l'adresse du serveur et votre login ; une fois terminé, redémarrez le laptop pour charger les pilotes.",
+      "Les ventes du troisième trimestre ont progressé de 4,2 % par rapport à l'an dernier, surtout grâce à la boutique en ligne et à deux nouveaux partenaires dans le nord. Les marges ont un peu baissé à cause des frais d'envoi plus élevés.",
+      "En cas d'incendie, quittez le bâtiment par la sortie la plus proche et n'utilisez pas les ascenseurs. Rassemblez-vous au point de rendez-vous sur le parking, où les responsables d'étage vérifieront que tout le monde est sorti."
+    ],
+    "nl": [
+      "Back-ups van de gedeelde schijf lopen elke nacht om 02:00 en blijven dertig dagen bewaard. Bestanden die per ongeluk verwijderd zijn, kun je via het webportaal terugzetten, maar alles wat ouder is dan een maand moet je bij het IT-team aanvragen.",
+      "Jaarlijks verlof boek je minstens twee weken vooraf in de HR-app. Aanvragen die samenvallen met die van een collega in dezelfde functie worden goedgekeurd in de volgorde waarin ze binnenkomen, dus kijk eerst in de teamkalender voor je data kiest.",
+      "Om de client te installeren download je het pakket voor je systeem, pak je het uit en start je het setupbestand als beheerder. De wizard vraagt naar het serveradres en je login; als hij klaar is, herstart je de laptop zodat de drivers geladen worden.",
+      "De verkoop in het derde kwartaal steeg met 4,2% tegenover vorig jaar, vooral dankzij de webshop en twee nieuwe partners in het noorden. De marges lagen iets lager door hogere verzendkosten, die volgens ons begin volgend jaar weer dalen.",
+      "Bij brand verlaat je het gebouw via de dichtstbijzijnde uitgang en gebruik je de liften niet. Verzamel op de verzamelplaats op de parking, waar de verdiepingsverantwoordelijken nagaan of iedereen buiten is voor de brandweer aankomt."
+    ],
+    "de": [
+      "Die Backups des gemeinsamen Laufwerks laufen jede Nacht um 02:00 und werden dreißig Tage aufbewahrt. Versehentlich gelöschte Dateien lassen sich über das Webportal wiederherstellen, aber alles, was älter als einen Monat ist, muss beim IT-Team angefragt werden.",
+      "Der Jahresurlaub wird mindestens zwei Wochen im Voraus in der HR-App gebucht. Anträge, die sich mit denen einer Kollegin in derselben Rolle überschneiden, werden in der Reihenfolge ihres Eingangs genehmigt, also schauen Sie zuerst in den Teamkalender.",
+      "Um den Client zu installieren, laden Sie das Paket für Ihr System herunter, entpacken es und starten die Setup-Datei als Administrator. Der Assistent fragt nach der Serveradresse und Ihrem Login; danach starten Sie den Laptop neu, damit die Treiber geladen werden.",
+      "Der Umsatz im dritten Quartal stieg im Vergleich zum Vorjahr um 4,2 %, vor allem dank des Onlineshops und zweier neuer Partner im Norden. Die Margen lagen wegen höherer Versandkosten etwas niedriger, was sich Anfang nächsten Jahres legen dürfte.",
+      "Im Brandfall verlassen Sie das Gebäude über den nächsten Ausgang und benutzen die Aufzüge nicht. Sammeln Sie sich am Treffpunkt auf dem Parkplatz, wo die Etagenhelfer prüfen, ob alle draußen sind, bevor die Feuerwehr eintrifft."
+    ],
+    "es": [
+      "Las copias de seguridad de la unidad compartida se hacen cada noche a las 02:00 y se guardan treinta días. Un archivo borrado por error se puede recuperar desde el portal web, pero lo que tenga más de un mes hay que pedirlo al equipo de IT.",
+      "Las vacaciones anuales se reservan con al menos dos semanas de antelación en la aplicación de RR. HH. Las solicitudes que coinciden con las de un compañero del mismo puesto se aprueban por orden de llegada, así que mire antes el calendario del equipo.",
+      "Para instalar el cliente, descargue el paquete para su sistema, descomprímalo y ejecute el archivo de instalación como administrador. El asistente pide la dirección del servidor y su usuario; cuando termine, reinicie el portátil para cargar los cambios.",
+      "Las ventas del tercer trimestre crecieron un 4,2 % respecto al año pasado, sobre todo gracias a la tienda en línea y a dos nuevos socios en el norte. Los márgenes bajaron un poco por el aumento de los gastos de envío.",
+      "En caso de incendio, salga del edificio por la salida más cercana y no use los ascensores. Reúnase en el punto de encuentro del aparcamiento, donde los responsables de planta comprobarán que todos han salido antes de que lleguen los bomberos."
+    ],
+    "it": [
+      "I backup dell'unità condivisa partono ogni notte alle 02:00 e vengono conservati per trenta giorni. Un file cancellato per errore si può ripristinare dal portale web, ma per tutto ciò che ha più di un mese bisogna rivolgersi al team IT.",
+      "Le ferie annuali vanno prenotate almeno due settimane prima nell'app delle risorse umane. Le richieste che si sovrappongono a quelle di un collega con lo stesso ruolo vengono approvate in ordine di arrivo, quindi guardate prima il calendario del gruppo.",
+      "Per installare il client, scaricate il pacchetto per il vostro sistema, decomprimetelo e avviate il file di setup come amministratore. La procedura chiede l'indirizzo del server e il vostro login; alla fine riavviate il portatile perché i driver vengano caricati.",
+      "Le vendite del terzo trimestre sono cresciute del 4,2% rispetto all'anno scorso, soprattutto grazie al negozio online e a due nuovi partner al nord. I margini sono scesi un poco per via dei costi di spedizione più alti.",
+      "In caso di incendio, uscite dall'edificio dall'uscita più vicina e non usate gli ascensori. Radunatevi nel punto di raccolta del parcheggio, dove i responsabili di piano verificheranno che tutti siano usciti prima dell'arrivo dei vigili del fuoco."
+    ],
+    "pt": [
+      "As cópias de segurança da unidade partilhada correm todas as noites às 02:00 e são guardadas durante trinta dias. Um ficheiro apagado por engano pode ser recuperado no portal web, mas o que tiver mais de um mês tem de ser pedido à equipa de IT.",
+      "As férias anuais marcam-se com pelo menos duas semanas de antecedência na aplicação de recursos humanos. Os pedidos que coincidem com os de um colega na mesma função são aprovados por ordem de chegada, por isso veja primeiro o calendário da equipa.",
+      "Para instalar o cliente, descarregue o pacote para o seu sistema, descompacte-o e execute o ficheiro de instalação como administrador. O assistente pede o endereço do servidor e o seu login; no fim, reinicie o portátil para carregar as alterações.",
+      "As vendas do terceiro trimestre cresceram 4,2% em relação ao ano passado, sobretudo graças à loja online e a dois novos parceiros no norte. As margens desceram um pouco por causa dos custos de envio mais altos.",
+      "Em caso de incêndio, saia do edifício pela saída mais próxima e não use os elevadores. Junte-se no ponto de encontro do parque de estacionamento, onde os responsáveis de piso vão confirmar que todos saíram antes de chegarem os bombeiros."
+    ]
+  },
+  "fresh": {
+    "en": [
+      "The cycling route starts at the old station and follows the canal for about twelve kilometres. There are two places to stop for coffee, and the last part climbs gently through the woods before it ends at the lake.",
+      "Books can be borrowed for three weeks and renewed twice online, unless another reader has reserved them. Late returns cost a small fee per day, which is waived for children and for anyone who lets us know in advance.",
+      "We would like to invite the whole team to lunch on Friday to celebrate the end of the project. Let us know by Wednesday whether you can come and if you have any wishes about the food, so that we can order enough."
+    ],
+    "fr": [
+      "L'itinéraire à vélo part de l'ancienne gare et longe le canal sur une douzaine de kilomètres. Il y a deux endroits où prendre un café, et la dernière partie monte doucement à travers les bois avant d'arriver au lac.",
+      "Les livres peuvent être empruntés pour trois semaines et prolongés deux fois en ligne, sauf si un autre lecteur les a réservés. Un retard coûte une petite somme par jour, sauf pour les enfants et pour ceux qui nous préviennent.",
+      "Nous aimerions inviter toute l'équipe à déjeuner vendredi pour fêter la fin du projet. Dites-nous d'ici mercredi si vous pouvez venir et si vous avez des souhaits pour le repas, afin que nous puissions commander assez."
+    ],
+    "nl": [
+      "De fietsroute begint bij het oude station en volgt het kanaal over zo'n twaalf kilometer. Onderweg kun je op twee plekken koffie drinken, en het laatste stuk loopt zachtjes omhoog door het bos voor het eindigt aan het meer.",
+      "Boeken mag je drie weken lenen en twee keer online verlengen, tenzij een andere lezer ze gereserveerd heeft. Te laat terugbrengen kost een klein bedrag per dag, behalve voor kinderen en voor wie het ons vooraf laat weten.",
+      "We willen het hele team vrijdag uitnodigen voor een lunch om het einde van het project te vieren. Laat ons voor woensdag weten of je komt en of je wensen hebt voor het eten, zodat we genoeg kunnen bestellen."
+    ],
+    "de": [
+      "Die Radroute beginnt am alten Bahnhof und folgt dem Kanal etwa zwölf Kilometer weit. Unterwegs gibt es zwei Stellen für einen Kaffee, und der letzte Abschnitt steigt sanft durch den Wald an, bevor er am See endet.",
+      "Bücher können drei Wochen ausgeliehen und zweimal online verlängert werden, außer jemand anderes hat sie vorgemerkt. Eine verspätete Rückgabe kostet eine kleine Gebühr pro Tag, die für Kinder und bei vorheriger Nachricht entfällt.",
+      "Wir möchten das ganze Team am Freitag zum Mittagessen einladen, um den Abschluss des Projekts zu feiern. Sagt uns bis Mittwoch, ob ihr kommen könnt und ob ihr Wünsche zum Essen habt, damit wir genug bestellen."
+    ],
+    "es": [
+      "La ruta en bicicleta sale de la antigua estación y sigue el canal durante unos doce kilómetros. Hay dos sitios para tomar un café, y el último tramo sube suavemente por el bosque antes de terminar en el lago.",
+      "Los libros se pueden llevar tres semanas y renovar dos veces en línea, salvo que otro lector los haya reservado. Devolverlos tarde cuesta una pequeña cantidad por día, que no se cobra a los niños ni a quien nos avise antes.",
+      "Queremos invitar a todo el equipo a comer el viernes para celebrar el final del proyecto. Dígannos antes del miércoles si pueden venir y si tienen algún deseo sobre la comida, para que podamos pedir suficiente."
+    ],
+    "it": [
+      "Il percorso in bicicletta parte dalla vecchia stazione e segue il canale per circa dodici chilometri. Ci sono due posti dove fermarsi per un caffè, e l'ultimo tratto sale dolcemente nel bosco prima di finire al lago.",
+      "I libri si possono prendere in prestito per tre settimane e rinnovare due volte online, a meno che un altro lettore li abbia prenotati. Un ritardo costa una piccola somma al giorno, che non si paga per i bambini o se ci avvisate prima.",
+      "Vorremmo invitare tutta la squadra a pranzo venerdì per festeggiare la fine del progetto. Fateci sapere entro mercoledì se potete venire e se avete preferenze sul cibo, così possiamo ordinarne abbastanza."
+    ],
+    "pt": [
+      "O percurso de bicicleta começa na antiga estação e segue o canal durante cerca de doze quilómetros. Há dois sítios para tomar um café, e a última parte sobe devagar pela floresta antes de acabar junto ao lago.",
+      "Os livros podem ser requisitados por três semanas e renovados duas vezes online, a não ser que outro leitor os tenha reservado. Um atraso custa uma pequena quantia por dia, que não se paga para crianças nem para quem nos avisar antes.",
+      "Gostaríamos de convidar toda a equipa para almoçar na sexta-feira e festejar o fim do projeto. Digam-nos até quarta-feira se podem vir e se têm algum desejo quanto à comida, para podermos encomendar o suficiente."
+    ]
+  }
+}

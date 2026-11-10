@@ -314,7 +314,10 @@ def test_a_block_and_a_range_of_blocks(constructs_doc):
     assert document.to_markdown("p:6B00001E") == "5. Five <!-- p:6B00001E -->\n"
     assert document.to_markdown("p:6B00002E").startswith("<!-- t:6B000029")
     # A content control by its id; notes referenced in a range come with it.
-    assert document.to_markdown("cc:303") == "<!-- cc:303 rich-text tag: clause title: Clause -->\n"
+    # Round 49: a block control read alone is the control with its content.
+    assert document.to_markdown("cc:303") == (
+        "<!-- cc:303 rich-text tag: clause title: Clause -->\n\n<!-- p:6B00003F -->\nA clause in a control.\n\n"
+        "<!-- p:6B000040 -->\nIts second paragraph.\n\n<!-- /cc:303 -->\n")
     assert document.to_markdown("p:6B000023").endswith(
         "[^fn:2]: A second footnote, <!-- footnotes/p:1D000002 -->\n\n    in two paragraphs. "
         "<!-- footnotes/p:1D000003 -->\n")

@@ -22,6 +22,53 @@ snapshot commit; the development history before it is summarised here.
   from: 'd:notes/#1/<column>'}])", the two calls as `valid_options` (it said "from replaces
   cells: give one"). No definition changed: token delta 0.
 
+## 0.1.86 -- unreleased
+
+- **A bookmark over blocks, tables included** (round 49, R91): `add_bookmark` (and
+  `word_links` `add_bookmark`'s `target`) takes a table, a block-level content control, a
+  span of blocks (`p:A..t:B`) or a heading's range, where it refused "is a span of blocks,
+  not text". The markers go where Word's Insert > Bookmark puts them for a selection of
+  those blocks (Word 16.106: 20 selections measured, 15 spans written and compared): the
+  start before the first block's text -- a table's in its first cell; a content control's before `w:sdt`, with
+  `w:displacedByCustomXml="next"`; the end after the last paragraph's text -- after a table
+  that ends the span when text follows it, inside the table after its last row when an
+  empty paragraph does; after a control, or in the first cell of a table that follows it.
+  Word reads each back to the character range of its own bookmark and re-saves it
+  unchanged. A span ending on a paragraph writes what `p:A@0..p:B@<length>` wrote. The
+  bookmark then addresses its blocks (`word_read`, `within`, `to_markdown`). Tracking on or
+  off: the same markers (Word tracks no bookmark). `tests/test_block_bookmarks.py`.
+- **`Document.block_text(id)`** (round 49, R92): any block's plain text -- a paragraph's; a
+  table's rows one per line, cells separated by a tab; a content control's content (block
+  or line); a cell or row; a span, heading's range, section or story, blocks one per line;
+  a text range or bookmark -- in the current, original or markup view. `paragraph()` and
+  `table()` on an id of another kind (a table, a paragraph, a content control) raise a
+  `KeyError` naming its kind, the call that reads it and `block_text` (a paragraph in a
+  table given as a table: its table), where `paragraph()` on a table returned an object that
+  failed later. `to_markdown(range=cc:...)` of a block control now holds its content, not
+  the opening comment alone. `tests/test_block_text.py`.
+- Tokens: `word_links`' `target` description says `add_bookmark` takes blocks: +12 to every
+  definition (15,616 -> 15,628) and to a reviewer's (8,346 -> 8,358), none to the core.
+
+## 0.1.85 -- unreleased
+
+- **`check` says when the words are another language than their tag** (round 49, R94): the
+  layout fact `text_language` (`include: ["layout"]`; read from the document, so there where
+  the layout failed too). `document`: the default paragraph style's tag next to the
+  language most of the text is in by its words; where they differ, the paragraphs that
+  follow that are counted (`mismatched`), not listed, and `fix` sets the document's
+  language (`word_styles` `set_language`). `mismatched`: the other paragraphs in another
+  language than the tag most of their text has (`source`: `default`, `style:<name>`,
+  `run`), consecutive top-level ones as one `range`, with `confidence` and `words`; at most
+  20, the rest counted. A check of pages or a range says `checked` (its words), with no
+  document fix. The detector is new and has no dependency: function-word profiles and
+  spelling cues written for it (English, French, Dutch, German, Spanish, Italian,
+  Portuguese), scoring a paragraph of at least 8 words with function words among them
+  (names, placeholder Latin: `unclear`, counted). Measured on made-up text written for it
+  (`tools/language_accuracy.py`, three sets, 126 paragraphs, windows cut anywhere): at 8
+  words 97.3% of the windows judged are right and none is listed as another language
+  (wrong and sure); from 15 words 99.6%; every whole paragraph right. 9 ms for a
+  127-paragraph document. Tool definitions unchanged. tests/test_text_language.py.
+
 ## 0.1.84 -- unreleased
 
 - **A table kept in step with a dataset by key** (round 49, R90: a 127-row table had every row
