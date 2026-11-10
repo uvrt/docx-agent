@@ -1274,9 +1274,7 @@ class Writer:
                 remove(record)
                 if not len(run_properties):
                     remove(run_properties)
-                _track.mark(previous, "ins", stamp, part)
-                change = previous.find(f"{W_PPR}/{_W}pPrChange/{W_PPR}")
-                old = _track.clean_properties(change if change is not None else previous.find(W_PPR), "w:pPr")
+                old = _track.pass_mark(previous, stamp, part)
                 _track.record_paragraph_change(last, old, stamp, part)
             elif old_mark is not None:
                 record = _track.mark_record(last)

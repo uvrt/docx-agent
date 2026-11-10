@@ -1395,9 +1395,7 @@ def _track(document: "Document", part: str, elements: list[Element], importer: I
             remove(record)
             if not len(run_properties):
                 remove(run_properties)
-            _track_mod.mark(previous, "ins", stamp, part)
-            change = previous.find(f"{_W}pPr/{_W}pPrChange/{_W}pPr")
-            old = _track_mod.clean_properties(change if change is not None else previous.find(_W + "pPr"), "w:pPr")
+            old = _track_mod.pass_mark(previous, stamp, part)
             _track_mod.record_paragraph_change(last, old, stamp, part)
     for _, _, notes_part, note in importer.notes_created:
         paragraphs = [c for c in note if isinstance(c.tag, str)]

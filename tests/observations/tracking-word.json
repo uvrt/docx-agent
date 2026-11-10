@@ -1,0 +1,105 @@
+{
+ "_about": "What Word 16.106 for Mac wrote for tools/tracking_probe.py: formatting what is a pending insertion, paragraphs typed at the end, deleted paragraph marks and Accept All of them, and the final view's line edges. Authors ({author} the Word user, {other} another) and dates replaced, rsids dropped. Regenerate with python tools/tracking_probe.py.",
+ "end-style-first": [
+  "<w:p w14:paraId=\"30000000\" w14:textId=\"77777777\"><w:r><w:t>Existing first.</w:t></w:r></w:p>",
+  "<w:p w14:paraId=\"30000001\" w14:textId=\"77777777\"><w:pPr><w:rPr><w:ins w:id=\"0\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"/></w:rPr></w:pPr><w:r><w:t>Existing last.</w:t></w:r></w:p>",
+  "<w:p w14:paraId=\"04D1BF8E\" w14:textId=\"57E6EFD2\"><w:pPr><w:pStyle w:val=\"Kop2\"/><w:rPr><w:ins w:id=\"1\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"/></w:rPr></w:pPr><w:ins w:id=\"2\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"><w:r><w:t>Pone typed.</w:t></w:r></w:ins></w:p>",
+  "<w:p w14:paraId=\"64697A25\" w14:textId=\"3D7FDC5F\"><w:pPr><w:pStyle w:val=\"Kop2\"/><w:rPr><w:ins w:id=\"3\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"/></w:rPr></w:pPr><w:ins w:id=\"4\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"><w:r><w:t>Ptwo typed.</w:t></w:r></w:ins></w:p>",
+  "<w:p w14:paraId=\"4A4A5C48\" w14:textId=\"21C32461\"><w:pPr><w:pStyle w:val=\"Kop2\"/><w:pPrChange w:id=\"5\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"><w:pPr/></w:pPrChange></w:pPr><w:ins w:id=\"6\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"><w:r><w:t>Pthree typed.</w:t></w:r></w:ins></w:p>",
+  "<w:sectPr><w:pgSz w:w=\"11906\" w:h=\"16838\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"708\" w:footer=\"708\" w:gutter=\"0\"/><w:cols w:space=\"708\"/></w:sectPr>"
+ ],
+ "end-text-first": [
+  "<w:p w14:paraId=\"30000000\" w14:textId=\"77777777\"><w:r><w:t>Existing first.</w:t></w:r></w:p>",
+  "<w:p w14:paraId=\"30000001\" w14:textId=\"77777777\"><w:pPr><w:rPr><w:ins w:id=\"0\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"/></w:rPr></w:pPr><w:r><w:t>Existing last.</w:t></w:r></w:p>",
+  "<w:p w14:paraId=\"5ACF8FAA\" w14:textId=\"67C75FFF\"><w:pPr><w:pStyle w:val=\"Kop2\"/><w:rPr><w:ins w:id=\"1\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"/></w:rPr></w:pPr><w:ins w:id=\"2\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"><w:r><w:t>Pone typed.</w:t></w:r></w:ins></w:p>",
+  "<w:p w14:paraId=\"483957AC\" w14:textId=\"5AE54104\"><w:pPr><w:pStyle w:val=\"Kop2\"/><w:rPr><w:ins w:id=\"3\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"/></w:rPr></w:pPr><w:ins w:id=\"4\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"><w:r><w:t>Ptwo typed.</w:t></w:r></w:ins></w:p>",
+  "<w:p w14:paraId=\"0F70D7BC\" w14:textId=\"77110BA1\"><w:pPr><w:pStyle w:val=\"Kop2\"/><w:pPrChange w:id=\"5\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"><w:pPr/></w:pPrChange></w:pPr><w:ins w:id=\"6\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"><w:r><w:t>Pthree typed.</w:t></w:r></w:ins></w:p>",
+  "<w:sectPr><w:pgSz w:w=\"11906\" w:h=\"16838\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"708\" w:footer=\"708\" w:gutter=\"0\"/><w:cols w:space=\"708\"/></w:sectPr>"
+ ],
+ "format": [
+  "<w:p w14:paraId=\"30000000\" w14:textId=\"77777777\"><w:pPr><w:rPr><w:ins w:id=\"0\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"/></w:rPr></w:pPr><w:r><w:t>Sone existing alpha beta.</w:t></w:r></w:p>",
+  "<w:p w14:paraId=\"17860B59\" w14:textId=\"0C6E12B4\"><w:pPr><w:pStyle w:val=\"Kop2\"/><w:jc w:val=\"center\"/><w:pPrChange w:id=\"1\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"><w:pPr/></w:pPrChange></w:pPr><w:ins w:id=\"2\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"><w:r><w:t xml:space=\"preserve\">Sonenew </w:t></w:r><w:r><w:rPr><w:b/><w:rPrChange w:id=\"3\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"><w:rPr/></w:rPrChange></w:rPr><w:t>typed</w:t></w:r><w:r><w:t xml:space=\"preserve\"> paragraph.</w:t></w:r></w:ins></w:p>",
+  "<w:p w14:paraId=\"374808AF\" w14:textId=\"77777777\"><w:pPr><w:pStyle w:val=\"Kop2\"/><w:jc w:val=\"center\"/><w:rPr><w:ins w:id=\"4\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"/></w:rPr><w:pPrChange w:id=\"5\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"><w:pPr/></w:pPrChange></w:pPr><w:ins w:id=\"6\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"><w:r><w:t xml:space=\"preserve\">Stwonew </w:t></w:r><w:r><w:rPr><w:b/><w:rPrChange w:id=\"7\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"><w:rPr/></w:rPrChange></w:rPr><w:t>typed</w:t></w:r><w:r><w:t xml:space=\"preserve\"> before.</w:t></w:r></w:ins></w:p>",
+  "<w:p w14:paraId=\"30000001\" w14:textId=\"242B96E1\"><w:r><w:t>Stwo existing alpha beta.</w:t></w:r></w:p>",
+  "<w:p w14:paraId=\"30000002\" w14:textId=\"6181FE55\"><w:r><w:t>S</w:t></w:r><w:r><w:t xml:space=\"preserve\">three </w:t></w:r><w:ins w:id=\"8\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"><w:r><w:rPr><w:b/><w:rPrChange w:id=\"9\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"><w:rPr/></w:rPrChange></w:rPr><w:t>RUNINS</w:t></w:r><w:r><w:t xml:space=\"preserve\"> </w:t></w:r></w:ins><w:r><w:t>existing alpha beta.</w:t></w:r></w:p>",
+  "<w:p w14:paraId=\"30000003\" w14:textId=\"77777777\"><w:pPr><w:jc w:val=\"right\"/><w:rPr><w:ins w:id=\"10\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"/></w:rPr><w:pPrChange w:id=\"11\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"><w:pPr/></w:pPrChange></w:pPr><w:r><w:t xml:space=\"preserve\">Sfour </w:t></w:r><w:r><w:rPr><w:b/><w:rPrChange w:id=\"12\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"><w:rPr/></w:rPrChange></w:rPr><w:t>existing</w:t></w:r><w:r><w:t xml:space=\"preserve\"> alpha beta.</w:t></w:r></w:p>",
+  "<w:p w14:paraId=\"4E5056D6\" w14:textId=\"7B202C93\"><w:ins w:id=\"13\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"><w:r><w:t>Sfournew typed.</w:t></w:r></w:ins></w:p>",
+  "<w:p w14:paraId=\"30000004\" w14:textId=\"77777777\"><w:r><w:t>Oone existing.</w:t></w:r></w:p>",
+  "<w:p w14:paraId=\"30000005\" w14:textId=\"77777777\"><w:pPr><w:pStyle w:val=\"Kop2\"/><w:jc w:val=\"center\"/><w:rPr><w:ins w:id=\"14\" w:author=\"{other}\" w:date=\"{date}\"/></w:rPr><w:pPrChange w:id=\"15\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"><w:pPr/></w:pPrChange></w:pPr><w:ins w:id=\"16\" w:author=\"{other}\" w:date=\"{date}\"><w:r><w:t xml:space=\"preserve\">Oonenew </w:t></w:r><w:r><w:rPr><w:b/><w:rPrChange w:id=\"17\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"><w:rPr/></w:rPrChange></w:rPr><w:t>inserted</w:t></w:r><w:r><w:t xml:space=\"preserve\"> paragraph.</w:t></w:r></w:ins></w:p>",
+  "<w:p w14:paraId=\"30000006\" w14:textId=\"77777777\"><w:r><w:t xml:space=\"preserve\">Otwo existing </w:t></w:r><w:ins w:id=\"18\" w:author=\"{other}\" w:date=\"{date}\"><w:r><w:rPr><w:b/><w:rPrChange w:id=\"19\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"><w:rPr/></w:rPrChange></w:rPr><w:t xml:space=\"preserve\">XXRUNXX </w:t></w:r></w:ins><w:r><w:t>epsilon.</w:t></w:r></w:p>",
+  "<w:p w14:paraId=\"30000007\" w14:textId=\"77777777\"><w:r><w:t>M</w:t></w:r><w:r><w:t>one existing.</w:t></w:r></w:p>",
+  "<w:p w14:paraId=\"30000008\" w14:textId=\"77777777\"><w:pPr><w:pStyle w:val=\"Kop2\"/><w:jc w:val=\"center\"/><w:rPr><w:ins w:id=\"20\" w:author=\"{author}\" w:date=\"{date}\"/></w:rPr><w:pPrChange w:id=\"21\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"><w:pPr/></w:pPrChange></w:pPr><w:ins w:id=\"22\" w:author=\"{author}\" w:date=\"{date}\"><w:r><w:t xml:space=\"preserve\">Monenew </w:t></w:r><w:r><w:rPr><w:b/><w:rPrChange w:id=\"23\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"><w:rPr/></w:rPrChange></w:rPr><w:t>inserted</w:t></w:r><w:r><w:t xml:space=\"preserve\"> paragraph.</w:t></w:r></w:ins></w:p>",
+  "<w:p w14:paraId=\"30000009\" w14:textId=\"77777777\"><w:r><w:t xml:space=\"preserve\">Mtwo existing </w:t></w:r><w:ins w:id=\"24\" w:author=\"{author}\" w:date=\"{date}\"><w:r><w:rPr><w:b/><w:rPrChange w:id=\"25\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"><w:rPr/></w:rPrChange></w:rPr><w:t xml:space=\"preserve\">XXRUNXX </w:t></w:r></w:ins><w:r><w:t>epsilon.</w:t></w:r></w:p>",
+  "<w:p w14:paraId=\"3000000A\" w14:textId=\"77777777\"><w:r><w:t>T</w:t></w:r><w:r><w:t>ail end.</w:t></w:r></w:p>",
+  "<w:sectPr><w:pgSz w:w=\"11906\" w:h=\"16838\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"708\" w:footer=\"708\" w:gutter=\"0\"/><w:cols w:space=\"708\"/></w:sectPr>"
+ ],
+ "join": [
+  "<w:p w14:paraId=\"30000000\" w14:textId=\"61D18296\"><w:pPr><w:spacing w:before=\"240\" w:after=\"0\"/><w:ind w:left=\"720\"/><w:jc w:val=\"center\"/><w:rPr><w:del w:id=\"0\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"/></w:rPr></w:pPr><w:r><w:t>Jone first paragraph.</w:t></w:r></w:p>",
+  "<w:p w14:paraId=\"30000001\" w14:textId=\"77777777\"><w:pPr><w:spacing w:before=\"240\" w:after=\"0\"/><w:ind w:left=\"720\"/><w:jc w:val=\"center\"/><w:pPrChange w:id=\"1\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"><w:pPr><w:spacing w:after=\"480\"/><w:jc w:val=\"right\"/></w:pPr></w:pPrChange></w:pPr><w:r><w:t>Jtwo second paragraph.</w:t></w:r></w:p>",
+  "<w:p w14:paraId=\"30000002\" w14:textId=\"2DF163C7\"><w:pPr><w:spacing w:before=\"240\" w:after=\"0\"/><w:ind w:left=\"720\"/><w:jc w:val=\"center\"/><w:rPr><w:del w:id=\"2\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"/></w:rPr></w:pPr><w:del w:id=\"3\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"><w:r><w:delText>Kone whole paragraph.</w:delText></w:r></w:del></w:p>",
+  "<w:p w14:paraId=\"30000003\" w14:textId=\"77777777\"><w:pPr><w:spacing w:after=\"480\"/><w:jc w:val=\"right\"/></w:pPr><w:r><w:t>Ktwo next paragraph.</w:t></w:r></w:p>",
+  "<w:p w14:paraId=\"30000004\" w14:textId=\"77777777\"><w:pPr><w:spacing w:before=\"240\" w:after=\"0\"/><w:ind w:left=\"720\"/><w:jc w:val=\"center\"/><w:rPr><w:del w:id=\"4\" w:author=\"{other}\" w:date=\"{date}\"/></w:rPr></w:pPr><w:r><w:t>Lone first paragraph.</w:t></w:r></w:p>",
+  "<w:p w14:paraId=\"30000005\" w14:textId=\"77777777\"><w:pPr><w:spacing w:after=\"480\"/><w:jc w:val=\"right\"/></w:pPr><w:r><w:t>Ltwo second paragraph.</w:t></w:r></w:p>",
+  "<w:p w14:paraId=\"30000006\" w14:textId=\"77777777\"><w:pPr><w:spacing w:before=\"240\" w:after=\"0\"/><w:ind w:left=\"720\"/><w:jc w:val=\"center\"/><w:rPr><w:del w:id=\"5\" w:author=\"{other}\" w:date=\"{date}\"/></w:rPr></w:pPr><w:del w:id=\"6\" w:author=\"{other}\" w:date=\"{date}\"><w:r><w:delText>Mone whole paragraph.</w:delText></w:r></w:del></w:p>",
+  "<w:p w14:paraId=\"30000007\" w14:textId=\"77777777\"><w:pPr><w:spacing w:after=\"480\"/><w:jc w:val=\"right\"/></w:pPr><w:r><w:t>Mtwo next paragraph.</w:t></w:r></w:p>",
+  "<w:p w14:paraId=\"30000008\" w14:textId=\"77777777\"><w:r><w:t>Tail end.</w:t></w:r></w:p>",
+  "<w:sectPr><w:pgSz w:w=\"11906\" w:h=\"16838\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"708\" w:footer=\"708\" w:gutter=\"0\"/><w:cols w:space=\"708\"/></w:sectPr>"
+ ],
+ "join-accept": [
+  "<w:p w14:paraId=\"30000001\" w14:textId=\"63982F43\"><w:pPr><w:spacing w:before=\"240\" w:after=\"0\"/><w:ind w:left=\"720\"/><w:jc w:val=\"center\"/></w:pPr><w:r><w:t>Jone first paragraph.Jtwo second paragraph.</w:t></w:r></w:p>",
+  "<w:p w14:paraId=\"30000003\" w14:textId=\"77777777\"><w:pPr><w:spacing w:after=\"480\"/><w:jc w:val=\"right\"/></w:pPr><w:r><w:t>Ktwo next paragraph.</w:t></w:r></w:p>",
+  "<w:p w14:paraId=\"30000005\" w14:textId=\"7B321A6A\"><w:pPr><w:spacing w:after=\"480\"/><w:jc w:val=\"right\"/></w:pPr><w:r><w:t>Lone first paragraph.Ltwo second paragraph.</w:t></w:r></w:p>",
+  "<w:p w14:paraId=\"30000007\" w14:textId=\"77777777\"><w:pPr><w:spacing w:after=\"480\"/><w:jc w:val=\"right\"/></w:pPr><w:r><w:t>Mtwo next paragraph.</w:t></w:r></w:p>",
+  "<w:p w14:paraId=\"30000008\" w14:textId=\"77777777\"><w:r><w:t>Tail end.</w:t></w:r></w:p>",
+  "<w:sectPr><w:pgSz w:w=\"11906\" w:h=\"16838\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"708\" w:footer=\"708\" w:gutter=\"0\"/><w:cols w:space=\"708\"/></w:sectPr>"
+ ],
+ "join-final": {
+  "Jone": [
+   269.7,
+   360.9
+  ],
+  "Jtwo": [
+   416.9,
+   522.6
+  ],
+  "Kone": [
+   264.6,
+   366.9
+  ],
+  "Ktwo": [
+   427.7,
+   522.5
+  ],
+  "Lone": [
+   323.6,
+   522.5
+  ],
+  "Mtwo": [
+   424.0,
+   522.5
+  ],
+  "Tail": [
+   72.1,
+   109.2
+  ]
+ },
+ "join-input-accept": [
+  "<w:p w14:paraId=\"30000000\" w14:textId=\"77777777\"><w:pPr><w:spacing w:before=\"240\" w:after=\"0\"/><w:ind w:left=\"720\"/><w:jc w:val=\"center\"/></w:pPr><w:r><w:t>Jone first paragraph.</w:t></w:r></w:p>",
+  "<w:p w14:paraId=\"30000001\" w14:textId=\"77777777\"><w:pPr><w:spacing w:after=\"480\"/><w:jc w:val=\"right\"/></w:pPr><w:r><w:t>Jtwo second paragraph.</w:t></w:r></w:p>",
+  "<w:p w14:paraId=\"30000002\" w14:textId=\"77777777\"><w:pPr><w:spacing w:before=\"240\" w:after=\"0\"/><w:ind w:left=\"720\"/><w:jc w:val=\"center\"/></w:pPr><w:r><w:t>Kone whole paragraph.</w:t></w:r></w:p>",
+  "<w:p w14:paraId=\"30000003\" w14:textId=\"77777777\"><w:pPr><w:spacing w:after=\"480\"/><w:jc w:val=\"right\"/></w:pPr><w:r><w:t>Ktwo next paragraph.</w:t></w:r></w:p>",
+  "<w:p w14:paraId=\"30000005\" w14:textId=\"79AD83DD\"><w:pPr><w:spacing w:after=\"480\"/><w:jc w:val=\"right\"/></w:pPr><w:r><w:t>Lone first paragraph.</w:t></w:r><w:r><w:t>Ltwo second paragraph.</w:t></w:r></w:p>",
+  "<w:p w14:paraId=\"30000007\" w14:textId=\"77777777\"><w:pPr><w:spacing w:after=\"480\"/><w:jc w:val=\"right\"/></w:pPr><w:r><w:t>Mtwo next paragraph.</w:t></w:r></w:p>",
+  "<w:p w14:paraId=\"30000008\" w14:textId=\"77777777\"><w:r><w:t>Tail end.</w:t></w:r></w:p>",
+  "<w:sectPr><w:pgSz w:w=\"11906\" w:h=\"16838\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"708\" w:footer=\"708\" w:gutter=\"0\"/><w:cols w:space=\"708\"/></w:sectPr>"
+ ],
+ "selection": [
+  "<w:p w14:paraId=\"30000000\" w14:textId=\"77777777\"><w:pPr><w:rPr><w:ins w:id=\"0\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"/></w:rPr></w:pPr><w:r><w:t>Aone existing alpha beta.</w:t></w:r></w:p>",
+  "<w:p w14:paraId=\"7E30636C\" w14:textId=\"21632025\"><w:pPr><w:jc w:val=\"center\"/><w:pPrChange w:id=\"1\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"><w:pPr/></w:pPrChange></w:pPr><w:ins w:id=\"2\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"><w:r><w:t xml:space=\"preserve\">Aonenew </w:t></w:r><w:r><w:rPr><w:b/><w:rPrChange w:id=\"3\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"><w:rPr/></w:rPrChange></w:rPr><w:t>typed</w:t></w:r><w:r><w:t xml:space=\"preserve\"> paragraph.</w:t></w:r></w:ins></w:p>",
+  "<w:p w14:paraId=\"30000001\" w14:textId=\"77777777\"><w:pPr><w:rPr><w:ins w:id=\"4\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"/></w:rPr></w:pPr><w:r><w:t>Atwo existing alpha beta.</w:t></w:r></w:p>",
+  "<w:p w14:paraId=\"6E868BDD\" w14:textId=\"3AB094CC\"><w:pPr><w:jc w:val=\"center\"/><w:rPr><w:b/><w:rPrChange w:id=\"5\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"><w:rPr/></w:rPrChange></w:rPr><w:pPrChange w:id=\"6\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"><w:pPr/></w:pPrChange></w:pPr><w:ins w:id=\"7\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"><w:r><w:rPr><w:b/></w:rPr><w:t>Atwonew typed bold.</w:t></w:r></w:ins></w:p>",
+  "<w:p w14:paraId=\"30000002\" w14:textId=\"23492529\"><w:r><w:t xml:space=\"preserve\">Athree </w:t></w:r><w:ins w:id=\"8\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"><w:r><w:rPr><w:i/><w:rPrChange w:id=\"9\" w:author=\"{author}\" w:date=\"{date}\" w16du:dateUtc=\"{date}\"><w:rPr/></w:rPrChange></w:rPr><w:t>FIRST</w:t></w:r><w:r><w:t xml:space=\"preserve\"> </w:t></w:r></w:ins><w:r><w:t>existing alpha beta.</w:t></w:r></w:p>",
+  "<w:p w14:paraId=\"30000003\" w14:textId=\"77777777\"><w:r><w:t>Tail existing alpha beta.</w:t></w:r></w:p>",
+  "<w:sectPr><w:pgSz w:w=\"11906\" w:h=\"16838\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"708\" w:footer=\"708\" w:gutter=\"0\"/><w:cols w:space=\"708\"/></w:sectPr>"
+ ]
+}

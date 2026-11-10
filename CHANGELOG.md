@@ -5,6 +5,41 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.89 -- unreleased
+
+- **Sections appended at the end, tracked, no longer leave a formatting change on each**
+  (production round 50, R98). Measured first (`tools/tracking_probe.py`,
+  `tests/observations/tracking-word.json`, Word 16.106 for Mac): Word *does* record a
+  `w:pPrChange` / `w:rPrChange` when a later edit formats a paragraph or run that is the
+  same author's pending insertion (a style, an alignment, bold, through the object model or
+  the selection; by another author too), and records none for formatting the text is typed
+  with. What it does not keep is the change on every paragraph typed at the end: each Enter
+  gives the paragraph before a new, inserted mark, and the document's old mark -- with the
+  change recorded on it -- passes on to the new last paragraph, so three styled paragraphs
+  typed at the end carry one `w:pPrChange`, on the last. docx-agent's form for a paragraph
+  inserted last in its container (`insert_paragraph`, Markdown inserts, imported blocks)
+  now does the same: the paragraph before gets the inserted mark and gives up its recorded
+  change, which the new last paragraph's records from the same old properties. Ten
+  `word_insert_markdown` calls at the end, each ending in a heading or list item: 10
+  `w:pPrChange` before, 1 now (Word: 1). A made-up build of 30 paragraphs (headings,
+  lists, a quote, a table) in eight calls: 4 before, 0 now; 61 `w:ins` either way. Accept
+  All and Reject All give what they gave. Formatting of existing text, and a later call's
+  formatting of one's own insertion, are recorded as before -- as Word records them.
+- **The final view names joined paragraphs as Word keeps them** (R99). Measured: accepting a
+  deleted paragraph mark keeps the *last* paragraph -- its element, paraId and properties
+  (Word, tracking the deletion, gave it the first one's beforehand; a deleted mark with no
+  `w:pPrChange` keeps the last one's own), and the final view (No Markup) draws the same.
+  The final view already showed the last paragraph's properties; it now names the joined
+  paragraph by the last one's id too, `joins` listing the ones before it, in order -- in
+  `state` blocks, `word_inspect`, and the Markdown id comment (`<!-- p:B joins p:A -->`,
+  was `<!-- p:A joins p:B -->`); the original view's joins the same way (Word's Reject All
+  keeps the last paragraph too). Any of the ids still finds the block (`range`), and
+  `layout=True` places it. A paragraph wholly deleted (its text and mark) is now named by
+  the paragraph whose text the view shows, not by the deleted one.
+- **`Document.blocks()` says `deleted: True`** for a block wholly pending a tracked deletion:
+  a paragraph whose mark and all of whose text are deleted (or moved away), a table whose
+  rows are all deleted; left out when false. No tool definition changed: token delta 0.
+
 ## 0.1.88 -- unreleased
 
 - **Edits that read a workbook table draft** (production round 50, R100: with block edits on,

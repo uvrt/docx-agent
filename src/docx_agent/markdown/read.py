@@ -13,8 +13,9 @@ effective-formatting model is docx2svg's parse of the serialised bytes.
 
 * ``final`` (also ``current``): insertions and moves' destinations in, deletions and
   moves' sources out, and a paragraph whose mark is deleted (or moved away) joined to the
-  next as docx2svg draws it -- the joined paragraph keeps the first one's id and takes the
-  last one's style and list; an empty one before a table goes; a deleted table row goes.
+  next as docx2svg draws it -- the joined paragraph is the last one, as Word keeps it on
+  accepting (its id, style, list and other properties; ``joins`` names the ones before it);
+  an empty one before a table goes; a deleted table row goes.
 * ``original``: the reverse -- deletions in, insertions out, a paragraph whose mark was
   inserted joined to the next, an inserted row gone.  Formatting changes are not undone:
   the original view shows the original *text* with today's formatting.
@@ -489,14 +490,17 @@ class Reader:
 
     def paragraph(self, elements: list, part: str) -> ParagraphRecord:
         index = self.document._index(part)
-        first = index.entry_for(elements[0])
+        # Paragraphs joined in the view are named by the last one: Word, accepting a deleted
+        # mark (or rejecting an inserted one), keeps the last paragraph -- its element, its id
+        # and its properties (measured, round 50: tools/tracking_probe.py).
+        named = index.entry_for(elements[-1])
         last = self._as_viewed(elements[-1])
         properties = last.find(_W + "pPr")
         style = properties.find(_W + "pStyle") if properties is not None else None
         style_id = style.get(_W + "val") if style is not None else None
-        record = ParagraphRecord(first.id, part, self.document._story_of(part), list(elements), first.volatile,
+        record = ParagraphRecord(named.id, part, self.document._story_of(part), list(elements), named.volatile,
                                  style_id, self.style_name(style_id))
-        record.joins = [index.entry_for(e).id for e in elements[1:]]
+        record.joins = [index.entry_for(e).id for e in elements[:-1]]
         for element in elements:
             # A joined paragraph's text follows the one before directly, as docx2svg draws it.
             _Inline(self, record, element).walk()
