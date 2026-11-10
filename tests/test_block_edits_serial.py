@@ -20,6 +20,15 @@ def test_concurrent_edits_equal_their_commit_order_run_alone(seed, first_fill):
     assert found["drafted"] > 0
 
 
+@pytest.mark.parametrize("seed", [0, 1])
+def test_concurrent_tracked_edits_equal_their_commit_order_run_alone(seed):
+    """Round 50 (R97): every edit a tracked change -- revision ids drawn on drafts, drawn
+    again when each patch applies -- the same as one call at a time, every id once."""
+    found = block_stress.run(seed, threads=4, calls=8, chapters=3, first_fill=bool(seed % 2), tracked=True)
+    assert found["same"], found
+    assert found["drafted"] > 0 and found["revisions"] > 0 and not found["repeated_ids"]
+
+
 @pytest.mark.slow
 @pytest.mark.parametrize("seed", range(2, 8))
 def test_many_callers_long(seed):

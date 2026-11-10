@@ -175,6 +175,23 @@ def test_set_text_tracked_records_only_the_changed_words(box, session):
     assert result.checks["validate"]["new"] == []
 
 
+def test_a_tracked_call_splitting_a_recorded_run_gives_the_copy_an_id_of_its_own(box, session):
+    """Round 50: a tool call is one batch; a record an edit in it repeated (a run with a
+    property change split by a tracked text change) gets an id of its own when it ends, as a
+    library edit's does -- every revision id once."""
+    import re
+
+    d = open_doc(session)
+    ok(box, session, "word_set_tracking", doc=d, on=True, author="Claude")
+    ok(box, session, "word_format", doc=d, targets=["p:3B212964"], bold=True)
+    paragraph = document(session).paragraph("p:3B212964")
+    ok(box, session, "word_set_text", doc=d, target="p:3B212964",
+       text=paragraph.text.replace("24 months", "36 months"))
+    data = document(session).package.read("word/document.xml")
+    ids = re.findall(rb'<w:(?:ins|del|rPrChange|pPrChange)\b[^>]*?\bw:id="(\d+)"', data)
+    assert len(ids) > 3 and len(ids) == len(set(ids))
+
+
 def test_set_text_takes_items_and_refuses_both_forms(box, session):
     d = open_doc(session)
     ok(box, session, "word_set_text", doc=d, items=[{"target": "p:16425160", "text": "Scope of work"},

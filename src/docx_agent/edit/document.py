@@ -2599,11 +2599,15 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
             with self.history.batch():
                 if outermost:
                     self._prune_provenance()  # entries a save left behind: none comes back
+                # Round 50: a record an edit inside repeated gets an id of its own when the
+                # batch ends, as an edit's own does (every tool call is a batch).
+                before = self._revision_id_counts() if outermost else None
                 yield
                 if recording is not None:
                     self._space_written(_typography.recorder())
                 self._follow_text_facts()     # round 36: as each edit does
                 if outermost:
+                    self._unique_revision_ids(before)
                     self._prune_provenance()  # a deleted table's record goes with it
             if outermost:
                 self._note_ids()

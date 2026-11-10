@@ -22,9 +22,10 @@ style given by name that has to be made, a style or list definition changed, the
 document's sequences (:func:`docx_agent.edit.ids.generate`), the facts about the whole document
 the call used (:func:`observe`: the table style most tables use, the list definition the
 document's lists use most, whether the body is one empty paragraph), and what a patch cannot
-carry -- then the call runs as before on the document: ids stamped, a tracked change, an
-annotation id (comments, bookmarks, revisions), revision ids repeated, ids kept from a copy,
-drawing numbers, media, a layout, renames.
+carry -- then the call runs as before on the document: ids stamped, a comment's annotation id,
+a person dropped from the people part, ids kept from a copy, drawing numbers, media, a layout,
+renames.  (Round 50, R97: a tracked change is carried -- its revision ids drawn again when
+the patch applies, its date the time the call ran on the draft, its author the tracking's.)
 
 **The patch** (:meth:`Blocks.prepared`): the body's top-level blocks before and after, from
 ``word/document.xml``'s bytes (each block's own bytes, ids included), compared in order: each
@@ -64,10 +65,18 @@ id ledger, retired ids     read at the new version after the patch (``_note_ids`
 renames (aliases)          must be as they were; a call that renames: whole lock
 stamping                   the document fully stamped (``_fast_ids``); a call that stamps:
                            whole lock
-tracked changes            tracking on: whole lock; revision ids repeated: whole lock
-annotation ids             a bookmark's drawn again when the patch applies (one above the
-                           document's largest), renamed in its marks; comments', revisions':
-                           whole lock
+tracked changes            round 50 (R97): drafted; tracking switched meanwhile: conflict
+                           (ooxml-edit); w:date the session clock when the call ran on the
+                           draft (the edit's time), w:author the tracking's; w16du declared
+                           by the call (the body's head): whole lock
+annotation ids             drawn on the draft from one above its largest; every id the call
+                           wrote from there (bookmarks', revisions', records an edit repeated)
+                           drawn again when the patch applies -- one above the document's
+                           largest then, in the order drawn -- renamed in what it wrote (each
+                           op's blocks of a batch read under them); a comment's: whole lock
+people part                the author listed by the first tracked edit: changed since (made by
+                           another's first), a conflict -- prepared again, it finds the author;
+                           a person dropped (an author's last change gone): whole lock
 footnotes, endnotes        Markdown footnotes: not admitted; the parts: unchanged or conflict
 comments part              unchanged since the draft's version, or conflict
 numbering.xml              unchanged since, or conflict; a list restarted: the part replaced;
@@ -513,14 +522,11 @@ class DraftOps:
             self._draft_cannot("stamping by paragraph")
         return super()._prepare_many(targets)  # type: ignore[misc]
 
-    def _unique_revision_ids(self, before: Any) -> Any:
-        if before is not None and self._revision_id_counts() != before:  # type: ignore[attr-defined]
-            self._draft_cannot("revision ids")
-        return super()._unique_revision_ids(before)  # type: ignore[misc]
-
     def _next_annotation_id(self) -> Any:
         # Round 48: drawn on the draft, drawn again on the document when the patch applies
-        # (a bookmark's: renamed in what the call wrote); any other use keeps the lock.
+        # (a bookmark's: renamed in what the call wrote); round 50 (R97): a revision's too
+        # (a tracked change's, and one given to a record an edit repeated) -- a comment's
+        # keeps the lock.
         value = super()._next_annotation_id()  # type: ignore[misc]
         recording = self.__dict__.get("_recording")
         if recording is not None:
@@ -539,11 +545,20 @@ class DraftOps:
         self._draft_cannot("media")
         return super()._media(part, data)  # type: ignore[misc]
 
-    def _active_tracking(self) -> Any:
-        found = super()._active_tracking()  # type: ignore[misc]
-        if found is not None:
-            self._draft_cannot("tracked")
+    def _tidy_people(self, before: Any) -> Any:
+        # Round 50 (R97): a tracked edit lists its author in the people part (a part write
+        # that is the same whoever makes it first: changed since, a conflict, and the call
+        # prepared again finds the author there).  Dropping a person reads every story for
+        # the authors still in use: the whole document's to say -- the lock.
+        count = self._people_count()
+        found = super()._tidy_people(before)  # type: ignore[misc]
+        if self._people_count() != count:
+            self._draft_cannot("a person removed")
         return found
+
+    def _people_count(self) -> int:
+        people = self._comment_tree("people")  # type: ignore[attr-defined]
+        return len(people) if people is not None else 0
 
     def layout(self, **options: Any) -> Any:
         self._draft_cannot("laid out")
@@ -873,11 +888,12 @@ class Plan:
     relinked: dict[str, str] = field(default_factory=dict)
     remarked: dict[str, str] = field(default_factory=dict)
 
-    def rewritten(self, window: "_Window") -> "_Window":
-        """An op's window as the call's apply writes it (relationship and bookmark ids)."""
+    def rewritten(self, window: "_Window", *, remark: bool = True) -> "_Window":
+        """An op's window as the call's apply writes it (relationship and annotation ids;
+        ``remark`` false: its annotation ids are the document's already)."""
         if self.relinked:
             window = _relinked_window(window, self.relinked)
-        if self.remarked:
+        if self.remarked and remark:
             window = _remarked_window(window, self.remarked)
         return window
 
@@ -1015,17 +1031,20 @@ class Blocks:
             return None
         outputs = [window.after for window in windows] + [after for _p, _b, after in parts if after]
         outputs.append(json.dumps(_said(result), ensure_ascii=False, default=str).encode("utf-8"))
+        drawn: list[int] = []
         if recording.annotations:
-            # Ids drawn for anything but bookmarks (a comment's, a revision's) cannot be
-            # drawn again by their text alone: the lock.
-            drawn = {str(value).encode() for value in recording.annotations}
+            # Round 50 (R97): every annotation id the call wrote above the draft's largest
+            # (each draw is one above the largest in use: a bookmark's, a tracked change's,
+            # one a record an edit repeated got) is drawn again when the patch applies.  A
+            # comment's cannot be drawn again by its text alone (the comments part holds it
+            # too): the lock.
+            base = min(recording.annotations)
             written = [window.after for window in windows] + [after for _p, _b, after in parts if after]
-            every = sum(1 for data in written for found in re.finditer(rb'\bw:id="(\d+)"', data)
-                        if found.group(1) in drawn)
-            marks = sum(1 for data in written for found in _BOOKMARK_ID.finditer(data) if found.group(2) in drawn)
-            if every != marks:
+            if any(int(found.group(1)) >= base for data in written for found in _COMMENT_ID.finditer(data)):
                 draft.why = "annotation ids"
                 return None
+            drawn = sorted({value for data in written for found in _ANNOTATION_ID.finditer(data)
+                            if (value := int(found.group(2))) >= base} | {base})
         item = document._provenance_item()
         if item is not None and change.before(item) is None:
             item = None             # added by the call: the document's version had none
@@ -1041,7 +1060,7 @@ class Blocks:
                      version=draft.committed.version, pool_before=draft.pool,
                      pool_after=document._ledger.pool, before_body=before_bytes, provenance=item,
                      committed_data=getattr(draft.committed, "data", None),
-                     annotations=list(recording.annotations))
+                     annotations=drawn)
 
     def check(self, document: Any, patch: Patch, changed: frozenset[str] | None) -> Plan:
         if changed is None:
@@ -1139,7 +1158,8 @@ class Blocks:
                 placed = [(begin, end, _relinked_window(window, relinked)) for begin, end, window in placed]
         ids: dict[str, str] = {}
         if patch.annotations:
-            # Its bookmarks' ids, drawn again: one above the largest the document has now.
+            # Its annotation ids (bookmarks', revisions'), drawn again: from one above the
+            # largest the document has now, in the order the call drew them.
             offset = document._next_annotation_id() - patch.annotations[0]
             if offset:
                 ids = {str(value): str(value + offset) for value in patch.annotations}
@@ -1187,11 +1207,17 @@ class Blocks:
                     continue
                 befores[path], afters[path], states[path] = state, made_part, made_part
             if body in parts:
-                old, new = read_body(change.before(body)), read_body(change.after(body))
+                op_before, op_after = change.before(body), change.after(body)
+                if plan.remarked and op_before is not None and op_after is not None:
+                    # Round 50: the annotation ids earlier ops drew (a tracked change's) are
+                    # in this op's blocks as it found them: read under the document's ids.
+                    op_before, op_after = _remarked(op_before, plan.remarked), _remarked(op_after, plan.remarked)
+                old, new = read_body(op_before), read_body(op_after)
                 live = read_body(current)
                 if old is None or new is None or live is None:
                     raise BlockConflict("an op's change cannot be read by blocks")
-                windows = [plan.rewritten(window) for window in _windows(old, new, _regions(old, new), [], CONTEXT)]
+                windows = [plan.rewritten(window, remark=False)
+                           for window in _windows(old, new, _regions(old, new), [], CONTEXT)]
                 made = _spliced(current, live, _placed(live, current, windows, old.count), plan.moved)
                 befores[body], afters[body] = current, made
                 current = made
@@ -1513,12 +1539,19 @@ def _relinked_window(window: "_Window", renamed: Mapping[str, str]) -> "_Window"
                                blocks_after=[relink(block) for block in window.blocks_after])
 
 
-_BOOKMARK_ID = re.compile(rb'(<w:bookmark(?:Start|End)\b[^>]*?\bw:id=")(\d+)(")')
+#: An annotation's id where a call may write one it drew (round 50: a bookmark's, a revision's,
+#: a move's range): every annotation (``edit/links.py``'s ``ANNOTATIONS``) but a comment's.
+_ANNOTATION_ID = re.compile(
+    rb'(<w:(?:bookmarkStart|bookmarkEnd|ins|del|moveFrom|moveTo|moveFromRangeStart|moveFromRangeEnd'
+    rb'|moveToRangeStart|moveToRangeEnd|rPrChange|pPrChange|sectPrChange|tblPrChange|trPrChange|tcPrChange'
+    rb'|tblGridChange|numberingChange|cellIns|cellDel|cellMerge|customXml(?:Ins|Del|MoveFrom|MoveTo)Range'
+    rb'(?:Start|End)|permStart|permEnd)\b[^>]*?\bw:id=")(\d+)(")')
+_COMMENT_ID = re.compile(rb'<w:comment(?:RangeStart|RangeEnd|Reference)?\b[^>]*?\bw:id="(\d+)"')
 
 
 def _remarked(data: bytes, ids: Mapping[str, str]) -> bytes:
-    """``data`` with the bookmarks of the ids drawn (``ids``) under the ones drawn again."""
-    return _BOOKMARK_ID.sub(lambda m: m.group(1) + ids.get(m.group(2).decode(), m.group(2).decode()).encode()
+    """``data`` with the annotations of the ids drawn (``ids``) under the ones drawn again."""
+    return _ANNOTATION_ID.sub(lambda m: m.group(1) + ids.get(m.group(2).decode(), m.group(2).decode()).encode()
                             + m.group(3), data)
 
 

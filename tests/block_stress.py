@@ -23,11 +23,14 @@ import copy
 import datetime as dt
 import functools
 import hashlib
+import io
 import json
 import random
+import re
 import sys
 import threading
 import time
+import zipfile
 from collections import Counter
 from typing import Any
 
@@ -383,12 +386,12 @@ def _box(mode: str) -> Toolbox:
 
 
 def run(seed: int, threads: int, calls: int, chapters: int = 4, mode: str = "always",
-        first_fill: bool = False, shape: str = "report", sync: bool = False) -> dict:
+        first_fill: bool = False, shape: str = "report", sync: bool = False, tracked: bool = False) -> dict:
     """One stress run and its replay; ``{"same": bool, ...}`` with what differed.
     ``first_fill``: on a report with no provenance yet (:func:`made`).  ``shape``:
     ``"report"`` (:func:`made`, :func:`plan`) or ``"short"`` (:func:`made_short`, one part per
     thread, :func:`plan_short`).  ``sync``: :func:`plan`'s syncs (round 49), from ``d:rows``
-    and ``d:other``."""
+    and ``d:other``.  ``tracked`` (round 50): every edit a tracked change (:data:`AUTHOR`)."""
     if shape == "short":
         data = made_short(threads, first_fill=first_fill)
         layout: Any = ShortLayout(Document.open(data))
@@ -401,6 +404,8 @@ def run(seed: int, threads: int, calls: int, chapters: int = 4, mode: str = "alw
         box.dispatch(session, "ds_rows", {"id": "rows", "rows": "6"})
         if sync:
             box.dispatch(session, "ds_rows", {"id": "other", "rows": "8"})
+        if tracked:
+            track(box, session, doc)
         plans = (plan_short(seed, threads, calls, layout, doc) if shape == "short"
                  else plan(seed, threads, calls, layout, doc, sync=sync))
         made_calls: list[dict] = []
@@ -437,22 +442,47 @@ def run(seed: int, threads: int, calls: int, chapters: int = 4, mode: str = "alw
         state = session.entry(doc).document.id_state()
         commits = list(recorder.commits)
     order = _order(made_calls, commits)
-    replayed = replay(data, order, threads, sync=sync)
+    replayed = replay(data, order, threads, sync=sync, tracked=tracked)
     differ = []
     for item, again in zip(order, replayed["results"]):
         if item["result"] != again:
             differ.append({"call": item["call"], "name": item["name"], "concurrent": item["result"],
                            "serial": again})
-    same = not differ and not errors and final == replayed["final"] and state == replayed["state"]
+    repeated = repeated_ids(final)
+    same = (not differ and not errors and final == replayed["final"] and state == replayed["state"]
+            and not repeated)
     drafted = [c for c in made_calls if c["block"]]
     return {"same": same, "differ": differ[:3], "errors": errors[:5], "bytes_same": final == replayed["final"],
-            "state_same": state == replayed["state"], "calls": len(made_calls), "commits": len(commits),
+            "state_same": state == replayed["state"], "repeated_ids": repeated[:5],
+            "revisions": revision_count(final), "calls": len(made_calls), "commits": len(commits),
             "drafted": len(drafted),
             "conflicts": sum(len(c["block"].get("conflicts") or []) for c in drafted),
             "locked": sum(1 for c in drafted if c["block"].get("lock")),
             "why": dict(Counter([reason.split(" near ")[0] for c in drafted for reason in c["block"].get("conflicts") or []]
                                 + ["lock: " + c["block"]["lock"] for c in drafted if c["block"].get("lock")])),
             "sha": hashlib.sha256(final).hexdigest()[:16]}
+
+
+_ANNOTATION_ID = re.compile(rb'<w:(bookmarkStart|ins|del|moveFrom|moveTo|rPrChange|pPrChange|tblPrChange|trPrChange'
+                            rb'|tcPrChange|tblGridChange|sectPrChange|numberingChange|cellIns|cellDel)\b[^>]*?\bw:id="(\d+)"')
+
+
+def _annotation_ids(data: bytes) -> list[tuple[bytes, bytes]]:
+    """``(tag, id)`` of every annotation (a bookmark's start, a revision) in ``data``'s parts."""
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        return [found for name in archive.namelist() if name.endswith(".xml")
+                for found in _ANNOTATION_ID.findall(archive.read(name))]
+
+
+def repeated_ids(data: bytes) -> list[str]:
+    """Annotation ids (revisions', bookmarks') written more than once in ``data``'s parts."""
+    counts = Counter(value for _tag, value in _annotation_ids(data))
+    return sorted(value.decode() for value, count in counts.items() if count > 1)
+
+
+def revision_count(data: bytes) -> int:
+    """The revision records in ``data``'s parts."""
+    return sum(1 for tag, _value in _annotation_ids(data) if tag != b"bookmarkStart")
 
 
 def _order(calls: list[dict], commits: list[tuple[int, int]]) -> list[dict]:
@@ -481,7 +511,16 @@ def _order(calls: list[dict], commits: list[tuple[int, int]]) -> list[dict]:
     return out
 
 
-def replay(data: bytes, order: list[dict], threads: int, sync: bool = False) -> dict:
+#: The author of every edit in a tracked run (round 50).
+AUTHOR = "Stress Writer"
+
+
+def track(box: Toolbox, session: Any, doc: str) -> None:
+    """Tracking on for ``doc``: every edit after it a tracked change by :data:`AUTHOR`."""
+    assert box.dispatch(session, "word_set_tracking", {"doc": doc, "on": True, "author": AUTHOR}).ok
+
+
+def replay(data: bytes, order: list[dict], threads: int, sync: bool = False, tracked: bool = False) -> dict:
     """The calls one at a time, in ``order``, each by its own caller, on a fresh session."""
     with _box("off") as box:
         session = box.session(clock=CLOCK)
@@ -489,6 +528,8 @@ def replay(data: bytes, order: list[dict], threads: int, sync: bool = False) -> 
         box.dispatch(session, "ds_rows", {"id": "rows", "rows": "6"})
         if sync:
             box.dispatch(session, "ds_rows", {"id": "other", "rows": "8"})
+        if tracked:
+            track(box, session, doc)
         views = {k: session.view(context={"agent": f"b{k}"}) for k in range(threads)}
         results = [normal(box.dispatch(views[item["thread"]], item["name"], item["arguments"])) for item in order]
         entry = session.entry(doc)
@@ -510,6 +551,7 @@ if __name__ == "__main__":
     parser.add_argument("--shape", default="report", choices=("report", "short"),
                         help="report: chapters of text; short: one all but empty part per thread")
     parser.add_argument("--sync", action="store_true", help="syncs of the table to fill (round 49)")
+    parser.add_argument("--tracked", action="store_true", help="every edit a tracked change (round 50)")
     parser.add_argument("--first-fill", default="odd", choices=("none", "odd", "all"),
                         help="which seeds run on a report with no provenance yet (default: odd ones)")
     args = parser.parse_args()
@@ -518,7 +560,7 @@ if __name__ == "__main__":
         started = time.perf_counter()
         first = args.first_fill == "all" or (args.first_fill == "odd" and seed % 2 == 1)
         found = run(seed, args.threads, args.calls, args.chapters, args.mode, first_fill=first, shape=args.shape,
-                    sync=args.sync)
+                    sync=args.sync, tracked=args.tracked)
         print(json.dumps({"seed": seed, "first_fill": first, "s": round(time.perf_counter() - started, 1),
                           **{k: v for k, v in found.items() if k not in ("differ",)}}), flush=True)
         if not found["same"]:
