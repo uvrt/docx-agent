@@ -6,7 +6,8 @@ document's last committed version (:func:`docx_agent.layout.read_copy`'s ``make.
 with no lock of the document held, then applies what it changed to the document under the
 lock, briefly, when what it read is as it was (ooxml-edit's ``tools/blocks.py`` says the
 protocol).  What runs on a draft: ``word_set_text``, ``word_insert_markdown`` (``end``,
-``before:``, ``after:``; no pictures or footnotes) and ``word_edit_table``'s ``set_cells``; and
+``before:``, ``after:``; no pictures or footnotes) and ``word_edit_table``'s ``set_cells`` and
+``sync`` (round 49); and
 (round 48, R83) the edits of known blocks -- ``replace_text`` in a range, ``word_format`` of
 blocks, runs, spans or text found within them, ``word_format_table``, ``word_delete`` of a
 block, span or text found within one, ``word_links`` adding a link or a bookmark to a range --
@@ -179,7 +180,8 @@ def admits(tool: str, arguments: Mapping[str, Any]) -> bool:
                 and all(_plain(sample) for sample in ([likes] if isinstance(likes, str) else likes) if sample))
     if tool == "word_edit_table":
         cells = arguments.get("cells") or []
-        return (arguments.get("action") == "set_cells" and _plain(arguments.get("table"))
+        # Round 49 (R90): a sync is confined to its table (rows added and deleted in it).
+        return (arguments.get("action") in ("set_cells", "sync") and _plain(arguments.get("table"))
                 and _source(arguments.get("from"))
                 and all(isinstance(cell, Mapping) and _source(cell.get("from")) and _from_datasets(cell.get("text"))
                         for cell in cells))
