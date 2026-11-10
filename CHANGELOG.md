@@ -5,7 +5,7 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
-## 0.1.84 -- unreleased
+## 0.1.86 -- unreleased
 
 - **A bookmark over blocks, tables included** (round 49, R91): `add_bookmark` (and
   `word_links` `add_bookmark`'s `target`) takes a table, a block-level content control, a
@@ -29,6 +29,57 @@ snapshot commit; the development history before it is summarised here.
   table given as a table: its table), where `paragraph()` on a table returned an object that
   failed later. `to_markdown(range=cc:...)` of a block control now holds its content, not
   the opening comment alone. `tests/test_block_text.py`.
+- Tokens: `word_links`' `target` description says `add_bookmark` takes blocks: +12 to every
+  definition (15,616 -> 15,628) and to a reviewer's (8,346 -> 8,358), none to the core.
+
+## 0.1.85 -- unreleased
+
+- **`check` says when the words are another language than their tag** (round 49, R94): the
+  layout fact `text_language` (`include: ["layout"]`; read from the document, so there where
+  the layout failed too). `document`: the default paragraph style's tag next to the
+  language most of the text is in by its words; where they differ, the paragraphs that
+  follow that are counted (`mismatched`), not listed, and `fix` sets the document's
+  language (`word_styles` `set_language`). `mismatched`: the other paragraphs in another
+  language than the tag most of their text has (`source`: `default`, `style:<name>`,
+  `run`), consecutive top-level ones as one `range`, with `confidence` and `words`; at most
+  20, the rest counted. A check of pages or a range says `checked` (its words), with no
+  document fix. The detector is new and has no dependency: function-word profiles and
+  spelling cues written for it (English, French, Dutch, German, Spanish, Italian,
+  Portuguese), scoring a paragraph of at least 8 words with function words among them
+  (names, placeholder Latin: `unclear`, counted). Measured on made-up text written for it
+  (`tools/language_accuracy.py`, three sets, 126 paragraphs, windows cut anywhere): at 8
+  words 97.3% of the windows judged are right and none is listed as another language
+  (wrong and sure); from 15 words 99.6%; every whole paragraph right. 9 ms for a
+  127-paragraph document. Tool definitions unchanged. tests/test_text_language.py.
+
+## 0.1.84 -- unreleased
+
+- **A table kept in step with a dataset by key** (round 49, R90: a 127-row table had every row
+  rewritten, the dropped row deleted separately, the new one put as a second line in a cell).
+  `word_edit_table` `sync` with `from: d:<id>`: the key column (`key`: a header label, an
+  index or the source column; default the first column taken), the columns taken
+  (`from_columns`: one source column per table column, `""` for one left as it is; by default
+  each column whose header label is a source column's name, the case aside). A new key's row
+  is added as `insert_row` makes one beside a data row (its formatting; a header row's
+  likeness made a body row), in key order where the table's keys are (digit runs compared as
+  numbers), else in the source's order; matched rows' cells that differ are rewritten as
+  `set_cells` writes them, equal cells and the key cell never; keys gone are listed
+  (`missing`), or deleted with `remove: true`. Header rows, total rows (the look's last row;
+  any row holding a formula field such as `=SUM(ABOVE)`), rows with no key and rows deleted
+  as tracked changes are left as they are. Tracked when tracking is on. Keys are compared with
+  their case; a table and a source key that differ only by case are said in a note. Duplicate
+  keys in the table or the source are refused naming them; rows to add like a row whose one
+  cell spans two columns taken are refused before any change, with the `from_columns` that
+  takes one of them. Values
+  keep their source: the table's record when every data row is a source row afterwards, else
+  each cell written (a table record made untrue dropped, with a note). The result counts
+  `added`, `changed` (keys and the columns changed) and `missing` / `removed`, 20 keys listed
+  each, the rest counted; nothing to change is no change (rule 3). Rows are added in one pass
+  where nothing needs stamping (`Document._rows_beside`, the bytes of one by one). On drafts
+  when its source is a dataset. The 127-row case (one added, one gone, three changed): one call,
+  about 0.2 s and 0.9k characters of result, against 0.3 s and 14.8k for `set_cells from`
+  rewriting every row. tests/test_table_sync.py; `block_stress --sync`. +68 tokens to every
+  definition, none to the core.
 
 ## 0.1.83 -- unreleased
 

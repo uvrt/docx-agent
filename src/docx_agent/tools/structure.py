@@ -400,7 +400,7 @@ def word_notes(call: Any, doc: str, action: str, kind: str = "footnote", at: str
            {"doc": DOC,
             "action": string("What to do.", enum=["list", "add_hyperlink", "add_bookmark", "rename_bookmark",
                                                    "remove_bookmark"]),
-            "target": string("add_*: range or paragraph.", optional=True),
+            "target": string("add_*: range or paragraph; add_bookmark: or blocks (t:X, p:A..t:B).", optional=True),
             "find": string("add_*: or text occurring once.", optional=True),
             "url": string("add_hyperlink: external address.", optional=True),
             "bookmark": string("Bookmark name; add_hyperlink: link to it instead of url.",
