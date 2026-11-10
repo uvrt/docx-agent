@@ -1705,7 +1705,9 @@ are the write half's.
   item's and a note paragraph's at its end (`- Item <!-- p:... -->`, where a leading
   comment would make the line an HTML block); a code block's lists one id per line. The
   comment also says `volatile` for a positional or repeated id (reading never stamps),
-  `joins <ids>` for paragraphs the view joined, `style: <name>` for a style no rule names,
+  `joins <ids>` for paragraphs the view joined (a joined paragraph is named by the last of
+  them, as Word keeps it when the deleted mark is accepted, measured in round 50; `joins`
+  are the ones before it), `style: <name>` for a style no rule names,
   `empty` for a paragraph with no text, and takes in a bookmark or page break standing at
   the start of the line. A GFM table's cells are named by the ids its own implies
   (`t:<id>/c<r>,<c>`); the HTML fallback writes `data-id` on the table and every cell and
@@ -2103,6 +2105,14 @@ by Word as by us; a merge across differs both ways (recorded below).
 - *Where Word's own form cannot be accepted or rejected* (a mark at a container's end),
   the form chosen is one Word handles (above); Word's typing form (the previous mark
   inserted) is used only at a container's end.
+- *Formatting what is one's own pending insertion* (round 50, R98; `tools/tracking_probe.py`):
+  Word records it -- a later style, alignment or bold on a paragraph or run the same author
+  just typed gets its `w:pPrChange` / `w:rPrChange` -- and records nothing for formatting the
+  text is typed with. Paragraphs typed one after another at a container's end keep one
+  `w:pPrChange`, on the last: the old mark, and the change recorded on it, pass on with each
+  Enter, the paragraph before getting a fresh inserted mark (`track.pass_mark`). A run of
+  one's own insertion formatted by a later edit is the one place docx-agent records less
+  than Word (no `w:rPrChange`), kept from E3.
 - *Which element survives* a tracked move (the destination: a new paragraph, the caller's
   id an alias of it), a join (the last) or an end-of-container insertion is Word's; a
   reject therefore keeps the content and properties, not always the paraId, of what was

@@ -19,20 +19,23 @@ run's effective formatting: the same as its paragraph's baseline).  Lengths are 
 * ``styles``: every style the blocks use, by name: ``id``, ``kind``, ``based_on`` (a name).
 * ``blocks``, in order, each one of:
 
-  - **paragraph** -- ``id``; ``volatile`` (true when the id is positional or a repeat:
-    it will change when the paragraph is first edited); ``joins`` (ids of paragraphs the
-    view joins into this one); ``story``; ``style`` (name); ``markdown`` (the construct:
-    ``paragraph``, ``heading``, ``bullet``, ``ordered``, ``quote``, ``code``, ``rule``) and
-    ``level``; ``list`` {``num_id``, ``level``, ``format``, ``label``, ``number``,
-    ``from_style``}; ``t`` (the text in the view: ``\\t`` tab, ``\\v`` line break);
-    ``effective`` (the paragraph's formatting and its runs' baseline: ``font``, ``sz``,
-    ``color``, ``b``, ``i``, ``alignment``, ``indent`` {left, right, first_line, hanging},
-    ``spacing`` {before, after, line, rule}, ``keep_with_next``, ``keep_together``,
-    ``page_break_before``, ``outline_level``); ``runs`` (``t``, ``style``, ``direct`` --
-    the properties declared on the run itself -- and the effective values that differ from
-    the baseline: ``b``, ``i``, ``u``, ``strike``, ``dstrike``, ``caps``, ``small_caps``,
-    ``sz``, ``font``, ``color``, ``highlight``, ``valign``; ``rev`` when the run is inside a
-    revision); ``links`` (``id``, ``href``, ``t``); ``bookmarks``; ``notes``; ``comments``;
+  - **paragraph** -- ``id``; ``volatile`` (true when the id is positional or a repeat: it
+    will change when the paragraph is first edited); ``joins`` (ids of paragraphs the view
+    joins into this one, in order: a paragraph whose mark is deleted joins the next, and the
+    joined paragraph is named by the last one, whose properties it has -- as Word keeps the
+    last paragraph on accepting the deletion, measured); ``story``; ``style`` (name);
+    ``markdown`` (the construct: ``paragraph``, ``heading``, ``bullet``, ``ordered``,
+    ``quote``, ``code``, ``rule``) and ``level``; ``list`` {``num_id``, ``level``,
+    ``format``, ``label``, ``number``, ``from_style``}; ``t`` (the text in the view: ``\\t``
+    tab, ``\\v`` line break); ``effective`` (the paragraph's formatting and its runs'
+    baseline: ``font``, ``sz``, ``color``, ``b``, ``i``, ``alignment``, ``indent`` {left,
+    right, first_line, hanging}, ``spacing`` {before, after, line, rule},
+    ``keep_with_next``, ``keep_together``, ``page_break_before``, ``outline_level``);
+    ``runs`` (``t``, ``style``, ``direct`` -- the properties declared on the run itself --
+    and the effective values that differ from the baseline: ``b``, ``i``, ``u``, ``strike``,
+    ``dstrike``, ``caps``, ``small_caps``, ``sz``, ``font``, ``color``, ``highlight``,
+    ``valign``; ``rev`` when the run is inside a revision); ``links`` (``id``, ``href``,
+    ``t``); ``bookmarks``; ``notes``; ``comments``;
     ``revisions``; ``pictures`` (``id``, ``name``, ``alt``, ``floating``, ``size``);
     ``drawings`` (``id``, ``kind``, ``name``, ``alt``, ``floating``; a chart's ``chart``
     and a SmartArt diagram's ``diagram``, ooxml-edit's JSON of either, which
@@ -229,7 +232,7 @@ class _Writer:
         if record.section is not None:
             out["section"] = {"id": record.section[0], "type": record.section[1]}
         if self.with_layout:
-            self._place(out, record.id)
+            self._place(out, record.id, record.joins)
         if self.with_xml:
             out["xml"] = [base64.b64encode(etree.tostring(e)).decode("ascii") for e in record.elements]
         return out
@@ -268,8 +271,13 @@ class _Writer:
             out["xml"] = base64.b64encode(etree.tostring(record.element)).decode("ascii")
         return out
 
-    def _place(self, out: dict, identifier: str) -> None:
+    def _place(self, out: dict, identifier: str, joined: "list[str] | tuple" = ()) -> None:
         where = self.layout().where(identifier)
+        for other in joined:
+            # docx2svg draws a joined paragraph's lines under the first paragraph's id.
+            if where:
+                break
+            where = self.layout().where(other)
         if not where:
             out["unknown"] = {"reason": getattr(where, "reason", "not-drawn"),
                               "after_page": getattr(where, "after_page", None)}

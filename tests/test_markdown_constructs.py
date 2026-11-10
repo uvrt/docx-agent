@@ -256,14 +256,15 @@ def test_moves(review):
 
 
 def test_deleted_paragraph_marks_join(review):
-    # As docx2svg draws the final view: one paragraph, the first one's id.
-    assert ("<!-- p:7C000006 joins p:7C000007 -->\n"
+    # As docx2svg draws the final view: one paragraph; named, as Word keeps it on accepting,
+    # by the last one (round 50, R99).
+    assert ("<!-- p:7C000007 joins p:7C000006 -->\n"
             "This paragraph's mark is deleted, so it joins the next one in the final view.") in review["final"]
     assert "<!-- p:7C000007 -->\nthe next one in the final view." in review["original"]
     assert "so it joins {--¶--}<!-- rev:108 Bob -->" in review["markup"]
     # A paragraph deleted whole: gone from the final view (joined, empty, into the next).
     assert "A whole deleted paragraph" not in review["final"]
-    assert "<!-- p:7C000009 joins p:7C00000A -->\nText after the deleted paragraph." in review["final"]
+    assert "<!-- p:7C00000A joins p:7C000009 -->\nText after the deleted paragraph." in review["final"]
     # One inserted whole: gone from the original view.
     assert "A whole inserted paragraph" not in review["original"]
     assert "{++A whole inserted paragraph.++}<!-- rev:109 Alice -->{++¶++}<!-- rev:110 Alice -->" in review["markup"]
