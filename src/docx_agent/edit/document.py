@@ -1215,14 +1215,140 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
 
     def paragraph(self, identifier: str) -> Paragraph:
         """A paragraph by id (``p:3B212964``, ``p@body/7``, an alias); ``KeyError`` if none.
-        ``doc.paragraph("p:3B212964").set_text("New text.")``."""
-        self._resolve(identifier)
+        ``doc.paragraph("p:3B212964").set_text("New text.")``.  An id of another kind -- a
+        table, a content control, a cell -- is a ``KeyError`` naming its kind and what reads
+        it (:meth:`block_text` gives any block's text; round 49, R92)."""
+        self._of_kind(identifier, ParagraphEntry, "paragraph")
         return Paragraph(self, identifier)
 
     def table(self, identifier: str) -> Table:
-        """A table by id (``t:...``); ``KeyError`` if none."""
-        self._resolve(identifier)
+        """A table by id (``t:...``); ``KeyError`` if none, or -- naming its kind and what
+        reads it -- if the id is of another kind (round 49, R92)."""
+        self._of_kind(identifier, TableEntry, "table")
         return Table(self, identifier)
+
+    def _of_kind(self, identifier: str, wanted: type, name: str) -> None:
+        """``KeyError`` unless ``identifier`` names a ``wanted`` entry: for one of another
+        kind, a message naming that kind, the call that reads it and :meth:`block_text`."""
+        from .addresses import AddressError
+
+        try:
+            found = self._resolve(identifier)[1]
+        except KeyError as error:
+            if not (isinstance(identifier, str) and identifier.startswith(("cc:", "cc@"))):
+                raise AddressError(f"{error.args[0] if error.args else error}; block_text({identifier!r}) gives "
+                                   "the text of any block, span, cell or control",
+                                   getattr(error, "options", [])) if isinstance(error, AddressError) else error
+            try:
+                control = self.content_control(identifier)
+                level = control.level
+            except KeyError:
+                raise error from None
+            part, sdt = self._control(identifier)
+            if name == "table":
+                inner = [self._index(part).entry_for(table).id for table in sdt.iter(W_TBL)][:3]
+            elif level == "inline":
+                holder = sdt.getparent()
+                while holder is not None and holder.tag != W_P:
+                    holder = holder.getparent()
+                inner = [self._index(part).entry_for(holder).id] if holder is not None else []
+            else:
+                inner = [entry.id for entry in self._entries_in(part, [sdt])][:3]
+            what = "the paragraph it is in" if level == "inline" else f"the {name}s in it"
+            where = f"; {what}: {', '.join(inner)}" if inner else ""
+            raise AddressError(f"{identifier} is a content control ({control.kind}, {level} level), not a {name}: "
+                               f"content_control({identifier!r}) reads it, block_text({identifier!r}) gives its "
+                               f"text{where}", inner) from None
+        if not isinstance(found, wanted):
+            if isinstance(found, ParagraphEntry):
+                holder = found.element.getparent()
+                while holder is not None and holder.tag != W_TBL:
+                    holder = holder.getparent()
+                table = self._index(self._resolve(identifier)[0]).entry_for(holder) if holder is not None else None
+                if table is not None:       # a paragraph in a table, where its table was meant
+                    raise AddressError(f"{identifier} is a paragraph in table {table.id}: give the table "
+                                       f"(block_text({identifier!r}) gives the paragraph's text)", [table.id])
+            kind, reader = ("table", "table") if isinstance(found, TableEntry) else ("paragraph", "paragraph")
+            raise AddressError(f"{identifier} is a {kind}, not a {name}: {reader}({identifier!r}) reads it, "
+                               f"block_text({identifier!r}) gives its text", [found.id])
+
+    def block_text(self, identifier: str, *, view: str = "current") -> str:
+        """The plain text of a block, whatever its kind (round 49, R92)::
+
+            doc.block_text("t:3F2A1B0C")   # 'Code\tAmount\nK7-1\t12'
+
+        * a paragraph -- its text (a section break's paragraph: its text, often empty);
+        * a table -- its rows, one per line, each row's cells separated by a tab (a merged
+          cell once; a cell of several paragraphs keeps their line breaks);
+        * a content control -- the text of what it holds (its blocks', or its text in a
+          line); a cell or row (``t:X/c1,1``, ``tr:...``) as in a table;
+        * a span of blocks (``p:A..t:B``, ``p:A..``), a heading's range (``h:p:A``), a
+          section (``s:2``) or a story (``body``, ``header1``) -- its blocks' texts, one per
+          line;
+        * a text range or bookmark -- its text (:meth:`range`), paragraphs one per line (a
+          bookmark's in the current view).
+
+        ``view`` as :meth:`Paragraph.text_in`: ``current`` (insertions in, deletions out),
+        ``original`` or ``markup``.  ``KeyError`` for an id the document lacks."""
+        from .addresses import is_text_range
+
+        if view not in _text.VIEWS:
+            raise ValueError(f"no text view {view!r}: {', '.join(_text.VIEWS)}")
+        if not isinstance(identifier, str) or not identifier.strip():
+            raise KeyError(f"an id is empty ({identifier!r}): give a block id (p:..., t:..., cc:...)")
+        identifier = self._expand_heading(identifier)
+        part = self._part_for_story(identifier)
+        if part is not None:
+            root = self.package.tree(part)
+            body = root.find(_W + "body")
+            blocks = list(root if body is None else body)
+            if root.tag in (_W + "footnotes", _W + "endnotes", _W + "comments"):
+                blocks = [block for note in blocks for block in note]       # each note's blocks
+            return _blocks_text(blocks, view)
+        if span_ends(identifier) is not None:
+            return _blocks_text(self._blocks_of(identifier)[0], view)
+        if is_text_range(identifier):
+            return self.range(identifier, view=view).text
+        if identifier.startswith(("s:", "s@")):
+            return _blocks_text(self._section_blocks(identifier), view)
+        if identifier.startswith(("cc:", "cc@")):
+            part, sdt = self._control(identifier)
+            from .annotations import control_level
+
+            if control_level(sdt) == "inline":
+                return self.content_control(identifier).text if view == "current" else _inline_control_text(sdt, view)
+            return _blocks_text([sdt], view)
+        container = self._table_part_element(identifier)
+        if container is not None:
+            element = container[1][0]
+            return _row_text(element, view) if element.tag == _W + "tr" else _cell_text(element, view)
+        try:
+            found = self._resolve(identifier)[1]
+        except KeyError:
+            if identifier.startswith("bm:") or not re.search(r"[:@/#]", identifier):
+                return self.bookmark(identifier).text                    # a bookmark: its text
+            raise
+        return _blocks_text([found.element], view)
+
+    def _section_blocks(self, identifier: str) -> list[Element]:
+        """The body's top-level blocks of a section, in order: those after the previous
+        section's break through the one holding this section's break."""
+        wanted = self._section_record(identifier)[0]
+        body = self.package.tree(self.package.document_part()).find(_W + "body")
+        ends = {id(paragraph): record_id for record_id, _, paragraph in self._section_records()
+                if paragraph is not None}
+        current: list[Element] = []
+        for child in body:
+            if not isinstance(child.tag, str) or child.tag not in _MOVABLE:
+                continue
+            current.append(child)
+            closing = ends.get(id(child)) if child.tag == W_P else next(
+                (ends[id(p)] for p in child.iter(W_P) if id(p) in ends), None)
+            if closing is not None:
+                if closing == wanted:
+                    return current
+                current = []
+        return current
 
     def get(self, identifier: str):
         """Whatever an id names: a paragraph, run, table, row, cell, section, story,
@@ -2644,6 +2770,72 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
 
 #: Blocks a section is made of.
 _MOVABLE = (W_P, W_TBL, _W + "sdt", _W + "customXml")
+
+
+def _blocks_text(elements: list[Element], view: str) -> str:
+    """The plain text of blocks (:meth:`Document.block_text`): one line per paragraph, a
+    table's rows one per line with their cells separated by tabs, a control's or custom XML
+    element's blocks as theirs; markers between blocks add nothing."""
+    lines = []
+    for element in elements:
+        tag = element.tag if isinstance(element.tag, str) else None
+        if tag == W_P:
+            lines.append(_text.paragraph_text(element, view))
+        elif tag == W_TBL:
+            lines += [_row_text(row, view) for row in _own(element, "tr") if _row_shown(row, view)]
+        elif tag in (_W + "sdt", _W + "customXml"):
+            content = element.find(_W + "sdtContent") if tag == _W + "sdt" else element
+            if content is not None:
+                lines.append(_blocks_text(list(content), view))
+    return "\n".join(lines)
+
+
+def _own(element: Element, name: str) -> list[Element]:
+    """``element``'s ``w:<name>`` descendants that are its own: not those of a table nested
+    in it (rows and cells inside controls or custom XML are its own)."""
+    wanted = _W + name
+    stop = (_W + "tbl", _W + "tc", _W + "tr")
+    out = []
+
+    def walk(node: Element) -> None:
+        for child in node:
+            if not isinstance(child.tag, str):
+                continue
+            if child.tag == wanted:
+                out.append(child)
+            elif child.tag not in stop:
+                walk(child)
+
+    walk(element)
+    return out
+
+
+def _row_shown(row: Element, view: str) -> bool:
+    """Whether a row is in ``view``: a deleted row (``w:trPr/w:del``) is not in the current
+    one, an inserted row (``w:trPr/w:ins``) not in the original."""
+    gone = {"current": "del", "original": "ins"}.get(view)
+    return gone is None or row.find(f"{_W}trPr/{_W}{gone}") is None
+
+
+def _row_text(row: Element, view: str) -> str:
+    return "\t".join(_cell_text(cell, view) for cell in _own(row, "tc"))
+
+
+def _cell_text(cell: Element, view: str) -> str:
+    return _blocks_text(list(cell), view)
+
+
+def _inline_control_text(sdt: Element, view: str) -> str:
+    """An inline control's text in ``view`` (its content's characters)."""
+    paragraph = sdt.getparent()
+    while paragraph is not None and paragraph.tag != W_P:
+        paragraph = paragraph.getparent()
+    content = sdt.find(_W + "sdtContent")
+    if paragraph is None or content is None:
+        return ""
+    nodes = list(content.iter())  # held: one proxy per element, stable id()s
+    inside = {id(n) for n in nodes}
+    return "".join(a.char for a in _text.atoms(paragraph, view) if id(a.node) in inside)
 
 #: A text range's id (``p:A@4:11``, ``p:A@5``, ``p:A@3..p:B@8``), not a positional block id
 #: (``p@body/7``, which the ``@`` of a range may follow).

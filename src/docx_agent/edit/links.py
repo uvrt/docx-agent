@@ -34,6 +34,7 @@ from lxml import etree
 from ..oxml.xml import Element, make, remove
 from . import inline as _inline
 from . import text as _text
+from .addresses import is_text_range, span_ends
 from .ids import ParagraphEntry
 from .ranges import TextRange
 
@@ -44,6 +45,13 @@ _W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 _R = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
 REL_HYPERLINK = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink"
 W_HYPERLINK = _W + "hyperlink"
+_W_P = _W + "p"
+_W_TBL = _W + "tbl"
+_W_SDT = _W + "sdt"
+#: Range markers that may stand beside blocks (not blocks themselves).
+_MARKERS = frozenset(_W + name for name in (
+    "bookmarkStart", "bookmarkEnd", "commentRangeStart", "commentRangeEnd", "moveFromRangeStart",
+    "moveFromRangeEnd", "moveToRangeStart", "moveToRangeEnd", "permStart", "permEnd", "proofErr"))
 _NAME = re.compile(r"[^\W\d_][\w]{0,39}")
 #: Word's own hidden cross-reference bookmarks (Insert > Cross-reference names its target
 #: ``_Ref`` and nine digits): a name a caller may give too.
@@ -550,13 +558,28 @@ class LinkOps:
 
     # -- bookmarks ---------------------------------------------------------------------------
 
-    def add_bookmark(self: "Document", where: TextRange, name: str) -> "EditResult":
+    def add_bookmark(self: "Document", where: "TextRange | str", name: str) -> "EditResult":
         """Bookmark a range (an empty one marks a place) under ``name``.  A bookmark of that
         name marking exactly this range already is as asked: no change, said in ``warnings``
-        (round 27); one elsewhere is refused."""
+        (round 27); one elsewhere is refused.
+
+        ``where`` is a :class:`TextRange` or an address: a range id, a paragraph, a cell --
+        or blocks (round 49, R91): a table (``t:X``), a block-level content control, a span
+        of blocks (``p:A..t:B``, tables included) or a heading's range (``h:p:A``).  Blocks
+        are marked as Word's Insert > Bookmark marks a selection of them (measured): the
+        start before the first block's text (a table's: its first cell's), the end after
+        the last paragraph's text -- or, when the span ends on a table, after the table:
+        beside it, or inside it after its last row when no text follows it
+        (:func:`_table_end`).  The bookmark then reads as the text from its first block's
+        through its last block's, so ``bm:Name`` addresses those blocks.  A content control
+        as the first block has the start before it (``w:displacedByCustomXml="next"``), as
+        the last the end after it (:func:`_control_end`)."""
         from .document import EditError, EditResult
 
         check_name(name)
+        first_block = last_block = None
+        if isinstance(where, str):
+            where, first_block, last_block = self._bookmark_place(where)
         markers = self._bookmark_markers()
         existing = next((known for known in markers if known.casefold() == name.casefold()), None)
         if existing is not None:
@@ -572,21 +595,62 @@ class LinkOps:
             if not 0 <= offset <= len(_text.atoms(entry.element)):
                 raise EditError(f"{where.id} is outside its paragraphs' text")
         with self._edit():
-            renames = self._prepare(part, [first, last])
+            touched = [entry for entry, block in ((first, first_block), (last, last_block)) if block is None]
+            renames = self._prepare(part, touched)
             mark_id = str(self._next_annotation_id())
             end = make("w:bookmarkEnd")
             end.set(_W + "id", mark_id)
-            parent, position = _inline.position(last.element, where.end)
+            if last_block is None:
+                parent, position = _inline.position(last.element, where.end)
+            elif last_block.tag == _W_TBL:
+                parent, position = _table_end(last_block)
+            else:
+                parent, position = _control_end(last_block)
             parent.insert(position, end)
             start = make("w:bookmarkStart")
             start.set(_W + "id", mark_id)
             start.set(_W + "name", name)
-            parent, position = _inline.position(first.element, where.start)
+            if first_block is None:
+                parent, position = _inline.position(first.element, where.start)
+            else:
+                start.set(_W + "displacedByCustomXml", "next")
+                parent = first_block.getparent()
+                position = parent.index(first_block)
             if parent is end.getparent() and position > parent.index(end):
                 position = parent.index(end)
             parent.insert(position, start)
             self.package.mark_dirty(part)
         return EditResult(f"bm:{name}", created=[f"bm:{name}"], renamed=renames)
+
+    def _bookmark_place(self: "Document", address: str) -> tuple[TextRange, Element | None, Element | None]:
+        """The text a bookmark over ``address`` marks; the content control its start goes
+        before, when ``address`` is blocks starting on one; the table or control its end
+        goes after, when they end on one (``None``: the range's own start or end).  Text
+        addresses read as :meth:`range` reads them."""
+        address = self._expand_heading(address)
+        elements = None
+        if span_ends(address) is not None:
+            elements, part = self._blocks_of(address)
+        elif not is_text_range(address):
+            try:
+                part, entry = self._resolve_block(address)
+            except (KeyError, ValueError):
+                entry = None
+            if entry is not None and not isinstance(entry, ParagraphEntry):
+                elements = [entry.element]
+        if elements is None:
+            return self.range(address), None, None
+        index = self._index(part)
+        paragraphs = [index.entry_for(p) for element in (elements[0], elements[-1]) for p in element.iter(_W_P)]
+        paragraphs = [p for p in paragraphs if isinstance(p, ParagraphEntry)]
+        if not paragraphs:
+            from .document import EditError
+
+            raise EditError(f"{address} holds no paragraph to mark")
+        first, last = paragraphs[0], paragraphs[-1]
+        where = TextRange(self, first.id, 0, last.id, len(_text.atoms(last.element)))
+        return (where, elements[0] if elements[0].tag == _W_SDT else None,
+                elements[-1] if elements[-1].tag in (_W_TBL, _W_SDT) else None)
 
     @staticmethod
     def _same_range(one: TextRange, other: TextRange) -> bool:
@@ -725,6 +789,37 @@ class LinkOps:
             self.package.mark_dirty(part)
         return EditResult(renames.get(entry.id, entry.id), renamed=renames,
                           unknown=[f"PAGEREF {target.name}"] if unknown else [])
+
+
+def _table_end(table: Element) -> tuple[Element, int]:
+    """Where a bookmark over blocks ending on ``table`` puts its end, as Word writes it
+    (round 49, R91; measured in Word for Mac): right after the table when a paragraph with
+    text follows it, inside the table after its last row when an empty paragraph does --
+    and so, unmeasured (Word never leaves a table last), where nothing or a table follows."""
+    after = table.getnext()
+    while after is not None and (not isinstance(after.tag, str) or after.tag in _MARKERS):
+        after = after.getnext()
+    if after is not None and after.tag == _W_P and _text.atoms(after):
+        parent = table.getparent()
+        return parent, parent.index(table) + 1
+    return table, len(table)
+
+
+def _control_end(control: Element) -> tuple[Element, int]:
+    """Where a bookmark over blocks ending on a block-level content control puts its end, as
+    Word writes it (round 49, R91; measured): right after the control -- or, when a table
+    follows it, in that table's first cell before its first paragraph (Word's end of the
+    control's range is the table's start)."""
+    after = control.getnext()
+    while after is not None and (not isinstance(after.tag, str) or after.tag in _MARKERS):
+        after = after.getnext()
+    if after is not None and after.tag == _W_TBL:
+        cell = next(after.iter(_W + "tc"), None)
+        if cell is not None:
+            properties = cell.find(_W + "tcPr")
+            return cell, 0 if properties is None else cell.index(properties) + 1
+    parent = control.getparent()
+    return parent, parent.index(control) + 1
 
 
 def link_anchor(node: Element) -> str | None:

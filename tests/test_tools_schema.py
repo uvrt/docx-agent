@@ -286,10 +286,14 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 #: none to the core (3,192).  The guard rises to 15,616.  word_edit_table is not strict for
 #: Claude (21 optional parameters of its own now): the strict set is unchanged (6 tools, 24
 #: optional parameters); on OpenAI ``key`` and ``remove`` are two more nullable fields.
+#: Round 49, R91: word_links' ``target`` says add_bookmark takes blocks (a table, a span of
+#: blocks) +12 to every definition (15,616 -> 15,628), none to the core (3,192).  The guard
+#: rises to 15,628.  A description only, no parameter: the strict set is
+#: unchanged (6 tools, 24 optional parameters).
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 6500
-ALL_GUARD = 15616
+ALL_GUARD = 15628
 
 
 @pytest.fixture(scope="module")

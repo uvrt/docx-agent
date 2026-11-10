@@ -70,8 +70,9 @@ REVIEW_CORE_GUARD = 3001
 #: editor's) 8,256; round 38 (the scale's ``show``, +14) 8,270; round 39 (render's ``fast``,
 #: +40) 8,310; round 43 (a copy's ``lists``, +35; word_lists' ``join`` is an editor's) 8,345;
 #: round 45, R68 (word_comments' ``target`` names a table or row, +4; the R65/R66 tools are an
-#: editor's) 8,349.
-REVIEW_ALL_GUARD = 8349
+#: editor's) 8,349; round 49, R91 (word_links' ``target`` says add_bookmark takes blocks,
+#: +12: 8,346 -> 8,358) 8,358.
+REVIEW_ALL_GUARD = 8358
 
 REVIEW_CORE = {"save_document", "describe", "find_text", "render", "check", "open_document",
                "batch", "read_batch", "word_read", "word_comments", "word_changes"}

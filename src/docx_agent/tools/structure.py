@@ -400,7 +400,7 @@ def word_notes(call: Any, doc: str, action: str, kind: str = "footnote", at: str
            {"doc": DOC,
             "action": string("What to do.", enum=["list", "add_hyperlink", "add_bookmark", "rename_bookmark",
                                                    "remove_bookmark"]),
-            "target": string("add_*: range or paragraph.", optional=True),
+            "target": string("add_*: range or paragraph; add_bookmark: or blocks (t:X, p:A..t:B).", optional=True),
             "find": string("add_*: or text occurring once.", optional=True),
             "url": string("add_hyperlink: external address.", optional=True),
             "bookmark": string("Bookmark name; add_hyperlink: link to it instead of url.",
@@ -422,11 +422,13 @@ def word_links(call: Any, doc: str, action: str, target: str | None = None, find
             return outcome([document.remove_bookmark(name)], f"Removed bookmark {name}")
         return outcome([document.rename_bookmark(name, need(new_name, "new_name"))],
                        f"Renamed bookmark {name} to {new_name}")
-    where = (find_range(call, find, None) if one_of({"target": target, "find": find}, "target", "find") == "find"
-             else text_range(document, resolve(call, target)))
+    found = one_of({"target": target, "find": find}, "target", "find") == "find"
     if action == "add_bookmark":
+        # Round 49 (R91): blocks too -- a table, a span of blocks (p:A..t:B), a heading's range.
+        where = find_range(call, find, None) if found else resolve(call, target)
         edit = document.add_bookmark(where, need(bookmark, "bookmark"))
         return outcome([edit], f"Bookmarked as {bookmark}" if edit.changed else f"No change: {edit.warnings[0]}")
+    where = find_range(call, find, None) if found else text_range(document, resolve(call, target))
     if (url is None) == (bookmark is None):
         raise ToolError("invalid_arguments", "give exactly one of url, bookmark", valid_options=["url", "bookmark"])
     return outcome([document.add_hyperlink(where, url, anchor=bookmark)], "Made a hyperlink")
