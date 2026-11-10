@@ -865,6 +865,19 @@ class Plan:
     before: bytes | None = None
     moved: dict[str, str] = field(default_factory=dict)
     placed: list = field(default_factory=list)
+    #: Round 48: the parts merged with others' changes (path -> ``"sources"``, ``"rels"``,
+    #: ``"styles"``), the call's relationships and bookmark ids as the document gives them.
+    merged: dict[str, str] = field(default_factory=dict)
+    relinked: dict[str, str] = field(default_factory=dict)
+    remarked: dict[str, str] = field(default_factory=dict)
+
+    def rewritten(self, window: "_Window") -> "_Window":
+        """An op's window as the call's apply writes it (relationship and bookmark ids)."""
+        if self.relinked:
+            window = _relinked_window(window, self.relinked)
+        if self.remarked:
+            window = _remarked_window(window, self.remarked)
+        return window
 
 
 def _renamable(draws: list[tuple[str, list[str]]], arguments: Mapping[str, Any], outputs: list[bytes]) -> bool:
@@ -1122,6 +1135,7 @@ class Blocks:
             if relinked:
                 # The call's new relationships under the ids the document gives them now.
                 placed = [(begin, end, _relinked_window(window, relinked)) for begin, end, window in placed]
+        ids: dict[str, str] = {}
         if patch.annotations:
             # Its bookmarks' ids, drawn again: one above the largest the document has now.
             offset = document._next_annotation_id() - patch.annotations[0]
@@ -1132,8 +1146,9 @@ class Blocks:
                          for path, before, after in parts]
         if moved and any(before is None for _p, before, _a in parts):
             parts = _named_again(patch.parts, parts, moved)
+        merged = {**{path: kind for path, kind in merges.items()}, **({merge: "sources"} if merge else {})}
         return Plan(patch, _spliced(data, live, placed, moved), renames, pool, parts, before=data, moved=moved,
-                    placed=placed)
+                    placed=placed, merged=merged, relinked=relinked, remarked=ids)
 
     def replay_changes(self, document: Any, plan: Plan, op_changes: list[tuple[int, str, Any]]
                        ) -> list[tuple[int, str, Any]] | None:
@@ -1145,23 +1160,40 @@ class Blocks:
         where the patch applies: each op's blocks lie in its windows)."""
         body = plan.patch.body
         current = plan.before
-        if current == plan.patch.before_body and not plan.moved:
+        if current == plan.patch.before_body and not plan.moved and not plan.merged \
+                and not plan.relinked and not plan.remarked:
             return None             # the body as the draft's: the draft's changes are the document's
+        # Parts merged with others' changes: each op's additions merged in turn into the
+        # document's (an op that adds what the document has already changed nothing there).
+        states = {path: before for path, before, _after in plan.parts if path in plan.merged}
         out: list[tuple[int, str, Any]] = []
         for op, doc, change in sorted(op_changes, key=lambda item: item[0]):
-            parts = frozenset(change.parts)
+            parts = set(change.parts)
             befores: dict[str, bytes | None] = {path: change.before(path) for path in parts - {body}}
             afters: dict[str, bytes | None] = {path: change.after(path) for path in parts - {body}}
+            for path in list(parts - {body}):
+                kind = plan.merged.get(path)
+                if kind is None:
+                    continue
+                state = states[path]
+                if kind == "sources":
+                    made_part = _merge_sources(state, befores[path], afters[path])[1]
+                else:
+                    made_part = _merge_added(kind, state, befores[path], afters[path])[0]
+                if made_part == state:
+                    parts.discard(path)
+                    continue
+                befores[path], afters[path], states[path] = state, made_part, made_part
             if body in parts:
                 old, new = read_body(change.before(body)), read_body(change.after(body))
                 live = read_body(current)
                 if old is None or new is None or live is None:
                     raise BlockConflict("an op's change cannot be read by blocks")
-                windows = _windows(old, new, _regions(old, new), [], CONTEXT)
+                windows = [plan.rewritten(window) for window in _windows(old, new, _regions(old, new), [], CONTEXT)]
                 made = _spliced(current, live, _placed(live, current, windows, old.count), plan.moved)
                 befores[body], afters[body] = current, made
                 current = made
-            out.append((op, doc, _Replayed(parts, befores, afters)))
+            out.append((op, doc, _Replayed(frozenset(parts), befores, afters)))
         if current != plan.data:
             raise BlockConflict("the ops' changes do not add up to the call's")
         return out

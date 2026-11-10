@@ -258,6 +258,8 @@ def plan(seed: int, threads: int, calls: int, layout: Layout, doc: str) -> list[
     chapters = len(layout.heads)
     for k in range(threads):
         rng = random.Random(seed * 1000 + k)
+        # Round 48's edits of known blocks drawn from their own sequence: the calls as before.
+        extra = random.Random((seed * 1000 + k) * 31 + 7)
         own = k % chapters
         mine: list[tuple[str, dict]] = []
         for c in range(calls):
@@ -276,8 +278,8 @@ def plan(seed: int, threads: int, calls: int, layout: Layout, doc: str) -> list[
                        {"tool": "word_set_text", "arguments": {"doc": doc, "target": rng.choice(body),
                                                                "text": sentence(rng, 14)}}]
                 span = f"{layout.heads[chapter]}..{layout.ends[chapter]}"
-                for _ in range(rng.choice([0, 1, 2, 3])):
-                    ops.append(block_edit(rng, doc, span, rng.choice(body), layout.tables[chapter]))
+                for _ in range(extra.choice([0, 1, 2, 3])):
+                    ops.append(block_edit(extra, doc, span, extra.choice(body), layout.tables[chapter]))
                 if rng.random() < 0.3:
                     ops.append({"tool": "word_read", "arguments": {"doc": doc, "range": span}})
                 mine.append(("batch", {"ops": ops}))
