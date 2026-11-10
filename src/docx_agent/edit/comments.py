@@ -109,9 +109,15 @@ class CommentOps:
 
         Round 45 (R68): ``where`` may name a whole table (``t:...``) or row (``tr:...``,
         ``t:X/r1``): the comment covers it as Word's does when it is selected
-        (:meth:`_add_block_comment`)."""
+        (:meth:`_add_block_comment`).
+
+        Round 48: ``where`` may name a content control (``cc:...``): the comment covers the
+        whole control as Word's does when the control is selected
+        (:meth:`_add_control_comment`)."""
         from .document import EditError, EditResult
 
+        if isinstance(where, str) and where.startswith(("cc:", "cc@")):
+            return self._add_control_comment(where, text, self._comment_author(author, initials, date))
         block = self._commented_block(where) if isinstance(where, str) else None
         if block is not None:
             return self._add_block_comment(block, text, self._comment_author(author, initials, date))
@@ -201,6 +207,92 @@ class CommentOps:
             end_after.addnext(end_marker)
             parent, at = _inline.position(following, 0)
             parent.insert(at, self._reference_run(comment_id, size))
+            durable = self._write_comment(comment_id, text, who, parent=None)
+            self.package.mark_dirty(part)
+        return EditResult(f"c:{durable}", created=[f"c:{durable}"], renamed=renames)
+
+    # -- a comment on a content control (round 48, R87) ---------------------------------------
+
+    def _add_control_comment(self: "Document", identifier: str, text: str, who) -> "EditResult":
+        """A comment on a whole content control, as Word anchors one when the control is
+        selected (measured, Word 16.106, ``feedback-round48/probe-C``; Word also widens a
+        comment on part of a plain text control's text to the whole control).
+
+        * **In the line** (``inline``): ``w:commentRangeStart`` right before the ``w:sdt``,
+          ``w:commentRangeEnd`` right after it, then the reference run.  When the control
+          opens its paragraph, Word writes the start before the paragraph instead (in the
+          body, a cell, or a block control -- there with ``w:displacedByCustomXml="prev"``,
+          as the first thing in ``w:sdtContent``).
+        * **A block, row or cell control**: the start right before the ``w:sdt``, with
+          ``w:displacedByCustomXml="next"``; the end and the reference run at the end of the
+          text of the control's last paragraph (in its last cell, for a table, row or cell).
+          When that paragraph is empty Word ends one character sooner: at the end of the
+          paragraph before it, or -- that one empty too, or none -- with the end before the
+          paragraph and the reference opening it (the end, first in ``w:sdtContent``, with
+          ``w:displacedByCustomXml="prev"``)."""
+        from .annotations import _paragraph_of, control_level
+        from .document import EditError, EditResult
+
+        from .addresses import AddressError
+
+        try:
+            part, sdt = self._control(identifier)
+        except EditError:
+            known = [found for _, found, _ in self._content_controls()]
+            raise AddressError(f"no content control {identifier!r}: the document's are "
+                               + (", ".join(known[:20]) + (f" and {len(known) - 20} more" if len(known) > 20 else "")
+                                  if known else "none"), options=known[:50]) from None
+        index = self._index(part)
+        level = control_level(sdt)
+        if level == "inline":
+            paragraph = _paragraph_of(sdt)
+            if paragraph is None:
+                raise EditError(f"{identifier} is not in a paragraph: no place for a comment")
+            items = _text.atoms(paragraph)
+            inside = {id(n) for n in sdt.iter()}   # held: proxies' id()s, sdt keeps them alive
+            held = [i for i, atom in enumerate(items) if id(atom.node) in inside]
+            if held:
+                size = self._reference_size(paragraph, held[-1] + 1)
+            else:                          # an empty control: the size of the text before it
+                nodes = list(paragraph.iter())  # held: the order's id()s stay valid
+                order = {id(n): i for i, n in enumerate(nodes)}
+                size = self._reference_size(paragraph, sum(1 for a in items if order[id(a.node)] < order[id(sdt)]))
+            touched = [paragraph]
+        else:
+            paragraphs = _own_paragraphs(sdt)
+            if not paragraphs:
+                raise EditError(f"{identifier} holds no paragraph to anchor a comment at")
+            end_at, inside_text = _control_end(paragraphs[-1])
+            size = self._reference_size(end_at, len(_text.atoms(end_at)) if inside_text else 0)
+            touched = [end_at]
+        entries = [e for e in (index.entry_for(p) for p in touched) if e is not None]
+        with self._edit():
+            renames = self._prepare_many([(part, entries)])
+            comment_id = self._next_annotation_id()
+            start_marker = make("w:commentRangeStart")
+            start_marker.set(_W + "id", str(comment_id))
+            end_marker = make("w:commentRangeEnd")
+            end_marker.set(_W + "id", str(comment_id))
+            reference = self._reference_run(comment_id, size)
+            if level == "inline":
+                if sdt.getparent() is paragraph and all(
+                        not isinstance(n.tag, str) or n.tag == _W + "pPr" for n in sdt.itersiblings(preceding=True)):
+                    _place_before(paragraph, start_marker)
+                else:
+                    sdt.addprevious(start_marker)
+                sdt.addnext(end_marker)
+                end_marker.addnext(reference)
+            else:
+                start_marker.set(_W + "displacedByCustomXml", "next")
+                sdt.addprevious(start_marker)
+                if inside_text:
+                    parent, at = _out_of_controls(*_inline.position(end_at, len(_text.atoms(end_at))))
+                    parent.insert(at, end_marker)
+                    end_marker.addnext(reference)
+                else:
+                    _place_before(end_at, end_marker)
+                    parent, at = _inline.position(end_at, 0)
+                    parent.insert(at, reference)
             durable = self._write_comment(comment_id, text, who, parent=None)
             self.package.mark_dirty(part)
         return EditResult(f"c:{durable}", created=[f"c:{durable}"], renamed=renames)
@@ -660,6 +752,55 @@ def move_block_references(element: Element, runs: list[Element]) -> None:
     for run in runs:
         parent.insert(at, run)
         at += 1
+
+
+def _own_paragraphs(sdt: Element) -> list[Element]:
+    """A control's paragraphs in document order, without those of text boxes in it."""
+    out = []
+    for paragraph in sdt.iter(_W + "p"):
+        node = paragraph.getparent()
+        while node is not sdt and node.tag != _W + "txbxContent":
+            node = node.getparent()
+        if node is sdt:
+            out.append(paragraph)
+    return out
+
+
+def _control_end(last: Element) -> tuple[Element, bool]:
+    """Where Word ends a comment on a block control whose last paragraph is ``last``:
+    ``(paragraph, True)`` at the end of that paragraph's text, ``(paragraph, False)`` before
+    the paragraph.  An empty last paragraph is not in the comment: the end goes one
+    character back, to the end of the paragraph before it (measured; R87)."""
+    if _text.atoms(last):
+        return last, True
+    before = last.getprevious()
+    while before is not None and not isinstance(before.tag, str):
+        before = before.getprevious()
+    if before is None or before.tag != _W + "p":
+        return last, False
+    return before, bool(_text.atoms(before))
+
+
+def _place_before(node: Element, marker: Element) -> None:
+    """``marker`` right before the block ``node``; first in a control's content, Word marks it
+    displaced by the control's start (``w:displacedByCustomXml="prev"``)."""
+    node.addprevious(marker)
+    if node.getparent().tag == _W + "sdtContent" and all(
+            not isinstance(n.tag, str) for n in marker.itersiblings(preceding=True)):
+        marker.set(_W + "displacedByCustomXml", "prev")
+
+
+def _out_of_controls(parent: Element, at: int) -> tuple[Element, int]:
+    """A place at the end of an inline control's content moved to right after the control:
+    the end of a comment on a block control follows the controls in its last line."""
+    while parent.tag == _W + "sdtContent" and at == len(parent):
+        from .annotations import control_level
+
+        sdt = parent.getparent()
+        if control_level(sdt) != "inline":
+            break
+        parent, at = sdt.getparent(), sdt.getparent().index(sdt) + 1
+    return parent, at
 
 
 def _following_paragraph(node: Element) -> Element | None:
