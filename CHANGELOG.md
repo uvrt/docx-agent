@@ -5,6 +5,29 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.82 -- unreleased
+
+- **A comment on a content control** (round 48, R87): `word_comments` add takes a control
+  (`cc:...`) as its target and covers the whole control as Word anchors a comment on a
+  selected control (measured with Word 16.106; `tests/test_control_comments.py`). In the
+  line: the range's start right before `w:sdt` -- before the paragraph when the control
+  opens it (with `w:displacedByCustomXml="prev"` first in a block control's content) -- its
+  end right after, then the reference. A block, row or cell control: the start before
+  `w:sdt` with `w:displacedByCustomXml="next"`, the end and the reference at the end of the
+  text of its last paragraph, one character sooner when that paragraph is empty. Word
+  re-saves it unchanged. An unknown control is refused naming the document's controls.
+  Removing a control drops the `w:displacedByCustomXml` of marks no longer beside one.
+- **A table fitted to the window** (round 48, R88): `word_format_table` `width_of: "window"`
+  (and `Document.fit_table_to_window`) writes what Word's AutoFit to Window writes
+  (measured with Word 16.106; `tests/test_table_window.py`): `w:tblW` 5000 `pct`, no
+  indent (`w:tblInd` 0 where the style indents), autofit layout, the cells' `w:tcW` in
+  percent, and the grid that comes to -- the section's text width, one column's in a
+  section of columns, the cell's text width for a nested table; in mode 15 less the outer
+  halves of the outer borders, below it with the first and last cells' margins. A
+  517.4 pt text width gives a 517.4 pt table at the margin, in docx2svg as in Word.
+  `width_percent` is a share of the window. The columns keep their proportions (Word's
+  command also shares them again by their content).
+
 ## 0.1.81 -- unreleased
 
 - **A text field with Markdown is written as its Markdown** (production round 48, R86: a

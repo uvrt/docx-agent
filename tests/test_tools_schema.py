@@ -277,10 +277,14 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 #: limit rises to 15,545.  word_edit_table is not strict for Claude (19 optional parameters of
 #: its own): the strict set is unchanged (6 tools, 24 optional parameters); on OpenAI a cell's
 #: ``rows`` is one more nullable string.
+#: Round 48, R87 R88: word_comments' target a content control and word_format_table's
+#: ``width_of`` "window" (AutoFit to Window): +4 to every definition (15,544 -> 15,548), none
+#: to the core (3,192).  The guard rises to 15,548.  Neither tool is strict for Claude: the
+#: strict set is unchanged (6 tools, 24 optional parameters).
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 6500
-ALL_GUARD = 15545
+ALL_GUARD = 15548
 
 
 @pytest.fixture(scope="module")
