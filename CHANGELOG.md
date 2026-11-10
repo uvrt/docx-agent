@@ -12,6 +12,38 @@ snapshot commit; the development history before it is summarised here.
   loaded runner's slack no longer fails it; it proves the same thing (round 47, R82). Its
   lower bounds allow 10 ms for a clock that reads a sleep short (Windows: 0.2 s as 0.199).
 
+## 0.1.77 -- unreleased
+
+- **An edit conflicts only with changes to what it depends on** (round 47, R78:
+  callers writing into neighbouring, all but empty parts of one document ended on the lock).
+  A draft's windows are what its change depends on, no longer two blocks of context either
+  side: blocks changed under their own ids are their own window; blocks put between two are
+  placed by the block the call named (`before:X` depends on X, `after:P` on P) -- unless they
+  hold a table, which reads both neighbours -- and blocks removed or replaced keep their
+  neighbours; a block named, alone. The provenance item (values' sources) is merged entry by
+  entry with the document's, where two calls' entries differ, instead of a conflict; an id
+  the call made itself is not looked for in the document -- which, alone, made every insert
+  or fill writing text by reference (`from: d:notes/#1/body`) conflict three times with
+  itself ("p:... is gone") and run under the lock, one caller or many. And a call that adds
+  the provenance item while its ids are drawn again names the item again from its renamed
+  first key (its properties' `itemID` is a hash of it): 0.1.74 kept the hash of the draft's
+  key, so the bytes differed from the calls run one at a time (found by the stress). A call
+  that drew ids on its draft and then failed (an atomic batch whose last op fails) runs
+  under the lock, where its ids are spent as before (`Blocks.drew`; ooxml-edit 0.103.0);
+  the stress plans such late failures. On the round's stress shape (ten
+  callers, one all but empty part each, tables from a dataset, checks between), 0.1.74
+  ended 24-28 of about 90 drafts on the lock after 100+ conflicts; now none, 0-3 conflicts.
+  `tests/block_stress.py --shape short`; the serial replay holds for both shapes.
+- **"changed while this call read it" only when the change touched what was read** (round
+  47): a ranged `check` or `render` says the blocks it read (`docx_agent.scope.ReadScope`,
+  ooxml-edit's `Call.read_scope`), and `docx_agent.blocks.touches` says whether a change
+  made meanwhile touched them -- changed or removed one, put blocks between two, or changed
+  a part a read of blocks shows (not the registrations, the document's properties, the
+  provenance item, or lists only added to the numbering); and since both report pages, any
+  change at or before the range's last block, or to the last section, too -- a change after
+  the range never. A read of the whole document still
+  hears of any change.
+
 ## 0.1.76 -- unreleased
 
 - **Refs at the committed version, and refs by caller** (round 47, R79 R80; ooxml-edit

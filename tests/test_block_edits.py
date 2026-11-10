@@ -16,7 +16,7 @@ import threading
 
 import pytest
 
-from ooxml_edit.tools import Toolbox
+from ooxml_edit.tools import Dataset, Result, Toolbox, string, tool
 from ooxml_edit.tools.limits import Limits
 
 from docx_agent import Document, blocks
@@ -299,6 +299,15 @@ def test_a_first_fill_while_others_draw_ids_is_prepared_once_its_added_part_rena
             assert address.split("/")[0] == layout.fill, address
         assert table.cell(1, 0).text and table.cell(6, 0).text
         assert any(name.endswith("customXml/item1.xml") for name in document.package.part_names)
+        concurrent = document.to_bytes()
+    # The same two calls one at a time, in the order they committed: the same bytes (the
+    # item's properties name it by a hash of its first key, renamed too).
+    with opened(first_fill=True) as (box, session, doc, layout):
+        assert box.dispatch(session, "word_set_text", {"doc": doc, "target": layout.bodies[2][0],
+                                                       "text": "Changed meanwhile."}).ok
+        assert box.dispatch(session, "word_edit_table", {"doc": doc, "table": layout.fill, "action": "set_cells",
+                                                         "grow": True, "from": "d:rows"}).ok
+        assert session.entry(doc).document.to_bytes() == concurrent
 
 
 def test_an_edit_of_the_same_paragraph_makes_the_call_prepare_again(monkeypatch):
@@ -316,17 +325,92 @@ def test_an_edit_of_the_same_paragraph_makes_the_call_prepare_again(monkeypatch)
         assert _text(session, doc, target) == "Held."
 
 
-def test_an_edit_right_beside_the_paragraph_makes_the_call_prepare_again(monkeypatch):
+def test_an_insert_right_beside_a_paragraph_does_not_make_its_edit_prepare_again(monkeypatch):
+    """Round 47 (R78): a paragraph's text set depends on that paragraph alone -- blocks put
+    right after it meanwhile leave the change as it was."""
     with opened() as (box, session, doc, layout), held(monkeypatch) as hold:
         target = layout.bodies[1][1]
         thread, slow = _in_thread(lambda: box.dispatch(session, "word_set_text",
                                                        {"doc": doc, "target": target, "text": "Held."}))
         assert hold.ready.wait(60)
-        assert box.dispatch(session, "word_insert_markdown",
-                            {"doc": doc, "at": f"after:{target}", "markdown": "Right after."}).ok
+        beside = box.dispatch(session, "word_insert_markdown",
+                              {"doc": doc, "at": f"after:{target}", "markdown": "Right after."})
+        assert beside.ok
         hold.release()
         thread.join()
-        assert slow["result"].ok and slow["result"].block["tries"] == 2
+        result = slow["result"]
+        assert result.ok and _shape(result.block) == {"tries": 1, "conflicts": []}
+        assert _text(session, doc, target) == "Held."
+        ids = [p.id for p in session.entry(doc).document.paragraphs()]
+        assert ids[ids.index(target) + 1] == beside.created[0]
+
+
+def _neighbours(first, then, *, mode="always"):
+    """``first`` held on its draft while ``then`` runs (each ``(name, arguments)`` made of
+    the doc and layout); both results and the body's paragraph texts after."""
+    import pytest as _pytest
+
+    monkeypatch = _pytest.MonkeyPatch()
+    try:
+        with opened(mode) as (box, session, doc, layout), held(monkeypatch) as hold:
+            name, arguments = first(doc, layout)
+            thread, slow = _in_thread(lambda: box.dispatch(session, name, arguments))
+            assert hold.ready.wait(60)
+            other = box.dispatch(session, *then(doc, layout))
+            hold.release()
+            thread.join()
+            document = session.entry(doc).document
+            return slow["result"], other, document, layout
+    finally:
+        monkeypatch.undo()
+
+
+@pytest.mark.parametrize("first_at, then_at", [
+    ("before:{end}", "before:{end}"),        # the same place, both before the same block
+    ("after:{last}", "before:{end}"),        # the same gap, from either side
+    ("before:{end}", "after:{last}"),
+])
+def test_inserts_into_one_gap_apply_in_the_order_they_committed(first_at, then_at):
+    """An insert before a block depends on that block, one after a block on that one: two
+    put into the same gap meanwhile both apply, once, each where it would have gone had it
+    run on the document as it was then (the later before:X right before X, the later after:P
+    right after P)."""
+    def at(text, layout):
+        return text.format(end=layout.ends[1], last=layout.tables[1])     # the chapter's table, then its end
+
+    held_call, other, document, layout = _neighbours(
+        lambda doc, layout: ("word_insert_markdown", {"doc": doc, "at": at(first_at, layout), "markdown": "Held."}),
+        lambda doc, layout: ("word_insert_markdown", {"doc": doc, "at": at(then_at, layout), "markdown": "Other."}))
+    assert other.ok and held_call.ok
+    assert _shape(held_call.block) == {"tries": 1, "conflicts": []}
+    texts = [p.text for p in document.paragraphs()]
+    end = texts.index(document.paragraph(layout.ends[1]).text)
+    got = texts[end - 2:end]
+    # "Other." committed first; the held insert then runs, in the serial order, on it.
+    expected = {("before:{end}", "before:{end}"): ["Other.", "Held."],
+                ("after:{last}", "before:{end}"): ["Held.", "Other."],
+                ("before:{end}", "after:{last}"): ["Other.", "Held."]}[(first_at, then_at)]
+    assert got == expected
+
+
+def test_a_table_put_beside_a_table_put_there_meanwhile_prepares_again():
+    """A table reads its neighbours (beside a table it takes a separator): a table put in the
+    same gap meanwhile makes the held one prepare again, so the separator is there."""
+    table = "| A | B |\n|---|---|\n| 1 | 2 |"
+    held_call, other, document, layout = _neighbours(
+        lambda doc, layout: ("word_insert_markdown", {"doc": doc, "at": f"before:{layout.ends[1]}", "markdown": table}),
+        lambda doc, layout: ("word_insert_markdown", {"doc": doc, "at": f"before:{layout.ends[1]}", "markdown": table}))
+    assert other.ok and held_call.ok
+    assert held_call.block["tries"] == 2 and held_call.block["conflicts"]
+    assert not document.validate()
+
+
+def test_an_insert_whose_anchor_changed_meanwhile_prepares_again():
+    held_call, other, document, layout = _neighbours(
+        lambda doc, layout: ("word_insert_markdown", {"doc": doc, "at": f"after:{layout.bodies[1][0]}",
+                                                      "markdown": "Held."}),
+        lambda doc, layout: ("word_set_text", {"doc": doc, "target": layout.bodies[1][0], "text": "Changed."}))
+    assert other.ok and held_call.ok and held_call.block["tries"] == 2
 
 
 def test_past_its_tries_a_call_takes_the_documents_lock(monkeypatch):
@@ -381,15 +465,40 @@ def test_a_comment_added_since_makes_it_prepare_again(monkeypatch):
     assert "comments" in result.block["conflicts"][0] or "a block near" in result.block["conflicts"][0]
 
 
-def test_a_value_written_by_reference_since_makes_it_prepare_again(monkeypatch):
-    """The provenance item (text facts, table records) is read by every edit's bookkeeping."""
-    result, other, _s, _d = _held_then(
+def test_a_value_written_by_reference_meanwhile_is_merged_not_a_conflict(monkeypatch):
+    """Round 47 (R78): the provenance item keeps an entry per table and paragraph; another
+    call's entry added meanwhile is merged with the call's own -- each where the calls, run
+    in the order they committed, put it -- not a conflict."""
+    result, other, session, doc = _held_then(
         monkeypatch,
-        lambda doc, layout: ("word_set_text", {"doc": doc, "target": layout.bodies[0][0], "text": "Held."}),
+        lambda doc, layout: ("word_set_text", {"doc": doc, "target": layout.bodies[0][0],
+                                               "text": "Held: {{d:rows/#2/name}}."}),
         lambda doc, layout: ("word_set_text", {"doc": doc, "target": layout.bodies[2][0],
                                                "text": "From the rows: {{d:rows/#4/name}}."}))
-    assert other.ok and result.ok and result.block["tries"] == 2
-    assert "customXml" in result.block["conflicts"][0]
+    assert other.ok and result.ok
+    assert _shape(result.block) == {"tries": 1, "conflicts": []}
+    facts = session.entry(doc).document.text_facts()
+    assert list(facts)[-2:] == [other.changed[0], result.changed[0]]
+
+
+def test_sources_merge_entry_by_entry():
+    from docx_agent.blocks import _merge_sources
+    from docx_agent.edit.provenance import NS
+
+    def item(*entries):
+        inner = "".join(f'<prov:source kind="{k}" key="{key}">{text}</prov:source>' for k, key, text in entries)
+        return f'<prov:sources xmlns:prov="{NS}">{inner}</prov:sources>'.encode()
+
+    before = item(("table", "t:1", "a"), ("text", "p:2", "b"))
+    mine = item(("table", "t:1", "A"), ("text", "p:3", "c"))                       # t:1 changed, p:2 dropped, p:3 new
+    theirs = item(("table", "t:1", "a"), ("text", "p:2", "b"), ("text", "p:9", "z"))   # p:9 new
+    _live, merged = _merge_sources(theirs, before, mine)
+    from ooxml_edit.xml import parse_xml, serialize
+    assert merged == serialize(parse_xml(item(("table", "t:1", "A"), ("text", "p:9", "z"), ("text", "p:3", "c"))))
+    with pytest.raises(blocks.BlockConflict):         # both changed t:1
+        _merge_sources(item(("table", "t:1", "x"), ("text", "p:2", "b")), before, mine)
+    with pytest.raises(blocks.BlockConflict):         # both added p:3
+        _merge_sources(item(("table", "t:1", "a"), ("text", "p:2", "b"), ("text", "p:3", "q")), before, mine)
 
 
 def test_a_section_change_since_makes_it_prepare_again(monkeypatch):
@@ -603,3 +712,171 @@ def test_a_body_read_from_an_earlier_state_reads_as_the_whole_body():
         assert (found.start, found.end, found.spans, found.ids, found.stamps) == \
             (whole.start, whole.end, whole.spans, whole.ids, whole.stamps)
     assert reread > 100
+
+
+# -- "changed while this call read it": only what the read covered (round 47) ------------------
+
+
+def _changed_by(edit):
+    """The ooxml-edit Change one edit of the made-up report makes, and its layout of ids."""
+    document = Document.open(block_stress.made(3))
+    layout = block_stress.Layout(document)
+    with document.history.watch() as change:
+        edit(document, layout)
+    return change, document, layout
+
+
+def _scope_of(document, *ids):
+    from docx_agent.scope import ReadScope
+
+    return ReadScope(document.package.document_part(), frozenset(ids))
+
+
+def test_a_change_touches_a_read_of_blocks_it_changed_or_put_between():
+    change, document, layout = _changed_by(lambda d, l: d.paragraph(l.bodies[1][0]).set_text("New."))
+    assert blocks.touches(change, _scope_of(document, layout.bodies[1][0]))
+    assert not blocks.touches(change, _scope_of(document, layout.bodies[0][0], layout.ends[0]))
+    change, document, layout = _changed_by(
+        lambda d, l: d.insert_markdown("Between.", at=f"after:{l.bodies[1][0]}"))
+    ids = [p.id for p in document.paragraphs()]
+    span = ids[ids.index(layout.heads[1]):ids.index(layout.ends[1]) + 1]
+    # Put inside the span read; right after its last block (not inside); far away.
+    assert blocks.touches(change, _scope_of(document, *span))
+    assert not blocks.touches(change, _scope_of(document, layout.bodies[1][0]))
+    assert not blocks.touches(change, _scope_of(document, layout.heads[2], layout.ends[2]))
+
+
+def test_a_change_before_a_range_touches_a_read_of_its_pages_one_after_it_does_not():
+    change, document, layout = _changed_by(lambda d, l: d.paragraph(l.bodies[0][0]).set_text("New."))
+    ids = [p.id for p in document.paragraphs()]
+    later = ids[ids.index(layout.heads[1]):ids.index(layout.ends[1]) + 1]
+    from docx_agent.scope import ReadScope
+
+    part = document.package.document_part()
+    assert blocks.touches(change, ReadScope(part, frozenset(later), layout=True))
+    assert not blocks.touches(change, ReadScope(part, frozenset(later), layout=False))
+    change, document, layout = _changed_by(lambda d, l: d.paragraph(l.bodies[2][0]).set_text("New."))
+    assert not blocks.touches(change, ReadScope(part, frozenset(later), layout=True))
+
+
+def test_a_change_to_a_style_touches_any_read():
+    change, document, layout = _changed_by(lambda d, l: d.styles.modify("Normal", size=12))
+    assert blocks.touches(change, _scope_of(document, layout.bodies[0][0]))
+
+
+def test_a_ranged_check_is_warned_only_when_its_blocks_changed_meanwhile(monkeypatch):
+    """A check of one chapter, laid out with the lock let go: an edit of another chapter
+    meanwhile is not news to it; one of its own chapter is ("changed while this call read
+    it"); a check of the whole document hears of either."""
+    import contextlib
+    import time
+
+    from ooxml_edit.tools import dispatch
+
+    original = dispatch.Call.unlocked
+
+    @contextlib.contextmanager
+    def slow(self):
+        with original(self) as released:
+            if released:
+                time.sleep(1.0)
+            yield released
+
+    monkeypatch.setattr(dispatch.Call, "unlocked", slow)
+
+    def run(arguments, target):
+        with opened("auto") as (box, session, doc, layout):
+            out = {}
+            reader = threading.Thread(target=lambda: out.setdefault("check", box.dispatch(
+                session, "check", {"doc": doc, **arguments(layout)})))
+            reader.start()
+            time.sleep(0.4)
+            assert box.dispatch(session, "word_set_text", {"doc": doc, "target": target(layout),
+                                                           "text": "Meanwhile."}).ok
+            reader.join()
+            result = out["check"]
+            assert result.ok, result.to_json()
+            return any("changed while this call read it" in w for w in result.warnings)
+
+    chapter = lambda layout: {"range": [f"{layout.heads[1]}..{layout.ends[1]}"]}      # noqa: E731
+    assert not run(chapter, lambda layout: layout.bodies[2][0])      # a later chapter
+    assert run(chapter, lambda layout: layout.bodies[1][0])          # its own
+    assert run(chapter, lambda layout: layout.bodies[0][0])          # an earlier one: its pages may move
+    assert run(lambda layout: {}, lambda layout: layout.bodies[2][0])
+
+
+@tool("ds_notes", "Test only: notes with Markdown bodies.", {"id": string("Its id.")}, documents=())
+def _ds_notes(call, id):
+    call.define_dataset(id, Dataset(("title", "body"), [("One", "Some **text** here.\n\n- a\n- b"),
+                                                        ("Two", "More text.")]), source=None)
+    return Result(summary="kept")
+
+
+@pytest.mark.parametrize("mode", ["auto", "always"])
+def test_one_caller_filling_an_all_but_empty_document_prepares_each_call_once(mode):
+    """Round 47: a call that writes text by reference looks up the paragraphs it made, and
+    0.1.74 then looked for them in the document -- where its patch has not put them yet:
+    "is gone" three times, and the call ran under the lock.  Alone on a document of one
+    paragraph, inserts and fills from a dataset are each prepared once."""
+    from ooxml_edit.tools.limits import Limits as _Limits
+
+    data = Document.new()
+    data.paragraphs()[0].set_text("Title")
+    with Toolbox([*TOOLS, _ds_notes, block_stress.ds_rows], formats=[FORMAT], groups=GROUPS, workers=0,
+                 block_edits=mode, limits=_Limits(render_timeout=600, layout_timeout=600)) as box:
+        session = box.session(clock=block_stress.CLOCK)
+        doc = session.open(data.to_bytes(), "report.docx")
+        box.dispatch(session, "ds_notes", {"id": "notes"})
+        box.dispatch(session, "ds_rows", {"id": "rows", "rows": "4"})
+        calls = [{"at": "end", "from": "d:notes/#1/body"}, {"at": "end", "from": "d:notes/#2/body"},
+                 {"at": "end", "from": "d:rows"}, {"at": "end", "markdown": "Plain {{d:notes/#1/title}}."}]
+        for arguments in calls:
+            result = box.dispatch(session, "word_insert_markdown", {"doc": doc, **arguments})
+            assert result.ok, result.to_json()
+            if mode == "always" or result.block is not None:
+                assert _shape(result.block) == {"tries": 1, "conflicts": []}, (arguments, result.block)
+
+
+def test_a_first_value_by_reference_in_a_new_paragraph_renamed_names_its_item_again(monkeypatch):
+    """The provenance item's properties name it by a hash of the key it was made for (the
+    new paragraph's id): drawn again when the call applies, the hash follows the new id --
+    the bytes those of the two calls run one at a time in the order they committed."""
+    held_args = {"at": None, "markdown": "Value {{d:rows/#1/name}}."}
+    with opened(first_fill=True) as (box, session, doc, layout), held(monkeypatch) as hold:
+        thread, slow = _in_thread(lambda: box.dispatch(session, "word_insert_markdown", {
+            "doc": doc, **held_args, "at": f"before:{layout.ends[1]}"}))
+        assert hold.ready.wait(60)
+        other = box.dispatch(session, "word_insert_markdown",
+                             {"doc": doc, "at": f"before:{layout.ends[2]}", "markdown": "Other one.\n\nOther two."})
+        hold.release()
+        thread.join()
+        result = slow["result"]
+        assert other.ok and result.ok and _shape(result.block) == {"tries": 1, "conflicts": []}
+        assert set(result.created).isdisjoint(other.created)
+        concurrent = session.entry(doc).document.to_bytes()
+    with opened(first_fill=True) as (box, session, doc, layout):
+        assert box.dispatch(session, "word_insert_markdown",
+                            {"doc": doc, "at": f"before:{layout.ends[2]}", "markdown": "Other one.\n\nOther two."}).ok
+        assert box.dispatch(session, "word_insert_markdown", {"doc": doc, **held_args,
+                                                              "at": f"before:{layout.ends[1]}"}).ok
+        assert session.entry(doc).document.to_bytes() == concurrent
+
+
+def test_a_call_that_draws_ids_then_fails_spends_them_as_under_the_lock():
+    """Round 47 (lane F's find): an atomic batch whose blocks are made, then an op fails --
+    under the lock its ids are spent, so the next call draws others; on a draft it would not
+    be.  It runs under the lock instead: the next call's ids and the id state the same."""
+    found = []
+    for mode in ("off", "always"):
+        with opened(mode) as (box, session, doc, layout):
+            failed = box.dispatch(session, "batch", {"atomic": True, "ops": [
+                {"tool": "word_insert_markdown", "arguments": {"doc": doc, "at": f"before:{layout.ends[0]}",
+                                                               "markdown": "A.\n\nB."}},
+                {"tool": "word_set_text", "arguments": {"doc": doc, "target": "p:7FFFFFF0", "text": "x"}}]})
+            assert not failed.ok
+            if mode == "always":
+                assert failed.block["lock"] == "drew ids, then failed"
+            after = box.dispatch(session, "word_insert_markdown",
+                                 {"doc": doc, "at": f"before:{layout.ends[1]}", "markdown": "C."})
+            found.append((after.created, session.entry(doc).document.id_state()))
+    assert found[0] == found[1]

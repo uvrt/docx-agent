@@ -230,6 +230,10 @@ def test_many_writers_checking_at_once_all_finish_with_their_versions_facts(made
         doc = session.open(made, "report.docx")
         document = session.entry(doc).document
         targets = _body(document)
+        # Each chapter's span by its ids, read before the writers start: a writer that read
+        # the live document's blocks while others' changes are applied to it would read it
+        # unlocked (on free threading, a tree being changed).
+        chapters = {number: _chapter(document, number) for number in range(1, 5)}
         errors: list = []
 
         def writer(n: int) -> None:
@@ -239,9 +243,9 @@ def test_many_writers_checking_at_once_all_finish_with_their_versions_facts(made
                     edit = box.dispatch(session, "word_set_text", {
                         "doc": doc, "target": targets[n % len(targets)], "text": _text(n, rng.choice([20, 200]))})
                     assert edit.ok, edit.to_json()
-                    found = box.dispatch(session, "check", {"doc": doc, "range": [_chapter(document, 1 + n % 4)]})
+                    found = box.dispatch(session, "check", {"doc": doc, "range": [chapters[1 + n % 4]]})
                     assert found.ok, found.to_json()
-                    assert found.data["reflow"]["pages"] >= 5
+                    assert found.data["reflow"].get("pages", 0) >= 5, found.to_json()
             except BaseException as exc:  # noqa: BLE001
                 errors.append(exc)
 
