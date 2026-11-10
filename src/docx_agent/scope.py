@@ -175,6 +175,26 @@ class Scope:
         return out
 
 
+@dataclass(frozen=True)
+class ReadScope:
+    """What a read of some ranges covered (round 47): the body part and its top-level blocks
+    there -- ooxml-edit's ``Call.read_scope``, for whether another call's change meanwhile
+    touched it (:meth:`docx_agent.blocks.Blocks.touches`)."""
+
+    part: str
+    blocks: frozenset
+    #: Whether what was read depends on the layout (a check's pages, a render's page): then
+    #: a change before the range's last block -- which can move it to other pages -- is one
+    #: to it too.
+    layout: bool = False
+
+
+def read_scope(scope: "Scope", *, layout: bool = False) -> ReadScope:
+    """The :class:`ReadScope` of ``scope``."""
+    return ReadScope(scope.document.package.document_part(),
+                     frozenset(block for found in scope.ranges for block in found.blocks), layout)
+
+
 def ranges_of(value: Any) -> list[str]:
     """``range`` as a list of addresses: one string is one range (rule 1: a list's one
     item, said either way); ``[]``, ``""`` and blanks are no range (a strict decoder's
