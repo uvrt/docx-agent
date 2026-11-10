@@ -5,7 +5,7 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
-## 0.1.79 -- unreleased
+## 0.1.80 -- unreleased
 
 - **A column at once** (round 48, R89). `word_edit_table` `set_cells` takes one entry for a
   column's rows: `{col: 2, rows: "*", text: "Yes"}` -- or `from` (one value), or a reference
@@ -24,6 +24,17 @@ snapshot commit; the development history before it is summarised here.
   (`cells[].from`) was kept one edit per cell, each following every value kept so far again:
   431 cells took about 15 s CPU, now about 2 s, the same bytes
   (`Document.keep_text_facts_in`).
+
+## 0.1.79 -- unreleased
+
+- **The application's own edits under `session.lock` are committed** (round 48, R84;
+  ooxml-edit 0.104.0). An application that edits a document through `Document` while holding
+  `session.lock` no longer sends the next edit on a draft through three conflicts ("the
+  document changed outside the tools") to the whole-document lock: letting the lock go
+  commits the change (by the parts it changed), and `session.commit(doc)` does it without
+  letting go. The serial-replay stress gains such edits (`tests/host_stress.py`: a paragraph
+  added, a block's text set, both in one `batch()`, or the lock held with nothing changed);
+  `python tests/host_stress.py --seeds 0-19 --threads 8 --calls 16` replays every run the same.
 
 ## 0.1.78 -- unreleased
 
