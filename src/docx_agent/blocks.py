@@ -133,7 +133,7 @@ import re
 import threading
 import weakref
 from collections import Counter
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, field
 from typing import Any, Iterator, Mapping
 
@@ -344,6 +344,21 @@ class DraftPool(_ids.IdPool):
     def drew(self, seed: str, values: list[str]) -> None:
         if self.recording is not None:
             self.recording.draws.append((seed, list(values)))
+
+
+@contextmanager
+def unrecorded(document: Any) -> Iterator[None]:
+    """Round 51: on a draft, what the block reads is not recorded as named by the call (a
+    scan of the document's tables for the one it edited): it names, after, what it found.
+    A draft is its call's alone, so nothing else reads the recording meanwhile.  Off a
+    draft: nothing."""
+    held = document.__dict__ if hasattr(document, "__dict__") else {}
+    recording = held.pop("_recording", None)
+    try:
+        yield
+    finally:
+        if recording is not None:
+            held["_recording"] = recording
 
 
 def observe(document: Any, name: str, value: Any, *args: Any) -> Any:
