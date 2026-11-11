@@ -2110,6 +2110,11 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
             nested = set(map(id, element.iter(W_P)))
             removed_ids += [e.id for e in self._index(part).paragraphs if id(e.element) in nested]
         tracking = self._active_tracking()
+        separator = _separator_of(element, tracking.author) if tracking is not None and isinstance(
+            entry, TableEntry) else None
+        if separator is not None:
+            found = self._index(part).entry_for(separator)
+            separator = (separator, found.id) if found is not None else None
         if tracking is not None and not self._own_insertion(element, tracking):
             with self._edit():
                 renames = self._prepare(part, [], position)
@@ -2124,6 +2129,7 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
                 self.package.mark_dirty(part)
             removed = [named[id(node)] for row in gone for node in [row, *row.iter(W_P)] if id(node) in named]
             if element.getparent() is None:
+                removed_ids += self._drop_separator(part, separator)
                 renames = {old: new for old, new in renames.items() if old not in removed_ids}
                 return EditResult(None, renamed=renames, removed=removed_ids)
             current = renames.get(old_id, old_id)
@@ -2147,8 +2153,28 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
                 _comments.move_block_references(element, _comments.block_references(element) or [])
             _rehome_markers(element)
             remove(element)
+            removed_ids += self._drop_separator(part, separator)
+            renames = {old: new for old, new in renames.items() if old not in removed_ids}
             self.package.mark_dirty(part)
         return EditResult(None, renamed=renames, removed=removed_ids)
+
+    def _drop_separator(self, part: str, separator: "tuple[Element, str] | None") -> list[str]:
+        """Round 51: the empty paragraph a table one inserted came with -- between it and a
+        table before or after it, which Word would have put beside each other (measured,
+        ``tools/separator_probe.py``: Word inserts a table beside a table, and deleting it
+        leaves no trace) -- goes with it, once nothing needs it: not between two tables, not
+        its container's last block.  Its id, when it went."""
+        if separator is None:
+            return []
+        paragraph, identifier = separator
+        if paragraph.getparent() is None:
+            return []
+        before, after = _block_sibling(paragraph, -1), _block_sibling(paragraph, 1)
+        if after is None or (before is not None and before.tag == W_TBL and after.tag == W_TBL):
+            return []
+        _rehome_markers(paragraph)
+        remove(paragraph)
+        return [identifier]
 
     def _delete_control_block(self, part: str, entry: "ControlBlock") -> EditResult:
         """A block-level control deleted with its content, as a table is: refused for a lock,
@@ -3154,6 +3180,37 @@ def _rehome_markers(element: Element) -> None:
                 following.insert(0, node)
         elif previous is not None:
             previous.append(node)
+
+
+def _block_sibling(element: Element, step: int) -> Element | None:
+    """The block (paragraph, table, control) beside ``element`` in its container, before it
+    (``step`` -1) or after it (1); ``None`` at the container's start or end."""
+    node = element.getprevious() if step < 0 else element.getnext()
+    while node is not None:
+        if isinstance(node.tag, str) and node.tag in (W_P, W_TBL, _W + "sdt", _W + "customXml"):
+            return node
+        if isinstance(node.tag, str) and node.tag == W_SECTPR:
+            return None
+        node = node.getprevious() if step < 0 else node.getnext()
+    return None
+
+
+def _separator_of(table: Element, author: str) -> Element | None:
+    """The empty paragraph, ``author``'s own pending insertion, between ``table`` and a
+    table beside it: what docx-agent writes so that two tables do not touch."""
+    for step in (-1, 1):
+        paragraph = _block_sibling(table, step)
+        if paragraph is None or paragraph.tag != W_P:
+            continue
+        record = _track.mark_record(paragraph)
+        if record is None or record.tag != _W + "ins" or record.get(_W + "author") != author:
+            continue
+        if any(True for _ in paragraph.iter(_W + "r", _W + "fldSimple", W_TBL, W_SECTPR)):
+            continue
+        beyond = _block_sibling(paragraph, step)
+        if beyond is not None and beyond.tag == W_TBL:
+            return paragraph
+    return None
 
 
 def _neighbour_paragraph(element: Element, *, forward: bool) -> Element | None:

@@ -5,6 +5,22 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.92 -- unreleased
+
+- **A table one inserted, deleted, takes the paragraph it came with.** docx-agent keeps two
+  tables apart with an empty paragraph (inserted, when tracked); deleting the table one
+  inserted left that paragraph behind as a pending insertion. Word puts a new table right
+  beside a table, and deleting it leaves no trace (measured, `tools/separator_probe.py`,
+  `tests/observations/separator-word.json`); now the empty paragraph -- one's own insertion
+  between the table and a table beside it -- goes with the table, unless it still keeps two
+  tables apart. (A table Word inserts at the end of a paragraph's text splits the
+  paragraph, and deleting the table leaves the split: docx-agent inserts after the
+  paragraph, without a split.)
+- **The first tracked call after tracking is switched drafts at once** (needs ooxml-edit
+  0.108.0). Switching tracking makes no new version, so the version drafts are made from
+  kept the old tracking: the next call that could run on a draft found "tracking was
+  switched" three times and then took the document's lock.
+
 ## 0.1.91 -- unreleased
 
 - **A tracked deletion of one's own pending row removes it** (production round 51, R103: a
