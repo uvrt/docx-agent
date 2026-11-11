@@ -5,6 +5,33 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.94 -- unreleased
+
+- **`sync` matches keys spelled differently** (round 52, R106; needs ooxml-edit 0.110.0). A
+  table's keys and an uploaded workbook's often differ in spelling only -- `K7-12.3` and
+  `k7-12.03`, `DOC-4.2` and `DOC-004.2` -- and `word_edit_table`'s `sync`, matching exactly,
+  made each such row a deleted row plus an identical added one (tracked, when tracking is
+  on). `loose` (`"table"` or `"data"`) matches the keys left after the exact matches by
+  `ooxml_edit.tools.loose_key`, the one rule shared by every tool: case, white space and
+  invisible characters, the separators `. - _ /` between runs, and leading zeros (numbers
+  compared as numbers) aside; a boundary is kept (`03-1` is not `031`) and nothing else is
+  guessed. A loosely matched row keeps the table's spelling (`"table"`) or takes the
+  source's (`"data"`: the key cell rewritten, tracked like any value). `match` pairs keys no
+  rule should guess (`[{table, data}]`, or one object `{table key: data key}`), applied
+  first; a key it names that is not one is refused with the keys there are, loosely equal
+  ones first, and a pair written the other way round is read as meant, with a note. A key
+  that would loosely match more than one key on the other side is refused before any
+  change, naming them, with `match` as the way out. Exact matches always win. The result's
+  `loose_matches` lists the pairs (table key: source key, 20 at most, then a count);
+  `paired` counts `match`'s. Without `loose`, a note names the keys that would match
+  loosely (it said only keys differing by case before). Still drafted, as any sync from a
+  dataset. On a made-up 126-row table whose data spells 5 keys differently (a separator, a
+  leading zero, case, spacing): 5 removed + 5 added before, 5 loose matches and 0 removed or
+  added with `loose`. Not strict for Claude (the strict set is unchanged); +107 estimated
+  tokens to every definition, none to the core. xlsx-agent's filter `loose` (white space and
+  case in a cell's text) is a different rule, for text.
+  tests/test_table_sync_loose.py.
+
 ## 0.1.93 -- unreleased
 
 - **A table one inserted, deleted, takes the paragraph it came with.** docx-agent keeps two

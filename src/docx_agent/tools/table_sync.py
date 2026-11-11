@@ -24,7 +24,22 @@ labels named the columns) and the total rows (the look's last row on; any row ho
 formula field, ``=SUM(ABOVE)``) are left as they are, as are rows with no key (an empty key
 cell) -- counted, not matched.  A row deleted as a tracked change is not a data row.  Values
 are written as ``set_cells`` ``from`` writes them (``date_format`` too).  Keys are compared
-with their case: a table key and a source key that differ only by case are said in a note.
+with their case, white space runs aside: a table key and a source key that would match
+loosely are said in a note.
+
+Keys spelled differently (round 52, R106).  ``match`` pairs a table key with a source key
+(``[{table, data}]``, or one object ``{table key: data key}``) for keys no rule should guess:
+applied first; a key it names that is not one is refused with the keys there are (a pair
+written the other way round is read as meant, with a note).  Then exact matches; then, with
+``loose``, the keys left on both sides by :func:`ooxml_edit.tools.loose_key` (case, white
+space, the separators ``. - _ /`` between runs, numbers as numbers: ``K7-12.3`` =
+``k7_12_03``).  A key that would loosely match more than one key on the other side is
+refused before any change, naming them (the way out: ``match``, or the data fixed).  A row
+matched by ``match`` or loosely keeps the table's spelling of its key (``loose: "table"``,
+and without ``loose``) or takes the source's (``loose: "data"``: the key cell rewritten, a
+tracked change when tracking is on).  The result's ``loose_matches`` lists the loose pairs
+(table key: source key), ``paired`` counts ``match``'s.  (xlsx-agent's filter ``loose`` is
+another, smaller rule -- white space and case in a cell's text -- for matching text, not keys.)
 Duplicate keys, in the table or the source, are refused naming them; rows to add like a row
 whose one cell spans two columns taken are refused before any change, with the way out.
 With tracking on, every change is tracked (rows inserted and deleted, text written).
@@ -41,7 +56,7 @@ import re
 import time
 from typing import Any
 
-from ooxml_edit.tools import Result, ToolError
+from ooxml_edit.tools import Result, ToolError, loose_key
 
 from ..edit import provenance as _provenance
 from ._base import Timing, note_small_text, outcome
@@ -88,7 +103,8 @@ class _Plan:
 
 
 def sync(call: Any, view: Any, source: str, from_columns: list[str] | None, key: Any,
-         remove: bool, date_format: str | None, notes: list[str]) -> Result:
+         remove: bool, date_format: str | None, notes: list[str], *, loose: str | None = None,
+         match: list[tuple[str, str]] = ()) -> Result:
     """``word_edit_table`` ``sync``: see the module doc."""
     from .objects import _Kept, _header_rows, _set_cell, _table_entry
 
@@ -117,19 +133,24 @@ def sync(call: Any, view: Any, source: str, from_columns: list[str] | None, key:
         shown = ", ".join(f"#{i + 1}" for i in blank[:LISTED]) + (
             f" and {len(blank) - LISTED} more" if len(blank) > LISTED else "")
         notes.append(f"{len(blank)} row(s) of {block.rows.address} with a blank key not placed: {shown}")
+    # Which table row each source key names: pairs given, then exact, then loose (R106).
+    row_of, paired, loosely = _matches(plan, source_keys, match, loose, block.rows.address, table, notes)
+    respell = {t: d for t, d in [*paired, *loosely]} if loose == "data" else {}
     # What differs: cells of matched rows, keys to add, keys gone.
     writes: list[tuple[int, int, str, int, int]] = []   # (row, col, text, source row, pick)
     changed_keys: dict[str, list[str]] = {}
     added: list[int] = []
+    table_key = {row: k for k, row in plan.by_key.items()}
     for i, found in source_keys:
         if found is None:
             continue
-        row = plan.by_key.get(found)
+        row = row_of.get(found)
         if row is None:
             added.append(i)
             continue
+        named = table_key[row] if table_key[row] not in respell else found
         for col, pick in plan.pairs:
-            if col == plan.key_col:
+            if col == plan.key_col and table_key[row] not in respell:
                 continue
             new = texts[i][pick]
             cell = grid[row][col]
@@ -137,31 +158,28 @@ def sync(call: Any, view: Any, source: str, from_columns: list[str] | None, key:
                 if cell is not None and cell.text == new:
                     continue
                 if cell is not None and cell.row == row:
-                    _merged_refusal(f"row {row} of {table} (key {found!r})", row, grid, plan, rows, fields, table)
+                    _merged_refusal(f"row {row} of {table} (key {named!r})", row, grid, plan, rows, fields, table)
                 raise ToolError("refused", f"({row}, {col}) of {table} is "
                                 f"{'not a cell' if cell is None else 'merged with (%d, %d)' % (cell.row, cell.column)}"
                                 f": sync writes one value per cell; split it first", field="from")
-            if cell.text != new:
+            if cell.text != new and (col != plan.key_col or _norm(cell.text) != found):
                 writes.append((row, col, new, i, pick))
-                changed_keys.setdefault(found, []).append(_label(rows, fields, pick))
-    wanted = {k for _, k in source_keys if k is not None}
-    gone = [k for k in plan.order if k not in wanted]
+                changed_keys.setdefault(named, []).append(_label(rows, fields, pick))
+    taken = set(row_of.values())
+    gone = [k for k in plan.order if plan.by_key[k] not in taken]
     placement = "key order" if _sorted(plan.order) else "source order"
-    slots = _slots(plan, source_keys, added, placement)
+    slots = _slots(plan, source_keys, added, placement, row_of)
     _merged_likeness(slots, grid, plan, rows, fields, table)
     key_of = dict(source_keys)
-    folded = {k.casefold(): k for k in gone}
-    pairs = [(folded[key_of[i].casefold()], key_of[i]) for i in added if key_of[i].casefold() in folded]
-    if pairs:
-        shown = ", ".join(f"{a!r} / {b!r}" for a, b in pairs[:LISTED]) + (
-            f" and {len(pairs) - LISTED} more" if len(pairs) > LISTED else "")
-        notes.append(f"{len(pairs)} table key(s) differ from a source key only by case, compared as different "
-                     f"keys (the source's added, the table's {'removed' if remove else 'missing'}): {shown} "
-                     "(table / source); make them equal with set_cells to match them")
+    if not loose:
+        _note_loose(gone, [key_of[i] for i in added], remove, notes)
     timing.add("compare", time.perf_counter() - started)
     if not writes and not added and not (gone and remove):
-        said = _said(block, plan, grid, header, rows, fields, [], source_keys, {}, [], False, placement, [])
-        return _unchanged(call, view, block, plan, gone, {k: said[k] for k in ("key", "mapped")}, notes, timing)
+        said = _said(block, plan, grid, header, rows, fields, [], source_keys, {}, [], False, placement, [],
+                     loose, paired, loosely)
+        return _unchanged(call, view, block, plan, gone,
+                          {k: said[k] for k in ("key", "mapped", "loose_matches", "paired") if k in said},
+                          notes, timing)
     # The changes: rows added (anchors from the bottom, so the rows above keep their
     # indices), then the cells written at the rows' new places, then rows deleted.
     kept = _Kept(document, table)
@@ -201,16 +219,17 @@ def sync(call: Any, view: Any, source: str, from_columns: list[str] | None, key:
         final = {k: v - sum(1 for row in taken_out if row < v) for k, v in final.items()}
     with timing.part("record"):
         record_note = _keep_sources(call, kept, old_key, now, block, plan, height, writes,
-                                    slots, final, texts)
+                                    slots, final, texts, row_of)
     started = time.perf_counter()
     data: dict[str, Any] = {"id": now, "rows": len(document.table(now).rows),
                             "columns": document.table(now).column_count}
     data.update(_said(block, plan, grid, header, rows, fields, added, source_keys, changed_keys, gone,
-                      remove, placement, writes))
+                      remove, placement, writes, loose, paired, loosely))
     data["timing"] = timing.parts
     summary = (f"sync of {now} with {block.rows.address}: {len(added)} added, {len(changed_keys)} changed"
                + ("" if not gone else f", {len(gone)} removed" if remove
-                  else f", {len(gone)} missing (left; remove: true deletes them)"))
+                  else f", {len(gone)} missing (left; remove: true deletes them)")
+               + (f"; {len(loosely)} key(s) matched loosely" if loosely else ""))
     result = outcome(edits, summary, data=data, changed=[now])
     # The rows' paragraphs and cells are the table's: named by it (rule 4); rows added and
     # removed by their ids.
@@ -392,6 +411,89 @@ def _source_keys(texts: list[list[str]], pick: int, address: str) -> list[tuple[
     return out
 
 
+def _matches(plan: _Plan, source_keys: list[tuple[int, str | None]], match: Any, loose: str | None,
+             address: str, table: str, notes: list[str]
+             ) -> tuple[dict[str, int], list[tuple[str, str]], list[tuple[str, str]]]:
+    """Which table row each source key names (round 52, R106): ``match``'s pairs first, then
+    the keys equal as they are, then (``loose``) the keys left equal by :func:`loose_key`.
+    Returns the rows by source key, the pairs given and the loose pairs (table key, source
+    key).  Refuses, before any change, a pair naming a key that is not one, a key paired
+    twice, and a key that would loosely match more than one key on the other side."""
+    wanted = [k for _, k in source_keys if k is not None]
+    in_source = set(wanted)
+    row_of: dict[str, int] = {}
+    paired: list[tuple[str, str]] = []
+    used: set[str] = set()              # table keys matched
+    for n, (said_table, said_data) in enumerate(match):
+        t, d = _norm(str(said_table)), _norm(str(said_data))
+        if t not in plan.by_key and d in plan.by_key and t in in_source:
+            notes.append(f"match pair {n + 1} ({said_table!r}: {said_data!r}) read the other way round: "
+                         f"{d!r} is the table's key, {t!r} the source's")
+            t, d = d, t
+        if t not in plan.by_key or d not in in_source:
+            bad, keys, where = (t, plan.order, f"a key of {table}") if t not in plan.by_key else (
+                d, wanted, f"a key of {address}")
+            near = [k for k in keys if loose_key(k) == loose_key(bad)]
+            raise ToolError("not_found", f"match pair {n + 1}: {bad!r} is not {where} (key column "
+                            f"{plan.key_col}); pairs are {{table: table key, data: source key}}"
+                            + (f"; loosely equal: {', '.join(map(repr, near[:10]))}" if near else ""),
+                            field=f"match[{n}]", valid_options=(near + [k for k in keys if k not in near])[:50])
+        if t in used or d in row_of:
+            raise ToolError("invalid_arguments", f"match pair {n + 1}: {t if t in used else d!r} is paired "
+                            "twice: a key names one row", field=f"match[{n}]")
+        used.add(t)
+        row_of[d] = plan.by_key[t]
+        if t != d:
+            paired.append((t, d))
+    for k in wanted:
+        if k not in row_of and k in plan.by_key and k not in used:
+            row_of[k] = plan.by_key[k]
+            used.add(k)
+    loosely: list[tuple[str, str]] = []
+    if not loose:
+        return row_of, paired, loosely
+    tables: dict[tuple, list[str]] = {}
+    datas: dict[tuple, list[str]] = {}
+    for k in plan.order:
+        if k not in used and loose_key(k):
+            tables.setdefault(loose_key(k), []).append(k)
+    for k in wanted:
+        if k not in row_of and loose_key(k):
+            datas.setdefault(loose_key(k), []).append(k)
+    clashes: list[str] = []
+    for form, ours in tables.items():
+        theirs = datas.get(form)
+        if not theirs:
+            continue
+        if len(ours) > 1 or len(theirs) > 1:
+            clashes.append(f"{', '.join(map(repr, ours))} (table) / {', '.join(map(repr, theirs))} (source)")
+            continue
+        row_of[theirs[0]] = plan.by_key[ours[0]]
+        loosely.append((ours[0], theirs[0]))
+    if clashes:
+        raise ToolError("ambiguous", f"{len(clashes)} key(s) loosely match more than one key on the other side: "
+                        + "; ".join(clashes[:10]) + (f" and {len(clashes) - 10} more" if len(clashes) > 10 else "")
+                        + ": pair them with match ({table key: source key}) or make the keys unique; "
+                          "nothing was changed", field="loose", valid_options=["match"])
+    return row_of, paired, loosely
+
+
+def _note_loose(gone: list[str], added: list[str], remove: bool, notes: list[str]) -> None:
+    """Without ``loose``: say which table keys gone and source keys added would match loosely
+    -- the way out (rule 2)."""
+    forms: dict[tuple, list[str]] = {}
+    for k in gone:
+        forms.setdefault(loose_key(k), []).append(k)
+    pairs = [(forms[loose_key(k)][0], k) for k in added if len(forms.get(loose_key(k)) or ()) == 1]
+    if not pairs:
+        return
+    shown = ", ".join(f"{a!r} / {b!r}" for a, b in pairs[:LISTED]) + (
+        f" and {len(pairs) - LISTED} more" if len(pairs) > LISTED else "")
+    notes.append(f"{len(pairs)} table key(s) match a source key loosely (case, spaces, separators, leading zeros) "
+                 f"but were compared exactly (the source's added, the table's {'removed' if remove else 'missing'}): "
+                 f"{shown} (table / source); loose: 'table' matches them, keeping the table's spelling")
+
+
 def _merged_likeness(slots: list, grid: list, plan: _Plan, rows: Any, fields: list[int], table: str) -> None:
     """Refuse, before any change, rows to add like a row whose one cell spans two or more of
     the columns taken: a value each would go in one cell (rule 2: the way out)."""
@@ -432,7 +534,7 @@ def _sorted(keys: list[str]) -> bool:
 
 
 def _slots(plan: _Plan, source_keys: list[tuple[int, str | None]], added: list[int],
-           placement: str) -> list[tuple[int, bool, list[int]]]:
+           placement: str, row_of: dict[str, int]) -> list[tuple[int, bool, list[int]]]:
     """Where the rows added go: ``(row, below, source rows)`` -- beside table row ``row``
     (below it unless not ``below``), in that order; one slot per row."""
     if not added:
@@ -455,8 +557,8 @@ def _slots(plan: _Plan, source_keys: list[tuple[int, str | None]], added: list[i
         for i, found in source_keys:
             if found is None:
                 continue
-            if found in plan.by_key:
-                last = plan.by_key[found]
+            if found in row_of:
+                last = row_of[found]
             elif i in added:
                 place = (last, True) if last is not None else (data_rows[0], False)
                 slots.setdefault(place, []).append(i)
@@ -509,7 +611,8 @@ def _insert(document: Any, kept: Any, table: str, slots: list[tuple[int, bool, l
 
 
 def _keep_sources(call: Any, kept: Any, old_key: str | None, now: str, block: Any, plan: _Plan, height: int,
-                  writes: list, slots: list, final: dict, texts: list[list[str]]) -> str | None:
+                  writes: list, slots: list, final: dict, texts: list[list[str]],
+                  row_of: dict[str, int]) -> str | None:
     """Where the values came from (see the module doc); a note when a record is dropped."""
     from ooxml_edit.tools import textfacts
 
@@ -524,16 +627,18 @@ def _keep_sources(call: Any, kept: Any, old_key: str | None, now: str, block: An
     view = document.table(now)
     grid = view.grid()
     end = len(grid) - (height - plan.end)        # above the total row
-    index_of = {}
+    # Each row's source row, by where the rows are now: matched rows, then the rows added.
+    index_of: dict[int, int] = {}
     for i, line in enumerate(texts):
         found = _norm(line[plan.key_pick].replace("\v", " "))
-        if found:
-            index_of[found] = i
+        if found in row_of:
+            index_of[final[("old", row_of[found])]] = i
+        elif ("new", i) in final:
+            index_of[final[("new", i)]] = i
     body = [r for r in range(plan.body, end) if r in accepted]
     order: list[int] = []
     for row in body:
-        cell = grid[row][plan.key_col]
-        found = index_of.get(_norm(cell.text)) if cell is not None and cell.row == row else None
+        found = index_of.get(row)
         if found is None:
             order = []
             break
@@ -580,7 +685,8 @@ def _base(address: str) -> tuple[str, int]:
 
 def _said(block: Any, plan: _Plan, grid: list, header: int, rows: Any, fields: list[int], added: list[int],
           source_keys: list, changed_keys: dict[str, list[str]], gone: list[str], remove: bool,
-          placement: str, writes: list) -> dict[str, Any]:
+          placement: str, writes: list, loose: str | None = None, paired: list = (),
+          loosely: list = ()) -> dict[str, Any]:
     key_of = dict(source_keys)
     columns = rows.dataset.columns
     out: dict[str, Any] = {
@@ -596,6 +702,12 @@ def _said(block: Any, plan: _Plan, grid: list, header: int, rows: Any, fields: l
         out["changed"]["more"] = len(changed_keys) - LISTED
     if not added:
         out["added"].pop("placed")
+    if loose:
+        out["loose_matches"] = {"count": len(loosely), "pairs": dict(loosely[:LISTED])}
+        if len(loosely) > LISTED:
+            out["loose_matches"]["more"] = len(loosely) - LISTED
+    if paired:
+        out["paired"] = len(paired)
     if plan.keyless:
         out["no_key_rows"] = len(plan.keyless)
     if plan.totals:
@@ -610,12 +722,17 @@ def _unchanged(call: Any, view: Any, block: Any, plan: _Plan, gone: list[str], s
                             "added": {"count": 0, "keys": []}, "changed": {"count": 0, "cells": 0, "keys": {}},
                             "missing": _capped(gone), "unchanged": len(plan.order) - len(gone),
                             "timing": timing.parts}
+    for name in ("loose_matches", "paired"):     # after the counts, as a sync that changes says them
+        if name in data:
+            data[name] = data.pop(name)
     if plan.keyless:
         data["no_key_rows"] = len(plan.keyless)
     if plan.totals:
         data["total_rows"] = len(plan.totals)
+    loosely = (said.get("loose_matches") or {}).get("count")
     result = Result(summary=f"sync of {view.id} with {block.rows.address}: nothing to change"
-                    + (f"; {len(gone)} missing (left; remove: true deletes them)" if gone else ""), data=data)
+                    + (f"; {len(gone)} missing (left; remove: true deletes them)" if gone else "")
+                    + (f"; {loosely} key(s) matched loosely" if loosely else ""), data=data)
     result.warnings.append("the table holds the source's values already: nothing changed")
     result.warnings.extend(notes)
     return result
