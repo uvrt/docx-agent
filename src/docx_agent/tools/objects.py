@@ -57,6 +57,9 @@ CELL = obj({"row": integer(minimum=0, optional=True),
 #: Round 49 (R90): sync reads from_columns as the source column of each table column.
 SYNC_COLUMNS = array(string(), "from's columns, in order (sync: per table column, default by labels). "
                      "Default all.", optional=True)
+#: Round 52 (R106): table key -> data key pairs no rule should guess; an object reads as pairs.
+SYNC_PAIRS = array(obj({"table": string(), "data": string()}), "sync: key pairs matched first.",
+                   or_map=True, optional=True)
 POSITION = obj({"row": integer(minimum=0), "col": integer(minimum=0)},
                "merge, split: first cell, from 0.", optional=True)
 
@@ -100,6 +103,10 @@ def _text(table: Any, row: int, col: int) -> str:
             # Round 49 (R90): sync's key column and what becomes of rows whose key is gone.
             "key": string("sync: key column label or index. Default first.", optional=True),
             "remove": boolean("sync: delete rows of gone keys.", optional=True),
+            # Round 52 (R106): keys spelled differently (ooxml_edit.tools.loose_key), and pairs.
+            "loose": string("sync: also match keys loosely (case, spacing, separators, 05=5); whose "
+                            "spelling stays.", enum=["table", "data"], optional=True),
+            "match": SYNC_PAIRS,
             "header": HEADER,
             "date_format": DATE_FORMAT,
             "index": integer("insert_*, delete_*: row or column from 0. Default the last. "
@@ -120,15 +127,17 @@ def word_edit_table(call: Any, doc: str, table: str, action: str, cells: list[di
                     last: dict | None = None, rows: int = 1, columns: int = 2,
                     from_columns: list[str] | None = None, header: list[str] | None = None,
                     date_format: str | None = None, grow: bool | None = None, key: str | None = None,
-                    remove: bool | None = None, **given: Any) -> Result:
+                    remove: bool | None = None, loose: str | None = None, match: list[dict] | None = None,
+                    **given: Any) -> Result:
     document = call.document
     table = resolve(call, table)
     view = document.table(table)
     source = given.get("from") or None  # "": a strict decoder's placeholder for none (rule 1)
     if action == "sync":
-        return _sync(call, view, source, cells, index, from_columns, header, date_format, grow, key, remove)
-    for name, value in (("key", key), ("remove", remove)):
-        if value not in (None, "", False):
+        return _sync(call, view, source, cells, index, from_columns, header, date_format, grow, key, remove,
+                     loose, match)
+    for name, value in (("key", key), ("remove", remove), ("loose", loose), ("match", match)):
+        if value not in (None, "", False, []):
             raise ToolError("invalid_arguments", f"{name} is for sync (a table kept in step with rows by key)",
                             field=name, valid_options=["sync"])
     read_as = None
@@ -236,7 +245,7 @@ def word_edit_table(call: Any, doc: str, table: str, action: str, cells: list[di
 
 
 def _sync(call: Any, view: Any, source: str | None, cells: Any, index: Any, from_columns: Any, header: Any,
-          date_format: Any, grow: Any, key: Any, remove: Any) -> Result:
+          date_format: Any, grow: Any, key: Any, remove: Any, loose: Any = None, match: Any = None) -> Result:
     """Round 49 (R90): ``sync`` (:mod:`.table_sync`), its arguments read as meant (rule 1)."""
     from .table_sync import sync
 
@@ -255,7 +264,8 @@ def _sync(call: Any, view: Any, source: str | None, cells: Any, index: Any, from
         notes.append(f"index {index} not used: sync places each row by its key")
     if grow:
         notes.append("grow not needed: sync adds the rows of new keys")
-    return sync(call, view, source, from_columns, key, bool(remove), date_format, notes)
+    return sync(call, view, source, from_columns, key, bool(remove), date_format, notes, loose=loose or None,
+                match=[(p["table"], p["data"]) for p in match or ()])
 
 
 def _by_position(document: Any, view: Any, cells: list[dict], texts: list[str]) -> list[tuple[int, int, str]] | None:

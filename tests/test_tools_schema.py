@@ -290,10 +290,14 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS, WORD_TOOLS  # noqa: E402
 #: blocks) +12 to every definition (15,616 -> 15,628), none to the core (3,192).  The guard
 #: rises to 15,628.  A description only, no parameter: the strict set is
 #: unchanged (6 tools, 24 optional parameters).
+#: Round 52, R106: word_edit_table's ``loose`` (an enum) and ``match`` (pairs ``{table, data}``)
+#: +107 to every definition (15,628 -> 15,735), none to the core (3,192).  The guard rises to
+#: 15,735.  word_edit_table is still not strict for Claude: the strict set is unchanged (6
+#: tools, 24 optional parameters); on OpenAI two more nullable fields.
 CHARS_PER_TOKEN = 3.5
 COUNTED_PER_ESTIMATED = 1.48
 CORE_COUNTED_BUDGET = 6500
-ALL_GUARD = 15628
+ALL_GUARD = 15735
 
 
 @pytest.fixture(scope="module")

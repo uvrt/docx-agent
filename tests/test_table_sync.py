@@ -215,12 +215,16 @@ def test_a_row_with_a_formula_field_is_a_total_row(toolbox):
     assert b"SUM(ABOVE)" in _row_xml(session, table)[-1]
 
 
-def test_keys_differing_only_by_case_are_said(toolbox):
-    session, table = _table(toolbox, made(3), {"next": [("q7-001",) + made(3)[0][1:]] + made(3)[1:]})
+def test_keys_that_would_match_loosely_are_said(toolbox):
+    # round 52: the note names every loose match (case, spaces, separators, leading zeros) and the way out
+    session, table = _table(toolbox, made(3), {"next": [("q7-001",) + made(3)[0][1:],
+                                                        ("Q7.2",) + made(3)[1][1:], made(3)[2]]})
     result = _sync(toolbox, session, table, **{"from": "d:next"})
     assert result.ok, result.to_json()
-    assert result.data["added"]["keys"] == ["q7-001"] and result.data["missing"]["keys"] == ["Q7-001"]
-    assert any("only by case" in w and "'Q7-001' / 'q7-001'" in w for w in result.warnings)
+    assert result.data["added"]["keys"] == ["q7-001", "Q7.2"]
+    assert result.data["missing"]["keys"] == ["Q7-001", "Q7-002"] and "loose_matches" not in result.data
+    assert any("match a source key loosely" in w and "'Q7-001' / 'q7-001', 'Q7-002' / 'Q7.2'" in w
+               and "loose: 'table'" in w for w in result.warnings), result.warnings
 
 
 def test_rows_like_a_row_merged_across_columns_taken_are_refused_first(toolbox):
