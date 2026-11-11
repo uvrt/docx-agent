@@ -561,6 +561,16 @@ class ControlOps:
                         self._release(part, _track.delete_content(paragraph, stamp, part))
                         if _track.mark_record(paragraph) is None:
                             _track.mark(paragraph, "del", stamp, part)
+                    # Round 51 (R103): a table inside is deleted row by row, as Word deletes
+                    # rows -- one's own pending rows outright, the table with its last row
+                    # (before, a table inside was left as it was).
+                    from .table_format import own_rows
+
+                    for table in [t for t in children if isinstance(t.tag, str) and t.tag == _W + "tbl"]:
+                        self._track_delete_rows(part, own_rows(table), stamp, nested_rows=True)
+                        if not own_rows(table):
+                            remove(table)
+                    children = [c for c in children if c.getparent() is not None]
                     stamp.finish()
                     for child in children:
                         sdt.addprevious(child)

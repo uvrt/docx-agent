@@ -260,6 +260,9 @@ class _Review:
         #: Tables whose cells' spans a rejected w:tcPrChange set back: their grid keeps
         #: only the lines a cell's edge is on (a split's column goes, as in Word).
         self.respanned: dict[int, Element] = {}
+        #: Round 51 (R103): cells whose only paragraph's deleted mark this review accepted,
+        #: by their row: a row all of whose cells are such goes (:meth:`_emptied_rows`).
+        self.emptied: dict[int, tuple[Element, set[int]]] = {}
 
     # -- grouping ---------------------------------------------------------------------------
 
@@ -617,6 +620,11 @@ class _Review:
                 _keep_markers(paragraph)
                 remove(paragraph)
                 return
+            if empty and cell.tag == W_TC and blocks == [paragraph] and record.tag in _track.DELETED:
+                row = _ancestor(cell, W_TR)
+                if row is not None:
+                    self._held += [row, cell]
+                    self.emptied.setdefault(id(row), (row, set()))[1].add(id(cell))
             self._drop(record)
             return
         # The paragraph joins the next: its content moves to the next one's start.
@@ -629,7 +637,30 @@ class _Review:
         self.removed_paragraphs.append(paragraph)
         remove(paragraph)
 
+    def _emptied_rows(self) -> None:
+        """A row whose every cell's only paragraph had its deletion accepted here, nothing
+        left in it, and no record of its own left, goes -- the table with its last row: Word
+        accepting its own form of a row one inserted and then deleted while it held what was
+        there before (``w:trPr/w:ins`` kept, the cells' content and marks deleted: measured,
+        ``tools/rows_probe.py``, ``MinePlain``)."""
+        for row, cells in self.emptied.values():
+            if row.getparent() is None or row.find(f"{_W}trPr/{_W}ins") is not None \
+                    or row.find(f"{_W}trPr/{_W}del") is not None:
+                continue
+            own = [c for c in row.iter(W_TC) if _ancestor(c, W_TR) is row]
+            if not own or any(id(c) not in cells or any(_has_content(p) for p in c.iter(W_P)) for c in own):
+                continue
+            table = _ancestor(row, W_TBL)
+            self.removed_paragraphs += list(row.iter(W_P))
+            self._removing(row)
+            _keep_markers(row)
+            remove(row)
+            if table is not None and table.find(W_TR) is None and not any(
+                    child.tag in (_W + "sdt", _W + "customXml") for child in table):
+                remove(table)
+
     def _tidy(self) -> None:
+        self._emptied_rows()
         for key, removed in self.removed_cells.items():
             if removed and key in self.maps and key not in self.restored_grids:
                 table, grid = self.maps[key]
