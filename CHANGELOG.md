@@ -5,7 +5,7 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
-## 0.1.92 -- unreleased
+## 0.1.93 -- unreleased
 
 - **A table one inserted, deleted, takes the paragraph it came with.** docx-agent keeps two
   tables apart with an empty paragraph (inserted, when tracked); deleting the table one
@@ -17,9 +17,29 @@ snapshot commit; the development history before it is summarised here.
   paragraph, and deleting the table leaves the split: docx-agent inserts after the
   paragraph, without a split.)
 - **The first tracked call after tracking is switched drafts at once** (needs ooxml-edit
-  0.108.0). Switching tracking makes no new version, so the version drafts are made from
+  0.109.0). Switching tracking makes no new version, so the version drafts are made from
   kept the old tracking: the next call that could run on a draft found "tracking was
   switched" three times and then took the document's lock.
+
+## 0.1.92 -- unreleased
+
+- **A sync repeated with the same key column runs again** (round 51, found while measuring
+  R105). `word_edit_table`'s `key` -- the column a `sync` matches rows by -- was read by the
+  dispatcher as a retry key, so a second sync with the same key column, of any table of the
+  document, answered "already done with key 'Product': nothing new was made" and changed
+  nothing (inside a batch it ran). It is declared not a retry key (`retry_key=False`,
+  ooxml-edit 0.108.0's `Tool.retry_key`); needs ooxml-edit 0.108.0.
+  tests/test_table_sync.py.
+- **A sync on a draft names only its own table** (round 51). After a sync, finding the
+  table again by its element read every table before it, and on a draft each read counted
+  as named by the call -- so a sync of another table before it, meanwhile, was a conflict
+  ("a block near t:... changed"), prepared again, up to running under the lock. The scan is
+  no longer recorded (`blocks.unrecorded`); the table found is. 4 threads syncing 4 tables of
+  one report, 16 syncs: 6-13 such conflicts and 2 runs under the lock per run before, none
+  after.
+  tests/test_table_sync.py.
+- With ooxml-edit 0.108.0 (R105), a batch that derives a dataset from a workbook and then
+  syncs a table from it runs on a draft (measured in ooxml-edit's CHANGELOG).
 
 ## 0.1.91 -- unreleased
 

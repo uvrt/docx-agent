@@ -111,7 +111,10 @@ def _text(table: Any, row: int, col: int) -> str:
             "rows": integer("split: into rows. Default 1.", minimum=1, maximum=63, optional=True),
             "columns": integer("split: into columns. Default 2.", minimum=1, maximum=63, optional=True)},
            refs=('table',), group="word_objects", mutates=True, sources=("from", "cells[].from"),
-           facts=("cells[].text",), aliases={"columns": names_as("columns", "from_columns")})
+           facts=("cells[].text",), aliases={"columns": names_as("columns", "from_columns")},
+           # Round 51: key is sync's key column, never a retry key -- a sync repeated with the
+           # same key column (of this table or another) runs again.
+           retry_key=False)
 def word_edit_table(call: Any, doc: str, table: str, action: str, cells: list[dict] | None = None,
                     index: int | None = None, side: str = "after", first: dict | None = None,
                     last: dict | None = None, rows: int = 1, columns: int = 2,
@@ -872,15 +875,24 @@ class _Kept:
         return record
 
     def _entry_now(self) -> Any:
-        """The table's index entry after the edit, found by its element."""
+        """The table's index entry after the edit, found by its element.  On a draft only the
+        table found counts as read (round 51): the others looked at on the way are not the
+        call's, and another call may change them meanwhile."""
         if self.element is None:
             return None
-        for story in self.document.stories:
-            for table in story.tables:
-                entry = _table_entry(self.document, table.id)
-                if entry is not None and entry.element is self.element:
-                    return entry
-        return None
+        from ..blocks import unrecorded
+
+        with unrecorded(self.document):
+            found = None
+            for story in self.document.stories:
+                for table in story.tables:
+                    entry = _table_entry(self.document, table.id)
+                    if entry is not None and entry.element is self.element:
+                        found = entry
+                        break
+                if found is not None:
+                    break
+        return _table_entry(self.document, found.id) if found is not None else None
 
 
 def _set_cell(document: Any, table: Any, row: int, col: int, text: str) -> list[Any]:

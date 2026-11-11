@@ -323,7 +323,7 @@ def test_a_table_with_another_authors_row_keeps_that_row_marked(box):
 
 def test_the_first_tracked_call_after_untracked_drafts_drafts_at_once():
     """Switching tracking makes no new version: the version drafts are made from carries
-    it, so the next call does not find "tracking was switched" (ooxml-edit 0.108.0)."""
+    it, so the next call does not find "tracking was switched" (ooxml-edit 0.109.0)."""
     with Toolbox(TOOLS, formats=[FORMAT], groups=GROUPS, workers=0, block_edits="always") as toolbox:
         session = toolbox.session(clock=CLOCK)
         session.open(Document.new().to_bytes(), "plan.docx")

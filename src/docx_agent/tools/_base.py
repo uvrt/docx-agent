@@ -571,7 +571,7 @@ def word_tool(name: str, description: str, params: Mapping[str, Any], *, group: 
               call_role: Callable[[Mapping[str, Any]], str | None] | None = None,
               review_core: bool = False,
               action_fields: Mapping[str, Sequence[str]] | None = None,
-              ahead: Callable[..., Any] | None = None
+              ahead: Callable[..., Any] | None = None, retry_key: bool = True
               ) -> Callable[[Callable[..., Any]], Any]:
     """A Word tool (kind ``docx``): ``handler(call, **arguments) -> Result | data``.
 
@@ -589,7 +589,9 @@ def word_tool(name: str, description: str, params: Mapping[str, Any], *, group: 
     (``Tool.review_core``); ``action_fields`` the parameters only some actions take, not sent
     to a role set offered none of them (``Tool.action_fields``, ooxml-edit 0.69.0);
     ``ahead`` what a changing call does before its change, its lock let go
-    (``Tool.aheads``, ooxml-edit 0.79.0: :func:`lay_out_ahead`), with the layout engine."""
+    (``Tool.aheads``, ooxml-edit 0.79.0: :func:`lay_out_ahead`), with the layout engine;
+    ``retry_key=False`` a ``key`` that is not a retry key (``Tool.retry_key``, ooxml-edit
+    0.108.0: a sync's key column)."""
 
     def make(handler: Callable[..., Any]) -> Any:
         return _tool(name, description, params, group=group, mutates=mutates, kind="docx",
@@ -597,7 +599,7 @@ def word_tool(name: str, description: str, params: Mapping[str, Any], *, group: 
                      batchable=batchable, reads=reads, sources=sources, facts=facts,
                      aliases=aliases, action_roles=action_roles,
                      call_role=call_role, review_core=review_core,
-                     action_fields=action_fields,
+                     action_fields=action_fields, retry_key=retry_key,
                      ahead=_engaged(ahead) if ahead is not None else None)(
                          wrap(handler, mutates=mutates, track=track))
 

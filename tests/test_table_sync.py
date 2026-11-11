@@ -316,6 +316,17 @@ def test_the_key_column_by_label_index_or_field(toolbox):
     assert not result.ok and result.error.field == "key" and "0: title" in result.error.valid_options
 
 
+def test_a_sync_repeated_with_the_same_key_column_runs_again(toolbox):
+    """Round 51: key is the column, not a retry key -- the same sync key on another table, or
+    on the same table with new rows, syncs; it is never "already done"."""
+    session, table = _table(toolbox, made(3), {"first": made(3, add=(4,)), "then": made(3, add=(4, 5))})
+    first = _sync(toolbox, session, table, **{"from": "d:first", "key": "code"})
+    then = _sync(toolbox, session, table, **{"from": "d:then", "key": "code"})
+    assert first.ok and then.ok and "already done" not in then.summary, then.to_json()
+    assert [row[0] for row in _texts(session, table)][-2:] == ["Q7-004", "Q7-005"]
+    assert then.version == first.version + 1
+
+
 def test_values_keep_their_source(toolbox):
     # every data row a source row after: the table's record, its rows in the table's order
     session, table = _table(toolbox, made(5), {"next": made(6, drop=(2,), change=(3,))})
@@ -426,3 +437,39 @@ def test_concurrent_syncs_equal_their_commit_order_run_alone():
     found = block_stress.run(3, threads=4, calls=8, chapters=3, sync=True)
     assert found["same"], found
     assert found["drafted"] > 0
+
+
+def test_a_sync_on_a_draft_names_only_its_own_table(monkeypatch):
+    """Round 51: finding the synced table again after the sync reads the tables before it on
+    the way; on a draft those are not the call's -- a sync of an earlier table meanwhile is
+    no conflict, and the later sync applies at once (before, "a block near t:... changed",
+    prepared again, up to running under the lock)."""
+    import threading
+
+    from test_block_edits import held
+
+    with Toolbox([*TOOLS, rows_put], formats=[FORMAT], groups=GROUPS, workers=0, block_edits="always") as box:
+        session = box.session(clock=CLOCK)
+        session.open(Document.new().to_bytes(), "leaflets.docx")
+        first = session.entry("d1").document.paragraphs()[0].id
+        two = _markdown(made(2)) + "\n\nBetween the two tables.\n\nAnd more words.\n\n" + _markdown(made(2))
+        assert box.dispatch(session, "word_insert_markdown", {"doc": "d1", "at": f"after:{first}", "markdown": two}).ok
+        earlier, later = [t.id for t in session.entry("d1").document.tables()][-2:]
+        SETS["more"] = (COLUMNS, made(2, add=(3,)))
+        SETS["first"] = (COLUMNS, made(2, change=(1,)))
+        assert box.dispatch(session, "rows_put", {"id": "more"}).ok
+        assert box.dispatch(session, "rows_put", {"id": "first"}).ok
+        for table in (earlier, later):          # their records made first (the part both add)
+            assert _sync(box, session, table, **{"from": "d:first"}).ok
+        with held(monkeypatch) as hold:
+            out: dict = {}
+            thread = threading.Thread(target=lambda: out.setdefault("r", _sync(box, session, later, **{"from": "d:more"})))
+            thread.start()
+            assert hold.ready.wait(60)
+            assert _sync(box, session, earlier, **{"from": "d:more"}).ok
+            hold.release()
+            thread.join()
+        result = out["r"]
+        assert result.ok and result.block["tries"] == 1 and not result.block["conflicts"], result.block
+        assert [row[0] for row in _texts(session, later)][-1] == "Q7-003"
+        assert [row[0] for row in _texts(session, earlier)][-1] == "Q7-003"
