@@ -321,6 +321,22 @@ def test_a_table_with_another_authors_row_keeps_that_row_marked(box):
     assert len([i for i in deleted.removed if i.startswith("tr:")]) == 3
 
 
+def test_the_first_tracked_call_after_untracked_drafts_drafts_at_once():
+    """Switching tracking makes no new version: the version drafts are made from carries
+    it, so the next call does not find "tracking was switched" (ooxml-edit 0.109.0)."""
+    with Toolbox(TOOLS, formats=[FORMAT], groups=GROUPS, workers=0, block_edits="always") as toolbox:
+        session = toolbox.session(clock=CLOCK)
+        session.open(Document.new().to_bytes(), "plan.docx")
+        first = session.entry("d1").document.paragraphs()[0].id
+        made = ok(toolbox, session, "word_insert_markdown", doc="d1", at=f"after:{first}", markdown="Some text.")
+        assert made.block
+        for on in (True, False, True):
+            ok(toolbox, session, "word_set_tracking", doc="d1", on=on, **({"author": ME} if on else {}))
+            target = session.entry("d1").document.paragraphs()[-1].id
+            result = ok(toolbox, session, "word_set_text", doc="d1", target=target, text=f"Changed {on}.")
+            assert result.block and result.block["tries"] == 1 and result.block["conflicts"] == [], result.block
+
+
 def test_tracked_syncs_and_a_table_deletion_still_run_on_a_draft():
     """Drafted as before (round 50, R97): a sync confined to its table, adding rows and then
     removing them, and a deletion of a known table prepare on a draft; one's own rows go."""
@@ -342,10 +358,9 @@ def test_tracked_syncs_and_a_table_deletion_still_run_on_a_draft():
                   markdown="| new | table |\n|---|---|\n| B1 | b |")
         deleted = ok(toolbox, session, "word_delete", doc="d1",
                      target=next(i for i in made.created if i.startswith("t:")))
-        # (The first tracked call after drafts made untracked prepares again, "tracking was
-        # switched": round 50's, not this one's.)
-        assert added.block
-        for result in (removed, made, deleted):
+        # Round 51: the first tracked call after drafts made untracked drafts on its first try
+        # too (before: "tracking was switched" three times, then the lock).
+        for result in (added, removed, made, deleted):
             assert result.block and result.block["tries"] == 1 and result.block["conflicts"] == [], result.block
         assert _rows(session, table) == (3, 3) and session.entry("d1").document.revisions() == []
 
@@ -375,4 +390,68 @@ def test_a_control_deleted_with_its_table_deletes_the_table_tracked():
     rows = list(document.package.tree(document.package.document_part()).iter(_W + "tr"))
     assert len(rows) == 2 and all(_records(row.find(_W + "trPr")) == ("del:me",) for row in rows)
     assert all(_paragraph(p)[0] == ("del:me",) for row in rows for p in row.iter(_W + "p"))
+    assert document.validate() == []
+
+
+# -- the paragraph a table came with (round 51) ------------------------------------------------
+
+SEPARATOR = json.loads((ROOT / "tests" / "observations" / "separator-word.json").read_text(encoding="utf-8"))
+
+
+def _separator_observed(name: str) -> list[tuple]:
+    out = []
+    for block in SEPARATOR[name]:
+        element = etree.fromstring(re.sub(r"^<(w:\w+)", r"<\1 " + _NS, block, count=1))
+        if element.tag != _W + "sectPr":
+            out.append(_block(element))
+    return out
+
+
+def test_word_puts_a_new_table_beside_a_table_and_deleting_it_leaves_no_trace():
+    """The measured facts (``tools/separator_probe.py``): Word inserts a table next to a table
+    with no paragraph between, and deleting it leaves the document as it was; a table
+    inserted at the end of a paragraph's text splits it, and the split stays."""
+    made, deleted = _separator_observed("made"), _separator_observed("deleted")
+    kinds = [b[0] for b in made]
+    assert kinds[1:3] == ["table", "table"] and kinds[-3:] == ["table", "table", "p"]
+    split = next(k for k, b in enumerate(deleted) if b[0] == "p" and b[1][1] == (("", "Last paragraph."),))
+    assert deleted[split][1][0] == ("ins:me",) and deleted[split + 1] == ("p", ((), ()))
+    assert [b[0] for b in deleted] == ["p", "table", "p", "table", "p", "p", "p", "table", "p"]
+
+
+@pytest.mark.parametrize("where", ["between", "end"])
+def test_a_table_one_inserted_beside_a_table_goes_with_the_paragraph_it_came_with(where):
+    """docx-agent keeps two tables apart with an empty paragraph (inserted, tracked); the
+    table deleted, that paragraph goes too -- the document as it was, as Word leaves it."""
+    document = Document.open(rows_probe._package(
+        rows_probe._paragraph("Start.") + rows_probe._table([rows_probe._row("One", 1)])
+        + rows_probe._paragraph() + rows_probe._table([rows_probe._row("Two", 1)]) + rows_probe._paragraph()))
+    def body():
+        found = document.package.tree(document.package.document_part()).find(_W + "body")
+        return [re.sub(r' xmlns:\w+="[^"]*"', "", etree.tostring(child).decode()) for child in found]
+
+    before = body()
+    tables = document.tables()
+    element = document._resolve(tables[0 if where == "between" else 1].id)[1].element.getnext()
+    place = document._index(document.package.document_part()).entry_for(element).id
+    with document.tracking(author=ME):
+        made = document.insert_markdown("| new | |\n|---|---|\n| | |", at=f"before:{place}")
+        new = next(i for i in made.created if i.startswith("t:"))
+        assert sum(1 for b in _ours(document) if b == ("p", (("ins:me",), ()))) == 1   # the separator
+        result = document.delete_block(new)
+    assert body() == before      # (the root keeps the w16du declaration the tracking added)
+    assert len(result.removed) == len(set(result.removed)) and new in result.removed
+
+
+def test_a_paragraph_still_keeping_two_tables_apart_stays():
+    document = Document.open(rows_probe._package(
+        rows_probe._paragraph("Start.") + rows_probe._table([rows_probe._row("One", 1)]) + rows_probe._paragraph()))
+    last = document.paragraphs()[-1].id
+    with document.tracking(author=ME):
+        first = next(i for i in document.insert_markdown("| a | |\n|---|---|\n| | |", at=f"before:{last}").created
+                     if i.startswith("t:"))
+        document.insert_markdown("| b | |\n|---|---|\n| | |", at=f"before:{last}")
+        document.delete_block(first)
+    blocks = [b[0] for b in _ours(document)]
+    assert "table" in blocks and all(not (a == b == "table") for a, b in zip(blocks, blocks[1:]))
     assert document.validate() == []
