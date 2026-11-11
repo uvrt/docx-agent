@@ -96,6 +96,78 @@ def _clean_cell_properties(properties: Element | None) -> Element:
     return out
 
 
+_STORIES = frozenset(_W + name for name in ("body", "hdr", "ftr", "footnote", "endnote", "comment", "txbxContent"))
+
+
+def _row_fate(row: Element, author: str) -> str:
+    """How a tracked deletion treats ``row`` (:meth:`TableOps._track_delete_rows`):
+    ``remove`` (wholly one's own insertion), ``relocate`` (the same, holding another
+    author's insertion), ``keep`` (one's own row holding what was there before: its
+    content deleted, its insertion kept) or ``mark`` (``w:trPr/w:del``), for a deletion by
+    ``author``."""
+    from ..revisions import track as _track
+
+    def mine(record: Element) -> bool:
+        return record.get(_W + "author") == author
+
+    record = row.find(f"{_W}trPr/{_W}ins")
+    if record is None or not mine(record) or row.find(f"{_W}trPr/{_W}del") is not None:
+        return "mark"
+    if any(True for _ in row.iter(W_TBL)):
+        return "keep"
+    others = False
+    for paragraph in row.iter(W_P):
+        mark = _track.mark_record(paragraph)
+        if mark is None or mark.tag != _W + "ins" or not mine(mark):
+            return "keep"
+        for run in paragraph.iter(_W + "r"):
+            inserted = None
+            for ancestor in run.iterancestors():
+                if ancestor is paragraph:
+                    break
+                if ancestor.tag == _W + "ins":
+                    inserted = ancestor
+                    break
+            if inserted is None:
+                return "keep"
+            others = others or not mine(inserted)
+    return "relocate" if others else "remove"
+
+
+def _paragraph_after(row: Element, going: set[int]) -> Element | None:
+    """The first paragraph after ``row`` in its story, in document order, that is not in a
+    row of ``going`` (rows removed outright)."""
+    node = row
+    while node is not None and node.tag not in _STORIES:
+        for sibling in node.itersiblings():
+            if not isinstance(sibling.tag, str):
+                continue
+            for paragraph in ([sibling] if sibling.tag == W_P else sibling.iter(W_P)):
+                if not any(id(r) in going for r in paragraph.iterancestors(W_TR)):
+                    return paragraph
+        node = node.getparent()
+    return None
+
+
+def _delete_cell_mark(paragraph: Element, stamp, part: str, *, own: bool) -> None:
+    """A deleted row's cell paragraph mark: deleted -- beside another author's insertion of
+    it, as Word records it (measured); one's own inserted mark is left (``own``: replaced by
+    the deletion, in a row one inserted and keeps)."""
+    from ..revisions import track as _track
+
+    record = _track.mark_record(paragraph)
+    if record is None:
+        _track.mark(paragraph, "del", stamp, part)
+        return
+    if record.tag != _W + "ins" or paragraph.find(f"{_W}pPr/{_W}rPr/{_W}del") is not None:
+        return
+    if not stamp.same(record):
+        _track.mark(paragraph, "del", stamp, part)
+    elif own:
+        remove(record)
+        _track.mark(paragraph, "del", stamp, part)
+
+
 def _empty_paragraph_like(paragraph: Element | None) -> Element:
     """A new empty paragraph with ``paragraph``'s properties (no section break, no revision
     record): what Word puts in a new cell."""
@@ -220,6 +292,76 @@ class TableOps:
         self.package.mark_dirty(part)
         story = self._story_of(part)
         return ("" if story == "body" else f"{story}/") + f"tr:{row.get(_ids.PARA_ID)}"
+
+    # -- rows deleted, tracked (round 51, R103) -----------------------------------------------
+
+    def _track_delete_rows(self: "Document", part: str, rows: list[Element], stamp, *,
+                           nested_rows: bool = False) -> list[Element]:
+        """Delete ``rows`` (of one table, in document order) as tracked changes, as Word
+        deletes them (measured, ``tools/rows_probe.py``, ``tests/observations/rows-word.json``):
+
+        * a row that is wholly the author's own pending insertion -- its ``w:trPr/w:ins``, each
+          cell's paragraph mark, and every run an insertion -- is **removed outright**, with no
+          record left; what in it is another author's insertion stays theirs, deleted by this
+          author (``w:ins`` > ``w:del``), at the start of the first paragraph after the row
+          (the next row's first cell, or after the table);
+        * a row the author inserted holding what is not an insertion (text or a paragraph mark
+          there before) keeps its ``w:trPr/w:ins`` and gets no ``w:del``: its content and
+          marks are deleted (Word's Accept All and Reject All both take the row out);
+        * any other row gets ``w:trPr/w:del``, its content and marks deleted -- beside another
+          author's inserted mark too.
+
+        One's own insertions inside are removed (:func:`~docx_agent.revisions.track.
+        delete_runs`).  ``nested_rows``: a deleted row's nested tables' rows are marked
+        deleted too (a whole table's deletion).  Returns the rows removed outright."""
+        from ..revisions import track as _track
+        from . import inline as _inline
+        from .document import _rehome_markers
+
+        kinds = {id(row): _row_fate(row, stamp.author) for row in rows}
+        going = {id(row) for row in rows if kinds[id(row)] in ("remove", "relocate")}
+        targets: dict[int, Element | None] = {}
+        for row in rows:
+            if kinds[id(row)] == "relocate":
+                targets[id(row)] = _paragraph_after(row, going)
+                if targets[id(row)] is None:
+                    kinds[id(row)] = "keep"           # nowhere for another's insertion to go
+                    going.discard(id(row))
+        for row in rows:
+            kind = kinds[id(row)]
+            if kind in ("remove", "relocate"):
+                continue
+            if kind == "mark":
+                for target in [row] + ([r for r in row.iter(W_TR) if r is not row] if nested_rows else []):
+                    properties = target.find(_W + "trPr")
+                    if properties is None:
+                        properties = make("w:trPr")
+                        insert_in_order(target, properties)
+                    if properties.find(_W + "del") is None:
+                        insert_in_order(properties, stamp.make("w:del", part))
+            for paragraph in row.iter(W_P):
+                self._release(part, _track.delete_content(paragraph, stamp, part))
+                _delete_cell_mark(paragraph, stamp, part, own=kind == "keep")
+        removed: list[Element] = []
+        for row in reversed(rows):                # a later row's moved content after an earlier's
+            if kinds[id(row)] not in ("remove", "relocate"):
+                continue
+            moved: list[Element] = []
+            for paragraph in row.iter(W_P):
+                self._release(part, _track.delete_content(paragraph, stamp, part))
+                moved += [child for child in paragraph if isinstance(child.tag, str)
+                          and child.tag != _W + "pPr" and any(True for _ in child.iter(_W + "r"))]
+            target = targets.get(id(row))
+            if moved and target is not None:
+                at = 1 if target.find(_W + "pPr") is not None else 0
+                for k, node in enumerate(moved):
+                    target.insert(at + k, node)
+            _rehome_markers(row)
+            self._release(part, _inline.relationship_ids(row))
+            remove(row)
+            removed.append(row)
+        removed.reverse()
+        return removed
 
     # -- a table filled in one pass (round 45, R67) -------------------------------------------
     #
@@ -361,7 +503,6 @@ class TableOps:
                         if _vmerge(cell) == "restart" and start in below and _vmerge(below[start]) == "continue"]
             stamp = tracker = None
             if tracking is not None:
-                from ..revisions import track as _track
                 from ..revisions.stamp import Stamp
                 from .table_format import TableTracker
 
@@ -375,24 +516,18 @@ class TableOps:
             if tracker is not None:
                 tracker.record(stamp, part, table_level=False)
                 _merges_as_cell_merges(entry.element, tracker, stamp, part)
-            if stamp is not None:
-                properties = row.find(_W + "trPr")
-                if properties is None:
-                    properties = make("w:trPr")
-                    insert_in_order(row, properties)
-                insert_in_order(properties, stamp.make("w:del", part))
-                for paragraph in row.iter(W_P):
-                    self._release(part, _track.delete_content(paragraph, stamp, part))
-                    if _track.mark_record(paragraph) is None:
-                        _track.mark(paragraph, "del", stamp, part)
-                stamp.finish()
-                self.package.mark_dirty(part)
-                return EditResult(None, renamed=renames)
             from .document import _rehome_markers
 
             removed = [old_row_id]
-            index_ = self._index(part)
-            removed += [e.id for e in index_.paragraphs if any(e.element is p for p in row.iter(W_P))]
+            if stamp is None or _row_fate(row, stamp.author) in ("remove", "relocate"):
+                inside = set(map(id, row.iter(W_P)))
+                removed += [e.id for e in self._index(part).paragraphs if id(e.element) in inside]
+            if stamp is not None:
+                # Round 51 (R103): one's own pending row goes outright, as Word removes it.
+                gone = self._track_delete_rows(part, [row], stamp)
+                stamp.finish()
+                self.package.mark_dirty(part)
+                return EditResult(None, renamed=renames, removed=removed if gone else [])
             _comments.move_block_references(row, _comments.block_references(row) or [])
             _rehome_markers(row)
             from . import inline as _inline

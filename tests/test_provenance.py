@@ -346,15 +346,17 @@ def test_tracked_the_record_describes_the_document_with_changes_accepted(toolbox
     table = insert(toolbox, session, from_columns=["check", "rating"]).data["id"]
     track(toolbox, session)
     # A tracked row above the block shifts it and renames the table; a tracked deletion
-    # of that row leaves it in the file, but with changes accepted it is gone: the block
-    # shifts back.  Accepting keeps the record.
+    # of a row there before leaves it in the file, but with changes accepted it is gone:
+    # the block shifts back.  Accepting keeps the record.  (Round 51: the row inserted
+    # above, one's own pending insertion, deleted goes outright, as in Word: the table has
+    # its name back.)
     edit_table(toolbox, session, table, "insert_row", index=0, side="before")
     kept = session.provenance("d1")
     [renamed] = kept
     assert (kept[renamed]["header_row"], kept[renamed]["first_row"]) == (1, 2)
-    edit_table(toolbox, session, renamed, "delete_row", index=0)     # tracked: still in the file
-    kept = session.provenance("d1")
-    assert (kept[renamed]["header_row"], kept[renamed]["first_row"]) == (0, 1)
+    edit_table(toolbox, session, renamed, "delete_row", index=0)     # one's own: gone
+    assert list(session.provenance("d1")) == [table]
+    assert (session.provenance("d1")[table]["header_row"], session.provenance("d1")[table]["first_row"]) == (0, 1)
     ok(call(toolbox, session, "word_changes", doc="d1", action="accept", all=True))
     assert session.provenance("d1")[table]["first_row"] == 1
 

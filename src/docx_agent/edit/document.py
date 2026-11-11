@@ -2113,9 +2113,28 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
         if tracking is not None and not self._own_insertion(element, tracking):
             with self._edit():
                 renames = self._prepare(part, [], position)
-                self._track_delete_block(part, element, tracking)
+                named = {}
+                if isinstance(entry, TableEntry):
+                    # Row and paragraph ids, for the rows a tracked deletion removes outright.
+                    named = {id(row): renames.get(i, i) for row, i in self._table_entry(
+                        renames.get(old_id, old_id))[1].rows}
+                    named.update({id(e.element): e.id for e in self._index(part).paragraphs
+                                  if id(e.element) in nested})
+                gone = self._track_delete_block(part, element, tracking) or []
                 self.package.mark_dirty(part)
-            return EditResult(renames.get(old_id, old_id), renamed=renames)
+            removed = [named[id(node)] for row in gone for node in [row, *row.iter(W_P)] if id(node) in named]
+            if element.getparent() is None:
+                renames = {old: new for old, new in renames.items() if old not in removed_ids}
+                return EditResult(None, renamed=renames, removed=removed_ids)
+            current = renames.get(old_id, old_id)
+            if gone:
+                # A table is named by its first row: that row gone, it has the next one's name.
+                now = self._index(part).entry_for(element).id
+                if now != current:
+                    self._rename({old_id: now, current: now})
+                    renames = {**renames, old_id: now}
+                    current = now
+            return EditResult(current, renamed=renames, removed=removed)
         with self._edit():
             renames = {old: new for old, new in self._prepare(part, [], position).items()
                        if old not in removed_ids}
@@ -2154,10 +2173,13 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
         mark and every run are, a table whose every row is."""
         author = tracking.author
         if element.tag == W_TBL:
-            rows = [row for row in element.iter(_W + "tr")]
-            return bool(rows) and all(
-                row.find(f"{_W}trPr/{_W}ins") is not None
-                and row.find(f"{_W}trPr/{_W}ins").get(_W + "author") == author for row in rows)
+            # Round 51 (R103): every row wholly one's own insertion, marks and text with it
+            # (a row holding what was there before, or another's insertion, is not).
+            from .table_format import own_rows
+            from .tables import _row_fate
+
+            rows = own_rows(element)
+            return bool(rows) and all(_row_fate(row, author) == "remove" for row in rows)
         record = _track.mark_record(element)
         if record is None or record.tag != _W + "ins" or record.get(_W + "author") != author:
             return False
@@ -2167,31 +2189,28 @@ class Document(TrackingOps, RevisionOps, TextOps, FormatOps, ListOps, LinkOps, P
                 return False
         return True
 
-    def _track_delete_block(self, part: str, element: Element, tracking) -> None:
+    def _track_delete_block(self, part: str, element: Element, tracking) -> "list[Element] | None":
         """A block's tracked deletion.  A paragraph: its content and its mark, as Word
         deletes a whole paragraph; last in its container -- where Word cannot accept a
         deleted mark (measured: a cell's pulls the cell's first paragraph out of the
         table) -- the mark before it is the deleted one, and the paragraph takes that
-        paragraph's properties, recorded as a change.  A table: every row (``w:trPr/w:del``)
-        with every cell's paragraph marks and content, as Word deletes rows."""
+        paragraph's properties, recorded as a change.  A table: every row as Word deletes
+        rows (:meth:`_track_delete_rows`: ``w:trPr/w:del`` with every cell's paragraph marks
+        and content; one's own pending row removed outright, the table with its last row).
+        Returns a table's rows removed outright."""
         stamp = Stamp(self, tracking)
         if element.tag == W_TBL:
-            for row in element.iter(_W + "tr"):
-                properties = row.find(_W + "trPr")
-                if properties is None:
-                    properties = _text._make("w:trPr")
-                    from ..oxml.xml import insert_in_order
+            # Round 51 (R103): row by row as Word deletes them -- one's own pending rows go
+            # outright (:meth:`_track_delete_rows`); a table left with none goes too.
+            from .table_format import own_rows
 
-                    insert_in_order(row, properties)
-                from ..oxml.xml import insert_in_order
-
-                insert_in_order(properties, stamp.make("w:del", part))
-            for paragraph in element.iter(W_P):
-                self._release(part, _track.delete_content(paragraph, stamp, part))
-                if _track.mark_record(paragraph) is None:
-                    _track.mark(paragraph, "del", stamp, part)
+            gone = self._track_delete_rows(part, own_rows(element), stamp, nested_rows=True)
+            if gone and not own_rows(element):
+                _rehome_markers(element)
+                self._release(part, _inline.relationship_ids(element))
+                remove(element)
             stamp.finish()
-            return
+            return gone
         own_runs = list(element.iter(_W + "r"))
         self._release(part, _track.delete_content(element, stamp, part))
         previous = element.getprevious()
