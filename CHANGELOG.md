@@ -5,6 +5,26 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.91 -- unreleased
+
+- **A tracked deletion of one's own pending row removes it** (production round 51, R103: a
+  row inserted and then deleted with tracking on stayed, marked inserted and deleted; a
+  `sync` with `remove: true` of rows it had added earlier left them in the document, more
+  rows than the final view has). Measured in Word for Mac (`tools/rows_probe.py`,
+  `tests/observations/rows-word.json`) and written as Word writes it, by `delete_row`,
+  `sync` removals, `word_delete` of a table or span, a Markdown replacement and a block
+  control deleted with its content: a row wholly one's own pending insertion (its row
+  mark, every cell's paragraph mark, every run) goes outright -- no change left, its ids
+  reported removed -- and a table goes with its last such row; another author's pending
+  row is marked deleted, now with each cell's mark deleted beside their insertion as Word
+  records it; one's own row holding another author's insertion goes, their text staying
+  theirs, deleted, at the start of the next paragraph; one's own row holding what was there
+  before keeps its insertion, its content and marks deleted. A table whose first row goes
+  takes the next row's id; its old id resolves to it. Accepting a row in that last form
+  (every cell's only mark deleted, nothing left in it) removes it, as Word's Accept All
+  does. Before, a table inside a block control deleted with it, tracked, was left as it
+  was: its rows are now deleted.
+
 ## 0.1.90 -- unreleased
 
 - **Tracked edits run side by side** (production round 50, R97: with tracking on, 7 of 8
