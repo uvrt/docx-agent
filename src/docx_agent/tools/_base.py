@@ -25,7 +25,7 @@ import time
 from contextlib import contextmanager
 from typing import Any, Callable, Iterable, Iterator, Mapping, Sequence
 
-from ooxml_edit.tools import Result, ToolError, page_list, tool as _tool
+from ooxml_edit.tools import Result, ToolError, page_list, tool as _tool, validation
 
 from ooxml_edit.tools.worker import takes_affinity
 
@@ -454,15 +454,13 @@ def _reflow(document: Any, before: Any, out: dict[str, Any]) -> None:
 
 
 def validate_delta(entry: Any, problems: Sequence[Any] | None = None) -> dict[str, Any]:
-    """The document's problems (``problems``, else ``validate()``'s) against those it had
-    when opened."""
-    key = problem_key
-    baseline = {key(problem) for problem in entry.baseline_problems}
-    problems = list(entry.document.validate()) if problems is None else list(problems)
-    now = {key(problem) for problem in problems}
-    return {"new": [str(p) for p in problems if key(p) not in baseline],
-            "fixed": [str(p) for p in entry.baseline_problems if key(p) not in now],
-            "baseline": len(entry.baseline_problems)}
+    """The document's problems (``problems``, else ``validate()``'s, kept per version) against
+    those it had when opened: the save gate's own comparison (ooxml-edit's
+    :func:`~ooxml_edit.tools.validation`, round 53), so ``validate`` and the gate never
+    disagree."""
+    from .format import FORMAT
+
+    return validation(entry, FORMAT, problems=problems)
 
 
 def problem_key(problem: Any) -> Any:

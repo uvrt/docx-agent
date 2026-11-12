@@ -5,6 +5,20 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.96 -- unreleased
+
+- **`check` lists what saving would refuse** (round 53, R109; needs ooxml-edit 0.111.0).
+  Every `check` result carries ooxml-edit's `validation` -- the problems `save_document`
+  would refuse as new, the count the document opened with -- whatever its `include` or
+  `range`; a check with `include: ["layout"]`, or scoped to blocks the problems are not in,
+  said nothing of them before. `validate`'s delta (in `check` and in every changing call's
+  `checks`) is read through ooxml-edit's `validation`, the gate's own comparison, and the
+  problems are found once per document version: a check after an edit reuses those the
+  edit's checks found. Made-up "Shelf" document edited into 3 style-missing problems:
+  before, `check` with `include: ["layout"]` or `range` was silent and the save refused 3;
+  after, both list the 3 as `validation.new`, `word_format` fixes them, the save passes. No
+  tool definition changed.
+
 ## 0.1.94 -- unreleased
 
 - **`sync` matches keys spelled differently** (round 52, R106; needs ooxml-edit 0.110.0). A
