@@ -11,8 +11,8 @@ snapshot commit; the development history before it is summarised here.
   needs docx2svg 0.11.12). Measured with Word 16.106 for Mac: Word tracks neither a column's
   deletion (its `delete column` removes the column and its content at once, recording only the
   table's old properties; cutting it records nothing) nor a merge or split; docx-agent's
-  reviewable form -- the column's cells `w:cellDel`, their content deleted -- is what Word's
-  Accept All and Reject All review correctly, so it stays. What changed:
+  form -- the column's cells `w:cellDel`, their content deleted -- is what Word's
+  Accept All and Reject All handle correctly, so it stays. What changed:
   - **R110: the final view leaves the deleted column out.** `word_read` (and the Markdown in
     `word_edit_table`'s result) leave out a cell with a pending deletion (`w:cellDel`), the
     original view one with a pending insertion (`w:cellIns`); render draws the table as

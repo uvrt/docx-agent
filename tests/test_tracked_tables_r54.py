@@ -31,7 +31,7 @@ from docx_agent.tools import FORMAT, GROUPS, TOOLS
 
 W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 _W = "{%s}" % W
-ME = "Reviewer A"
+ME = "Editor A"
 CLOCK = lambda: dt.datetime(2026, 11, 12, 9, 0, tzinfo=dt.timezone.utc)  # noqa: E731
 ROWS = [("Area", "Lead", "Phase", "Remark"), ("Harbour", "Ines", "draft", "awaits figures"),
         ("Orchard", "Tomas", "done", "signed off"), ("Quarry", "Aleid", "open", "two gaps")]
