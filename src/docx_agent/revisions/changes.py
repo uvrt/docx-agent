@@ -337,6 +337,21 @@ def _part_changes(document: "Document", part: str, records: list[tuple[str, Elem
         for record in structural:
             for other in inside:
                 join(record, other)
+        # A grid change carries no author or date: w:tblGridChange has only an id (ECMA-376,
+        # CT_TblGridChange; Word writes it so too, measured round 54).  It belongs with the
+        # change to the same table that recorded it -- its w:tblPrChange, or the latest of
+        # its row and cell records -- whose author it is listed under (R112).
+        for record in structural:
+            if record.tag != _W + "tblGridChange" or _who(record) != (None, None):
+                continue
+            owner = record.getparent().getparent() if record.getparent() is not None else None
+            mine = [e for e in structural if e is not record and e.get(_W + "author") is not None
+                    and next(e.iterancestors(W_TBL), None) is owner]
+            if not mine:
+                continue
+            table_level = [e for e in mine if e.tag == _W + "tblPrChange"]
+            partner = table_level[-1] if table_level else max(mine, key=lambda e: e.get(_W + "date") or "")
+            union.union(key[id(partner)], key[id(record)])
     # Groups, in document order.
     groups: dict[int, list[int]] = {}
     for k in range(len(held)):
@@ -351,7 +366,8 @@ def _part_changes(document: "Document", part: str, records: list[tuple[str, Elem
 
 def _change(document: "Document", part: str, index, identifiers: list[str], elements: list[Element]) -> Change:
     kinds = [revision_kind(e) for e in elements]
-    author, date = _who(elements[0])
+    # The first record that names its author (a grid change names none: R112).
+    author, date = next((_who(e) for e in elements if e.get(_W + "author") is not None), _who(elements[0]))
     moved = any(k.endswith(("move-from", "move-to")) for k in kinds)
     inserted = any(k in ("insertion", "paragraph-mark-insertion", "run-mark-insertion", "row-insertion",
                          "cell-insertion") for k in kinds)

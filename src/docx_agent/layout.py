@@ -1076,7 +1076,9 @@ def check_options(options: dict, method: str) -> None:
     """Refuse a keyword docx2svg's :class:`~docx2svg.ConvertOptions` does not take, naming
     the ones it does (``pages`` is the render methods' own argument), before docx2svg's
     bare ``TypeError``.  Rendering always draws the final view -- every revision accepted,
-    comments not shown -- by decision; reviewing is ``to_markdown(view="markup")``."""
+    comments not shown -- by decision; reviewing is ``to_markdown(view="markup")``.  The view
+    is the accepted result, which can differ from Word's *No Markup* screen for pending
+    table-structure changes (a tracked column deletion or merge: round 54)."""
     accepted = [f.name for f in dataclasses.fields(docx2svg.ConvertOptions) if f.name != "pages"]
     unknown = [name for name in options if name not in accepted]
     if not unknown:

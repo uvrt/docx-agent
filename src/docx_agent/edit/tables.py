@@ -284,6 +284,45 @@ def _has_text(paragraph: Element) -> bool:
     return any(True for _ in paragraph.iter(_W + "r"))
 
 
+def _whole_comments(paragraph: Element) -> set[str]:
+    """The comments whose range and reference all lie in ``paragraph``."""
+    def ids(tag: str) -> set[str]:
+        return {node.get(_W + "id") for node in paragraph.iter(_W + tag)}
+
+    return ids("commentRangeStart") & ids("commentRangeEnd") & ids("commentReference")
+
+
+def _move_references(original: Element, copy_: Element) -> None:
+    """A tracked merge's copy of a paragraph holds its comment and note references once
+    (round 54): a reference written twice -- in the copy, inserted, and in the original,
+    deleted -- is a document Word does not open without a dialog (measured: Word blocked
+    on open).  A comment wholly in the paragraph moves with its range to the copy, as does
+    a note's reference (accepting keeps them, with the merged cell); a comment reaching
+    outside the paragraph stays where it is, its reference left out of the copy."""
+    whole = _whole_comments(original)
+    for node in list(copy_.iter(_W + "commentReference")):
+        if node.get(_W + "id") not in whole:
+            _drop_run_of(node)
+    moved = list(original.iter(_W + "footnoteReference", _W + "endnoteReference"))
+    moved += [node for node in original.iter(_W + "commentReference", _W + "commentRangeStart",
+                                              _W + "commentRangeEnd") if node.get(_W + "id") in whole]
+    for node in moved:
+        if node.tag in (_W + "commentRangeStart", _W + "commentRangeEnd"):
+            remove(node)
+        else:
+            _drop_run_of(node)
+
+
+def _drop_run_of(node: Element) -> None:
+    """``node``'s run, or ``node`` alone where its run holds more."""
+    run = node.getparent()
+    if run is not None and run.tag == _W + "r" and not any(
+            isinstance(c.tag, str) and c.tag != _W + "rPr" and c is not node for c in run):
+        remove(run)
+    else:
+        remove(node)
+
+
 class TableOps:
     """Row, column and merge edits on :class:`docx_agent.Document`."""
 
@@ -855,7 +894,12 @@ class TableOps:
                     self._describe(part, anchor, f"column {index + 1} deleted; Word does not track deleting a "
                                                  "column, so it is written as deleted cells.")
                 self.package.mark_dirty(part)
-                return EditResult(renames.get(entry.id, entry.id), renamed=renames)
+                table_id = renames.get(entry.id, entry.id)
+                # Round 54 (R110): what the reader sees now, and what positions count.
+                warning = (f"column {index} is deleted as a tracked change: word_read and render show the table "
+                           f"accepted, without it; col positions count it until the deletion is accepted "
+                           f"(word_changes accept within {table_id})") if doomed else None
+                return EditResult(table_id, renamed=renames, warnings=[warning] if warning else [])
             from . import inline as _inline
             from .document import _rehome_markers
 
@@ -880,6 +924,35 @@ class TableOps:
                     remove(row)
             self.package.mark_dirty(part)
         return EditResult(renames.get(entry.id, entry.id), renamed=renames, removed=[r for r in removed if r])
+
+    def columns_pending_deletion(self: "Document", table: str) -> list[int]:
+        """The grid columns of ``table`` that only cells with a pending tracked deletion
+        (``w:cellDel``) cover: the columns accepting removes (round 54, R110)."""
+        _part, entry = self._table_entry(table)
+        covered: dict[int, bool] = {}
+        for row, _ in entry.rows:
+            if row.find(f"{_W}trPr/{_W}del") is not None:
+                continue
+            for cell, start, span in _cells(row):
+                deleted = cell.find(f"{_W}tcPr/{_W}cellDel") is not None
+                for column in range(start, start + span):
+                    covered[column] = covered.get(column, True) and deleted
+        return sorted(column for column, only in covered.items() if only)
+
+    def pending_structure(self: "Document", table: str) -> list[str]:
+        """The tracked structure changes ``table`` holds that are not yet accepted (round 54,
+        R111), each said once in words: ``column deleted`` (``w:cellDel``), ``cells
+        inserted`` (``w:cellIns``), ``cells merged down`` (``w:cellMerge``), ``grid
+        changed`` (``w:tblGridChange``: a merge across, a split, a column across a span).
+        Nested tables' own changes are theirs, not this table's."""
+        _part, entry = self._table_entry(table)
+        names = {_W + "cellDel": "cells deleted", _W + "cellIns": "cells inserted",
+                 _W + "cellMerge": "cells merged down", _W + "tblGridChange": "grid changed"}
+        found: list[str] = []
+        for node in entry.element.iter(*names):
+            if next(node.iterancestors(W_TBL), None) is entry.element and names[node.tag] not in found:
+                found.append(names[node.tag])
+        return found
 
     # -- merging ----------------------------------------------------------------------------
 
@@ -1076,8 +1149,11 @@ class TableOps:
                         _clear_revisions(copy_)
                         for marker in list(copy_.iter(_W + "bookmarkStart", _W + "bookmarkEnd",
                                                       _W + "commentRangeStart", _W + "commentRangeEnd")):
-                            remove(marker)
+                            if marker.tag in (_W + "bookmarkStart", _W + "bookmarkEnd") \
+                                    or marker.get(_W + "id") not in _whole_comments(paragraph):
+                                remove(marker)
                         if _has_text(copy_):
+                            _move_references(paragraph, copy_)
                             copies.append(copy_)
                     self._release(part, _track.delete_content(paragraph, stamp, part))
             for cell in cells[1:]:
