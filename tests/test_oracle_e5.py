@@ -15,7 +15,7 @@ ROADMAP.md, Phase E5, "Done when").
   floating; the drawings' kind, place, wrapping, size and text; the controls' kinds and
   values and the bound node.
 * Tracked, **Word's own Accept All and Reject All read as ours** for every table operation,
-  the merge across among them (in the form Word reviews exactly: the cells merged away
+  the merge across among them (in the form Word accepts and rejects exactly: the cells merged away
   w:cellDel with their content kept, round 54 lane M), a text box, a shape and a control's fill.
 """
 

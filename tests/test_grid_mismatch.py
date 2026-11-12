@@ -111,7 +111,7 @@ def test_check_names_the_table_and_row_off_the_grid_and_render_draws_it(toolbox)
 
 
 def test_a_tracked_merge_stays_on_its_grid(toolbox):
-    """Round 54 (lane M): docx-agent writes a tracked merge as Word reviews it exactly -- the
+    """Round 54 (lane M): docx-agent writes a tracked merge as Word accepts and rejects it exactly -- the
     first cell keeping its span, the cells merged away w:cellDel with their content -- so the
     row stays on its grid while pending (test_tracked_merge_r54m.py)."""
     session, document = _open(toolbox, _shelf().to_bytes())

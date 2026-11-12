@@ -17,7 +17,7 @@ and paragraph marks kept*, their text inserted at the end of the first cell -- m
 ``w:cellMerge`` (``rest``/``cont``) on the rows' first cells, a continuing row's first cell's
 content deleted.  Word's Accept All gives a deleted cell that keeps content or a mark to the
 cell before it (its columns and width; its content goes) and removes one whose content and
-marks are all deleted; Reject All keeps the cell.  So Word's own review and docx-agent's
+marks are all deleted; Reject All keeps the cell.  So Word's own Accept All / Reject All and docx-agent's
 give the same table (every glyph and rule as Word draws it, across, down, a rectangle, a
 header row, an empty cell), and the pending table stays on its grid.  (The earlier form --
 the first cell's span applied, the others' content deleted, every cell's old properties and
@@ -1131,7 +1131,7 @@ class TableOps:
 
     def _merge_tracked(self: "Document", part: str, plan, origin: Element, tracking, first, last,
                        rows: list[Element]) -> None:
-        """Round 54 (follow-up, lane M): a merge written in the form Word reviews exactly
+        """Round 54 (follow-up, lane M): a merge written in the form Word accepts and rejects exactly
         (measured, Word 16.106: ``feedback-round54/probe-M``).  Word does not track a merge
         (it applies it); written so, its Accept All and Reject All give what docx-agent's
         own give, and while pending the table stays on its grid:

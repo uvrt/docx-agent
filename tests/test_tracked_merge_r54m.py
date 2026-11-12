@@ -1,4 +1,4 @@
-"""Round 54 follow-up (lane M): a tracked merge in the form Word reviews exactly, and column
+"""Round 54 follow-up (lane M): a tracked merge in the form Word accepts and rejects exactly, and column
 positions that count a table as accepted.  Made-up documents only.
 
 * **The merge form** (measured, Word 16.106 for Mac, ``feedback-round54/probe-M``): each
@@ -118,7 +118,7 @@ MERGES = {
 
 
 @pytest.mark.parametrize("case", list(MERGES))
-def test_a_tracked_merge_keeps_the_table_on_its_grid_and_reviews_as_the_untracked_merge(box, case):
+def test_a_tracked_merge_keeps_the_table_on_its_grid_and_accepts_as_the_untracked_merge(box, case):
     first, last, empty = MERGES[case]
     session, table = _opened(box, empty=empty)
     original = _shape(_document(session))
@@ -138,8 +138,8 @@ def test_a_tracked_merge_keeps_the_table_on_its_grid_and_reviews_as_the_untracke
     rejected = Document.open(data)
     rejected.reject_all()
     assert _shape(rejected) == original
-    for reviewed in (accepted, rejected):
-        assert all(grid_problems(t._entry()[1].element) == [] for t in reviewed.tables())
+    for settled in (accepted, rejected):
+        assert all(grid_problems(t._entry()[1].element) == [] for t in settled.tables())
 
 
 def test_the_cell_merged_away_keeps_its_text_and_marks(box):
@@ -169,9 +169,9 @@ def test_the_final_view_reads_the_pending_merge_as_accepted(box):
     assert merged.data["columns"] == 4 and "columns_deleted_pending" not in merged.data
 
 
-def test_a_comment_in_the_cell_merged_away_is_written_once_and_reviews_as_word_does(box):
+def test_a_comment_in_the_cell_merged_away_is_written_once_and_settles_as_word_does(box):
     """Measured: Word's Accept All keeps the comment (in the merged cell); Reject All drops
-    it with the inserted copy that holds its reference -- as docx-agent's review does."""
+    it with the inserted copy that holds its reference -- as docx-agent's accept and reject do."""
     session, table = _opened(box, tracked=False)
     ok(box, session, "word_comments", doc="d1", action="add", author="Other",
        items=[{"find": "Ines", "within": table, "text": "Check the name."}])
@@ -376,9 +376,9 @@ def test_without_a_pending_change_positions_are_the_grid_columns(box):
 @pytest.mark.oracle
 @pytest.mark.parametrize("case", ["across", "rectangle", "empty cell", "header"])
 @pytest.mark.parametrize("action", ["accept", "reject"])
-def test_words_review_of_a_tracked_merge_is_ours(box, case, action):
+def test_words_accept_and_reject_of_a_tracked_merge_equal_ours(box, case, action):
     """Word's own Accept All / Reject All of the merge form give the table docx-agent's
-    review gives: the same cells, spans, merges and text (widths Word re-saves its own way)."""
+    own Accept All / Reject All give: the same cells, spans, merges and text (widths Word re-saves its own way)."""
     import sys
     from pathlib import Path
 

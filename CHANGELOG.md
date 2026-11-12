@@ -7,7 +7,7 @@ snapshot commit; the development history before it is summarised here.
 
 ## 0.1.100 -- unreleased
 
-- **A tracked merge in the form Word reviews exactly** (round 54 follow-up, lane M). Measured
+- **A tracked merge in the form Word accepts and rejects exactly** (round 54 follow-up, lane M). Measured
   with Word 16.106 for Mac on a made-up four-column report table: Word's Accept All gives a
   deleted cell (`w:cellDel`) that keeps content *or a paragraph mark* to the cell before it
   (its columns and width; its content goes) -- an empty cell, or one whose text alone is
@@ -16,7 +16,7 @@ snapshot commit; the development history before it is summarised here.
   their content and marks kept (their text inserted at the end of the first cell, as before;
   merged down, `w:cellMerge` as before); no grid or cell-property records. docx-agent's
   accept gives a kept deleted cell to the cell before it, as Word does. Scored against Word's
-  Accept All and Reject All (render of docx-agent's reviewed document against Word's PDF of
+  Accept All and Reject All (render of docx-agent's accepted or rejected document against Word's PDF of
   its own): a body row merged across, before 54 px off, now exact; a rectangle, before 6 px,
   now exact; header row, down, an empty cell, a spanned cell, the last two cells, two lines,
   a comment in the merged cell: exact (a fixed-width table: 1 px, Word re-distributing its
