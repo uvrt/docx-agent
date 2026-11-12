@@ -92,10 +92,12 @@ def _svg(data: bytes) -> str:
 def test_a_tracked_column_deletion_reads_as_accepted(box):
     session, table = _opened(box)
     deleted = ok(box, session, "word_edit_table", doc="d1", table=table, action="delete_column", index=2)
-    # Rule 2: the result says what the reader now sees and what positions count.
-    assert deleted.data["columns"] == 4 and deleted.data["columns_deleted_pending"] == [2]
+    # Rule 2: the result says what the reader now sees and what positions count (round 54
+    # lane M: the table as accepted, test_tracked_merge_r54m.py).
+    assert deleted.data["columns"] == 3 and deleted.data["columns_deleted_pending"] == [2]
     assert "| Area | Lead | Remark |" in deleted.data["markdown"]
-    assert any("col positions count it" in w and f"accept within {table}" in w for w in deleted.warnings)
+    assert any("col positions count the table as accepted" in w and f"within {table}" in w
+               for w in deleted.warnings)
     final = ok(box, session, "word_read", doc="d1").data
     assert "| Area | Lead | Remark |" in final and "| Quarry | Aleid | two gaps |" in final
     assert "Phase" not in final and "|  |" not in final

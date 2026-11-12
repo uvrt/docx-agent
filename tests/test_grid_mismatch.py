@@ -110,14 +110,62 @@ def test_check_names_the_table_and_row_off_the_grid_and_render_draws_it(toolbox)
     assert rendered.ok, rendered.to_json()
 
 
-def test_a_tracked_merge_is_off_its_grid_until_accepted_and_check_gives_the_call(toolbox):
+def test_a_tracked_merge_stays_on_its_grid(toolbox):
+    """Round 54 (lane M): docx-agent writes a tracked merge as Word accepts and rejects it exactly -- the
+    first cell keeping its span, the cells merged away w:cellDel with their content -- so the
+    row stays on its grid while pending (test_tracked_merge_r54m.py)."""
     session, document = _open(toolbox, _shelf().to_bytes())
     table = document.tables()[0].id
     assert toolbox.dispatch(session, "word_set_tracking", {"doc": "d1", "on": True, "author": "Shelf Editor"}).ok
     merged = toolbox.dispatch(session, "word_edit_table", {"doc": "d1", "table": table, "action": "merge",
                                                            "first": {"row": 1, "col": 0}, "last": {"row": 1, "col": 2}})
     assert merged.ok, merged.to_json()
-    # Word's own form: the two cells merged away kept, w:cellDel -- five columns' worth over three.
+    result = toolbox.dispatch(session, "check", {"doc": "d1", "include": ["layout"]})
+    assert result.ok and "error" not in result.data["layout"], result.to_json()
+    assert result.data["layout"]["table_grid_mismatch"] == [] and _fits(document)
+
+
+def _earlier_merge_form(document: Document) -> bytes:
+    """``document`` with its first table's row 1 merged across as docx-agent wrote a tracked
+    merge before round 54 lane M: the first cell's span applied, the others w:cellDel."""
+    data = document.to_bytes()
+    archive = zipfile.ZipFile(io.BytesIO(data))
+    root = etree.fromstring(archive.read("word/document.xml"))
+    row = root.find(f".//{_W}tbl").findall(f"{_W}tr")[1]
+    cells = row.findall(f"{_W}tc")
+    span = etree.SubElement(cells[0].find(f"{_W}tcPr"), f"{_W}gridSpan")
+    span.set(f"{_W}val", "3")
+    said = {f"{_W}author": "Shelf Editor", f"{_W}date": "2026-11-12T09:00:00Z"}
+    for k, cell in enumerate(cells[1:]):
+        etree.SubElement(cell.find(f"{_W}tcPr"), f"{_W}cellDel", {f"{_W}id": str(900 + k), **said})
+        # their content and marks deleted (the text inserted in the first cell left out here)
+        for paragraph in cell.findall(f"{_W}p"):
+            for run in paragraph.findall(f"{_W}r"):
+                wrapper = etree.Element(f"{_W}del", {f"{_W}id": str(910 + k), **said})
+                run.addprevious(wrapper)
+                wrapper.append(run)
+                for text in run.iter(f"{_W}t"):
+                    text.tag = f"{_W}delText"
+            properties = paragraph.find(f"{_W}pPr")
+            if properties is None:
+                properties = etree.Element(f"{_W}pPr")
+                paragraph.insert(0, properties)
+            etree.SubElement(etree.SubElement(properties, f"{_W}rPr"), f"{_W}del",
+                             {f"{_W}id": str(920 + k), **said})
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as written:
+        for info in archive.infolist():
+            body = etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True) \
+                if info.filename == "word/document.xml" else archive.read(info.filename)
+            written.writestr(info, body)
+    return out.getvalue()
+
+
+def test_a_tracked_merge_off_its_grid_is_said_with_the_call_until_accepted(toolbox):
+    """A document arriving with a tracked merge off its grid (docx-agent's earlier form, or
+    another writer's): check says it, tracked, with the accept that settles it."""
+    session, document = _open(toolbox, _earlier_merge_form(_shelf()))
+    table = document.tables()[0].id
     result = toolbox.dispatch(session, "check", {"doc": "d1", "include": ["layout"]})
     assert result.ok and "error" not in result.data["layout"], result.to_json()
     entry, = result.data["layout"]["table_grid_mismatch"]

@@ -183,10 +183,15 @@ def _review_changes(call: Any, action: str, ids: list[str] | None, author: str |
     else:
         before = len(document.revisions())
         inside = _within_paragraphs(call, within)
+        # Round 54 (lane M): and the records inside it -- a paragraph whose mark is deleted is
+        # named by the one it joins in the final view, so a table's deleted cells' changes
+        # were missed by paragraph ids alone.
+        records = {identifier for _, identifier, _ in document._select_revisions(None, within=resolve(call, within))} \
+            if within else set()
 
         def matching() -> list[Any]:
             return [c for c in document.changes(author=author, kind=kind)
-                    if inside is None or inside & set(c.paragraph_ids)]
+                    if inside is None or inside & set(c.paragraph_ids) or records & set(c.revisions)]
 
         seen: set[tuple] = set()
         while True:
