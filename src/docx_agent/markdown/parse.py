@@ -46,10 +46,22 @@ def _breaks_only(content: str) -> int:
 _ALIGN = re.compile(r"text-align:\s*(left|center|right)")
 
 
+def compiled(md: MarkdownIt) -> MarkdownIt:
+    """``md`` with every rule chain compiled now (0.1.98).  markdown-it compiles a chain on
+    its first parse, publishing an empty dict before it fills it: another thread parsing the
+    same parser meanwhile ran with some rules or none -- a table or a heading read as a
+    paragraph, "none of the block rules matched", a ``KeyError``.  Compiled before the
+    parser is shared, nothing is written to it after."""
+    for ruler in (md.core.ruler, md.block.ruler, md.inline.ruler, md.inline.ruler2):
+        ruler.getRules("")
+    return md
+
+
 @lru_cache(maxsize=1)
 def parser() -> MarkdownIt:
-    """The dialect: CommonMark, GFM tables and strikethrough, footnotes."""
-    return MarkdownIt("commonmark").enable(["table", "strikethrough"]).use(footnote_plugin)
+    """The dialect: CommonMark, GFM tables and strikethrough, footnotes (:func:`compiled`:
+    safe to share between threads)."""
+    return compiled(MarkdownIt("commonmark").enable(["table", "strikethrough"]).use(footnote_plugin))
 
 
 # -- Markdown -> AST -------------------------------------------------------------------------
