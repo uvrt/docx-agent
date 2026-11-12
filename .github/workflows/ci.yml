@@ -54,8 +54,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install "ooxml-common @ git+https://github.com/uvrt/ooxml-common@main"
-          python -m pip install "ooxml-edit @ git+https://github.com/uvrt/ooxml-edit@main"
-          python -m pip install "docx2svg[png] @ git+https://github.com/uvrt/docx2svg@main"
+          # TEMPORARY (r53L): ooxml-edit's layout_failed code, until r53-layout-failed is merged
+          python -m pip install "ooxml-edit @ git+https://github.com/uvrt/ooxml-edit@r53-layout-failed"
+          # TEMPORARY (r53L): docx2svg 0.11.11 (a row off its grid), until r53-grid is merged
+          python -m pip install "docx2svg[png] @ git+https://github.com/uvrt/docx2svg@r53-grid"
           python -m pip install -e .[dev,png]
 
       # The open metric compatible substitutes, as docx2svg's CI installs them (its README,

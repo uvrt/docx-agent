@@ -156,6 +156,19 @@ takes its targets as one list with the values for all, so it is ``calls``, not `
     3 pt (:data:`FIT_SLACK`), the room it frees -- at least 18 pt (:data:`MIN_FREED`) -- to
     the wrapping one; ``fix`` sets those two (``word_format_table`` ``scope: "column"``).
     Cells over more than one column are not counted.
+``table_grid_mismatch`` (round 53, R107)
+    ``{"table", "grid", "rows": [{"row", "reaches"}], "drawn", "pages"}``: a table (of any
+    depth, in the body) whose rows' cells -- with ``w:gridBefore`` and ``w:gridAfter`` -- do
+    not reach exactly across its ``w:tblGrid`` of ``grid`` columns: ``row`` from 0 as
+    ``word_edit_table`` counts rows, ``reaches`` the grid columns it covers.  ``drawn``:
+    ``"widened"`` where a row reaches past the grid -- Word lays the table out on a grid
+    widened to that row, a column wider than the others, as the render draws it (measured)
+    -- else ``"short"`` (the shorter rows end early).  ``tracked``: the table holds tracked
+    cell changes -- a merge or column deletion tracked as Word tracks one keeps the cells
+    merged away (``w:cellDel``) until accepted, which is what widens it; ``fix`` accepts
+    them (``word_changes`` ``within`` the table), after which the grid fits.  Read from the
+    document, so listed where the layout failed too; :func:`table_grid_mismatch` has the
+    rule.
 ``uncertain``
     ``{"page", "placeholders", "approximations", "story_stops"}``: the pages the layout drew
     a placeholder on, laid out by a rule it has not measured, or could not draw a header,
@@ -361,6 +374,12 @@ class _Facts:
         self.capped(self.table_parted(), "table_parted", out)
         self.capped([e for e in numbering_skips_level(self.document) if self.shown(self.pages_of(e["para"]))],
                     "numbering_skips_level", out)
+        mismatched = []
+        for entry in table_grid_mismatch(self.document):
+            pages = self._table_pages(entry["table"])
+            if self.shown(pages) and (self.scope is None or self.scope.about(entry)):
+                mismatched.append({**entry, "pages": pages})
+        self.capped(mismatched, "table_grid_mismatch", out)
         self.capped([e for e in punctuation_spacing(self.document) if self.shown(self.pages_of(e["para"]))],
                     "punctuation_spacing", out)
         # Round 49, R94: the text's language next to its tag.
@@ -1387,6 +1406,42 @@ _TEXT = (_W + "t", _W + "delText")
 _GOING = (_W + "del", _W + "moveFrom")
 #: A container's edge, a table or a block-level content control in the sequence.
 _EDGE = object()
+
+
+#: Tracked cell and grid records: a table holding one may be off its grid by Word's design
+#: until they are accepted (a merge's cells merged away, ``w:cellDel``).
+_TRACKED_CELLS = frozenset(_W + name for name in ("cellIns", "cellDel", "cellMerge", "tcPrChange",
+                                                  "tblGridChange", "trPrChange"))
+
+
+def table_grid_mismatch(document: "Document") -> list[dict[str, Any]]:
+    """``check``'s ``table_grid_mismatch`` (round 53, R107): every table of the body, nested
+    ones too, with a row whose cells -- ``w:gridBefore``, their spans, ``w:gridAfter`` -- do
+    not reach exactly across its ``w:tblGrid`` (the module says what each entry holds)."""
+    part = document.package.document_part()
+    index = document._index(part)
+    found: list[dict[str, Any]] = []
+    for table in index.tables:
+        grid = table.element.find(_W + "tblGrid")
+        count = len(grid.findall(_W + "gridCol")) if grid is not None else 0
+        rows = []
+        for r, (row, _) in enumerate(table.rows):
+            reach = _int(_find(row, "w:trPr/w:gridBefore"), 0) + _int(_find(row, "w:trPr/w:gridAfter"), 0)
+            for cell in _cells(row):
+                reach += max(1, _int(_find(cell, "w:tcPr/w:gridSpan"), 1))
+            if reach != count:
+                rows.append({"row": r, "reaches": reach})
+        if not rows:
+            continue
+        entry: dict[str, Any] = {"table": table.id, "grid": count, "rows": rows[:CAP],
+                                 "drawn": "widened" if any(e["reaches"] > count for e in rows) else "short"}
+        if len(rows) > CAP:
+            entry["rows_left_out"] = len(rows) - CAP
+        if any(node.tag in _TRACKED_CELLS for node in table.element.iter() if isinstance(node.tag, str)):
+            entry["tracked"] = True
+            entry["fix"] = {"tool": "word_changes", "calls": [{"action": "accept", "within": table.id}]}
+        found.append(entry)
+    return found
 
 
 def empty_paragraphs(document: "Document") -> list[dict[str, Any]]:

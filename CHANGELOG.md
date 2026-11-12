@@ -5,6 +5,40 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.95 -- unreleased
+
+- **A table whose row reaches past its grid no longer stops the layout** (round 53, R107;
+  needs docx2svg 0.11.11 and ooxml-edit 0.112.0). A merge or column deletion tracked as Word
+  tracks one keeps the cells merged away (`w:cellDel`) until it is accepted, so a merged row
+  covers more grid columns than `w:tblGrid` has: a merge across three columns stopped every
+  layout with an `IndexError` -- `render` and `check` failed as `not_found`, and an
+  application's live view failed on every refresh. docx2svg now lays such a table out as Word
+  does (measured), and here:
+  - **`check` says it**: `layout`'s `table_grid_mismatch` -- `{"table", "grid", "rows":
+    [{"row", "reaches"}], "drawn", "pages"}`, with `tracked` and a `fix` (`word_changes`
+    accept within the table) where tracked cell changes are why; read from the document,
+    so listed where the layout failed too. Validation's `grid-row-mismatch` is as before.
+  - **A layout that fails is `layout_failed`**, never `not_found`: `LayoutFailed` (an
+    `ooxml_edit` `ToolError`) names the block it failed at (a table's `t:` id, from
+    docx2svg's `LayoutError`), in `render`, `check` (its `reflow.error`, the other facts still
+    there), an edit's reflow and the live view. A version whose layout docx2svg itself failed
+    (its `LayoutError`, or raised inside it) fails again at once from the failure kept for it,
+    logged once (`docx_agent.layout`): not laid out and logged again on every refresh; any
+    other failure (a worker lost) is laid out again next time. `LayoutFailed` is also a
+    `RuntimeError`.
+  - **The edits keep the grid in step.** A sweep of every table edit, tracked and not, over
+    made-up tables with merges (246 single edits and 140 random sequences of eight, tracked and not, each
+    accepted and rejected) found three ways to leave a table off its grid, each fixed and tested: a row
+    inserted (`insert_row`, `sync`, `set_cells` `grow`) beside a column whose tracked deletion
+    or insertion is pending now goes with that change (a copy of its `w:cellDel`, or of the
+    column's inserted mark), so accepting or rejecting it leaves the row as the others; a
+    review that sets a recorded grid back under cells it no longer fits (a tracked split,
+    which records no grid, then another tracked change of the table) rebuilds the grid from
+    the cells' widths; and a review leaves every table it touched fitting its grid once no
+    structure change of it is left (`edit.tables.fit_grid`: the grid as Word writes it when it
+    saves such a table -- columns added for a row reaching past it, `w:gridAfter` on shorter
+    rows). A table the review did not touch is left as it is.
+
 ## 0.1.94 -- unreleased
 
 - **`sync` matches keys spelled differently** (round 52, R106; needs ooxml-edit 0.110.0). A

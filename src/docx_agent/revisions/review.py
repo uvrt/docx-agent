@@ -247,6 +247,9 @@ class _Review:
         #: Every table's grid as the review found it, and the cells it removed: the grid
         #: columns only removed cells covered go at the end.
         self.maps = {id(table): (table, _grid_map(table)) for table in self.root.iter(W_TBL)}
+        #: Round 53 (R107): the tables holding a record this review accepts or rejects: each
+        #: fits its grid after it, once no structure change of it is left (:meth:`_tidy`).
+        self.touched_tables: set[int] = set()
         #: Comments whose reference the review removed with the content around it: Word
         #: removes the comment then (measured: a comment on rejected inserted text goes).
         self.dropped_comments: set[str] = set()
@@ -287,6 +290,11 @@ class _Review:
             kind = _kind_of(element)
             # A table's old grid (Word writes it with an id alone) goes with any record of
             # its table's structure: a table is reviewed whole.
+            table = _ancestor(element, W_TBL)
+            while table is not None:
+                self.touched_tables.add(id(table))
+                outer = table.getparent()
+                table = _ancestor(outer, W_TBL) if outer is not None else None
             table = _ancestor(element, W_TBL)
             if table is not None and element.tag != _W + "tblGridChange" and (
                     kind in ("cell", "row", "mark", "property")):
@@ -669,6 +677,26 @@ class _Review:
         for key, table in self.respanned.items():
             if key not in self.restored_grids and table.getparent() is not None:
                 _normalise_grid(table)
+        # Round 53 (R107): a table that fitted its grid fits it after the review.  A grid
+        # set back whole (a w:tblGridChange rejected) that its rows no longer fit -- recorded
+        # by a tracked change after a split, which records none -- is rebuilt from the cells'
+        # widths, as a split's rejection rebuilds it; where it cannot be, or several tracked
+        # structure changes of one table left its rows apart, the grid is fitted to them as
+        # Word writes it when it saves such a table (table.fit_grid).
+        from ..edit.tables import fit_grid
+
+        for key in self.touched_tables:
+            found = self.maps.get(key)
+            if found is None:
+                continue
+            table = found[0]
+            if table.getparent() is None or _fits(table) or any(
+                    node.tag in _STRUCTURE for node in table.iter() if isinstance(node.tag, str)):
+                continue
+            if key in self.restored_grids:
+                _normalise_grid(table)
+            if not _fits(table):
+                fit_grid(table)
         for paragraph in list(self.root.iter(W_P)):
             self.released += _prune(paragraph)
 
@@ -726,6 +754,28 @@ def _prune(paragraph: Element) -> list[str]:
                 remove(node)
                 changed = True
     return released
+
+
+#: A table's structure changes, tracked: while one is left, its rows may be off its grid by
+#: Word's design (a merge's cell merged away, w:cellDel, until accepted).
+_STRUCTURE = frozenset(_W + name for name in ("cellIns", "cellDel", "cellMerge", "tcPrChange", "tblGridChange",
+                                               "trPrChange"))
+
+
+def _fits(table: Element) -> bool:
+    """Whether every row of ``table`` reaches exactly across its grid."""
+    grid_node = table.find(_W + "tblGrid")
+    count = len(grid_node.findall(_W + "gridCol")) if grid_node is not None else 0
+    for row, cells in _grid_map(table):
+        if _ancestor(row, W_TBL) is not table:
+            continue
+        properties = row.find(_W + "trPr")
+        after = properties.find(_W + "gridAfter") if properties is not None else None
+        extra = int(after.get(_W + "val")) if after is not None and (after.get(_W + "val") or "").isdigit() else 0
+        reach = (cells[-1][1] + cells[-1][2] if cells else 0) + extra
+        if reach != count:
+            return False
+    return True
 
 
 def _normalise_grid(table: Element) -> None:

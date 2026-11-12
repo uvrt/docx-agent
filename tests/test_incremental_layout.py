@@ -321,7 +321,9 @@ def test_a_failed_layout_fails_every_caller_waiting_for_it_and_is_not_kept(made)
         second.join()
     finally:
         layout_module.lay_out_bytes = real
-    assert errors == ["the layout failed"] * 2
+    # Round 53 (R107): layout_failed, the failure its reason; not docx2svg's own, so not kept.
+    assert len(errors) == 2 and all(e.startswith("laying the document out failed: RuntimeError: the layout failed")
+                                    for e in errors)
     assert document._layout_flights == {} and document._layout_kept is None
     assert document.layout().page_count > 1          # and the next one is laid out
 
