@@ -67,8 +67,11 @@ class Styled:
 
 @lru_cache(maxsize=1)
 def _parser() -> MarkdownIt:
-    """Inline only, with ``*`` emphasis and backslash escapes and nothing else."""
-    return MarkdownIt("zero").enable(["emphasis", "escape"])
+    """Inline only, with ``*`` emphasis and backslash escapes and nothing else (compiled:
+    safe to share between threads)."""
+    from .parse import compiled
+
+    return compiled(MarkdownIt("zero").enable(["emphasis", "escape"]))
 
 
 def _spans(text: str) -> tuple[str, list[str]]:
