@@ -190,6 +190,96 @@ def _empty_paragraph_like(paragraph: Element | None) -> Element:
     return new
 
 
+#: The width of a grid column added for a cell past the grid that states none, twips: what
+#: Word gives it (docx2svg's ``table.UNSIZED_COLUMN``, measured).
+UNSIZED_COLUMN = 360
+
+
+def fit_grid(table: Element) -> bool:
+    """Make ``table``'s grid fit its rows (round 53, R107) as Word writes such a table when
+    it saves it (measured, docx2svg's ``make_grid_mismatch_probe.py``): a grid column added
+    for each one a row reaches past it -- the part of its cell's width (``w:tcW`` in
+    ``dxa``) past the grid's last line, else 360 twips -- and a row reaching fewer columns
+    ends with ``w:gridAfter`` for the rest; grid columns past every row's reach go.  Whether
+    it changed anything."""
+    grid = table.find(_W + "tblGrid")
+    if grid is None:
+        grid = make("w:tblGrid")
+        insert_in_order(table, grid)
+    widths = _grid_widths(table)
+    rows = own_table_rows(table)
+    reaches = []
+    for row in rows:
+        before, after = _skips(row)
+        cells = _cells(row)
+        end = (cells[-1][1] + cells[-1][2]) if cells else before
+        reaches.append((row, end, after))
+    if not reaches:
+        return False
+    longest = max(end + after for _, end, after in reaches)
+    if all(end + after == len(widths) for _, end, after in reaches):
+        return False
+    for row, end, after in reaches:
+        for cell, start, span in _cells(row):
+            if start + span <= len(widths):
+                continue
+            added = start + span - max(len(widths), start)
+            width = cell.find(f"{_W}tcPr/{_W}tcW")
+            stated = int(width.get(_W + "w")) if width is not None and width.get(_W + "type") in (None, "dxa") \
+                and (width.get(_W + "w") or "").isdigit() else 0
+            covered = sum(widths[start:])
+            rest = stated - covered if stated > covered else UNSIZED_COLUMN * added
+            widths += [UNSIZED_COLUMN] * max(start - len(widths), 0)
+            widths += [rest // added + (1 if k < rest % added else 0) for k in range(added)]
+    widths += [UNSIZED_COLUMN] * max(longest - len(widths), 0)
+    del widths[longest:]
+    _set_grid(table, widths)
+    for row, end, after in reaches:
+        if end + after != len(widths):
+            _set_after(row, len(widths) - end, sum(widths[end:]))
+    return True
+
+
+def _set_after(row: Element, count: int, width: int) -> None:
+    """``row``'s ``w:gridAfter`` (and ``w:wAfter``) ``count`` columns of ``width`` twips; none at 0."""
+    properties = row.find(_W + "trPr")
+    for tag in ("gridAfter", "wAfter"):
+        node = properties.find(_W + tag) if properties is not None else None
+        if node is not None:
+            remove(node)
+    if count <= 0:
+        if properties is not None and not len(properties):
+            remove(properties)
+        return
+    if properties is None:
+        properties = make("w:trPr")
+        insert_in_order(row, properties)
+    insert_in_order(properties, make("w:gridAfter", **{"w:val": str(count)}))
+    insert_in_order(properties, make("w:wAfter", **{"w:w": str(width), "w:type": "dxa"}))
+
+
+def _pending_column(cell: Element) -> list[Element]:
+    """The records that make ``cell`` part of a column change still pending (round 53,
+    R107): its ``w:cellDel`` or ``w:cellIns``, or -- Word's form of a column inserted,
+    tracked -- the inserted mark of its one empty paragraph."""
+    from ..revisions import track as _track
+
+    properties = cell.find(_W + "tcPr")
+    records = [child for child in properties if child.tag in (_W + "cellDel", _W + "cellIns")] \
+        if properties is not None else []
+    row = cell.getparent()
+    while row is not None and row.tag != W_TR:
+        row = row.getparent()
+    if row is not None and row.find(f"{_W}trPr/{_W}ins") is not None:
+        return records                   # a row inserted, tracked: its marks are the row's
+    paragraphs = [child for child in cell if isinstance(child.tag, str) and child.tag in (W_P, _W + "tbl", _W + "sdt")]
+    if len(paragraphs) == 1 and paragraphs[0].tag == W_P and not _has_text(paragraphs[0]):
+        record = _track.mark_record(paragraphs[0])
+        if record is not None and record.tag in _track.INSERTED:
+            records.append(record)
+    return records
+
+
 def _has_text(paragraph: Element) -> bool:
     return any(True for _ in paragraph.iter(_W + "r"))
 
@@ -258,6 +348,9 @@ class TableOps:
             if len(properties):
                 row.append(properties)
         next_cells = {start: cell for cell, start, _ in _cells(neighbour)} if neighbour is not None else {}
+        #: Round 53 (R107): the new cells of columns whose deletion or insertion is pending (a
+        #: tracked change not yet accepted or rejected): ``(new cell, its paragraph, records)``.
+        pending: list[tuple[Element, Element, list[Element]]] = []
         for cell, start, span in _cells(reference):
             new_cell = make("w:tc")
             properties = _clean_cell_properties(cell.find(_W + "tcPr"))
@@ -269,13 +362,18 @@ class TableOps:
                 if inside:
                     insert_in_order(properties, make("w:vMerge"))
             new_cell.append(properties)
-            new_cell.append(_empty_paragraph_like(cell.find(W_P)))
+            paragraph = _empty_paragraph_like(cell.find(W_P))
+            new_cell.append(paragraph)
             row.append(new_cell)
+            records = _pending_column(cell)
+            if records:
+                pending.append((new_cell, paragraph, records))
         if below:
             reference.addnext(row)
         else:
             reference.addprevious(row)
         self._stamp_new(part, [row] + list(row.iter(W_P)))
+        column_marks = self._follow_pending_columns(pending)
         if tracking is not None:
             from ..revisions import track as _track
             from ..revisions.stamp import Stamp
@@ -287,11 +385,48 @@ class TableOps:
                 insert_in_order(row, properties)
             insert_in_order(properties, stamp.make("w:ins", part))
             for paragraph in row.iter(W_P):
-                _track.mark(paragraph, "ins", stamp, part)
+                if not any(paragraph is marked for marked in column_marks):
+                    _track.mark(paragraph, "ins", stamp, part)
             stamp.finish()
         self.package.mark_dirty(part)
         story = self._story_of(part)
         return ("" if story == "body" else f"{story}/") + f"tr:{row.get(_ids.PARA_ID)}"
+
+    def _follow_pending_columns(self: "Document", pending: list[tuple[Element, Element, list[Element]]]
+                                ) -> list[Element]:
+        """Round 53 (R107): a new row's cells in columns whose tracked deletion or insertion
+        is pending go with that change -- each a copy of its column's record, a fresh id: a
+        ``w:cellDel`` (a column deleted, tracked), or its paragraph's mark inserted (Word's
+        form of a column inserted, tracked).  Accepted or rejected, the new row then loses or
+        keeps the cell as the column's other rows do, and the grid stays in step with them
+        (a row inserted beside a column whose deletion was pending kept its cell when the
+        deletion was accepted: a row a column wider than the grid).  The paragraphs given a
+        mark of their column's."""
+        from ..revisions import track as _track
+
+        if not pending:
+            return []
+        next_id = self._next_annotation_id()
+        marked: list[Element] = []
+        for cell, paragraph, records in pending:
+            for record in records:
+                copied = copy.deepcopy(record)
+                copied.set(_W + "id", str(next_id))
+                next_id += 1
+                if record.tag in _track.MARKS:
+                    properties = paragraph.find(_W + "pPr")
+                    if properties is None:
+                        properties = make("w:pPr")
+                        paragraph.insert(0, properties)
+                    run_properties = properties.find(_W + "rPr")
+                    if run_properties is None:
+                        run_properties = make("w:rPr")
+                        insert_in_order(properties, run_properties)
+                    insert_in_order(run_properties, copied)
+                    marked.append(paragraph)
+                else:
+                    insert_in_order(cell.find(_W + "tcPr"), copied)
+        return marked
 
     # -- rows deleted, tracked (round 51, R103) -----------------------------------------------
 

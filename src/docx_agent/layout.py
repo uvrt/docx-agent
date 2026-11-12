@@ -64,6 +64,7 @@ from __future__ import annotations
 
 import dataclasses
 import hashlib
+import logging
 import pickle
 import re
 import threading
@@ -78,6 +79,7 @@ from typing import TYPE_CHECKING, Any
 import docx2svg
 from docx2svg.paths import path_part, resolve_path
 from docx2svg.relayout import MeasureStore
+from ooxml_edit.tools.results import ToolError
 
 from .edit.effective import PathFinder
 from .edit import ids as _ids
@@ -944,6 +946,104 @@ def _block_id(document: "Document", part: str, path: str, paths: "PathFinder | N
     return entry.id if entry is not None else None
 
 
+# -- a layout that fails (round 53, R107) ---------------------------------------------------
+
+logger = logging.getLogger("docx_agent.layout")
+
+
+class LayoutFailed(ToolError, RuntimeError):
+    """Laying the document out failed (round 53, R107): ``layout_failed``, never
+    ``not_found`` (which sends a model looking for an address that is there).  ``at`` is the
+    block it failed at -- a table's ``t:`` id -- where docx2svg names it
+    (:class:`docx2svg.LayoutError`), else ``None``; ``reason`` what went wrong.
+
+    A version whose layout failed fails again at once, from the failure kept for it
+    (:func:`convert`), and is logged once: an application's live view asking for the same
+    version 900 times lays it out, and logs it, once."""
+
+    def __init__(self, reason: str, *, at: str | None = None, path: str | None = None) -> None:
+        where = f" at {at}" if at else (f" at {path}" if path else "")
+        super().__init__("layout_failed", f"laying the document out failed{where}: {reason}. The document is "
+                         "unchanged by it; check (validate, layout's table_grid_mismatch) says what is off",
+                         valid_options=[at] if at else [], details={"at": at, "path": path, "reason": reason})
+        self.at = at
+        self.path = path
+        self.reason = reason
+
+    def __reduce__(self):
+        return (_rebuild_failed, (self.reason, self.at, self.path))
+
+
+def _rebuild_failed(reason: str, at: str | None, path: str | None) -> "LayoutFailed":
+    return LayoutFailed(reason, at=at, path=path)
+
+
+#: The failures a document keeps, by the layout's cache key (:func:`convert`).
+_FAILURES_SIZE = 8
+
+#: What a layout may raise that is the call's, not the layout's: passed on as raised.
+_PASSED_ON = (ToolError, TimeoutError, MemoryError)
+
+
+def layout_failure(document: "Document", error: BaseException) -> "LayoutFailed":
+    """``error``, raised laying ``document`` out, as :class:`LayoutFailed`: the block id of the
+    element docx2svg names (:class:`docx2svg.LayoutError`'s ``path``), where it resolves."""
+    if isinstance(error, LayoutFailed):
+        return error
+    path = getattr(error, "path", None) if isinstance(error, docx2svg.LayoutError) else None
+    reason = error.reason if isinstance(error, docx2svg.LayoutError) else f"{type(error).__name__}: {error}"
+    at = None
+    if path:
+        try:
+            at = _block_id(document, _part_of(document, path), path)
+        except Exception:  # noqa: BLE001 -- a path the document no longer resolves: named by its path
+            at = None
+    return LayoutFailed(reason, at=at, path=path)
+
+
+def _deterministic(error: BaseException) -> bool:
+    """Whether ``error`` is docx2svg's answer for these bytes -- its :class:`docx2svg.LayoutError`,
+    or raised inside docx2svg -- which laying them out again would only repeat; not a worker
+    lost or another passing failure."""
+    if isinstance(error, docx2svg.LayoutError):
+        return True
+    trace = error.__traceback__
+    package = docx2svg.__file__.rsplit("/", 1)[0] if docx2svg.__file__ else None
+    while trace is not None:
+        if package and trace.tb_frame.f_code.co_filename.startswith(package):
+            return True
+        trace = trace.tb_next
+    return False
+
+
+def _failed(document: "Document", key: str, error: BaseException) -> "LayoutFailed":
+    """``error`` as :class:`LayoutFailed`, kept as the failure of the layout ``key`` names where
+    it is docx2svg's own (:func:`_deterministic`), and logged once; the failure."""
+    failure = layout_failure(document, error)
+    first = True
+    if _deterministic(error):
+        with _keeper(document):
+            failures = document._layout_failures
+            first = key not in failures
+            failures[key] = failure
+            while len(failures) > _FAILURES_SIZE:
+                failures.popitem(last=False)
+    if first:
+        logger.warning("docx-agent: %s", failure.message, exc_info=error if error is not failure else None)
+    return failure
+
+
+def failed_layout(document: "Document", data: bytes, error: BaseException) -> "LayoutFailed":
+    """``error``, met laying out ``data`` (``document``'s bytes) with the document's options, as
+    :class:`LayoutFailed`, kept for that version and logged once (``render``'s workers)."""
+    return _failed(document, cache_key(data, layout_options(document, {})), error)
+
+
+def _kept_failure(document: "Document", key: str) -> "LayoutFailed | None":
+    with _keeper(document):
+        return document._layout_failures.get(key)
+
+
 # -- entry points ----------------------------------------------------------------------------
 
 _CACHE_SIZE = 8
@@ -1421,6 +1521,7 @@ def _keeper(document: "Document") -> threading.Lock:
                 document._layout_fresh = None
                 document._layout_summaries = OrderedDict()
                 document._check_facts = OrderedDict()
+                document._layout_failures = OrderedDict()
     return lock
 
 
@@ -1544,6 +1645,10 @@ def convert(document: "Document", *, unlocked=None, current=None, converter: Any
         cached = document._layouts.get(key)
         if cached is not None:
             return cached
+    failed = _kept_failure(document, key)
+    if failed is not None:
+        # Round 53 (R107): this version failed already -- at once, and not logged again.
+        raise failed
     outside = unlocked if unlocked is not None else _held
     # Taken with the bytes, before the lock is let go: another call on the document points
     # ``converter`` at its own engine, or back at none, when it ends (round 33, R16c).
@@ -1565,8 +1670,13 @@ def convert(document: "Document", *, unlocked=None, current=None, converter: Any
             result = None
         elif leader:
             try:
-                flight.result = result = _lay_out(document, data, options, converter,
-                                                  may_wait=unlocked is not None and entered is not False)
+                try:
+                    flight.result = result = _lay_out(document, data, options, converter,
+                                                      may_wait=unlocked is not None and entered is not False)
+                except _PASSED_ON:
+                    raise
+                except Exception as error:
+                    raise _failed(document, key, error) from error
             except BaseException as error:
                 flight.error = error
                 raise
@@ -1580,7 +1690,12 @@ def convert(document: "Document", *, unlocked=None, current=None, converter: Any
         elif unlocked is not None and entered is not False:
             result = flight.wait()
         else:
-            result = _lay_out(document, data, options, converter, may_wait=False)
+            try:
+                result = _lay_out(document, data, options, converter, may_wait=False)
+            except _PASSED_ON:
+                raise
+            except Exception as error:
+                raise _failed(document, key, error) from error
     if cached is not None:
         return cached
     raw, fonts, warnings, svgs = result
@@ -1681,7 +1796,7 @@ def twin(data: bytes, like: dict) -> "Document":
 #: layout a check last saw (``check``'s ``since_last_check``) is the document's too.
 _SHARED_LAYOUT = ("_layout_lock", "_layout_flights", "_layout_kept", "_layout_count",
                   "_layout_tickets", "_layout_lineage", "_layout_fresh", "_layout_summaries",
-                  "_check_facts", "_layouts", "_layout_stats", "_tool_seen_layout",
+                  "_check_facts", "_layout_failures", "_layouts", "_layout_stats", "_tool_seen_layout",
                   # The tools' caches keyed by content or by version, set whole (a tuple) or
                   # under a lock of their own: a check's copy comparisons, the styles' digest,
                   # a render's coverage, the settings read for a like.
@@ -1896,10 +2011,18 @@ def check_facts(document: "Document", unlocked: Any, request: dict, *,
     summary = known_summary(document, key)
     if found is not None and summary is not None:
         return copy.deepcopy(found), summary
+    failed = _kept_failure(document, cache_key(data, options))
+    if failed is not None:
+        raise failed                          # round 53: this version failed already
     with unlocked():
         state = kept_layout(document, data, options)
         started = time.perf_counter()
-        result = converter.check(data, dict(options), state, {**request, "summary": summary is None})
+        try:
+            result = converter.check(data, dict(options), state, {**request, "summary": summary is None})
+        except _PASSED_ON:
+            raise
+        except Exception as error:
+            raise _failed(document, cache_key(data, options), error) from error
         waited = time.perf_counter() - started
         worker = result.pop("worker", None)
         keep_layout(document, data, options, key)
