@@ -41,6 +41,27 @@ snapshot commit; the development history before it is summarised here.
     did not open the document without a dialog (measured). A comment wholly in the
     paragraph moves to the copy with its range, a note's reference too; accepting keeps them.
 
+## 0.1.98 -- unreleased
+
+- **The serial replay of concurrent tracked edits no longer fails now and then** (needs
+  ooxml-edit 0.112.1). `test_concurrent_tracked_edits_equal_their_commit_order_run_alone[0]`
+  failed twice on CI (Linux, Python 3.11). The cause was a real error in what a result said,
+  not in the edits. A batch that draws ids and then fails runs again under the document's
+  lock, where the ids it drew are spent. Its result's `version` was read only after the lock
+  was let go, so it could name another caller's change made just after it. The replay
+  therefore ran it after that change, which then drew other paragraph ids. ooxml-edit now
+  reads the version under the lock. With a pause forced between the lock being let go and
+  the result being made, the replay failed 6 times in 18 runs before and 0 in 12 after.
+  `tests/test_block_edits_serial.py` keeps the case.
+- **Markdown parses are safe in threads from the first one.** markdown-it compiles its rule
+  chains on the first parse and publishes each chain's list before it fills it. A second
+  thread parsing at that moment could run with some rules or none: a table or heading read
+  as a paragraph, "none of the block rules matched", or a `KeyError`. The first Markdown
+  calls of a process made from several threads at once were exposed. The shared parsers
+  (`markdown.parse.parser`, the inline one for styled text) are now compiled before they are
+  shared (`markdown.parse.compiled`); `tests/test_markdown_threads.py` covers it. This was
+  found while looking into the flake but did not cause it.
+
 ## 0.1.97 -- unreleased
 
 - **A table whose row reaches past its grid no longer stops the layout** (round 53, R107;
