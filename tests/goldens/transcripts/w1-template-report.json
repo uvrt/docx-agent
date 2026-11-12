@@ -272,7 +272,7 @@
    "expect": {
     "ok": true,
     "summary": "Checked validate, reflow, fields",
-    "data_sha": "3b38e52cee0669b5",
+    "data_sha": "e976a8b1ccc240bf",
     "data_keys": [
      "fields",
      "fields.counts",
@@ -285,9 +285,12 @@
      "validate.baseline",
      "validate.fixed",
      "validate.new",
-     "validate.problems"
+     "validate.problems",
+     "validation",
+     "validation.baseline",
+     "validation.new"
     ],
-    "data_sha_core": "48a43a95eed13dc1"
+    "data_sha_core": "d032ccebaf450489"
    }
   },
   {
