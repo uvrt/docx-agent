@@ -154,7 +154,7 @@ def test_check_with_scale_alone_is_only_its_fact_and_range_scopes_it(toolbox):
     session = _session(toolbox)
     table, three, _ = _ids(session)
     alone = ok(call(toolbox, session, "check", doc="d1", scale=scale(f"{table}/col1", three)))
-    assert set(alone.data) == {"scale"}
+    assert set(alone.data) == {"scale", "validation"}  # and what saving would refuse (round 53)
     scoped = ok(call(toolbox, session, "check", doc="d1", range=[three],
                      scale=scale(f"{table}/col1", three))).data["scale"]
     assert [e["target"] for e in scoped["none"]] == [three] and scoped["checked"] == 1

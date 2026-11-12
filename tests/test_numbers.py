@@ -136,7 +136,7 @@ def test_a_table_placed_from_a_source_and_a_range_narrow_what_is_read(toolbox):
 def test_numbers_alone_runs_no_other_check_and_a_bad_range_says_the_way_out(toolbox):
     session = _session(toolbox, "Intro 7.7.")
     data = ok(call(toolbox, session, "check", doc="d1", include=["numbers"])).data
-    assert set(data) == {"numbers"}
+    assert set(data) == {"numbers", "validation"}     # and what saving would refuse (round 53)
     error = failed(call(toolbox, session, "check", doc="d1", include=["numbers"], range="p:7FFFFFFF"),
                    "not_found")
     assert "give a block" in error.message

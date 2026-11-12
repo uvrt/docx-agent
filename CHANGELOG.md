@@ -5,7 +5,7 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
-## 0.1.95 -- unreleased
+## 0.1.97 -- unreleased
 
 - **A table whose row reaches past its grid no longer stops the layout** (round 53, R107;
   needs docx2svg 0.11.11 and ooxml-edit 0.112.0). A merge or column deletion tracked as Word
@@ -38,6 +38,19 @@ snapshot commit; the development history before it is summarised here.
     structure change of it is left (`edit.tables.fit_grid`: the grid as Word writes it when it
     saves such a table -- columns added for a row reaching past it, `w:gridAfter` on shorter
     rows). A table the review did not touch is left as it is.
+## 0.1.96 -- unreleased
+
+- **`check` lists what saving would refuse** (round 53, R109; needs ooxml-edit 0.111.0).
+  Every `check` result carries ooxml-edit's `validation` -- the problems `save_document`
+  would refuse as new, the count the document opened with -- whatever its `include` or
+  `range`; a check with `include: ["layout"]`, or scoped to blocks the problems are not in,
+  said nothing of them before. `validate`'s delta (in `check` and in every changing call's
+  `checks`) is read through ooxml-edit's `validation`, the gate's own comparison, and the
+  problems are found once per document version: a check after an edit reuses those the
+  edit's checks found. Made-up "Shelf" document edited into 3 style-missing problems:
+  before, `check` with `include: ["layout"]` or `range` was silent and the save refused 3;
+  after, both list the 3 as `validation.new`, `word_format` fixes them, the save passes. No
+  tool definition changed.
 
 ## 0.1.94 -- unreleased
 

@@ -77,8 +77,9 @@ def test_a_lone_check_says_its_parts_and_its_waits(made, workers):
         # layout), fields; the document let go while laying out, taken back after.
         assert list(timing) == ["validate", "layout", "facts", "worker_wait", "document_wait", "fields"]
         assert timing["layout"] > 0
-        # The timing is the data's last key; the rest is what it was.
-        assert list(result.data) == ["validate", "reflow", "fields", "timing"]
+        # The timing is the data's last key; the rest is what it was, and (round 53) what
+        # saving would refuse.
+        assert list(result.data) == ["validate", "reflow", "fields", "validation", "timing"]
 
 
 def test_ranges_and_copies_are_timed_when_given(made):

@@ -104,7 +104,11 @@ with Toolbox(TOOLS, formats=[FORMAT], groups=GROUPS) as toolbox:
   up to 1.75 times it with the measurements and pickled layouts kept beside them, the least
   recently used dropped first (`docx_agent.layout.LAYOUT_MEMORY`, round 39).
 - **Saving refuses new validation problems**; only the application may allow them
-  (`Toolbox(allow_new_problems=True)`). `save_document` with `clean: true` takes out of
+  (`Toolbox(allow_new_problems=True)`). Check before save: every `check` carries
+  `validation` (ooxml-edit 0.111.0, round 53) -- the problems the save would refuse as new,
+  the count the document opened with -- over the whole document, whatever its `include` or
+  `range` (a scoped `validate` names only the range's and counts the rest `elsewhere`);
+  `validate`'s delta and the call's `checks` read the same comparison, kept per version. `save_document` with `clean: true` takes out of
   the file saved what Word keeps but never draws -- orphaned parts (`[trash]/0000.dat`, a
   part nothing reaches), every `w:rsid*` attribute and settings' rsid list, webSettings'
   pasted web divisions (unless one sets a margin or a border), an external

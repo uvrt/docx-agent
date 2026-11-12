@@ -14,7 +14,7 @@ from contextlib import contextmanager
 from typing import Any, Iterator
 
 import docx2svg
-from ooxml_edit.tools import Result, ToolError, shared, tiles, worker_task
+from ooxml_edit.tools import Result, ToolError, problems_now, shared, tiles, worker_task
 from ooxml_edit.tools import render as pipeline
 from ooxml_edit.tools.render import png_size
 
@@ -577,7 +577,7 @@ def check(call: Any, doc: str, slides: list | None = None, pages: list[int] | No
     report: dict[str, Any] = {}
     if "validate" in wanted:
         with timing.part("validate"):
-            _validate(document, entry, scope, report)
+            _validate(document, entry, scope, report, cache=not call.in_batch)
     if copies:
         # Round 35, R19: under the lock, on the version validate read.
         with timing.part("copies"):
@@ -662,10 +662,15 @@ def _text_language(document: Document, scope: Any) -> dict[str, Any]:
     return {} if found is None else {"text_language": found}
 
 
-def _validate(document: Document, entry: Any, scope: Any, report: dict[str, Any]) -> None:
+def _validate(document: Document, entry: Any, scope: Any, report: dict[str, Any], *,
+              cache: bool = True) -> None:
     """``check``'s ``validate``, into ``report``: the problems (in ``scope``'s blocks, with
-    those elsewhere counted) and the delta against those the document had when opened."""
-    found = list(document.validate())          # once: the delta reads the same problems
+    those elsewhere counted) and the delta against those the document had when opened.  The
+    problems are the ones the save gate and ``check``'s ``validation`` read (round 53),
+    found once per version (``cache`` false inside a batch)."""
+    from .format import FORMAT
+
+    found = problems_now(entry, FORMAT, cache=cache)    # once: the delta reads the same
     if scope is None:
         report["validate"] = {**validate_delta(entry, found), "problems": [str(p) for p in found][:50]}
         return
