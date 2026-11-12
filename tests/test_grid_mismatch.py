@@ -279,3 +279,22 @@ def test_a_review_leaves_alone_a_table_it_did_not_touch():
         document.insert_markdown("A tracked line.", at="end")
     accepted = _reviewed(document, "accept_all")
     assert table_grid_mismatch(accepted)[0]["rows"] == [{"row": 1, "reaches": 4}]
+
+
+def test_accepting_a_column_deletion_beside_a_new_row_adds_no_save_problem(toolbox):
+    """R109's repro, from this round: before, the row inserted beside a tracked column
+    deletion kept its cell when the deletion was accepted -- four new grid-row-mismatch
+    problems in check's validation and a refused save."""
+    session, document = _open(toolbox, _shelf().to_bytes())
+    table = document.tables()[0].id
+    for name, args in (("word_set_tracking", {"on": True, "author": "Shelf Editor"}),
+                       ("word_edit_table", {"table": table, "action": "delete_column", "index": 1}),
+                       ("word_edit_table", {"table": table, "action": "insert_row", "index": 1}),
+                       ("word_changes", {"action": "accept", "all": True})):
+        assert toolbox.dispatch(session, name, {"doc": "d1", **args}).ok, name
+    checked = toolbox.dispatch(session, "check", {"doc": "d1", "include": ["validate"]})
+    assert checked.data["validate"]["new"] == []
+    if "validation" in checked.data:
+        assert checked.data["validation"]["new"] == []
+    saved = toolbox.dispatch(session, "save_document", {"doc": "d1", "name": "shelf.docx", "format": "docx"})
+    assert saved.ok, saved.to_json()
