@@ -452,6 +452,7 @@ class Reader:
         header_rows = 0
         columns = len(grid)
         counting_header = True
+        hidden: set[int] = set()
         for r, (row, _) in enumerate(rows_all):
             properties = row.find(_W + "trPr")
             if properties is not None:
@@ -469,6 +470,18 @@ class Reader:
             column = _int(row.find(f"{_W}trPr/{_W}gridBefore"), 0)
             for tc in _cells(row):
                 span = max(1, _int(tc.find(f"{_W}tcPr/{_W}gridSpan"), 1))
+                if self._cell_hidden(tc):
+                    # Round 54 (R110): a cell with a pending deletion is not in the final
+                    # view (nor one inserted in the original): the table as accepting
+                    # leaves it.  Positions still count it, as the document does.  One
+                    # whose content is not deleted widens the cell before it, as Word's
+                    # Accept All does (measured; docx2svg draws it so).
+                    if line and self.view == "current" and _content_kept(tc):
+                        line[-1].column_span += span
+                    else:
+                        hidden.update(range(column, column + span))
+                    column += span
+                    continue
                 merge = tc.find(f"{_W}tcPr/{_W}vMerge")
                 continues = merge is not None and merge.get(_W + "val") in (None, "continue")
                 if continues and column in origins:
@@ -480,11 +493,25 @@ class Reader:
                     line.append(cell)
                 column += span
             columns = max(columns, column + _int(row.find(f"{_W}trPr/{_W}gridAfter"), 0))
-            rows.append(line)
+            if line or not _cells(row):
+                rows.append(line)
         if not rows:
             return None
+        if hidden:
+            # The grid columns no shown cell covers are not in the view.
+            shown = {c for line in rows for cell in line for c in range(cell.column, cell.column + cell.column_span)}
+            columns -= sum(1 for c in range(columns) if c not in shown and c in hidden)
         return TableRecord(entry.id, part, self.document._story_of(part), element, style_name, columns, rows,
                            header_rows, entry.id.startswith("t@"))
+
+    def _cell_hidden(self, cell: Element) -> bool:
+        """Whether the view leaves ``cell`` out: a pending deletion (``w:cellDel``) in the
+        final view, a pending insertion (``w:cellIns``) in the original."""
+        properties = cell.find(_W + "tcPr")
+        if properties is None or self.view == "markup":
+            return False
+        tag = _W + ("cellDel" if self.view == "current" else "cellIns")
+        return properties.find(tag) is not None
 
     # -- paragraphs ----------------------------------------------------------------------------
 
@@ -1267,6 +1294,14 @@ def _place(out: list, stack: list, new: m.ListBlock) -> None:
 
 
 # -- tables ----------------------------------------------------------------------------------
+
+
+def _content_kept(cell: Element) -> bool:
+    """Whether a cell holds text not deleted (outside ``w:del`` and ``w:moveFrom``)."""
+    for text in cell.iter(_W + "t"):
+        if text.text and not any(a.tag in (_W + "del", _W + "moveFrom") for a in text.iterancestors()):
+            return True
+    return False
 
 
 def _table(reader: Reader, table: TableRecord, options: Options) -> list:

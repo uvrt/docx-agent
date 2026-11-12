@@ -5,6 +5,42 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.99 -- unreleased
+
+- **A table's tracked structure changes read and render as accepted** (round 54, R110-R112;
+  needs docx2svg 0.11.12). Measured with Word 16.106 for Mac: Word tracks neither a column's
+  deletion (its `delete column` removes the column and its content at once, recording only the
+  table's old properties; cutting it records nothing) nor a merge or split; docx-agent's
+  form -- the column's cells `w:cellDel`, their content deleted -- is what Word's
+  Accept All and Reject All handle correctly, so it stays. What changed:
+  - **R110: the final view leaves the deleted column out.** `word_read` (and the Markdown in
+    `word_edit_table`'s result) leave out a cell with a pending deletion (`w:cellDel`), the
+    original view one with a pending insertion (`w:cellIns`); render draws the table as
+    Accept All leaves it (docx2svg 0.11.12: the column gone, the others keeping their widths,
+    as Word does), where Word's *No Markup* screen still draws the empty column until it is
+    accepted. The markup view keeps the cells, marked deleted. A tracked `delete_column`
+    warns that col positions count the deleted column until it is accepted, and the table's
+    result gives `columns_deleted_pending`.
+  - **R111: a merge or split over a pending structure change is refused**, with tracking on:
+    a column deleted, cells inserted, merged down or a grid change not yet accepted in the
+    table. Over one, positions and the grid disagree, and Word's own Accept All of such a
+    merge leaves a broken table (measured: a header cell spanning a column no other row has).
+    The refusal names the pending changes and gives the way out, `{"tool": "word_changes",
+    "calls": [{"action": "accept", "within": "t:..."}]}` (also as a ready `call`); after it
+    the merge works and is listed under its author. Untracked merges are unchanged.
+  - **R112: every tracked change is listed under its author.** A table's grid change
+    (`w:tblGridChange`) has no author in the schema, nor in Word's own writing; `word_changes`
+    lists it with the change to the same table that recorded it (its `w:tblPrChange`, or the
+    latest of its row and cell records), not as a change of its own with author `null`. A
+    sweep of every tracked table edit (rows, columns, merges, splits, cells, formatting)
+    holds every listed change to its author and every record written to its author and date.
+    A grid change arriving in a document with no partner is listed as found.
+  - **A tracked merge writes a comment's or note's reference once.** Merging a cell holding
+    a comment (docx-agent's own describing comment of a tracked column deletion among them)
+    wrote the reference twice -- in the deleted original and the inserted copy -- and Word
+    did not open the document without a dialog (measured). A comment wholly in the
+    paragraph moves to the copy with its range, a note's reference too; accepting keeps them.
+
 ## 0.1.98 -- unreleased
 
 - **The serial replay of concurrent tracked edits no longer fails now and then** (needs

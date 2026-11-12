@@ -32,9 +32,35 @@ def table_json(document: Any, table_id: str, *, markdown: bool = True) -> dict[s
     written from a source, whose caller has the data."""
     table = document.table(table_id)
     data = {"id": table.id, "rows": len(table.rows), "columns": table.column_count}
+    pending = document.columns_pending_deletion(table.id)
+    if pending:
+        # Round 54 (R110): the Markdown is the table accepted; positions count these too.
+        data["columns_deleted_pending"] = pending
     if markdown:
         data["markdown"] = document.to_markdown(table.id, ids=False)
     return data
+
+
+def _no_tracked_reshape(call: Any, doc: str, table: str, action: str) -> None:
+    """Round 54 (R111): with tracking on, a merge or split is refused while the table holds a
+    tracked structure change not yet accepted -- a column deleted (``w:cellDel``), cells
+    merged, inserted or split (``w:cellIns``, ``w:cellMerge``, ``w:tblGridChange``).  Word
+    tracks neither a merge nor a split (it applies them; measured, round 54), and over such
+    a change the positions and the grid disagree, so the cells written are not the cells
+    meant.  The way out: accept the table's changes, then merge on the accepted table."""
+    document = call.document
+    if document._active_tracking() is None:
+        return
+    pending = document.pending_structure(table)
+    if not pending:
+        return
+    fix = {"tool": "word_changes", "calls": [{"action": "accept", "within": table}]}
+    raise ToolError("refused", f"{table} has tracked structure changes not yet accepted ({', '.join(pending)}); "
+                    f"Word does not track a {action}, and over them positions and the table's grid disagree. "
+                    f"Accept the table's changes first (word_changes accept within {table}), read the table "
+                    f"again, then {action}", valid_options=[f"word_changes accept within {table}"],
+                    details={"fix": fix, "call": {"tool": "word_changes",
+                                                  "arguments": {"doc": doc, "action": "accept", "within": table}}})
 
 
 def _limit_cells(call: Any, count: int) -> None:
@@ -214,9 +240,11 @@ def word_edit_table(call: Any, doc: str, table: str, action: str, cells: list[di
         edits.append(document.delete_column(table, need(index, "index")))
     elif action == "merge":
         a, b = need(first, "first"), need(last, "last")
+        _no_tracked_reshape(call, doc, table, "merge")
         edits.append(document.merge_cells(table, (a["row"], a["col"]), (b["row"], b["col"])))
     else:
         a = need(first, "first", " (the cell to split)")
+        _no_tracked_reshape(call, doc, table, "split")
         edits.append(document.split_cell(table, a["row"], a["col"], rows=rows, columns=columns))
     kept.follow(call, action, index, side)
     # A row inserted or deleted at the top renames the table (its id is its first row's).
