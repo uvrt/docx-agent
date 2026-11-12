@@ -45,7 +45,7 @@ How to use them:
   will see, read `word_read` with `view: "markup"`. The final view is the accepted result,
   which can differ from Word's *No Markup* screen for pending table-structure changes: a
   column deleted or cells merged with tracking on are drawn and read as accepting leaves them,
-  where Word's screen keeps the deleted cells until accepted (round 54).
+  where Word's screen keeps the deleted cells until accepted; table `col` positions count it so too.
 - **Formatting differences are facts too:** `word_inspect` shows direct formatting a pasted
   paragraph carries (font, size, colour on its runs) against its style; `word_format` with
   `clear_direct` takes it off, with `clear` only the properties named. `check` with

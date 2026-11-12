@@ -31,14 +31,93 @@ def table_json(document: Any, table_id: str, *, markdown: bool = True) -> dict[s
     """A table's id, size and (``markdown``) its text as Markdown -- left out for a table
     written from a source, whose caller has the data."""
     table = document.table(table_id)
-    data = {"id": table.id, "rows": len(table.rows), "columns": table.column_count}
-    pending = document.columns_pending_deletion(table.id)
+    kept = document.accepted_columns(table.id)[0]
+    # Round 54 (lane M): the columns col positions count -- the table as accepted, as the
+    # Markdown shows it; the grid columns a pending tracked deletion removes, as information.
+    data = {"id": table.id, "rows": len(table.rows), "columns": len(kept)}
+    pending = [c for c in range(table.column_count) if c not in kept]
     if pending:
-        # Round 54 (R110): the Markdown is the table accepted; positions count these too.
         data["columns_deleted_pending"] = pending
     if markdown:
         data["markdown"] = document.to_markdown(table.id, ids=False)
     return data
+
+
+class _Accepted:
+    """Round 54 (lane M): ``word_edit_table``'s (and ``word_format_table``'s) column positions
+    count the table as accepting its tracked changes leaves it -- as ``word_read``'s final
+    view and render show it: a column whose tracked deletion is pending is not counted (the
+    deletion is reached through ``word_changes``), and a position in a cell a pending
+    tracked merge takes in is that merged cell's.  Rows count as the document has them.
+    Without such a change the positions are the document's grid columns, as before."""
+
+    def __init__(self, document: Any, table: str) -> None:
+        self.document = document
+        self.table = table
+        self.kept, self.given = document.accepted_columns(table)
+        self.count = document._grid_count(table)
+        self.active = len(self.kept) != self.count or bool(self.given)
+        #: What the call's positions stepped over or into, said once each (rule 2).
+        self.notes: list[str] = []
+
+    @property
+    def width(self) -> int:
+        return len(self.kept)
+
+    def shape(self) -> str:
+        skipped = [c for c in range(self.count) if c not in self.kept]
+        return (f"{self.table} has columns 0 to {self.width - 1}" + (
+            f" as accepted (grid column(s) {', '.join(map(str, skipped))} deleted by a pending tracked "
+            f"change, not counted)" if skipped else ""))
+
+    def to_grid(self, col: int, field: str) -> int:
+        """The document's grid column of position ``col``; refused past the last (rule 2)."""
+        if not isinstance(col, int) or isinstance(col, bool) or not 0 <= col < self.width:
+            raise ToolError("not_found", f"{field} {col}: {self.shape()}", field=field,
+                            valid_options=[str(c) for c in range(self.width)][:50])
+        grid = self.kept[col]
+        if grid != col:
+            self._skipped(col, grid)
+        return grid
+
+    def at(self, row: int, grid: int) -> int:
+        """Where position (``row``, grid column ``grid``) is written: a cell a pending merge
+        takes in answers as the merged cell."""
+        found = self.given.get((row, grid))
+        if found is None:
+            return grid
+        note = (f"({row}, {self.from_grid(grid)}) is in the cell a pending tracked merge makes of "
+                f"({row}, {self.from_grid(found)}): written there")
+        if note not in self.notes:
+            self.notes.append(note)
+        return found
+
+    def from_grid(self, grid: int) -> int:
+        """Position of grid column ``grid`` (the position of the kept column before it, for
+        a column not kept)."""
+        return max(0, sum(1 for c in self.kept if c <= grid) - 1)
+
+    def labels(self, row: int) -> list[str]:
+        view = self.document.table(self.table)
+        return [_text(view, row, c) for c in self.kept]
+
+    def _skipped(self, col: int, grid: int) -> None:
+        gone = [c for c in range(grid) if c not in self.kept]
+        names = [_deleted_header(self.document, self.table, c) for c in gone]
+        said = ", ".join(f"{c} ({n!r})" if n else str(c) for c, n in zip(gone, names))
+        note = (f"col positions count {self.table} as accepted: grid column {said} has a tracked deletion "
+                f"not yet accepted and is not counted (word_changes reaches it); col {col} is grid column {grid}")
+        if not any(n.startswith(note.split("; col ")[0]) for n in self.notes):
+            self.notes.append(note)
+
+
+def _deleted_header(document: Any, table: str, grid: int) -> str:
+    """The first row's text (deleted text included) of grid column ``grid``."""
+    try:
+        cell = document.table(table).cell(0, grid)._element
+    except (IndexError, KeyError):
+        return ""
+    return " ".join("".join(node.text or "" for node in cell.iter(_W + "t", _W + "delText")).split())
 
 
 def _no_tracked_reshape(call: Any, doc: str, table: str, action: str) -> None:
@@ -59,6 +138,34 @@ def _no_tracked_reshape(call: Any, doc: str, table: str, action: str) -> None:
                     f"Word does not track a {action}, and over them positions and the table's grid disagree. "
                     f"Accept the table's changes first (word_changes accept within {table}), read the table "
                     f"again, then {action}", valid_options=[f"word_changes accept within {table}"],
+                    details={"fix": fix, "call": {"tool": "word_changes",
+                                                  "arguments": {"doc": doc, "action": "accept", "within": table}}})
+
+
+def _corner(accepted: _Accepted, position: dict, field: str) -> tuple[int, int]:
+    """A merge's or split's ``first``/``last`` as (row, grid column)."""
+    if not accepted.active:
+        return position["row"], position["col"]
+    grid = accepted.to_grid(position["col"], f"{field}.col")
+    return position["row"], accepted.at(position["row"], grid)
+
+
+def _no_merge_over_pending(doc: str, table: str, accepted: _Accepted, c1: int, c2: int, r1: int, r2: int,
+                           action: str) -> None:
+    """Round 54 (lane M): untracked, a merge or split reaching over a column whose tracked
+    deletion is pending, or a cell a pending tracked merge takes in, would settle that change
+    for some cells only: refused, with the way out (accept the table's changes first)."""
+    if not accepted.active:
+        return
+    over = [c for c in range(c1, c2 + 1) if c not in accepted.kept]
+    taken = [(r, c) for (r, c) in accepted.given if r1 <= r <= r2 and c1 <= c <= c2]
+    if not over and not taken:
+        return
+    fix = {"tool": "word_changes", "calls": [{"action": "accept", "within": table}]}
+    what = "a column deleted" if over else "a cell merged"
+    raise ToolError("refused", f"the {action} reaches over {what} by a tracked change not yet accepted in {table}; "
+                    f"accept the table's changes first (word_changes accept within {table}), then {action}",
+                    valid_options=[f"word_changes accept within {table}"],
                     details={"fix": fix, "call": {"tool": "word_changes",
                                                   "arguments": {"doc": doc, "action": "accept", "within": table}}})
 
@@ -90,7 +197,9 @@ POSITION = obj({"row": integer(minimum=0), "col": integer(minimum=0)},
                "merge, split: first cell, from 0.", optional=True)
 
 
-def _locate(table: Any, cell: dict, header_row: int = 0) -> tuple[int, int]:
+def _locate(table: Any, cell: dict, header_row: int = 0, accepted: "_Accepted | None" = None) -> tuple[int, int]:
+    """A cell's (row, grid column) by position or labels; with ``accepted``, ``col`` and
+    the labels count the table as accepted (round 54, lane M)."""
     def labelled(texts: list[str], label: str, what: str) -> int:
         clean = [" ".join(t.split()) for t in texts]
         hits = [k for k, t in enumerate(clean) if t == " ".join(label.split())]
@@ -99,11 +208,19 @@ def _locate(table: Any, cell: dict, header_row: int = 0) -> tuple[int, int]:
                             f"{len(hits)} {what}s", valid_options=[t for t in clean if t][:50])
         return hits[0]
 
+    first = accepted.kept[0] if accepted is not None and accepted.active and accepted.kept else 0
     if cell.get("row") is not None:
         row = cell["row"]
     else:
-        row = labelled([_text(table, r, 0) for r in range(len(table.rows))],
+        row = labelled([_text(table, r, first) for r in range(len(table.rows))],
                        need(cell.get("row_label"), "cells[].row or row_label"), "row")
+    if accepted is not None and accepted.active:
+        if cell.get("col") is not None:
+            col = accepted.to_grid(cell["col"], "cells[].col")
+        else:
+            col = accepted.kept[labelled(accepted.labels(header_row),
+                                         need(cell.get("col_label"), "cells[].col or col_label"), "column")]
+        return row, accepted.at(row, col)
     if cell.get("col") is not None:
         col = cell["col"]
     else:
@@ -197,6 +314,7 @@ def word_edit_table(call: Any, doc: str, table: str, action: str, cells: list[di
                         "with from; for rows of your own, insert_row", field="grow",
                         valid_options=["from", "insert_row"])
     kept = _Kept(document, table)
+    accepted = _Accepted(document, table)
     edits = []
     facts: list[dict[str, Any]] | None = None
     fills: list[dict[str, Any]] = []
@@ -204,48 +322,55 @@ def word_edit_table(call: Any, doc: str, table: str, action: str, cells: list[di
     if action == "set_cells":
         cells = need(cells, "cells")
         # Round 48 (R89): an entry with rows is a cell per row of its column, one value for all.
-        places, owners, fills = _column_rows(document, view, cells)
+        places, owners, fills = _column_rows(document, view, cells, accepted)
         held = _paragraphs_of(document, table) if fills else set()
         _limit_cells(call, len(places))
         values = [_cell_value(call, cell, k) for k, cell in enumerate(cells)]   # all read first, once each
         texts = [values[k][0] for k in owners]
         placed_at: list[tuple[int, int]] = []
-        writes = _by_position(document, view, places, texts)
+        writes = _by_position(document, view, places, texts, accepted)
         if writes is not None:
             # Round 45 (R67): every cell by its position, each on the table -- in one pass, the
             # same edits in the same order (a thousand cells took 80 s one by one).
             for row, col, _ in writes:
-                kept.cell(row, col)
+                kept.cell(row, accepted.from_grid(col))
                 placed_at.append((row, col))
             edits.extend(document._fill_cells(table, writes)[0])
         else:
             for cell, text in zip(places, texts):  # in order: a label set by an earlier cell is found by a later one
                 current = document.table(table)
-                row, col = _locate(current, cell)
-                kept.cell(row, col)
+                row, col = _locate(current, cell, accepted=accepted)
+                kept.cell(row, accepted.from_grid(col))
                 edits.extend(_set_cell(document, current, row, col, text))
                 placed_at.append((row, col))
         if fills:
             _count_fills(fills, values)
-        facts = _cell_facts(call, cells, values, placed_at, lambda: kept.current_id() or table, owners)
+        facts = _cell_facts(call, cells, values, placed_at, lambda: kept.current_id() or table, owners,
+                            accepted)
     elif action == "insert_row":
         edits.append(document.insert_row(table, index, below=side == "after"))
     elif action == "delete_row":
         edits.append(document.delete_row(table, need(index, "index")))
     elif action == "insert_column":
-        col = view.column_count - 1 if index is None else index
-        edits.append(document.insert_column(table, col, right=side == "after"))
+        # Round 54 (lane M): beside the column named, as accepted -- a column whose deletion is
+        # pending stays on its other side (Word's Accept All then has the new one there).
+        col = accepted.width - 1 if index is None else index
+        edits.append(document.insert_column(table, accepted.to_grid(col, "index"), right=side == "after"))
         index = col
     elif action == "delete_column":
-        edits.append(document.delete_column(table, need(index, "index")))
+        edits.append(document.delete_column(table, accepted.to_grid(need(index, "index"), "index")))
     elif action == "merge":
         a, b = need(first, "first"), need(last, "last")
         _no_tracked_reshape(call, doc, table, "merge")
-        edits.append(document.merge_cells(table, (a["row"], a["col"]), (b["row"], b["col"])))
+        (r1, c1), (r2, c2) = _corner(accepted, a, "first"), _corner(accepted, b, "last")
+        _no_merge_over_pending(doc, table, accepted, c1, c2, r1, r2, "merge")
+        edits.append(document.merge_cells(table, (r1, c1), (r2, c2)))
     else:
         a = need(first, "first", " (the cell to split)")
         _no_tracked_reshape(call, doc, table, "split")
-        edits.append(document.split_cell(table, a["row"], a["col"], rows=rows, columns=columns))
+        r1, c1 = _corner(accepted, a, "first")
+        _no_merge_over_pending(doc, table, accepted, c1, c1, r1, r1, "split")
+        edits.append(document.split_cell(table, r1, c1, rows=rows, columns=columns))
     kept.follow(call, action, index, side)
     # A row inserted or deleted at the top renames the table (its id is its first row's).
     now = kept.current_id() or table
@@ -258,6 +383,7 @@ def word_edit_table(call: Any, doc: str, table: str, action: str, cells: list[di
     result = outcome(edits, f"{action} on {table}", data=data, changed=[now])
     if read_as:
         result.warnings.insert(0, read_as)
+    result.warnings.extend(accepted.notes)
     if fills:
         # The cells' paragraphs (changed, made and removed) are the table's: named by it, not
         # one by one (rule 4; a 431-row column listed 431 ids).
@@ -296,7 +422,8 @@ def _sync(call: Any, view: Any, source: str | None, cells: Any, index: Any, from
                 match=[(p["table"], p["data"]) for p in match or ()])
 
 
-def _by_position(document: Any, view: Any, cells: list[dict], texts: list[str]) -> list[tuple[int, int, str]] | None:
+def _by_position(document: Any, view: Any, cells: list[dict], texts: list[str],
+                 accepted: "_Accepted | None" = None) -> list[tuple[int, int, str]] | None:
     """``set_cells``' cells as ``(row, column, text)`` where each names its cell by position
     and the table has a cell there, and nothing needs stamping -- what
     ``Document._fill_cells`` writes as the cells one by one would be; else ``None`` (a
@@ -305,13 +432,17 @@ def _by_position(document: Any, view: Any, cells: list[dict], texts: list[str]) 
            or isinstance(c.get("col"), bool) for c in cells) or not all(isinstance(t, str) for t in texts):
         return None
     grid = view.grid()
-    for c in cells:
-        row, col = c["row"], c["col"]
+    at = [(c["row"], c["col"]) for c in cells]
+    if accepted is not None and accepted.active:
+        # Round 54 (lane M): positions count the table as accepted.
+        at = [(row, accepted.at(row, accepted.to_grid(col, "cells[].col")) if 0 <= row < len(grid) else -1)
+              for row, col in at]
+    for row, col in at:
         if not (0 <= row < len(grid) and 0 <= col < len(grid[row]) and grid[row][col] is not None):
             return None
     if document._stamping_due():
         return None
-    return [(c["row"], c["col"], text) for c, text in zip(cells, texts)]
+    return [(row, col, text) for (row, col), text in zip(at, texts)]
 
 
 #: A cells entry's ``rows`` (round 48, R89): ``*`` (or ``all``), ``a..b``, ``a..``, ``..b`` or
@@ -332,7 +463,8 @@ def _header_rows(document: Any, table: str) -> int:
     return count
 
 
-def _column_rows(document: Any, view: Any, cells: list[dict]) -> tuple[list[dict], list[int], list[dict]]:
+def _column_rows(document: Any, view: Any, cells: list[dict],
+                 accepted: "_Accepted | None" = None) -> tuple[list[dict], list[int], list[dict]]:
     """``set_cells``' cells as places, one per cell to write, each with the index of the
     entry it comes from, and the column fills (round 48, R89).
 
@@ -356,13 +488,15 @@ def _column_rows(document: Any, view: Any, cells: list[dict]) -> tuple[list[dict
             places.append(cell)
             owners.append(k)
             continue
-        col = _fill_column(view, cell, k)
+        col = _fill_column(view, cell, k, accepted)
+        grid_col = accepted.to_grid(col, f"cells[{k}].col") if accepted is not None and accepted.active else col
         first, last, notes = _fill_range(view.id, str(said), cell, k, height, header)
         written: list[tuple[int, int]] = []
         missing: list[int] = []
         seen: set[tuple[int, int]] = set()
         for row in range(first, last + 1):
-            found = grid[row][col] if col < len(grid[row]) else None
+            at = accepted.at(row, grid_col) if accepted is not None and accepted.active else grid_col
+            found = grid[row][at] if at < len(grid[row]) else None
             if found is None:
                 missing.append(row)
                 continue
@@ -372,7 +506,7 @@ def _column_rows(document: Any, view: Any, cells: list[dict]) -> tuple[list[dict
             seen.add(origin)
             places.append({"row": row, "col": col})
             owners.append(k)
-            written.append((row, col))
+            written.append((row, at))
         if missing:
             shown = ", ".join(str(r) for r in missing[:_LISTED]) + (
                 f" and {len(missing) - _LISTED} more" if len(missing) > _LISTED else "")
@@ -392,9 +526,16 @@ def _paragraphs_of(document: Any, table: str) -> set[str]:
             for p in cell.paragraphs}
 
 
-def _fill_column(view: Any, cell: dict, k: int) -> int:
-    """The grid column a column fill writes: ``col`` or ``col_label`` -- refused with the
-    table's columns (rule 2)."""
+def _fill_column(view: Any, cell: dict, k: int, accepted: "_Accepted | None" = None) -> int:
+    """The column a column fill writes: ``col`` or ``col_label`` -- refused with the
+    table's columns (rule 2); with ``accepted``, counted as accepted (round 54, lane M)."""
+    if accepted is not None and accepted.active:
+        if cell.get("col") is not None and cell.get("col_label") in (None, ""):
+            accepted.to_grid(cell["col"], f"cells[{k}].col")
+            return cell["col"]
+        if cell.get("col_label") not in (None, ""):
+            return accepted.from_grid(_locate(view, {"row": 0, "col_label": cell["col_label"]},
+                                              accepted=accepted)[1])
     width = view.column_count
     if cell.get("col") is not None and cell.get("col_label") in (None, ""):
         col = cell["col"]
@@ -534,7 +675,8 @@ def _cell_value(call: Any, cell: dict, k: int) -> tuple[str, dict[str, Any] | No
 
 
 def _cell_facts(call: Any, cells: list[dict], values: list[tuple[str, Any]], placed_at: list[tuple[int, int]],
-                table: Any, owners: list[int] | None = None) -> list[dict[str, Any]] | None:
+                table: Any, owners: list[int] | None = None,
+                accepted: "_Accepted | None" = None) -> list[dict[str, Any]] | None:
     """The values set_cells wrote by reference -- a cell's ``from`` and references in a
     cell's ``text`` -- each with its cell, in order; a ``from`` kept as its cell's
     paragraphs' source.  ``None`` without any (the result as before).
@@ -568,7 +710,9 @@ def _cell_facts(call: Any, cells: list[dict], values: list[tuple[str, Any]], pla
         many = cells[k].get("rows") not in (None, "")
         if many:
             rows = f"{found_cells[0].row}..{found_cells[-1].row}" if found_cells else ""
-            said = {"col": placed_at[owners.index(k)][1], "rows": rows, "cells": len(found_cells)}
+            col = placed_at[owners.index(k)][1]
+            said = {"col": accepted.from_grid(col) if accepted is not None else col, "rows": rows,
+                    "cells": len(found_cells)}
         else:
             said = {"cell": found_cells[0].id}
         paragraphs = [[p.id for p in cell.paragraphs] for cell in found_cells]
@@ -637,7 +781,9 @@ def _set_from(call: Any, view: Any, source: str, from_columns: list[str] | None,
     with timing.part("resolve"):
         block = placed(call, source, from_columns, header, date_format)
     started = time.perf_counter()
-    height, width = len(view.rows), view.column_count
+    # Round 54 (lane M): the block's columns are the table's as accepted.
+    accepted = _Accepted(document, view.id)
+    height, width = len(view.rows), accepted.width
     if top > height or (top == height and not grow):
         raise ToolError("not_found", f"no row {top}; {view.id} has {height}" + (
             f" (with grow, index {height} adds the rows after the last)" if top == height else ""),
@@ -651,7 +797,7 @@ def _set_from(call: Any, view: Any, source: str, from_columns: list[str] | None,
         fits(block, MAX_ROWS - top, MAX_COLUMNS)                               # Word's rows
     else:
         fits(block, height - top, width, room=f"{view.id} has {height - top} rows from row {top}")
-    grid = view.grid()
+    grid = _accepted_grid(view.grid(), accepted)
     _one_cell_each(view.id, block, grid, top, min(need_rows, height - top), need_columns, {})
     edits: list[Any] = []
     added: list[str] = []
@@ -667,8 +813,8 @@ def _set_from(call: Any, view: Any, source: str, from_columns: list[str] | None,
         timing.add("check", time.perf_counter() - started)
     changed = [view.id]
     with timing.part("cells"):
-        writes = [(row, col, cell_text(lines)) for row, values in enumerate(block.lines(), start=top)
-                  for col, lines in enumerate(values)]
+        writes = [(row, accepted.kept[col] if accepted.active else col, cell_text(lines))
+                  for row, values in enumerate(block.lines(), start=top) for col, lines in enumerate(values)]
         if at_once:
             made, cells = document._fill_cells(view.id, writes)
             edits.extend(made)
@@ -695,9 +841,40 @@ def _set_from(call: Any, view: Any, source: str, from_columns: list[str] | None,
             line += (f" (rows {top + need_rows}-{height - 1} below the data: delete_row index "
                      f"{top + need_rows}, {below} time(s), removes them)")
         result.warnings.append(line)
+    if accepted.active and need_columns and accepted.kept[need_columns - 1] != need_columns - 1:
+        result.warnings.append(f"{accepted.shape()}: the block's columns 0 to {need_columns - 1} are written "
+                               "in those")
     result = note_small_text(call, result, [view.id])
     timing.add("result", time.perf_counter() - started)
     return result
+
+
+def _accepted_grid(grid: list, accepted: _Accepted) -> list:
+    """``grid`` (rows of cells, as ``Table.grid``) with the columns as accepted: a column a
+    pending tracked deletion removes left out, and a position a pending tracked merge takes
+    in answering as the merged cell (round 54, lane M)."""
+    if not accepted.active:
+        return grid
+    out = []
+    for r, line in enumerate(grid):
+        row = []
+        for c in accepted.kept:
+            cell = line[accepted.given.get((r, c), c)] if c < len(line) else None
+            row.append(_AcceptedCell(cell, accepted.from_grid(cell.column)) if cell is not None else None)
+        out.append(row)
+    return out
+
+
+class _AcceptedCell:
+    """A cell of :func:`_accepted_grid`: its origin's column counted as accepted."""
+
+    def __init__(self, cell: Any, column: int) -> None:
+        self._cell = cell
+        self.row = cell.row
+        self.column = column
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._cell, name)
 
 
 def _one_cell_each(table: str, block: Any, grid: list, top: int, count: int, columns: int,
@@ -1097,6 +1274,7 @@ def word_format_table(call: Any, doc: str, table: str, scope: str, row: int | No
         cell_values["borders"] = {k: v for k, v in sides.items() if not k.startswith("inside")}
     if vertical_alignment is not None:
         cell_values["vertical_alignment"] = vertical_alignment
+    accepted = _Accepted(document, table)
     if scope == "row":
         index = need(row, "row")
         if height is not None or header_rows is not None or cant_split is not None:
@@ -1108,12 +1286,15 @@ def word_format_table(call: Any, doc: str, table: str, scope: str, row: int | No
             edits.append(document.set_row(table, index, **row_values))
         positions = [(index, c) for c in range(view.column_count)]
     elif scope == "column":
-        index = need(column, "column")
+        # Round 54 (lane M): column positions count the table as accepted.
+        index = accepted.to_grid(need(column, "column"), "column") if accepted.active else need(column, "column")
         if width is not None:
             edits.append(document.set_column_width(table, index, width))
         positions = [(r, index) for r in range(len(view.rows))]
     else:
-        positions = [(need(row, "row"), need(column, "column"))]
+        r = need(row, "row")
+        positions = [(r, accepted.at(r, accepted.to_grid(need(column, "column"), "column")) if accepted.active
+                      else need(column, "column"))]
         if width is not None:
             cell_values["width"] = width
     if cell_values:
@@ -1130,7 +1311,9 @@ def word_format_table(call: Any, doc: str, table: str, scope: str, row: int | No
     if not edits:
         raise ToolError("invalid_arguments", f"nothing to set for the {scope}",
                         valid_options=["shading", "borders", "vertical_alignment", "width", "height", "cant_split"])
-    return outcome(edits, f"Formatted {scope} of {table}", changed=[table])
+    result = outcome(edits, f"Formatted {scope} of {table}", changed=[table])
+    result.warnings.extend(accepted.notes)
+    return result
 
 
 #: keep_together on a table taller than a page (round 25): Word does keep it, so does the tool.

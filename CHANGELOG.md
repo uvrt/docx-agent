@@ -5,6 +5,45 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.100 -- unreleased
+
+- **A tracked merge in the form Word reviews exactly** (round 54 follow-up, lane M). Measured
+  with Word 16.106 for Mac on a made-up four-column report table: Word's Accept All gives a
+  deleted cell (`w:cellDel`) that keeps content *or a paragraph mark* to the cell before it
+  (its columns and width; its content goes) -- an empty cell, or one whose text alone is
+  deleted, too -- and removes only a cell whose content and marks are all deleted. A tracked
+  merge now keeps each row's first cell as it is and makes the other cells `w:cellDel` with
+  their content and marks kept (their text inserted at the end of the first cell, as before;
+  merged down, `w:cellMerge` as before); no grid or cell-property records. docx-agent's
+  accept gives a kept deleted cell to the cell before it, as Word does. Scored against Word's
+  Accept All and Reject All (render of docx-agent's reviewed document against Word's PDF of
+  its own): a body row merged across, before 54 px off, now exact; a rectangle, before 6 px,
+  now exact; header row, down, an empty cell, a spanned cell, the last two cells, two lines,
+  a comment in the merged cell: exact (a fixed-width table: 1 px, Word re-distributing its
+  widths). The pending table stays on its grid: `table_grid_mismatch` was raised for 9 of 10
+  pending merges, now none. A comment in a cell merged away keeps its reference once: Word's
+  and docx-agent's Accept All keep it, both Reject Alls drop it (measured).
+- **`col` positions count the table as accepted** (lane M). `word_edit_table`'s `col`,
+  `col_label`, `row_label`, `index` (insert/delete column), `first`/`last`, a column fill's
+  `rows`, a `from` block's columns and `sync`'s columns -- and `word_format_table`'s `column` --
+  skip a column whose tracked deletion is pending, as `word_read`'s final view and render
+  leave it out; the deletion is reached through `word_changes`. A position in a cell a
+  pending tracked merge takes in is that merged cell's. The result says when a position
+  skipped a pending deleted column (`col positions count t:... as accepted: grid column 1
+  ('Lead') ...`) and `columns` is the accepted count (`columns_deleted_pending` stays, the
+  document's grid columns, as information); a position past the last is refused with the
+  accepted shape. A column inserted beside a pending deleted one goes beside the column
+  named, the deleted one on its other side (Word's Accept All then has it there: measured).
+  Untracked, a merge or split reaching over a pending deleted column or merged cell is
+  refused with the accept that settles it. Before: a `set_cells` at col 1 of a table whose
+  column 1 was deleted (pending) wrote into the deleted cell, and the final view then showed
+  the row's first cell spanning two columns.
+- **Fixed: `word_changes` accept within a table missed deleted cells** whose paragraphs the
+  final view joins into another (a document arriving with a tracked merge off its grid: the
+  `table_grid_mismatch` fix accepted 0 records). Changes are now matched by their records
+  inside the table too.
+- Tool definitions and Word core unchanged (definitions sha 7a8d751ed0151521).
+
 ## 0.1.99 -- unreleased
 
 - **A table's tracked structure changes read and render as accepted** (round 54, R110-R112;

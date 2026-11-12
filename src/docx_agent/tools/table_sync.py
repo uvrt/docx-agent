@@ -106,7 +106,7 @@ def sync(call: Any, view: Any, source: str, from_columns: list[str] | None, key:
          remove: bool, date_format: str | None, notes: list[str], *, loose: str | None = None,
          match: list[tuple[str, str]] = ()) -> Result:
     """``word_edit_table`` ``sync``: see the module doc."""
-    from .objects import _Kept, _header_rows, _set_cell, _table_entry
+    from .objects import _Accepted, _accepted_grid, _Kept, _header_rows, _set_cell, _table_entry
 
     document = call.document
     timing = Timing()
@@ -116,8 +116,11 @@ def sync(call: Any, view: Any, source: str, from_columns: list[str] | None, key:
         rows = call.source(source, field="from")
         plan = _Plan()
         header = _header_rows(document, table)
-        grid = view.grid()
-        height, width = len(grid), view.column_count
+        # Round 54 (lane M): the table's columns as accepted (a pending tracked column
+        # deletion not counted); written back at the document's grid columns.
+        as_accepted = _Accepted(document, table)
+        grid = _accepted_grid(view.grid(), as_accepted)
+        height, width = len(grid), as_accepted.width
         fields = _mapping(rows, grid, header, width, from_columns, table, plan)
         block = placed(call, source, [rows.dataset.columns[c] for c in fields], [], date_format)
         texts = [[cell_text(lines) for lines in line] for line in block.lines()]
@@ -197,6 +200,8 @@ def sync(call: Any, view: Any, source: str, from_columns: list[str] | None, key:
                 cell_writes += [(final[("new", i)], col, texts[i][pick]) for col, pick in plan.pairs
                                 if texts[i][pick] != ""]
         cell_writes.sort(key=lambda w: (w[0], w[1]))
+        if as_accepted.active:
+            cell_writes = [(row, as_accepted.kept[col], text) for row, col, text in cell_writes]
         if at_once and cell_writes:
             edits.extend(document._fill_cells(now, cell_writes)[0])
         else:
@@ -222,7 +227,7 @@ def sync(call: Any, view: Any, source: str, from_columns: list[str] | None, key:
                                     slots, final, texts, row_of)
     started = time.perf_counter()
     data: dict[str, Any] = {"id": now, "rows": len(document.table(now).rows),
-                            "columns": document.table(now).column_count}
+                            "columns": len(document.accepted_columns(now)[0])}
     data.update(_said(block, plan, grid, header, rows, fields, added, source_keys, changed_keys, gone,
                       remove, placement, writes, loose, paired, loosely))
     data["timing"] = timing.parts
@@ -616,7 +621,7 @@ def _keep_sources(call: Any, kept: Any, old_key: str | None, now: str, block: An
     """Where the values came from (see the module doc); a note when a record is dropped."""
     from ooxml_edit.tools import textfacts
 
-    from .objects import _table_entry
+    from .objects import _Accepted, _accepted_grid, _table_entry
 
     document = call.document
     entry = _table_entry(document, now)
@@ -625,7 +630,7 @@ def _keep_sources(call: Any, kept: Any, old_key: str | None, now: str, block: An
     rows = block.rows
     accepted = _provenance.accepted_rows(entry)
     view = document.table(now)
-    grid = view.grid()
+    grid = _accepted_grid(view.grid(), _Accepted(document, now))   # columns as accepted (lane M)
     end = len(grid) - (height - plan.end)        # above the total row
     # Each row's source row, by where the rows are now: matched rows, then the rows added.
     index_of: dict[int, int] = {}
@@ -718,7 +723,8 @@ def _said(block: Any, plan: _Plan, grid: list, header: int, rows: Any, fields: l
 def _unchanged(call: Any, view: Any, block: Any, plan: _Plan, gone: list[str], said: dict[str, Any],
                notes: list[str], timing: Timing) -> Result:
     """Rule 3: the table holds the source's values already -- nothing written."""
-    data: dict[str, Any] = {"id": view.id, "rows": len(view.rows), "columns": view.column_count, **said,
+    data: dict[str, Any] = {"id": view.id, "rows": len(view.rows),
+                            "columns": len(call.document.accepted_columns(view.id)[0]), **said,
                             "added": {"count": 0, "keys": []}, "changed": {"count": 0, "cells": 0, "keys": {}},
                             "missing": _capped(gone), "unchanged": len(plan.order) - len(gone),
                             "timing": timing.parts}

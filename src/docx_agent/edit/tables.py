@@ -10,16 +10,20 @@ What Word 16.106 writes with tracking on (``tools/e3_probe.py``):
 * **a column deleted**, **cells merged** (across or down) and **a cell split**: nothing --
   Word applies them untracked.
 
-So a deleted column is written as ``w:cellDel`` on its cells with their content deleted,
-and a merge as ``w:cellDel`` on the cells merged away (their content and paragraph marks
-deleted) and a ``w:tcPrChange`` on each row's first cell (its new span) -- merged down,
-``w:cellMerge`` (``rest``/``cont``) on the rows' first cells -- with the merged cells'
-content deleted where it was and inserted in the first cell.  A merge across records, as
-Word records a change to a table, every cell's old properties and the old grid: then
-Word's own Accept All and Reject All give back exactly what docx-agent's do (measured,
-``tools/e5_probe.py`` and the E5 oracle; E3's form, without them, Word reviewed otherwise).
-A split, a column across a span and a merge's first row deleted (E5) are written the same
-way: new cells' and rows' marks inserted, every cell's old properties recorded, and a
+So a deleted column is written as ``w:cellDel`` on its cells with their content deleted.
+A merge (round 54, lane M: measured with Word 16.106, ``feedback-round54/probe-M``) keeps
+each row's first cell as it is and makes the other cells ``w:cellDel`` *with their content
+and paragraph marks kept*, their text inserted at the end of the first cell -- merged down,
+``w:cellMerge`` (``rest``/``cont``) on the rows' first cells, a continuing row's first cell's
+content deleted.  Word's Accept All gives a deleted cell that keeps content or a mark to the
+cell before it (its columns and width; its content goes) and removes one whose content and
+marks are all deleted; Reject All keeps the cell.  So Word's own review and docx-agent's
+give the same table (every glyph and rule as Word draws it, across, down, a rectangle, a
+header row, an empty cell), and the pending table stays on its grid.  (The earlier form --
+the first cell's span applied, the others' content deleted, every cell's old properties and
+the grid recorded -- Word accepted to a fifth grid column: 54 px off.)
+A split, a column across a span and a merge's first row deleted (E5) are written with the
+new cells' and rows' marks inserted, every cell's old properties recorded, and a
 divided vertical merge as ``w:cellMerge`` (``vMerge`` the new, ``vMergeOrig`` the old).
 Each is described by a comment (opening with :data:`~docx_agent.revisions.review.
 DESCRIBES`), so a reviewer sees what changed; accepting or rejecting it here removes the
@@ -895,10 +899,10 @@ class TableOps:
                                                  "column, so it is written as deleted cells.")
                 self.package.mark_dirty(part)
                 table_id = renames.get(entry.id, entry.id)
-                # Round 54 (R110): what the reader sees now, and what positions count.
-                warning = (f"column {index} is deleted as a tracked change: word_read and render show the table "
-                           f"accepted, without it; col positions count it until the deletion is accepted "
-                           f"(word_changes accept within {table_id})") if doomed else None
+                # Round 54 (R110, lane M): what the reader sees now, and what positions count.
+                warning = (f"column {index} is deleted as a tracked change: word_read, render and word_edit_table's "
+                           f"col positions count the table as accepted, without it; word_changes accept or reject "
+                           f"within {table_id} settles the deletion") if doomed else None
                 return EditResult(table_id, renamed=renames, warnings=[warning] if warning else [])
             from . import inline as _inline
             from .document import _rehome_markers
@@ -926,18 +930,47 @@ class TableOps:
         return EditResult(renames.get(entry.id, entry.id), renamed=renames, removed=[r for r in removed if r])
 
     def columns_pending_deletion(self: "Document", table: str) -> list[int]:
-        """The grid columns of ``table`` that only cells with a pending tracked deletion
-        (``w:cellDel``) cover: the columns accepting removes (round 54, R110)."""
+        """The grid columns of ``table`` that accepting its tracked changes removes: those
+        only cells with a pending deletion (``w:cellDel``) cover, a deleted cell whose content
+        is kept not counted -- accepting gives it to the cell before it (round 54, R110 and
+        lane M)."""
+        return [c for c in range(self._grid_count(table)) if c not in self.accepted_columns(table)[0]]
+
+    def _grid_count(self: "Document", table: str) -> int:
         _part, entry = self._table_entry(table)
+        grid = entry.element.find(_W + "tblGrid")
+        return len(grid.findall(_W + "gridCol")) if grid is not None else 0
+
+    def accepted_columns(self: "Document", table: str) -> tuple[list[int], dict[tuple[int, int], int]]:
+        """``table`` as accepting its tracked changes leaves its columns (round 54, lane M):
+        the grid columns kept, in order, and where a cell merged away is given to the cell
+        before it -- ``(row, grid column)`` of each position such a cell (``w:cellDel``, its
+        content kept) covers, to the grid column where the cell before it begins.  Word's
+        Accept All: a deleted cell whose content is kept widens the cell before it, one
+        whose content is deleted goes, and so does a grid column only such cells cover
+        (measured, round 54).  Rows are counted as the document has them."""
+        from ..revisions.review import _content_kept
+
+        _part, entry = self._table_entry(table)
+        count = self._grid_count(table)
         covered: dict[int, bool] = {}
-        for row, _ in entry.rows:
-            if row.find(f"{_W}trPr/{_W}del") is not None:
-                continue
+        given: dict[tuple[int, int], int] = {}
+        for r, (row, _) in enumerate(entry.rows):
+            deleted_row = row.find(f"{_W}trPr/{_W}del") is not None
+            before: tuple[int, int] | None = None     # the last cell kept: (start, span)
             for cell, start, span in _cells(row):
                 deleted = cell.find(f"{_W}tcPr/{_W}cellDel") is not None
+                if deleted and before is not None and _content_kept(cell):
+                    for column in range(start, start + span):
+                        given[(r, column)] = before[0]
+                    deleted = False
+                elif not deleted:
+                    before = (start, span)
+                if deleted_row:
+                    continue
                 for column in range(start, start + span):
                     covered[column] = covered.get(column, True) and deleted
-        return sorted(column for column, only in covered.items() if only)
+        return [c for c in range(count) if not covered.get(c, False)], given
 
     def pending_structure(self: "Document", table: str) -> list[str]:
         """The tracked structure changes ``table`` holds that are not yet accepted (round 54,
@@ -1098,34 +1131,31 @@ class TableOps:
 
     def _merge_tracked(self: "Document", part: str, plan, origin: Element, tracking, first, last,
                        rows: list[Element]) -> None:
+        """Round 54 (follow-up, lane M): a merge written in the form Word reviews exactly
+        (measured, Word 16.106: ``feedback-round54/probe-M``).  Word does not track a merge
+        (it applies it); written so, its Accept All and Reject All give what docx-agent's
+        own give, and while pending the table stays on its grid:
+
+        * each row's first cell keeps its properties (no new span): accepting the merged-away
+          cells widens it;
+        * every other cell of the row is ``w:cellDel`` with its content and marks kept: Word's
+          Accept All gives a deleted cell whose content is kept to the cell before it (its
+          columns and width) and drops the content; Reject All keeps the cell;
+        * merged down, each row's first cell a ``w:cellMerge`` (``rest`` the first row,
+          ``cont`` the others; the old merge in ``vMergeOrig``), a continuing row's first
+          cell's content deleted;
+        * every other cell's text inserted at the end of the first cell, in reading order, a
+          comment or note reference moved with it once (round 54, lane T)."""
         from ..revisions import track as _track
         from ..revisions.stamp import Stamp
+        from .document import _clear_revisions
 
         stamp = Stamp(self, tracking)
         across = any(len(plan_row) > 1 for plan_row in plan)
-        table = rows[0].getparent()
-        while table is not None and table.tag != W_TBL:
-            table = table.getparent()
-        # Word reviews a merge across exactly only from its own whole-table record: every
-        # cell's old properties, the old grid (measured: tools/e5_probe.py, mergeforms).
-        from .table_format import TableTracker
-
-        tracker = TableTracker(table) if across else None
         copies: list[Element] = []
         for k, plan_row in enumerate(plan):
             lead = plan_row[0][0]
             cells = [cell for cell, _, _ in plan_row]
-            if len(cells) > 1:
-                properties = lead.find(_W + "tcPr")
-                if properties is None:
-                    properties = make("w:tcPr")
-                    lead.insert(0, properties)
-                new = self._merged_properties(plan_row)
-                for child in list(properties):
-                    if child.tag not in _CELL_RECORDS:
-                        remove(child)
-                for child in new:
-                    insert_in_order(properties, child)
             if len(plan) > 1:
                 properties = lead.find(_W + "tcPr")
                 if properties is None:
@@ -1141,11 +1171,10 @@ class TableOps:
                     record.set(_W + "vMergeOrig", "rest" if had == "restart" else "cont")
                 insert_in_order(properties, record)
             for cell in (cells[1:] if k == 0 else cells):
+                kept = cell is not lead
                 for paragraph in [p for p in cell if isinstance(p.tag, str) and p.tag == W_P]:
                     if _has_text(paragraph):
                         copy_ = copy.deepcopy(paragraph)
-                        from .document import _clear_revisions
-
                         _clear_revisions(copy_)
                         for marker in list(copy_.iter(_W + "bookmarkStart", _W + "bookmarkEnd",
                                                       _W + "commentRangeStart", _W + "commentRangeEnd")):
@@ -1155,26 +1184,22 @@ class TableOps:
                         if _has_text(copy_):
                             _move_references(paragraph, copy_)
                             copies.append(copy_)
-                    self._release(part, _track.delete_content(paragraph, stamp, part))
+                    if not kept:
+                        # A continuing row's first cell stays (merged into the one above):
+                        # its content goes.
+                        self._release(part, _track.delete_content(paragraph, stamp, part))
             for cell in cells[1:]:
                 properties = cell.find(_W + "tcPr")
                 if properties is None:
                     properties = make("w:tcPr")
                     cell.insert(0, properties)
                 insert_in_order(properties, stamp.make("w:cellDel", part))
-                # A deleted cell's paragraph marks deleted too: Word accepts a deleted cell
-                # whose content is not deleted by widening the cell before it (measured).
-                for paragraph in [p for p in cell if isinstance(p.tag, str) and p.tag == W_P]:
-                    if _track.mark_record(paragraph) is None:
-                        _track.mark(paragraph, "del", stamp, part)
             if k > 0:
                 # A continuation keeps its last paragraph: the others' marks go.
                 paragraphs = [p for p in lead if isinstance(p.tag, str) and p.tag == W_P]
                 for paragraph in paragraphs[:-1]:
                     if _track.mark_record(paragraph) is None:
                         _track.mark(paragraph, "del", stamp, part)
-        if tracker is not None:
-            tracker.record(stamp, part, table_level=False)
         if copies:
             self._stamp_new(part, copies)
             last_paragraph = [p for p in origin if isinstance(p.tag, str) and p.tag == W_P][-1]
@@ -1194,7 +1219,7 @@ class TableOps:
             old = _track.clean_properties(last_paragraph.find(_W + "pPr"), "w:pPr")
             _track.record_paragraph_change(copies[-1], old, stamp, part)
         stamp.finish()
-        how = "deleted cells" + (" and a span change" if across else "") + (" and a cell merge" if len(plan) > 1 else "")
+        how = "deleted cells" + (" and a cell merge" if len(plan) > 1 else "") if across else "a cell merge"
         self._describe(part, origin, f"cells ({first[0] + 1}, {first[1] + 1}) to ({last[0] + 1}, {last[1] + 1}) "
                                      f"merged; Word does not track a merge, so it is written as {how}.")
 

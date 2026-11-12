@@ -1297,11 +1297,11 @@ def _place(out: list, stack: list, new: m.ListBlock) -> None:
 
 
 def _content_kept(cell: Element) -> bool:
-    """Whether a cell holds text not deleted (outside ``w:del`` and ``w:moveFrom``)."""
-    for text in cell.iter(_W + "t"):
-        if text.text and not any(a.tag in (_W + "del", _W + "moveFrom") for a in text.iterancestors()):
-            return True
-    return False
+    """Whether a deleted cell keeps content or a paragraph mark not deleted: accepting gives
+    it to the cell before it (:func:`docx_agent.revisions.review._content_kept`)."""
+    from ..revisions.review import _content_kept as kept
+
+    return kept(cell)
 
 
 def _table(reader: Reader, table: TableRecord, options: Options) -> list:

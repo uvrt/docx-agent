@@ -26,7 +26,9 @@ own Accept All and Reject All by ``tools/e3_probe.py`` and the oracle):
 * a property change: accepted, the record goes; rejected, the old properties return;
 * a row: accepted deletion or rejected insertion removes it (the table too, when it was
   the last); a cell: ``w:cellDel`` accepted or ``w:cellIns`` rejected removes it, and a
-  grid column no remaining cell covers goes with it; ``w:cellMerge`` accepted merges.
+  grid column no remaining cell covers goes with it -- a deleted cell that keeps content or a
+  paragraph mark is given to the cell before it instead (its columns and width: Word's Accept
+  All, measured round 54); ``w:cellMerge`` accepted merges.
 
 A record that belongs with others is accepted or rejected with them: a move's two ends; a
 row's or cell's revisions made with it (same author and date) inside it; a paragraph's
@@ -467,7 +469,14 @@ class _Review:
                     continue
                 goes = (record.tag == _W + "cellDel") == self.accept
                 if goes and cell is not None:
-                    removed.add(id(cell))
+                    # Round 54 (lane M): a deleted cell whose content is kept is given to the
+                    # cell before it (its columns and width), its content going -- Word's
+                    # Accept All (measured): a tracked merge's form.
+                    before = _cell_before(cell) if self.accept and _content_kept(cell) else None
+                    if before is not None:
+                        _absorb(before, cell)
+                    else:
+                        removed.add(id(cell))
                     self._held.append(cell)
                     self._removing(cell)
                     self.released += _inline.relationship_ids(cell)
@@ -839,6 +848,65 @@ def _grid_map(table: Element) -> list[tuple[Element, list[tuple[Element, int, in
             column += span
         out.append((row, cells))
     return out
+
+
+#: Run content a reader sees.
+_SHOWN = frozenset(_W + name for name in ("t", "tab", "br", "cr", "drawing", "pict", "object", "sym",
+                                          "noBreakHyphen", "ptab"))
+
+
+def _content_kept(cell: Element) -> bool:
+    """Whether a deleted cell (``w:cellDel``) keeps anything: content not deleted (outside
+    ``w:del`` and ``w:moveFrom``) or a paragraph mark not deleted.  Word's Accept All gives
+    such a cell to the cell before it, its columns and width -- an empty cell, or one whose
+    text alone is deleted, too -- and removes only a cell whose content and marks are all
+    deleted (measured, round 54 lane M: ``feedback-round54/probe-M``, ``m-empty``,
+    ``c-textdel``; a tracked column deletion)."""
+    for node in cell.iter(*_SHOWN):
+        if node.tag == _W + "t" and not node.text:
+            continue
+        if any(a.tag in (_W + "del", _W + "moveFrom") for a in node.iterancestors()):
+            continue
+        return True
+    for paragraph in cell.iter(W_P):
+        if next((a for a in paragraph.iterancestors(W_TC)), None) is not cell:
+            continue
+        record = _track.mark_record(paragraph)
+        if record is None or record.tag not in _track.DELETED:
+            return True
+    return False
+
+
+def _cell_before(cell: Element) -> Element | None:
+    """The cell before ``cell`` in its row, or ``None``."""
+    node = cell.getprevious()
+    while node is not None and not (isinstance(node.tag, str) and node.tag == W_TC):
+        node = node.getprevious()
+    return node
+
+
+def _absorb(before: Element, cell: Element) -> None:
+    """``before`` widened by ``cell``'s grid columns and width (both in twips)."""
+    def span(of: Element) -> int:
+        node = of.find(f"{_W}tcPr/{_W}gridSpan")
+        value = node.get(_W + "val") if node is not None else None
+        return max(1, int(value)) if value and value.isdigit() else 1
+
+    properties = before.find(_W + "tcPr")
+    if properties is None:
+        properties = make("w:tcPr")
+        before.insert(0, properties)
+    total = span(before) + span(cell)
+    node = properties.find(_W + "gridSpan")
+    if node is None:
+        node = make("w:gridSpan")
+        insert_in_order(properties, node)
+    node.set(_W + "val", str(total))
+    mine, theirs = properties.find(_W + "tcW"), cell.find(f"{_W}tcPr/{_W}tcW")
+    if mine is not None and theirs is not None and mine.get(_W + "type") in (None, "dxa") \
+            and theirs.get(_W + "type") in (None, "dxa") and (mine.get(_W + "w") or "").isdigit() \
+            and (theirs.get(_W + "w") or "").isdigit():
+        mine.set(_W + "w", str(int(mine.get(_W + "w")) + int(theirs.get(_W + "w"))))
 
 
 def _fix_grid(table: Element, grid, removed: set[int]) -> None:
