@@ -98,7 +98,8 @@ def word_describe(call: Any, doc: str) -> Result:
         "revisions": {"records": len(revisions), "changes": len(document.changes()),
                       "by_author": dict(Counter(r.author for r in revisions))},
         "fields": dict(fields),
-        "tables": [{"id": t.id, "rows": len(t.rows), "columns": t.column_count,
+        # Round 54 (lanes M, R): rows and columns as word_edit_table counts them (accepted).
+        "tables": [{"id": t.id, **_accepted_size(document, t),
                     "first_row": short(" | ".join(_cell_text(t, 0, k) for k in range(t.column_count)), 80),
                     **{key: short(value, 80) for key, value in t.alt_text.items()},
                     **_kept_together(document, t)}
@@ -118,6 +119,15 @@ def word_describe(call: Any, doc: str) -> Result:
     if len(data["headings"]) == 80:
         data["headings_note"] = "the first 80 headings; word_read a range for the rest"
     return Result(summary=f"Described {entry.name}", data=data)
+
+
+def _accepted_size(document: Any, table: Any) -> dict:
+    from ..edit import provenance as _provenance
+    from .objects import _table_entry
+
+    entry = _table_entry(document, table.id)
+    rows = len(_provenance.accepted_rows(entry)) if entry is not None else len(table.rows)
+    return {"rows": rows, "columns": len(document.accepted_columns(table.id)[0])}
 
 
 def _kept_together(document: Any, table: Any) -> dict:

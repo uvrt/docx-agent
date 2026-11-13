@@ -226,7 +226,7 @@ def sync(call: Any, view: Any, source: str, from_columns: list[str] | None, key:
         record_note = _keep_sources(call, kept, old_key, now, block, plan, height, writes,
                                     slots, final, texts, row_of)
     started = time.perf_counter()
-    data: dict[str, Any] = {"id": now, "rows": len(document.table(now).rows),
+    data: dict[str, Any] = {"id": now, "rows": _accepted_count(document, now),
                             "columns": len(document.accepted_columns(now)[0])}
     data.update(_said(block, plan, grid, header, rows, fields, added, source_keys, changed_keys, gone,
                       remove, placement, writes, loose, paired, loosely))
@@ -249,6 +249,15 @@ def sync(call: Any, view: Any, source: str, from_columns: list[str] | None, key:
     result = note_small_text(call, result, [now])
     timing.add("result", time.perf_counter() - started)
     return result
+
+
+def _accepted_count(document: Any, table: str) -> int:
+    """The table's rows as word_edit_table counts them (round 54, lane R): a row whose
+    tracked deletion is pending not counted."""
+    from .objects import _table_entry
+
+    entry = _table_entry(document, table)
+    return len(_provenance.accepted_rows(entry)) if entry is not None else len(document.table(table).rows)
 
 
 def _is_row(identifier: str) -> bool:
@@ -388,7 +397,10 @@ def _table_keys(plan: _Plan, grid: list, accepted: set[int], table: str) -> None
         plan.by_key[text] = row
         plan.order.append(text)
     if duplicate:
-        shown = "; ".join(f"{k!r} in rows {', '.join(map(str, r))}" for k, r in list(duplicate.items())[:10])
+        # Rows as positions count them (round 54, lane R: a pending deleted row not counted).
+        order = sorted(accepted)
+        shown = "; ".join(f"{k!r} in rows {', '.join(str(order.index(x)) for x in r)}"
+                          for k, r in list(duplicate.items())[:10])
         raise ToolError("refused", f"{table} has duplicate keys in column {plan.key_col}: {shown}"
                         + (f" and {len(duplicate) - 10} more" if len(duplicate) > 10 else "")
                         + ": a key names one row; make them unique (set_cells) or delete the extra rows "
@@ -723,7 +735,7 @@ def _said(block: Any, plan: _Plan, grid: list, header: int, rows: Any, fields: l
 def _unchanged(call: Any, view: Any, block: Any, plan: _Plan, gone: list[str], said: dict[str, Any],
                notes: list[str], timing: Timing) -> Result:
     """Rule 3: the table holds the source's values already -- nothing written."""
-    data: dict[str, Any] = {"id": view.id, "rows": len(view.rows),
+    data: dict[str, Any] = {"id": view.id, "rows": _accepted_count(call.document, view.id),
                             "columns": len(call.document.accepted_columns(view.id)[0]), **said,
                             "added": {"count": 0, "keys": []}, "changed": {"count": 0, "cells": 0, "keys": {}},
                             "missing": _capped(gone), "unchanged": len(plan.order) - len(gone),

@@ -24,7 +24,7 @@ from ..layout import (affinity, canon_of, check_facts, failed_layout, font_dirs_
                       kept_layout,
                       lay_out_unlocked, layout_key, layout_options, locale_of, note_made, summary_for)
 from ..layout_facts import (CAP, empty_paragraphs, layout_facts, numbering_skips_level, punctuation_spacing,
-                            table_grid_mismatch, text_language_facts)
+                            table_grid_mismatch, text_language_facts, accept_loses_text, _of_table)
 from ..scope import MAX_RANGES, Scope, ranges_of, read_scope
 from .render import RENDERER
 from . import keep_trials
@@ -634,6 +634,9 @@ def check(call: Any, doc: str, slides: list | None = None, pages: list[int] | No
                                  # Round 53 (R107): a table off its grid, read from the document.
                                  "table_grid_mismatch": [e for e in table_grid_mismatch(document)
                                                          if scope is None or scope.about(e)][:CAP],
+                                 # Round 54 (lane R): text Word's Accept All loses.
+                                 "accept_loses_text": [e for e in accept_loses_text(document)
+                                                       if scope is None or scope.about(_of_table(e))][:CAP],
                                  **_text_language(document, scope)})
         # The rest of the layout's facts here, beside what the worker timed (layout, facts, waits).
         inner = sum(timing.parts.values()) - inner
