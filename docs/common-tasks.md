@@ -180,10 +180,14 @@ text, out of view. docx-agent's own edits never make that shape (a tracked `set_
 keeps a cell's last mark), so a document with it ships with the package:
 
 ```python
-from docx_agent import samples
+from docx_agent import Document, samples
+from docx_agent.layout_facts import accept_loses_text
 
 data = samples.read("accept_loses_text")      # bytes; samples.path(...) is the file on disk
-session.open(data, "sample.docx")             # or Document.open(data)
+doc = Document.open(data)                     # or a tool session's session.open(data, "sample.docx")
+for entry in accept_loses_text(doc):          # what check's layout gives
+    print(entry["cell"], entry["text"], entry["fix"])
+# t:3C773850/c0,1 Kept. Last. {'tool': 'word_changes', 'calls': [{'action': 'reject', 'ids': ['rev:901']}]}
 ```
 
 It holds two tables of two rows and two columns: in the first, row 1's last cell (`c0,1`),
