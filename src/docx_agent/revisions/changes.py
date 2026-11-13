@@ -212,6 +212,24 @@ def _move_names(root: Element) -> dict[int, str]:
     return out
 
 
+def _merge_scopes(table: Element) -> list[list[Element]]:
+    """The cells of each pending tracked merge in ``table`` (:func:`.review.merge_groups`)."""
+    from .review import merge_groups
+
+    return [[cell for _, cell in group] for group in merge_groups(table)]
+
+
+def _merged_away(record: Element) -> bool:
+    from .review import merged_away
+
+    cell = next(record.iterancestors(_W + "tc"), None)
+    return cell is not None and merged_away(cell)
+
+
+def _within(element: Element, cell: Element) -> bool:
+    return element is cell or any(a is cell for a in element.iterancestors(_W + "tc"))
+
+
 def _texts(element: Element) -> str:
     return "".join(node.text or "" for node in element.iter(_W + "t", _W + "delText"))
 
@@ -334,9 +352,23 @@ def _part_changes(document: "Document", part: str, records: list[tuple[str, Elem
     for table in root.iter(W_TBL):
         inside = [element for element in table.iter() if id(element) in key]
         structural = [e for e in inside if revision_kind(e).startswith(("row-", "cell-", "table-"))]
+        # Round 55 (R115): a tracked merge is its own change -- its deleted cells whose content
+        # is kept, its cell merges and what was written in the cells it merges -- not joined
+        # to a column deletion or other table records made at the same time.
+        claimed: set[int] = set()
+        for scope in _merge_scopes(table):
+            members = [e for e in inside if any(_within(e, cell) for cell in scope)]
+            for record in [e for e in members if e.tag in (_W + "cellDel", _W + "cellMerge")]:
+                for other in members:
+                    if _who(other) == _who(record):
+                        join(record, other)
+                        claimed.add(id(other))
         for record in structural:
+            if id(record) in claimed:
+                continue
             for other in inside:
-                join(record, other)
+                if id(other) not in claimed:
+                    join(record, other)
         # A grid change carries no author or date: w:tblGridChange has only an id (ECMA-376,
         # CT_TblGridChange; Word writes it so too, measured round 54).  It belongs with the
         # change to the same table that recorded it -- its w:tblPrChange, or the latest of
@@ -375,6 +407,8 @@ def _change(document: "Document", part: str, index, identifiers: list[str], elem
                   for k in kinds)
     if moved:
         kind = "move"
+    elif any(e.tag == _W + "cellMerge" or (e.tag == _W + "cellDel" and _merged_away(e)) for e in elements):
+        kind = "table"     # round 55 (R115): a tracked merge, its text moved into the merged cell
     elif inserted and deleted:
         kind = "replacement"
     elif inserted:

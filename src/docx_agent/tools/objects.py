@@ -216,26 +216,77 @@ def _deleted_header(document: Any, table: str, grid: int) -> str:
     return " ".join("".join(node.text or "" for node in cell.iter(_W + "t", _W + "delText")).split())
 
 
-def _no_tracked_reshape(call: Any, doc: str, table: str, action: str) -> None:
-    """Round 54 (R111): with tracking on, a merge or split is refused while the table holds a
-    tracked structure change not yet accepted -- a column deleted (``w:cellDel``), cells
-    merged, inserted or split (``w:cellIns``, ``w:cellMerge``, ``w:tblGridChange``).  Word
-    tracks neither a merge nor a split (it applies them; measured, round 54), and over such
-    a change the positions and the grid disagree, so the cells written are not the cells
-    meant.  The way out: accept the table's changes, then merge on the accepted table."""
-    document = call.document
+def _settle_first(document: Any, doc: str, table: str, records: list[Any], message: str) -> ToolError:
+    """Round 55 (R115): a refusal whose way out is accepting the pending changes in the way --
+    only those, by id (rule 2): each change ``word_changes`` lists that holds one of
+    ``records``."""
+    listed = document._revision_elements()      # held: their id()s stay theirs
+    held = {id(element): identifier for _, identifier, element in listed}
+    wanted = {held[id(r)] for r in records if id(r) in held}
+    ids = [c.id for c in document.changes() if wanted & set(c.revisions)]
+    fix = {"tool": "word_changes", "calls": [{"action": "accept", "ids": ids}]}
+    return ToolError("refused", f"{message}. Accept that change first (word_changes accept ids {ids}; reject keeps "
+                     f"the cells apart instead), read {table} again, then retry",
+                     valid_options=[f"word_changes accept ids {ids}", f"word_changes reject ids {ids}"],
+                     details={"fix": fix, "ids": ids,
+                              "call": {"tool": "word_changes", "arguments": {"doc": doc, "action": "accept",
+                                                                             "ids": ids}}})
+
+
+def _no_reshape_over_merge_lead(document: Any, doc: str, table: str, accepted: "_Accepted", action: str,
+                                index: int) -> None:
+    """Round 55 (R115): tracked, deleting a column or row that holds the first cell of a
+    pending tracked merge would move the merge to another cell: refused, the merge's change
+    named by id (accepting it, or rejecting it, settles it).  A column or row holding only
+    cells the merge took in is deleted, their text leaving the merged cell."""
+    from ..edit.tables import _cells, merge_leads
+    from ..revisions.review import merge_groups
+
     if document._active_tracking() is None:
         return
-    pending = document.pending_structure(table)
-    if not pending:
+    entry = _table_entry(document, table)
+    if entry is None:
         return
-    fix = {"tool": "word_changes", "calls": [{"action": "accept", "within": table}]}
-    raise ToolError("refused", f"{table} has tracked structure changes not yet accepted ({', '.join(pending)}); "
-                    f"Word does not track a {action}, and over them positions and the table's grid disagree. "
-                    f"Accept the table's changes first (word_changes accept within {table}), read the table "
-                    f"again, then {action}", valid_options=[f"word_changes accept within {table}"],
-                    details={"fix": fix, "call": {"tool": "word_changes",
-                                                  "arguments": {"doc": doc, "action": "accept", "within": table}}})
+    rows = [row for row, _ in entry.rows]
+    if action == "delete_column":
+        leads = merge_leads(entry.element)
+        hit = [leads[id(cell)][1] for row in rows for cell, start, span in _cells(row)
+               if start == index and span == 1 and id(cell) in leads]
+        what = f"column {accepted.from_grid(index)}"
+    else:
+        hit = [[cell for _, cell in group] for group in merge_groups(entry.element)
+               if any(cell is group[0][1] for cell in rows[index].iter(_W + "tc"))]
+        what = f"row {accepted.from_row(index)}"
+    if not hit:
+        return
+    records = [node for cells in hit for cell in cells
+               for node in cell.iter(_W + "cellDel", _W + "cellMerge")]
+    raise _settle_first(document, doc, table, records,
+                        f"{what} of {table} holds the first cell of a pending tracked merge; deleting it would "
+                        f"move the merge to another cell")
+
+
+def _no_split_over_pending(document: Any, doc: str, table: str, accepted: "_Accepted", row: int,
+                           grid: int) -> None:
+    """A split reaching a pending change it cannot be written over.  Untracked: any pending
+    deletion or merge it reaches (round 54, lane M).  Tracked (round 55, R115): a cell a
+    pending tracked merge makes -- split it once that merge is settled (by id)."""
+    from ..edit.tables import _cells, merge_leads
+
+    if document._active_tracking() is None:
+        _no_merge_over_pending(doc, table, accepted, grid, grid, row, row, "split")
+        return
+    entry = _table_entry(document, table)
+    if entry is None or not 0 <= row < len(entry.rows):
+        return
+    leads = merge_leads(entry.element)
+    cell = next((c for c, start, span in _cells(entry.rows[row][0]) if start <= grid < start + span), None)
+    if cell is None or id(cell) not in leads:
+        return
+    records = [node for c in leads[id(cell)][1] for node in c.iter(_W + "cellDel", _W + "cellMerge")]
+    raise _settle_first(document, doc, table, records,
+                        f"({accepted.from_row(row)}, {accepted.from_grid(grid)}) of {table} is a cell a pending "
+                        f"tracked merge makes; a split of it is written once the merge is settled")
 
 
 def _corner(accepted: _Accepted, position: dict, field: str) -> tuple[int, int]:
@@ -454,6 +505,7 @@ def word_edit_table(call: Any, doc: str, table: str, action: str, cells: list[di
         index = need(index, "index")
         if accepted.rows_active:
             index = accepted.to_row(index, "index")
+        _no_reshape_over_merge_lead(document, doc, table, accepted, action, index)
         edits.append(document.delete_row(table, index))
     elif action == "insert_column":
         # Round 54 (lane M): beside the column named, as accepted -- a column whose deletion is
@@ -462,18 +514,22 @@ def word_edit_table(call: Any, doc: str, table: str, action: str, cells: list[di
         edits.append(document.insert_column(table, accepted.to_grid(col, "index"), right=side == "after"))
         index = col
     elif action == "delete_column":
-        edits.append(document.delete_column(table, accepted.to_grid(need(index, "index"), "index")))
+        grid = accepted.to_grid(need(index, "index"), "index")
+        _no_reshape_over_merge_lead(document, doc, table, accepted, action, grid)
+        edits.append(document.delete_column(table, grid))
     elif action == "merge":
         a, b = need(first, "first"), need(last, "last")
-        _no_tracked_reshape(call, doc, table, "merge")
         (r1, c1), (r2, c2) = _corner(accepted, a, "first"), _corner(accepted, b, "last")
-        _no_merge_over_pending(doc, table, accepted, c1, c2, r1, r2, "merge")
+        if document._active_tracking() is None:
+            _no_merge_over_pending(doc, table, accepted, c1, c2, r1, r2, "merge")
+        # Round 55 (R115): tracked, a merge over pending tracked changes is written in the
+        # form Word's Accept All and Reject All settle exactly: a column or row whose
+        # deletion is pending left out, a pending merge it reaches taken in whole.
         edits.append(document.merge_cells(table, (r1, c1), (r2, c2)))
     else:
         a = need(first, "first", " (the cell to split)")
-        _no_tracked_reshape(call, doc, table, "split")
         r1, c1 = _corner(accepted, a, "first")
-        _no_merge_over_pending(doc, table, accepted, c1, c1, r1, r1, "split")
+        _no_split_over_pending(document, doc, table, accepted, r1, c1)
         edits.append(document.split_cell(table, r1, c1, rows=rows, columns=columns))
     kept.follow(call, action, index, side)
     # A row inserted or deleted at the top renames the table (its id is its first row's).
@@ -484,7 +540,12 @@ def word_edit_table(call: Any, doc: str, table: str, action: str, cells: list[di
         data["filled"] = [_fill_brief(fill) for fill in fills]
     if facts is not None:
         data["facts"] = facts
-    result = outcome(edits, f"{action} on {table}", data=data, changed=[now])
+    # Round 55 (R115, rule 3): a merge already made -- pending tracked too -- changes nothing.
+    unchanged = action == "merge" and edits and not edits[-1].changed
+    result = outcome(edits, f"{action} on {table}", data=data, changed=[] if unchanged else [now])
+    if unchanged:
+        result.warnings.insert(0, "nothing changed: the cells are merged already (a pending tracked merge "
+                                  "counts as made)")
     if read_as:
         result.warnings.insert(0, read_as)
     result.warnings.extend(accepted.notes)

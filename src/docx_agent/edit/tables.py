@@ -54,6 +54,7 @@ _W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 W_TR = _W + "tr"
 W_TC = _W + "tc"
 W_P = _W + "p"
+W_PPR = _W + "pPr"
 W_TBL = _W + "tbl"
 _CELL_RECORDS = (_W + "cellIns", _W + "cellDel", _W + "cellMerge", _W + "tcPrChange")
 
@@ -684,6 +685,18 @@ class TableOps:
                                                                    _W + "commentReference")):
                 raise EditError(f"row {index} holds a note or comment reference")
         old_row_id = entry.rows[index][1]
+        merged: list[tuple[Element, Element]] = []
+        if tracking is not None:
+            from ..revisions.review import merge_groups
+
+            # Round 55 (R115): a row a pending tracked merge reaches -- the text it gave the
+            # merged cell leaves it again, as had the row gone first; a row holding the
+            # merge's first cell is refused.
+            for group in merge_groups(entry.element):
+                if any(cell is group[0][1] for cell in rows[index].iter(W_TC)):
+                    raise EditError(f"row {index} holds the first cell of a pending tracked merge (its text and "
+                                    "the cells merged into it); settle that merge first")
+                merged += [(group[0][1], cell) for r, cell in group[1:] if r == index]
         with self._edit():
             renames = self._prepare(part, [])
             part, entry = self._table_entry(renames.get(table, table))
@@ -714,6 +727,8 @@ class TableOps:
             if stamp is None or _row_fate(row, stamp.author) in ("remove", "relocate"):
                 inside = set(map(id, row.iter(W_P)))
                 removed += [e.id for e in self._index(part).paragraphs if id(e.element) in inside]
+            for origin, cell in merged:
+                _drop_copies(origin, cell, stamp, part)
             if stamp is not None:
                 # Round 51 (R103): one's own pending row goes outright, as Word removes it.
                 gone = self._track_delete_rows(part, [row], stamp)
@@ -849,6 +864,21 @@ class TableOps:
                 if start == index and span == 1 and any(True for _ in cell.iter(
                         _W + "footnoteReference", _W + "endnoteReference", _W + "commentReference")):
                     raise EditError(f"column {index} holds a note or comment reference")
+        if self._active_tracking() is not None:
+            from ..revisions.review import merged_away
+
+            leads, origins = merge_leads(entry.element), _merge_origins(entry.element)
+            for row, _ in entry.rows:
+                for cell, start, span in _cells(row):
+                    if not (start == index and span == 1):
+                        continue
+                    if id(cell) in leads:
+                        raise EditError(f"column {index} holds the first cell of a pending tracked merge (its text "
+                                        "and the cells merged into it); settle that merge first")
+                    if merged_away(cell) and any(True for copy_ in _copies_of(origins.get(id(cell), (None, None))[1], cell)
+                                                 for _ in copy_.iter(_W + "footnoteReference", _W + "endnoteReference",
+                                                                     _W + "commentReference")):
+                        raise EditError(f"column {index} holds a note or comment reference")
         doomed_count = sum(1 for row, _ in entry.rows for cell, start, span in _cells(row)
                            if start <= index < start + span and span == 1)
         if doomed_count and all(len([c for c in _cells(row) if not (c[1] <= index < c[1] + c[2] and c[2] == 1)]) == 0
@@ -879,17 +909,38 @@ class TableOps:
                 from ..revisions.stamp import Stamp
                 from .table_format import TableTracker
 
+                from ..revisions.review import column_deleted, merged_away
+
                 tracker = TableTracker(element, rows=True) if spans else None
                 stamp = Stamp(self, tracking)
+                origins = _merge_origins(element)
                 for cell in doomed:
-                    properties = cell.find(_W + "tcPr")
-                    if properties is None:
-                        properties = make("w:tcPr")
-                        cell.insert(0, properties)
-                    insert_in_order(properties, stamp.make("w:cellDel", part))
+                    if column_deleted(cell):
+                        continue
+                    if merged_away(cell):
+                        # Round 55 (R115): a cell a pending tracked merge took in -- its text
+                        # leaves the merged cell again, as had the column gone first; its
+                        # w:cellDel stays, now with its content deleted.
+                        _drop_copies(origins.get(id(cell), (None, None))[1], cell, stamp, part)
+                    else:
+                        properties = cell.find(_W + "tcPr")
+                        if properties is None:
+                            properties = make("w:tcPr")
+                            cell.insert(0, properties)
+                        insert_in_order(properties, stamp.make("w:cellDel", part))
                     for paragraph in cell.iter(W_P):
                         self._release(part, _track.delete_content(paragraph, stamp, part))
-                        if _track.mark_record(paragraph) is None:
+                        record = _track.mark_record(paragraph)
+                        if record is not None and record.tag == _W + "ins" and _row_of(cell) is not None \
+                                and _row_of(cell).find(f"{_W}trPr/{_W}ins") is not None:
+                            # Round 55 (R115): a pending new row's cell (a split's) -- its mark
+                            # deleted with the column, as a split after the deletion writes it.
+                            holder = record.getparent()
+                            remove(record)
+                            if holder is not None and not len(holder):
+                                remove(holder)
+                            record = None
+                        if record is None:
                             _track.mark(paragraph, "del", stamp, part)
                 if spans:
                     # The grid as it will be, the old one in a w:tblGridChange; a cell that
@@ -1025,9 +1076,12 @@ class TableOps:
 
     # -- merging ----------------------------------------------------------------------------
 
-    def _rectangle(self: "Document", entry: TableEntry, first: tuple[int, int], last: tuple[int, int]):
+    def _rectangle(self: "Document", entry: TableEntry, first: tuple[int, int], last: tuple[int, int],
+                   pending: bool = False):
         """The rectangle ``first``..``last`` grown until no cell lies partly in it -- across
-        a span, down a vertical merge -- and each row's cells in it."""
+        a span, down a vertical merge -- and each row's cells in it.  ``pending`` (a tracked
+        merge, round 55): a pending tracked merge counts as the one cell it makes, so a merge
+        takes it in whole."""
         from .document import EditError
 
         (r1, c1), (r2, c2) = first, last
@@ -1035,8 +1089,14 @@ class TableOps:
         if not (0 <= r1 <= r2 < len(rows)) or c1 > c2 or c1 < 0:
             raise EditError("first and last are (row, column), first above and left of last")
         layout = _layout(rows)
+        boxes = _pending_boxes(entry.element, rows) if pending else []
         while True:
             grown = False
+            for (top, bottom, left, right) in boxes:
+                if top <= r2 and bottom >= r1 and left <= c2 and right >= c1 and not (
+                        r1 <= top and bottom <= r2 and c1 <= left and right <= c2):
+                    r1, r2, c1, c2 = min(r1, top), max(r2, bottom), min(c1, left), max(c2, right)
+                    grown = True
             for r in range(r1, r2 + 1):
                 for cell, start, span in _cells(rows[r]):
                     end = start + span - 1
@@ -1067,23 +1127,28 @@ class TableOps:
         from .document import EditResult
 
         part, entry = self._table_entry(table)
-        first_, last_, plan = self._rectangle(entry, first, last)
+        tracking = self._active_tracking()
+        first_, last_, plan = self._rectangle(entry, first, last, pending=tracking is not None)
         warnings = []
         if (first_, last_) != (tuple(first), tuple(last)):
             warnings.append(f"the merge takes in whole cells: ({first_[0]}, {first_[1]}) to ({last_[0]}, {last_[1]})")
+        if tracking is not None:
+            plan = _tracked_plan(plan)
         if all(len(plan_row) == 1 for plan_row in plan) and (
                 len(plan) == 1 or (_vmerge(plan[0][0][0]) == "restart"
                                    and all(_vmerge(r[0][0]) == "continue" for r in plan[1:])
-                                   and len({(r[0][1], r[0][2]) for r in plan}) == 1)):
+                                   and len({(r[0][1], r[0][2]) for r in plan}) == 1)) \
+                or (tracking is not None and _merged_down_pending(plan)):
             return EditResult(entry.id, changed=False, warnings=warnings)
         (r1, c1), (r2, c2) = first_, last_
-        tracking = self._active_tracking()
         with self._edit():
             renames = self._prepare(part, [])
             part, entry = self._table_entry(renames.get(table, table))
             rows = [row for row, _ in entry.rows]
             plan = [[(cell, start, span) for cell, start, span in _cells(rows[r]) if c1 <= start <= c2]
                     for r in range(r1, r2 + 1)]
+            if tracking is not None:
+                plan = _tracked_plan(plan)
             origin = plan[0][0][0]
             if tracking is None:
                 self._merge_plain(part, plan, origin)
@@ -1168,9 +1233,12 @@ class TableOps:
     def _merge_tracked(self: "Document", part: str, plan, origin: Element, tracking, first, last,
                        rows: list[Element]) -> None:
         """Round 54 (follow-up, lane M): a merge written in the form Word accepts and rejects exactly
-        (measured, Word 16.106: ``feedback-round54/probe-M``).  Word does not track a merge
-        (it applies it); written so, its Accept All and Reject All give what docx-agent's
-        own give, and while pending the table stays on its grid:
+        (measured, Word 16.106: ``feedback-round54/probe-M``; Word's own merge is applied
+        untracked).  Written so, Word's Accept All and Reject All give what docx-agent's own
+        give, and while pending the table stays on its grid.  Round 55 (R115): over pending
+        tracked changes too -- a cell a pending column deletion removes and a row whose
+        deletion is pending are left out of the merge, a pending merge it takes in kept
+        (:func:`_tracked_plan`; measured, ``feedback-round55/probe-C``):
 
         * each row's first cell keeps its properties (no new span): accepting the merged-away
           cells widens it;
@@ -1186,26 +1254,35 @@ class TableOps:
         from ..revisions.stamp import Stamp
         from .document import _clear_revisions
 
+        from ..revisions.review import merged_away
+
         stamp = Stamp(self, tracking)
         across = any(len(plan_row) > 1 for plan_row in plan)
         copies: list[Element] = []
         for k, plan_row in enumerate(plan):
             lead = plan_row[0][0]
-            cells = [cell for cell, _, _ in plan_row]
+            # Round 55 (R115): a cell a pending tracked merge already took in keeps its
+            # record; its text is in that merge's first cell, which this merge takes in.
+            cells = [lead] + [cell for cell, _, _ in plan_row[1:] if not merged_away(cell)]
             if len(plan) > 1:
                 properties = lead.find(_W + "tcPr")
                 if properties is None:
                     properties = make("w:tcPr")
                     lead.insert(0, properties)
-                had = _vmerge(lead)
-                existing = properties.find(_W + "vMerge")
-                if existing is not None:
-                    remove(existing)
-                record = stamp.make("w:cellMerge", part)
-                record.set(_W + "vMerge", "rest" if k == 0 else "cont")
-                if had is not None:
-                    record.set(_W + "vMergeOrig", "rest" if had == "restart" else "cont")
-                insert_in_order(properties, record)
+                record = properties.find(_W + "cellMerge")
+                if record is not None:
+                    # Merged down already, pending: the record says where it is now.
+                    record.set(_W + "vMerge", "rest" if k == 0 else "cont")
+                else:
+                    had = _vmerge(lead)
+                    existing = properties.find(_W + "vMerge")
+                    if existing is not None:
+                        remove(existing)
+                    record = stamp.make("w:cellMerge", part)
+                    record.set(_W + "vMerge", "rest" if k == 0 else "cont")
+                    if had is not None:
+                        record.set(_W + "vMergeOrig", "rest" if had == "restart" else "cont")
+                    insert_in_order(properties, record)
             for cell in (cells[1:] if k == 0 else cells):
                 kept = cell is not lead
                 for paragraph in [p for p in cell if isinstance(p.tag, str) and p.tag == W_P]:
@@ -1257,7 +1334,7 @@ class TableOps:
         stamp.finish()
         how = "deleted cells" + (" and a cell merge" if len(plan) > 1 else "") if across else "a cell merge"
         self._describe(part, origin, f"cells ({first[0] + 1}, {first[1] + 1}) to ({last[0] + 1}, {last[1] + 1}) "
-                                     f"merged; Word does not track a merge, so it is written as {how}.")
+                                     f"merged as {how}: Accept All merges them, Reject All keeps them apart.")
 
     # -- splitting --------------------------------------------------------------------------
 
@@ -1269,7 +1346,7 @@ class TableOps:
         row's cell over it spans the new columns; down, a vertical merge is divided, and
         where the cell has too few rows new rows go below it, the row's other cells merged
         down into them.  The content stays in the first cell; the new cells hold an empty
-        paragraph.  Tracked (Word does not track a split: it applies it), the new cells' and
+        paragraph.  Tracked (Word's own split is applied untracked), the new cells' and
         rows' paragraph marks are insertions, the other cells' old properties
         ``w:tcPrChange``s and the old grid a ``w:tblGridChange``, and a comment says so."""
         from .document import EditError, EditResult
@@ -1327,6 +1404,22 @@ class TableOps:
                         properties = make("w:trPr")
                         insert_in_order(new_row, properties)
                     insert_in_order(properties, stamp.make("w:ins", part))
+                # Round 55 (R115): a new row's cell under a cell a pending column deletion
+                # removes is deleted with it (w:cellDel, its mark deleted) -- otherwise Word's
+                # Accept All keeps it, the row a cell too long (measured, probe-C).
+                from ..revisions.review import column_deleted
+
+                gone_at = {start for cell_, start, _ in _cells(rows_before[top]) if column_deleted(cell_)}
+                for new_row in new_rows:
+                    for cell_, start, _ in _cells(new_row):
+                        if start in gone_at:
+                            properties = cell_.find(_W + "tcPr")
+                            if properties is None:
+                                properties = make("w:tcPr")
+                                cell_.insert(0, properties)
+                            insert_in_order(properties, stamp.make("w:cellDel", part))
+                            for paragraph in cell_.iter(W_P):
+                                _track.mark(paragraph, "del", stamp, part)
                 for paragraph in new_paragraphs:
                     if _track.mark_record(paragraph) is None:
                         _track.mark(paragraph, "ins", stamp, part)
@@ -1337,8 +1430,8 @@ class TableOps:
                 if not new_rows:
                     _merges_as_cell_merges(element, tracker, stamp, part)
                 stamp.finish()
-                self._describe(part, cell, f"cell ({row + 1}, {column + 1}) split into {rows} x {columns}; Word "
-                                           "does not track a split, so it is written as inserted cells and rows.")
+                self._describe(part, cell, f"cell ({row + 1}, {column + 1}) split into {rows} x {columns}, "
+                                           "written as inserted cells and rows: Reject All takes them out.")
             self.package.mark_dirty(part)
             created = [self._paragraph_id(part, p) for p in new_paragraphs]
         return EditResult(renames.get(entry.id, entry.id), renamed=renames, created=[c for c in created if c])
@@ -1444,6 +1537,129 @@ class _Layout(dict):
     holds the cells, so their ``id()``\\ s stay theirs."""
 
     held: list
+
+
+def _merge_origins(table: Element) -> dict[int, tuple[Element, Element]]:
+    """Round 55 (R115): ``id()`` of each cell a pending tracked merge took in -> (the cell,
+    held so its ``id()`` stays its own; the merge's first cell, where its text went)."""
+    from ..revisions.review import merge_groups
+
+    return {id(cell): (cell, group[0][1]) for group in merge_groups(table) for _, cell in group[1:]}
+
+
+def merge_leads(table: Element) -> dict[int, tuple[Element, list[Element]]]:
+    """Round 55 (R115): ``id()`` of each cell that leads a pending tracked merge in its row
+    or down its column -> (the cell, held; the merge's cells)."""
+    from ..revisions.review import merge_groups
+
+    out: dict[int, tuple[Element, list[Element]]] = {}
+    for group in merge_groups(table):
+        cells = [cell for _, cell in group]
+        for cell in cells:
+            if cell.find(f"{_W}tcPr/{_W}cellDel") is None:
+                out[id(cell)] = (cell, cells)
+    return out
+
+
+def _drop_copies(origin: Element | None, cell: Element, stamp, part: str) -> None:
+    """Round 55 (R115): take the text a pending tracked merge copied from ``cell`` (merged
+    away) out of the merge's first cell ``origin`` -- each copy is an inserted paragraph
+    there with the same text; the cell's paragraph marks around it set as a merge without
+    ``cell`` writes them (the cell's last mark inserted only while a copy follows it)."""
+    from ..revisions import track as _track
+    from . import text as _text
+
+    for found in _copies_of(origin, cell):
+        paragraphs = [p for p in origin if isinstance(p.tag, str) and p.tag == W_P]
+        last = found is paragraphs[-1]
+        position = paragraphs.index(found)
+        change = found.find(f"{_W}pPr/{_W}pPrChange")
+        old = copy.deepcopy(change.find(W_PPR)) if change is not None and change.find(W_PPR) is not None else None
+        remove(found)
+        if not last:
+            continue
+        before = paragraphs[position - 1]
+        record = _track.mark_record(before)
+        if record is not None and record.tag in _track.INSERTED:
+            holder = record.getparent()
+            remove(record)
+            if holder is not None and not len(holder):
+                remove(holder)
+        if old is not None and _all_inserted(before):
+            _track.record_paragraph_change(before, old, stamp, part)
+
+
+def _copies_of(origin: Element | None, cell: Element) -> list[Element]:
+    """The paragraphs a pending tracked merge copied from ``cell`` into ``origin``: for each
+    of the cell's paragraphs with text, the first inserted paragraph of ``origin`` (not its
+    first) with the same text not yet matched."""
+    from . import text as _text
+
+    if origin is None:
+        return []
+    candidates = [p for p in origin if isinstance(p.tag, str) and p.tag == W_P][1:]
+    candidates = [p for p in candidates if _all_inserted(p)]
+    # A row's first cell merged down has its content deleted: its text as it was.
+    view = "original" if cell.find(f"{_W}tcPr/{_W}cellMerge") is not None else "current"
+    out: list[Element] = []
+    for paragraph in [p for p in cell if isinstance(p.tag, str) and p.tag == W_P and _has_text(p)]:
+        text = _text.paragraph_text(paragraph, view)
+        found = next((p for p in candidates if text and _text.paragraph_text(p) == text
+                      and not any(p is q for q in out)), None)
+        if found is not None:
+            out.append(found)
+    return out
+
+
+def _all_inserted(paragraph: Element) -> bool:
+    """Whether every run of ``paragraph`` is inside an insertion (a merge's copy)."""
+    runs = list(paragraph.iter(_W + "r"))
+    return bool(runs) and all(any(a.tag in (_W + "ins", _W + "moveTo") for a in r.iterancestors())
+                              for r in runs)
+
+
+def _pending_boxes(table: Element, rows: list[Element]) -> list[tuple[int, int, int, int]]:
+    """Round 55 (R115): each pending tracked merge of ``table`` as the rectangle it makes
+    (top row, bottom row, first grid column, last grid column)."""
+    from ..revisions.review import merge_groups
+
+    held = [(r, _cells(row)) for r, row in enumerate(rows)]       # held: their id()s stay theirs
+    place = {id(cell): (r, start, span) for r, cells in held for cell, start, span in cells}
+    boxes = []
+    for group in merge_groups(table):
+        spots = [place[id(cell)] for _, cell in group if id(cell) in place]
+        if spots:
+            boxes.append((min(r for r, _, _ in spots), max(r for r, _, _ in spots),
+                          min(s for _, s, _ in spots), max(s + n - 1 for _, s, n in spots)))
+    return boxes
+
+
+def _tracked_plan(plan: list) -> list:
+    """Round 55 (R115): a tracked merge's rows and cells, what pending tracked changes take
+    out left out -- a row whose deletion is pending (merged down: Word's Accept All removes
+    it, the merge continuing over it), a cell a pending column deletion removes."""
+    from ..revisions.review import column_deleted
+
+    if len(plan) > 1:
+        kept_rows = [row for row in plan if row and _row_of(row[0][0]).find(f"{_W}trPr/{_W}del") is None]
+        plan = kept_rows or plan
+    return [[cell for cell in row if not column_deleted(cell[0])] or row for row in plan]
+
+
+def _merged_down_pending(plan: list) -> bool:
+    """Whether ``plan`` is already one pending tracked merge: each row's first cell joined
+    by a ``w:cellMerge`` (``rest`` then ``cont``) and the others merged away."""
+    from ..revisions.review import merged_away
+
+    def merge_of(cell: Element) -> str | None:
+        record = cell.find(f"{_W}tcPr/{_W}cellMerge")
+        return record.get(_W + "vMerge") if record is not None else None
+
+    if not all(merged_away(cell) for row in plan for cell, _, _ in row[1:]):
+        return False
+    if len(plan) == 1:
+        return len(plan[0]) > 1
+    return merge_of(plan[0][0][0]) == "rest" and all(merge_of(row[0][0]) == "cont" for row in plan[1:])
 
 
 def _layout(rows: list[Element]) -> _Layout:

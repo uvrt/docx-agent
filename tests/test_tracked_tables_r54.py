@@ -6,9 +6,8 @@ its author.  Made-up documents only.
   deleted) is left out of ``word_read``'s final view and of render's: the table as Word's
   Accept All leaves it (measured, round 54: the column gone, the others keeping their
   widths); the markup view keeps the cells, marked deleted.
-* R111: Word tracks neither a merge nor a split (it applies them; measured again, round
-  54), so with a tracked structure change pending in the table, a merge or split is
-  refused with the way out -- accept the table's changes -- which then works.
+* R111: with a tracked structure change pending in the table, a merge or split was
+  refused; round 55 (R115) writes them tracked over it instead.
 * R112: ``word_changes`` lists every tracked change with its author, a table's grid change
   (``w:tblGridChange``, which has no author in the schema, nor in Word's own writing)
   under the change that recorded it.
@@ -137,35 +136,23 @@ def test_an_inserted_cell_is_left_out_of_the_original_view(box):
 # -- R111 ----------------------------------------------------------------------------------------
 
 
-def test_a_merge_over_a_pending_column_deletion_is_refused_with_the_way_out(box):
+def test_a_merge_over_a_pending_column_deletion_is_written_tracked(box):
+    """Round 55 (R115) replaces R111's refusal: the merge is written over the pending
+    deletion (tests/test_tracked_reshape_r55.py holds the forms Word settles)."""
     session, table = _opened(box)
     ok(box, session, "word_edit_table", doc="d1", table=table, action="delete_column", index=2)
-    before = _document(session).to_bytes()
-    refused = call(box, session, "word_edit_table", doc="d1", table=table, action="merge",
-                   first={"row": 0, "col": 0}, last={"row": 0, "col": 1})
-    assert not refused.ok
-    error = refused.to_json()["error"]
-    assert error["code"] == "refused" and "cells deleted" in error["message"]
-    assert error["details"]["fix"] == {"tool": "word_changes", "calls": [{"action": "accept", "within": table}]}
-    assert _document(session).to_bytes() == before                 # nothing changed
-    # The way out works: accept within the table, then merge on the accepted table.
-    way = error["details"]["call"]
-    ok(box, session, way["tool"], **way["arguments"])
-    assert ok(box, session, "word_changes", doc="d1", action="list").data == []
     merged = ok(box, session, "word_edit_table", doc="d1", table=table, action="merge",
                 first={"row": 0, "col": 0}, last={"row": 0, "col": 1})
     assert merged.data["columns"] == 3
     changes = ok(box, session, "word_changes", doc="d1", action="list").data
-    assert changes and all(c["author"] == ME for c in changes)
+    assert len(changes) == 2 and all(c["author"] == ME for c in changes)
 
 
-def test_a_split_over_a_pending_merge_is_refused(box):
+def test_a_split_beside_a_pending_merge_is_written_tracked(box):
     session, table = _opened(box)
     ok(box, session, "word_edit_table", doc="d1", table=table, action="merge",
        first={"row": 1, "col": 0}, last={"row": 1, "col": 1})
-    refused = call(box, session, "word_edit_table", doc="d1", table=table, action="split",
-                   first={"row": 2, "col": 0})
-    assert not refused.ok and refused.to_json()["error"]["code"] == "refused"
+    ok(box, session, "word_edit_table", doc="d1", table=table, action="split", first={"row": 2, "col": 0})
 
 
 def test_untracked_a_merge_is_not_refused(box):

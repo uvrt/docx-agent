@@ -298,6 +298,16 @@ class _Review:
                 outer = table.getparent()
                 table = _ancestor(outer, W_TBL) if outer is not None else None
             table = _ancestor(element, W_TBL)
+            merge = self._merge_of(element, table)
+            if merge is not None:
+                # Round 55 (R115): a pending tracked merge is reviewed whole and alone -- its
+                # records and what was written in its cells then, not a column deletion
+                # or other structure change of the table made at the same time.
+                for cell in merge:
+                    for node in self._records(cell):
+                        if _made_with(node, element) or node.tag in _CELL:
+                            add(node)
+                continue
             if table is not None and element.tag != _W + "tblGridChange" and (
                     kind in ("cell", "row", "mark", "property")):
                 grid = table.find(f"{_W}tblGrid/{_W}tblGridChange")
@@ -314,9 +324,11 @@ class _Review:
             elif kind in ("cell", "property") and element.tag in ({_W + "tcPrChange"} | _CELL):
                 table = _ancestor(element, W_TBL)
                 if table is not None:
+                    merged = self._merged_cells(table)
                     for node in self._records(table):
                         if _made_with(node, element) and (_kind_of(node) in ("cell",) or node.tag in (
-                                _W + "tcPrChange", _W + "trPrChange") or _ancestor(node, W_TC) is not None):
+                                _W + "tcPrChange", _W + "trPrChange") or _ancestor(node, W_TC) is not None) \
+                                and not any(a is c for a in node.iterancestors(W_TC) for c in merged):
                             add(node)
                     # The old grid (Word writes it with an id alone) goes with the cells'
                     # records: a table's structure is reviewed whole.
@@ -329,6 +341,28 @@ class _Review:
                     if _kind_of(node) == "run" and _made_with(node, element):
                         add(node)
         return out
+
+    def _merges(self, table: Element) -> list[list[Element]]:
+        """``table``'s pending tracked merges' cells (:func:`merge_groups`), once per review."""
+        cache = self.__dict__.setdefault("_merge_cache", {})
+        if id(table) not in cache:
+            self._held.append(table)
+            cache[id(table)] = [[cell for _, cell in group] for group in merge_groups(table)]
+        return cache[id(table)]
+
+    def _merged_cells(self, table: Element) -> list[Element]:
+        return [cell for group in self._merges(table) for cell in group]
+
+    def _merge_of(self, element: Element, table: Element | None) -> list[Element] | None:
+        """The cells of the pending tracked merge ``element`` (a cell record) is a record of,
+        else ``None``: a merged-away cell's ``w:cellDel``, a ``w:cellMerge``."""
+        if table is None or element.tag not in (_W + "cellDel", _W + "cellMerge"):
+            return None
+        cell = _ancestor(element, W_TC)
+        for group in self._merges(table):
+            if any(cell is c for c in group):
+                return group
+        return None
 
     def _records(self, scope: Element) -> list[Element]:
         return [node for node in scope.iter() if isinstance(node.tag, str) and node.tag in REVISION_KINDS]
@@ -875,6 +909,60 @@ def _content_kept(cell: Element) -> bool:
         if record is None or record.tag not in _track.DELETED:
             return True
     return False
+
+
+def merged_away(cell: Element) -> bool:
+    """Whether ``cell`` is a pending tracked merge's cell merged away: ``w:cellDel`` with its
+    content or a mark kept (round 54, lane M)."""
+    return cell.find(f"{_W}tcPr/{_W}cellDel") is not None and _content_kept(cell)
+
+
+def column_deleted(cell: Element) -> bool:
+    """Whether ``cell`` is a pending tracked deletion's: ``w:cellDel``, nothing kept."""
+    return cell.find(f"{_W}tcPr/{_W}cellDel") is not None and not _content_kept(cell)
+
+
+def merge_groups(table: Element) -> list[list[tuple[int, Element]]]:
+    """Round 55 (R115): ``table``'s pending tracked merges, each as its cells ``(row index,
+    cell)``, the merge's first cell (where the text goes) first: across, a row's cell and
+    the cells merged away after it (a cell a pending column deletion removes, between them,
+    is not the merge's); down, the cells a ``w:cellMerge`` run joins (``rest``, then
+    ``cont`` in the rows below, a row whose deletion is pending passed over), each with the
+    cells merged away after it."""
+    grid = _grid_map(table)
+    segments: dict[int, list[tuple[int, Element]]] = {}
+    for r, (_row, cells) in enumerate(grid):
+        lead: Element | None = None
+        for cell, _start, _span in cells:
+            if cell.find(f"{_W}tcPr/{_W}cellDel") is None:
+                lead = cell
+                segments[id(cell)] = [(r, cell)]
+            elif lead is not None and _content_kept(cell):
+                segments[id(lead)].append((r, cell))
+    groups: list[list[tuple[int, Element]]] = []
+    taken: set[int] = set()
+    # Down: a w:cellMerge rest and the conts below it at the same grid column.
+    for r, (_row, cells) in enumerate(grid):
+        for cell, start, _span in cells:
+            record = cell.find(f"{_W}tcPr/{_W}cellMerge")
+            if record is None or record.get(_W + "vMerge") != "rest" or id(cell) in taken:
+                continue
+            group = list(segments.get(id(cell), [(r, cell)]))
+            for below in range(r + 1, len(grid)):
+                row_below, cells_below = grid[below]
+                if row_below.find(f"{_W}trPr/{_W}del") is not None:
+                    continue
+                found = next((c for c, s, _ in cells_below if s == start), None)
+                mark = found.find(f"{_W}tcPr/{_W}cellMerge") if found is not None else None
+                if mark is None or mark.get(_W + "vMerge") != "cont":
+                    break
+                group += segments.get(id(found), [(below, found)])
+            taken.update(id(c) for _, c in group)
+            groups.append(group)
+    for segment in segments.values():
+        if len(segment) > 1 and id(segment[0][1]) not in taken:
+            groups.append(segment)
+    return groups
 
 
 def _cell_before(cell: Element) -> Element | None:
