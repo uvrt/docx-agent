@@ -24,7 +24,7 @@ snapshot commit; the development history before it is summarised here.
   merge-then-delete give the same accepted and rejected tables: deleting a column or row a
   pending merge took a cell from takes that cell's text out of the merged cell again. Each
   case: Word's Accept All and Reject All give the cells, spans, merges and text docx-agent's
-  give (CASES_RESULT). A column or row holding a pending merge's first cell is refused, the
+  give, in all 30 cases (widths aside: Word re-saves the grid its own way). A column or row holding a pending merge's first cell is refused, the
   fix accepting that merge alone by id (`word_changes accept ids [rev:N]`), never `within`
   the table. A split of a cell a pending merge makes likewise.
 - **`word_changes` lists a tracked merge as its own change** (kind `table`, the merged text as
