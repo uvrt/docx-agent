@@ -15,7 +15,12 @@ effective-formatting model is docx2svg's parse of the serialised bytes.
   moves' sources out, and a paragraph whose mark is deleted (or moved away) joined to the
   next as docx2svg draws it -- the joined paragraph is the last one, as Word keeps it on
   accepting (its id, style, list and other properties; ``joins`` names the ones before it);
-  an empty one before a table goes; a deleted table row goes.
+  a deleted table row goes.  At a table's edge, as Word's Accept All leaves it and docx2svg
+  draws it (round 54, lane R; :mod:`docx_agent.revisions.edges`): a paragraph whose mark is
+  deleted before a table joins the first cell's first paragraph; a cell whose last mark is
+  deleted takes in the next cell of its row (a row's first cell's other paragraphs leave
+  the table, which goes on after them as the same table, ``continued``); a row's last cell
+  whose last mark is deleted goes with its text.
 * ``original``: the reverse -- deletions in, insertions out, a paragraph whose mark was
   inserted joined to the next, an inserted row gone.  Formatting changes are not undone:
   the original view shows the original *text* with today's formatting.
@@ -158,6 +163,9 @@ class TableRecord:
     rows: list
     header_rows: int = 0
     volatile: bool = False
+    #: Round 54 (lane R): a later part of a table the final view splits (Accept All moves a
+    #: row's first cell's paragraphs out of it): the same table, from that row on.
+    continued: bool = False
 
 
 @dataclass
@@ -203,6 +211,11 @@ class Reader:
         self._notes = {(identifier.partition(":")[0], identifier.partition(":")[2]): identifier
                        for _, identifier, _ in document._notes()}
         self._linked_anchors = self._anchors()
+        #: Round 54 (lane R): paragraphs whose marks are deleted just before a table, which the
+        #: final view joins into its first cell's first paragraph (:mod:`..revisions.edges`),
+        #: by the table's element; and whether the last table read placed them.
+        self._into: dict = {}
+        self._placed = False
 
     # -- styles --------------------------------------------------------------------------------
 
@@ -363,14 +376,14 @@ class Reader:
                 self._records(groups[:place], part)
             finally:
                 self._counting = False
-            record = self.table(table, part)
+            records = self._table_with(table, part)
         finally:
             self._counters.pop(part, None)
             if before is not None:
                 self._counters[part] = before
         wanted = self.document._resolve(identifier)[1].id
         found: set[str] = set()
-        for inner in walk_records([record] if record is not None else []):
+        for inner in walk_records(records):
             if isinstance(inner, ParagraphRecord):
                 found.add(inner.id)
                 found.update(inner.joins)
@@ -378,7 +391,7 @@ class Reader:
                 found.add(inner.id)
         if wanted not in found:
             return None
-        return [record]
+        return records
 
     def _count(self, elements: list, part: str) -> None:
         """What reading a paragraph (``elements``, one in the view) does to the blocks after
@@ -402,7 +415,18 @@ class Reader:
                     groups.append(("p", pending))
                     pending = []
             elif kind == "tbl":
-                if pending:
+                if pending and self.view == "current":
+                    # Round 54 (lane R): as Word's Accept All leaves it (docx2svg draws it so),
+                    # a paragraph whose mark is deleted before a table joins its first cell's
+                    # first paragraph; one ending a section stays (with the chain before it).
+                    cut = max((k for k, p in enumerate(pending) if p.find(f"{_W}pPr/{_W}sectPr") is not None),
+                              default=-1)
+                    if cut >= 0:
+                        groups.append(("p", pending[:cut + 1]))
+                    if pending[cut + 1:]:
+                        self._into[value] = pending[cut + 1:]
+                    pending = []
+                elif pending:
                     # A paragraph whose mark is removed before a table: kept, unless it is
                     # empty and ends no section.
                     if any(_text.paragraph_text(p, self.view) or p.find(f"{_W}pPr/{_W}sectPr") is not None
@@ -429,9 +453,7 @@ class Reader:
                     continue
                 out.append(self.paragraph(value, part))
             elif kind == "tbl":
-                table = self.table(value, part)
-                if table is not None:
-                    out.append(table)
+                out.extend(self._table_with(value, part))
             else:
                 identifier, control, tag, alias = value
                 out.append(Marker(identifier, control, kind == "begin", tag, alias))
@@ -440,6 +462,52 @@ class Reader:
     # -- tables --------------------------------------------------------------------------------
 
     def table(self, element: Element, part: str) -> TableRecord | None:
+        """The table's record (its first part, where the final view splits it)."""
+        return next((r for r in self._table_with(element, part) if isinstance(r, TableRecord)), None)
+
+    def _table_with(self, element: Element, part: str) -> list:
+        """The records a ``w:tbl`` is in the view: its table, joined with the paragraphs whose
+        marks are deleted just before it (:meth:`_groups`), and -- final view, round 54 lane R
+        -- split where Accept All moves a row's first cell's paragraphs out of it
+        (:mod:`..revisions.edges`).  A paragraph it cannot join stays before it (an empty
+        one goes)."""
+        prefix = self._into.pop(element, None)
+        self._placed = False
+        records = self._table_blocks(element, part, prefix)
+        if prefix and not self._placed and any(_text.paragraph_text(p, self.view) for p in prefix):
+            if self._counting:
+                self._count(prefix, part)
+            else:
+                records.insert(0, self.paragraph(prefix, part))
+        return records
+
+    def _cell_records(self, cells: list, part: str, prefix: list | None) -> tuple[list, bool]:
+        """A cell's records, with the cells Accept All takes into it (``cells[1:]``): its
+        last paragraph joined to the next cell's first; ``prefix`` joined to its first."""
+        groups = self._groups(self._items(cells[0], part))
+        for other in cells[1:]:
+            more = self._groups(self._items(other, part))
+            if groups and more and groups[-1][0] == "p" and more[0][0] == "p":
+                groups = groups[:-1] + [("p", groups[-1][1] + more[0][1])] + more[1:]
+            else:
+                groups = groups + more
+        placed = False
+        if prefix:
+            k = next((k for k, (kind, _) in enumerate(groups) if kind in ("p", "tbl")), None)
+            if k is not None and groups[k][0] == "p":
+                groups[k] = ("p", list(prefix) + groups[k][1])
+            elif k is not None:
+                # A cell that begins with a table: into its first cell (that table keeps
+                # the paragraph before it where it cannot).
+                self._into[groups[k][1]] = list(prefix)
+            else:
+                groups.insert(0, ("p", list(prefix)))
+            placed = True
+        return self._records(groups, part), placed
+
+    def _table_blocks(self, element: Element, part: str, prefix: list | None = None) -> list:
+        from ..revisions.edges import cell_ends
+
         index = self.document._index(part)
         entry = index.entry_for(element)
         rows_all = entry.rows if entry is not None else []
@@ -452,7 +520,10 @@ class Reader:
         header_rows = 0
         columns = len(grid)
         counting_header = True
-        hidden: set[int] = set()
+        hidden: list[set[int]] = []
+        #: (visible row index, records moved out of the table before it): Accept All.
+        moved: list[tuple[int, list]] = []
+        placed_any = False
         for r, (row, _) in enumerate(rows_all):
             properties = row.find(_W + "trPr")
             if properties is not None:
@@ -467,19 +538,33 @@ class Reader:
             else:
                 counting_header = False
             line: list = []
+            gone_here: set[int] = set()
             column = _int(row.find(f"{_W}trPr/{_W}gridBefore"), 0)
-            for tc in _cells(row):
+            all_cells = _cells(row)
+            # Round 54 (lane R): a cell whose last mark is deleted takes the next cell of its
+            # row in, or goes with its text at the row's end (the final view: Accept All).
+            taken: dict[int, list] = {}
+            gone: set[int] = set()
+            if self.view == "current":
+                shown = [tc for tc in all_cells if not self._cell_hidden(tc)]
+                groups, out = cell_ends(shown)
+                taken = {id(shown[g[0]]): [shown[n] for n in g[1:]] for g in groups if len(g) > 1}
+                gone = {id(shown[n]) for n in out}
+            for tc in all_cells:
                 span = max(1, _int(tc.find(f"{_W}tcPr/{_W}gridSpan"), 1))
                 if self._cell_hidden(tc):
                     # Round 54 (R110): a cell with a pending deletion is not in the final
                     # view (nor one inserted in the original): the table as accepting
-                    # leaves it.  Positions still count it, as the document does.  One
-                    # whose content is not deleted widens the cell before it, as Word's
-                    # Accept All does (measured; docx2svg draws it so).
+                    # leaves it.  One whose content is not deleted widens the cell before
+                    # it, as Word's Accept All does (measured; docx2svg draws it so).
                     if line and self.view == "current" and _content_kept(tc):
                         line[-1].column_span += span
                     else:
-                        hidden.update(range(column, column + span))
+                        gone_here.update(range(column, column + span))
+                    column += span
+                    continue
+                if id(tc) in gone:
+                    gone_here.update(range(column, column + span))
                     column += span
                     continue
                 merge = tc.find(f"{_W}tcPr/{_W}vMerge")
@@ -487,22 +572,50 @@ class Reader:
                 if continues and column in origins:
                     origins[column].row_span += 1
                 else:
-                    cell = CellRecord(f"{entry.id}/c{r},{column}", r, column, 1, span, self.container(tc, part))
+                    first = prefix if not rows and not line else None
+                    records, placed = self._cell_records([tc] + taken.get(id(tc), []), part, first)
+                    placed_any = placed_any or placed
+                    if id(tc) in taken and not line and len(records) > 1:
+                        # The row's first cell's blocks before its last paragraph leave the
+                        # table, before the row (measured: Word's Accept All).
+                        moved.append((len(rows), records[:-1]))
+                        records = records[-1:]
+                    cell = CellRecord(f"{entry.id}/c{r},{column}", r, column, 1, span, records)
                     for c in range(column, column + span):
                         origins[c] = cell
                     line.append(cell)
                 column += span
             columns = max(columns, column + _int(row.find(f"{_W}trPr/{_W}gridAfter"), 0))
-            if line or not _cells(row):
+            if line or not all_cells:
                 rows.append(line)
+                hidden.append(gone_here)
+        self._placed = placed_any
         if not rows:
-            return None
-        if hidden:
-            # The grid columns no shown cell covers are not in the view.
-            shown = {c for line in rows for cell in line for c in range(cell.column, cell.column + cell.column_span)}
-            columns -= sum(1 for c in range(columns) if c not in shown and c in hidden)
-        return TableRecord(entry.id, part, self.document._story_of(part), element, style_name, columns, rows,
-                           header_rows, entry.id.startswith("t@"))
+            return []
+
+        def part_of(start: int, end: int, continued: bool) -> TableRecord:
+            lines = rows[start:end]
+            width = columns
+            dropped = set().union(*hidden[start:end]) if hidden[start:end] else set()
+            if dropped:
+                # The grid columns no shown cell of these rows covers are not in the view.
+                shown = {c for line in lines for cell in line
+                         for c in range(cell.column, cell.column + cell.column_span)}
+                width -= sum(1 for c in range(columns) if c not in shown and c in dropped)
+            return TableRecord(entry.id, part, self.document._story_of(part), element, style_name, width, lines,
+                               max(0, header_rows - start), entry.id.startswith("t@"), continued=continued)
+
+        if not moved:
+            return [part_of(0, len(rows), False)]
+        out: list = []
+        start = 0
+        for k, records in moved:
+            if k > start:
+                out.append(part_of(start, k, start > 0))
+            out.extend(records)
+            start = k
+        out.append(part_of(start, len(rows), start > 0))
+        return out
 
     def _cell_hidden(self, cell: Element) -> bool:
         """Whether the view leaves ``cell`` out: a pending deletion (``w:cellDel``) in the
@@ -1308,6 +1421,10 @@ def _table(reader: Reader, table: TableRecord, options: Options) -> list:
     out: list = []
     if options.ids:
         words = [table.id] + (["volatile"] if table.volatile else [])
+        if table.continued:
+            # Round 54 (lane R): the same table after paragraphs Accept All moves out of it.
+            first = table.rows[0][0].row if table.rows and table.rows[0] else None
+            words.append("continued" + (f" from row {first}" if first is not None else ""))
         if table.style_name:
             words.append(f"table style: {comment_text(table.style_name)}")
         for label, value in table_alt_text(table.element).items():

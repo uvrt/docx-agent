@@ -169,6 +169,16 @@ takes its targets as one list with the values for all, so it is ``calls``, not `
     them (``word_changes`` ``within`` the table), after which the grid fits.  Read from the
     document, so listed where the layout failed too; :func:`table_grid_mismatch` has the
     rule.
+``accept_loses_text`` (round 54, lane R)
+    ``{"cell", "text", "change", "author", "fix", "pages"}``: a table cell (of any depth, in
+    the body) with no next cell in its row whose last paragraph mark is a pending tracked
+    deletion -- Word's Accept All takes such a cell and its text out of view (measured, round
+    54 lanes J and R; the final view, word_read's and render's, shows it gone).  Saved and
+    reopened, Word's accepted document still holds the text, split off after the row in a
+    table of its own with a zero-span cell: either way not where it was.  ``cell`` its id (on the
+    document's grid), ``text`` what would be lost (shortened), ``change`` the mark's
+    deletion (``rev:``) and ``author`` its author; ``fix`` the ``word_changes`` reject that
+    keeps the text.  Read from the document, so listed where the layout failed too.
 ``uncertain``
     ``{"page", "placeholders", "approximations", "story_stops"}``: the pages the layout drew
     a placeholder on, laid out by a rule it has not measured, or could not draw a header,
@@ -380,6 +390,12 @@ class _Facts:
             if self.shown(pages) and (self.scope is None or self.scope.about(entry)):
                 mismatched.append({**entry, "pages": pages})
         self.capped(mismatched, "table_grid_mismatch", out)
+        lost = []
+        for entry in accept_loses_text(self.document):
+            pages = self._table_pages(entry["cell"].rsplit("/c", 1)[0])
+            if self.shown(pages) and (self.scope is None or self.scope.about(_of_table(entry))):
+                lost.append({**entry, "pages": pages})
+        self.capped(lost, "accept_loses_text", out)
         self.capped([e for e in punctuation_spacing(self.document) if self.shown(self.pages_of(e["para"]))],
                     "punctuation_spacing", out)
         # Round 49, R94: the text's language next to its tag.
@@ -1412,6 +1428,48 @@ _EDGE = object()
 #: until they are accepted (a merge's cells merged away, ``w:cellDel``).
 _TRACKED_CELLS = frozenset(_W + name for name in ("cellIns", "cellDel", "cellMerge", "tcPrChange",
                                                   "tblGridChange", "trPrChange"))
+
+
+def accept_loses_text(document: "Document") -> list[dict[str, Any]]:
+    """``check``'s ``accept_loses_text`` (round 54, lane R): every body table cell Word's
+    Accept All removes with its text (the module says what each entry holds)."""
+    part = document.package.document_part()
+    index = document._index(part)
+    revisions = None
+    found: list[dict[str, Any]] = []
+    for table in index.tables:
+        for row, column, cell in document.cells_lost_on_accept(table.id):
+            if revisions is None:
+                held = document._revision_elements()       # held: the map is keyed by the proxies' id()
+                revisions = {id(node): identifier for _, identifier, node in held}
+            paragraphs = [p for p in cell.iter(_W + "p")]
+            last = paragraphs[-1] if paragraphs else None
+            record = None
+            if last is not None:
+                mark = last.find(f"{_W}pPr/{_W}rPr")
+                record = next((c for c in mark if c.tag in (_W + "del", _W + "moveFrom")), None) \
+                    if mark is not None else None
+            text = " ".join(" ".join("".join(n.text or "" for n in p.iter(_W + "t")
+                                             if not any(a.tag in (_W + "del", _W + "moveFrom")
+                                                        for a in n.iterancestors()))
+                                     for p in paragraphs).split())
+            change = revisions.get(id(record)) if record is not None else None
+            entry: dict[str, Any] = {"cell": f"{table.id}/c{row},{column}", "text": _shortened(text, 80),
+                                     "change": change,
+                                     "author": record.get(_W + "author") if record is not None else None}
+            entry["fix"] = {"tool": "word_changes", "calls": [{"action": "reject", "ids": [change]}]} \
+                if change else {"tool": "word_changes", "calls": [{"action": "reject", "within": entry["cell"]}]}
+            found.append(entry)
+    return found
+
+
+def _of_table(entry: dict[str, Any]) -> dict[str, Any]:
+    """An ``accept_loses_text`` entry as scope reads it: about its cell's table."""
+    return {"table": entry["cell"].rsplit("/c", 1)[0]}
+
+
+def _shortened(text: str, limit: int) -> str:
+    return text if len(text) <= limit else text[:limit - 1] + "\u2026"
 
 
 def table_grid_mismatch(document: "Document") -> list[dict[str, Any]]:

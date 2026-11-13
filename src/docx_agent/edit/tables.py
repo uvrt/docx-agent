@@ -65,6 +65,20 @@ def _int(node: Element | None, default: int) -> int:
         return default
 
 
+def _accept_ends(row: Element) -> tuple[dict[Element, int], set[Element]]:
+    """What Word's Accept All makes of a row's cells whose last paragraph mark is deleted
+    (:func:`docx_agent.revisions.edges.cell_ends`): each cell taken into the one before it,
+    to that cell's first grid column; and each cell removed with its text (keyed by the
+    elements, which keeps their proxies)."""
+    from ..revisions.edges import cell_deleted, cell_ends
+
+    shown = [(cell, start) for cell, start, _span in _cells(row) if not cell_deleted(cell)]
+    groups, gone = cell_ends([cell for cell, _ in shown])
+    taken = {shown[n][0]: shown[g[0]][1] for g in groups for n in g[1:]}
+    lost = {shown[n][0] for n in gone if shown[n][0] not in taken}
+    return taken, lost
+
+
 def _cells(row: Element) -> list[tuple[Element, int, int]]:
     """``(cell, first grid column, span)`` of a row's cells (row-level content controls
     seen through)."""
@@ -957,6 +971,7 @@ class TableOps:
         given: dict[tuple[int, int], int] = {}
         for r, (row, _) in enumerate(entry.rows):
             deleted_row = row.find(f"{_W}trPr/{_W}del") is not None
+            taken, _lost = _accept_ends(row)
             before: tuple[int, int] | None = None     # the last cell kept: (start, span)
             for cell, start, span in _cells(row):
                 deleted = cell.find(f"{_W}tcPr/{_W}cellDel") is not None
@@ -964,6 +979,14 @@ class TableOps:
                     for column in range(start, start + span):
                         given[(r, column)] = before[0]
                     deleted = False
+                elif cell in taken:
+                    # Round 54 (lane R): a cell Accept All takes into the one before it (that
+                    # cell's last paragraph mark deleted): its positions are that cell's.
+                    for column in range(start, start + span):
+                        given[(r, column)] = taken[cell]
+                    deleted = True
+                elif cell in _lost:
+                    deleted = True                     # removed with its text by Accept All
                 elif not deleted:
                     before = (start, span)
                 if deleted_row:
@@ -971,6 +994,19 @@ class TableOps:
                 for column in range(start, start + span):
                     covered[column] = covered.get(column, True) and deleted
         return [c for c in range(count) if not covered.get(c, False)], given
+
+    def cells_lost_on_accept(self: "Document", table: str) -> list[tuple[int, int, Element]]:
+        """``(row, grid column, cell)`` of each cell of ``table`` Word's Accept All removes
+        with its text: a cell with no next cell in its row whose last paragraph mark is a
+        pending deletion (round 54, lane R; :mod:`docx_agent.revisions.edges`)."""
+        _part, entry = self._table_entry(table)
+        out = []
+        for r, (row, _) in enumerate(entry.rows):
+            if row.find(f"{_W}trPr/{_W}del") is not None:
+                continue
+            _taken, lost = _accept_ends(row)
+            out += [(r, start, cell) for cell, start, _span in _cells(row) if cell in lost]
+        return out
 
     def pending_structure(self: "Document", table: str) -> list[str]:
         """The tracked structure changes ``table`` holds that are not yet accepted (round 54,

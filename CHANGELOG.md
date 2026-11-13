@@ -5,6 +5,54 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.101 -- unreleased
+
+- **Row positions count the table as accepted** (round 54 follow-up, lane R; as lane M did
+  for columns). `word_edit_table`'s `row`, `row_label`, `index` (insert/delete row),
+  `first`/`last`, a column fill's `rows`, a `from` block's rows (`index`, `grow`) -- and
+  `word_format_table`'s `row` and a column's cells -- skip a row whose tracked deletion is
+  pending, as `word_read`'s final view and render leave it out; the deletion is reached
+  through `word_changes`. `rows` in results (and `word_describe`'s tables, `sync`'s result)
+  is the accepted count; `rows_deleted_pending` lists the document's rows a pending
+  deletion removes. A warning names the row a position skipped (`row positions count t:...
+  as accepted: document row 2 ('Orchard') has a tracked deletion not yet accepted ...`); a
+  row past the last is refused with the accepted shape. A row inserted beside a pending
+  deleted one goes beside the row named, the deleted one on its other side. Measured with
+  Word 16.106 for Mac (made-up report table; after, before and the default last, the insert
+  tracked and untracked): Word's Accept All and Reject All and docx-agent's give the same
+  table, every rule pixel and glyph position (only Word's PDF ligatures fi/ff differ), and
+  render's final view is Word's Accept All.
+  Untracked, a merge reaching over a pending deleted row is refused with the accept that
+  settles it. **Cell ids stay on the document's grid** (`t:X/cR,C`, `data-id`, word_drawings
+  `at`), rows and columns (user decision): stable, and they reach deleted cells.
+- **The final view at a table's edge as Word's Accept All leaves it** (lane R; what docx2svg
+  0.11.13 draws, measured by lane J with Word 16.106). A paragraph whose mark is deleted just
+  before a table joins the first paragraph of the table's first cell (a nested table's,
+  where the cell begins with one); a cell whose last paragraph mark is deleted takes in the
+  next cell of its row (its last paragraph joined to the next cell's first); a row's first
+  cell's other paragraphs leave the table before that row -- in a later row the table is
+  split there, its second part read as the same table (`<!-- t:... continued from row N
+  -->`); a row's last cell whose last mark is deleted goes with its text. Before, `word_read`
+  showed Word's No Markup screen for these, so `word_read` and render disagreed: of the 79
+  cases of docx2svg's revision probe read block by block against docx2svg's own parse, 62
+  agreed, now 78 (the other differs only in how a vertical merge is modelled). Positions
+  follow: a cell Accept All takes in answers as the cell taking it in (`columns` counts it
+  so), and writing into a cell Accept All removes is refused with the way out.
+- **check: `accept_loses_text`** (lane R, user decision). A table cell with no next cell in
+  its row (a row's last cell, the table's last) whose last paragraph mark is a pending
+  deletion: Word's Accept All removes it with its text. The entry names the cell (its id on
+  the document's grid), the text (shortened to 80), the change (`rev:`) and its author, and
+  `fix`, the `word_changes` reject that keeps the text; `word_edit_table` says it in a
+  warning when its table holds one. Read from the document, so listed where the layout
+  failed too. docx-agent's own tracked edits do not make the shape (deleting a cell's last
+  paragraph deletes the mark before it). Measured again (Word 16.106): Word's Accept All
+  draws the row without the cell and its text, as render does (exact); the document Word
+  then saves still holds the text -- the cell's paragraphs split off after the row, its last
+  in a table of its own with a zero-span cell -- which Word draws once reopened. Either way
+  the text is no longer where it was; rejecting the mark's deletion keeps it there.
+- Tool definitions unchanged (sha 7a8d751ed0151521); `check`'s layout facts carry one more
+  list (`"accept_loses_text": []`, about 7 tokens, an entry about 50 plus its text).
+
 ## 0.1.100 -- unreleased
 
 - **A tracked merge in the form Word accepts and rejects exactly** (round 54 follow-up, lane M). Measured
