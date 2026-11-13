@@ -344,9 +344,12 @@ def _cells_run(toolbox, tracked: bool) -> tuple:
          last={"row": 2, "col": 1})
     if tracked:
         call("word_set_tracking", doc="d1", on=True, author="Reviewer")
-    cells = [{"row": r, "col": c, "text": f"r{r} c{c} : ok" + ("\nsecond line" if (r + c) % 3 == 0 else "")}
+    # Round 57 (R125): the merged cell (rows 1-2, columns 0-1) given one value at each of its
+    # positions -- different values for one merged cell are refused -- and a plain cell twice.
+    cells = [{"row": r, "col": c, "text": ("merged : ok\nsecond line" if r in (1, 2) and c < 2 else
+                                           f"r{r} c{c} : ok" + ("\nsecond line" if (r + c) % 3 == 0 else ""))}
              for r in range(7) for c in range(5)]
-    cells += [{"row": 2, "col": 1, "text": "the merged cell again"}, {"row": 3, "col": 3, "text": "d"}]
+    cells += [{"row": 2, "col": 1, "text": "merged : ok\nsecond line"}, {"row": 3, "col": 3, "text": "d"}]
     call("word_edit_table", doc="d1", table=table, action="set_cells", cells=cells)
     call("word_edit_table", doc="d1", table=table, action="set_cells",
          cells=[{"row": 4, "col": 0, "text": "one"}, {"row": 4, "col_label": "r0 c4 : ok", "text": "by label"}])

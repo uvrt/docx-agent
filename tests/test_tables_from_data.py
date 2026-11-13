@@ -469,7 +469,9 @@ def test_set_cells_from_a_source_over_a_merged_cell_is_refused(toolbox, session)
     error = failed(edit(toolbox, session, table, **{"from": "d:scores",
                                                     "from_columns": ["check", "note"]}),
                    "refused")
-    assert "(2, 1)" in error.message and "split it first" in error.message
+    # Round 57 (R125): rows above the merged row first, the split second.
+    assert "(2, 1)" in error.message and "insert_row index 2 side before" in error.message
+    assert "or split (2, 0) into 2 columns" in error.message
     assert texts(session, table)[0] == ["old", "old"]
 
 

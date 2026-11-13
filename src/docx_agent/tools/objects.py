@@ -430,8 +430,7 @@ def _text(table: Any, row: int, col: int) -> str:
             "side": string("insert_*: relative to index. Default after.", enum=["after", "before"], optional=True),
             "first": POSITION, "last": POSITION,
             "rows": integer("split: into rows. Default 1.", minimum=1, maximum=63, optional=True),
-            "columns": integer("split: into columns. Default the cell's columns, else 2.", minimum=1,
-                               maximum=63, optional=True)},
+            "columns": integer("split: columns. Default span or 2", minimum=1, maximum=63, optional=True)},
            refs=('table',), group="word_objects", mutates=True, sources=("from", "cells[].from"),
            facts=("cells[].text",), aliases={"columns": names_as("columns", "from_columns")},
            # Round 51: key is sync's key column, never a retry key -- a sync repeated with the
