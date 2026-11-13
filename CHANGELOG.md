@@ -5,7 +5,7 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
-## 0.1.103 -- unreleased
+## 0.1.104 -- unreleased
 
 - **A tracked merge or split over pending tracked structure changes, whatever the order**
   (round 55, R115). Before, with a tracked column deletion, merge or split pending in a
@@ -27,9 +27,6 @@ snapshot commit; the development history before it is summarised here.
   give, in all 30 cases (widths aside: Word re-saves the grid its own way). A column or row holding a pending merge's first cell is refused, the
   fix accepting that merge alone by id (`word_changes accept ids [rev:N]`), never `within`
   the table. A split of a cell a pending merge makes likewise.
-- **`word_changes` lists a tracked merge as its own change** (kind `table`, the merged text as
-  its `text`), apart from a column deletion made at the same time; accepting or rejecting it
-  by id settles the merge alone (before, the review took the table's whole structure with it).
 - **A tracked text replacement marks whole words** (R117). `set_cells`, `set_text` and the other
   text-rewriting edits recorded "Quarterly" -> "Half-yearly" as "Quarte" deleted, "Half-yea"
   inserted around a kept "rly"; now "Quarterly" deleted and "Half-yearly" inserted, unchanged
@@ -44,6 +41,44 @@ snapshot commit; the development history before it is summarised here.
   cells: Accept All merges them, Reject All keeps them apart"); "Word does not track a merge"
   is gone from messages and docstrings.
 - Tool definitions and Word core unchanged (definitions sha 7a8d751ed0151521).
+
+## 0.1.103 -- unreleased
+
+- **`word_changes` list gives one change per edit as it was made** (round 55, R116). A
+  tracked column deletion, a merge and a cell's new text by one author in one minute were
+  listed as one `replacement` holding all their records: every record in a table joined
+  every row, cell and grid record there made at the same date (minutes). Now a table's
+  records group by the edit: a column deletion (the column's `w:cellDel` cells and the text
+  and marks deleted in them), a column insertion (new cells, `w:cellIns` or a last mark
+  inserted, down one grid column), a merge (a merged-away cell keeping its text with the
+  copy inserted in the cell it went into; a vertical merge's `w:cellMerge` records, the text
+  deleted below and inserted above), a split (its row, cell and grid property records, the
+  new cell beside the split cell, the row it inserts), a row inserted or deleted (with the
+  text of the same sign in it; rows side by side, a table inserted whole, one change). A
+  cell's last paragraph mark no longer runs on into the next cell. Each change says what it
+  was: `structure` in the list (`Change.structure`), `column deletion` `column insertion`
+  `merge` `split` `row deletion` `row insertion`; a merge and a split are `table` changes,
+  a column deletion a `deletion`, a column insertion an `insertion`. Accepting or rejecting
+  one by its id takes only its records (accept and reject took every record of the table made
+  with it) and the others stay pending; one by one in any order gives the same document as
+  accepting all, a valid file each step.
+  Before: delete column + set_cells -> one `replacement` (`'Phase draft done open' ->
+  'North'`, 13 records); now `deletion` (`column deletion`, 12 records) and `insertion`
+  (`'North'`). With a merge too: one `replacement`, 16 records -> three changes.
+- Fixed: two records with one `w:id` are listed `rev:95` and `rev:95#1`; `word_changes`
+  accept or reject of several ids accepted them one after the other, and the first renamed
+  the second (`no revision 'rev:95#2'`, with no options) (round 54 lane A, open 4). The ids
+  are now resolved first and settled in one undo step; an id that is not there is refused
+  before anything changes, naming the listed change ids (`valid_options`, at most 50) and
+  the list call.
+- **A sample with the `accept_loses_text` shape** (round 55, R119):
+  `docx_agent.samples.read("accept_loses_text")` (or `.path(...)`) is a made-up document,
+  installed with the package (`samples/*.docx`, package data), with a row's last cell and a
+  table's last cell whose last paragraph mark is a pending tracked deletion -- a shape
+  docx-agent's own edits never make. docs/common-tasks.md says what check, accept and reject
+  give on it and how to make the shape; `tools/make_samples.py` writes it.
+- Tool definitions unchanged; Word core 4,671 online unchanged. `word_changes` list entries
+  of table edits carry `structure` (about 4 tokens each).
 
 ## 0.1.102 -- unreleased
 

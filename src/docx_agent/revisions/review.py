@@ -254,6 +254,7 @@ class _Review:
         self.joined: list[tuple[Element, Element]] = []
         self.tables: set[int] = set()
         self._held: list[Element] = []
+        self._groups: dict[int, list[Element]] | None = None
         #: Every table's grid as the review found it, and the cells it removed: the grid
         #: columns only removed cells covered go at the end.
         self.maps = {id(table): (table, _grid_map(table)) for table in self.root.iter(W_TBL)}
@@ -315,16 +316,6 @@ class _Review:
                 outer = table.getparent()
                 table = _ancestor(outer, W_TBL) if outer is not None else None
             table = _ancestor(element, W_TBL)
-            merge = self._merge_of(element, table)
-            if merge is not None:
-                # Round 55 (R115): a pending tracked merge is reviewed whole and alone -- its
-                # records and what was written in its cells then, not a column deletion
-                # or other structure change of the table made at the same time.
-                for cell in merge:
-                    for node in self._records(cell):
-                        if _made_with(node, element) or node.tag in _CELL:
-                            add(node)
-                continue
             if table is not None and element.tag != _W + "tblGridChange" and (
                     kind in ("cell", "row", "mark", "property")):
                 grid = table.find(f"{_W}tblGrid/{_W}tblGridChange")
@@ -341,12 +332,11 @@ class _Review:
             elif kind in ("cell", "property") and element.tag in ({_W + "tcPrChange"} | _CELL):
                 table = _ancestor(element, W_TBL)
                 if table is not None:
-                    merged = self._merged_cells(table)
-                    for node in self._records(table):
-                        if _made_with(node, element) and (_kind_of(node) in ("cell",) or node.tag in (
-                                _W + "tcPrChange", _W + "trPrChange") or _ancestor(node, W_TC) is not None) \
-                                and not any(a is c for a in node.iterancestors(W_TC) for c in merged):
-                            add(node)
+                    # Round 55 (R116): the records of the edit it was part of -- a column
+                    # deletion, a merge, a split -- as word_changes lists it, not every record
+                    # one person made in the table that minute.
+                    for node in self._edit_of(element):
+                        add(node)
                     # The old grid (Word writes it with an id alone) goes with the cells'
                     # records: a table's structure is reviewed whole.
                     grid = table.find(f"{_W}tblGrid/{_W}tblGridChange")
@@ -359,27 +349,17 @@ class _Review:
                         add(node)
         return out
 
-    def _merges(self, table: Element) -> list[list[Element]]:
-        """``table``'s pending tracked merges' cells (:func:`merge_groups`), once per review."""
-        cache = self.__dict__.setdefault("_merge_cache", {})
-        if id(table) not in cache:
-            self._held.append(table)
-            cache[id(table)] = [[cell for _, cell in group] for group in merge_groups(table)]
-        return cache[id(table)]
+    def _edit_of(self, element: Element) -> list[Element]:
+        """The records listed with ``element`` as one change (:func:`changes.record_groups`)."""
+        if self._groups is None:
+            from .changes import record_groups
 
-    def _merged_cells(self, table: Element) -> list[Element]:
-        return [cell for group in self._merges(table) for cell in group]
-
-    def _merge_of(self, element: Element, table: Element | None) -> list[Element] | None:
-        """The cells of the pending tracked merge ``element`` (a cell record) is a record of,
-        else ``None``: a merged-away cell's ``w:cellDel``, a ``w:cellMerge``."""
-        if table is None or element.tag not in (_W + "cellDel", _W + "cellMerge"):
-            return None
-        cell = _ancestor(element, W_TC)
-        for group in self._merges(table):
-            if any(cell is c for c in group):
-                return group
-        return None
+            self._groups = {}
+            for group in record_groups(self.document, self.part):
+                self._held.extend(group)
+                for node in group:
+                    self._groups[id(node)] = group
+        return self._groups.get(id(element), [element])
 
     def _records(self, scope: Element) -> list[Element]:
         return [node for node in scope.iter() if isinstance(node.tag, str) and node.tag in REVISION_KINDS]

@@ -13,8 +13,10 @@ trial).  :func:`changes` groups them as a reviewer reads them:
 * **a move**'s two ends (every ``w:moveFrom`` and ``w:moveTo`` of one move name) are one
   ``move``, and paragraphs moved together -- touching where they went, and where they were --
   one move, a table moved with them (a deletion and an insertion) included;
-* **a table's** row, cell and grid records made together, with the text inserted or deleted
-  in it then, are one change (``insertion``, ``deletion`` or ``table``);
+* **a table's** structure edits one change each, with the text that went or came with them
+  (round 55, R116; ``_table_joins``): a column deleted or inserted, a merge, a split, a row
+  inserted or deleted -- ``Change.structure`` says which -- and not every record one person
+  made in the table that minute; a cell's last mark does not run on into the next cell;
 * **property changes** on their own are ``formatting`` (run, paragraph, numbering), ``section``
   or ``table`` changes.
 
@@ -37,6 +39,8 @@ W_P = _W + "p"
 W_PPR = _W + "pPr"
 W_RPR = _W + "rPr"
 W_TBL = _W + "tbl"
+W_TR = _W + "tr"
+W_TC = _W + "tc"
 _CONTAINERS = {_W + "ins": "ins", _W + "del": "del", _W + "moveFrom": "del", _W + "moveTo": "ins"}
 _MOVES = (_W + "moveFrom", _W + "moveTo")
 _RANGE_STARTS = {_W + "moveFromRangeStart": _W + "moveFromRangeEnd", _W + "moveToRangeStart": _W + "moveToRangeEnd"}
@@ -102,6 +106,9 @@ class Change:
     paragraph_ids: list[str] = field(default_factory=list)
     #: The story it is in.
     story: str = "body"
+    #: What a table edit was, when the change is one: ``column deletion``, ``column
+    #: insertion``, ``merge``, ``split``, ``row deletion`` or ``row insertion`` (R116).
+    structure: str | None = None
 
     @property
     def id(self) -> str:
@@ -212,24 +219,6 @@ def _move_names(root: Element) -> dict[int, str]:
     return out
 
 
-def _merge_scopes(table: Element) -> list[list[Element]]:
-    """The cells of each pending tracked merge in ``table`` (:func:`.review.merge_groups`)."""
-    from .review import merge_groups
-
-    return [[cell for _, cell in group] for group in merge_groups(table)]
-
-
-def _merged_away(record: Element) -> bool:
-    from .review import merged_away
-
-    cell = next(record.iterancestors(_W + "tc"), None)
-    return cell is not None and merged_away(cell)
-
-
-def _within(element: Element, cell: Element) -> bool:
-    return element is cell or any(a is cell for a in element.iterancestors(_W + "tc"))
-
-
 def _texts(element: Element) -> str:
     return "".join(node.text or "" for node in element.iter(_W + "t", _W + "delText"))
 
@@ -252,6 +241,17 @@ def changes(document: "Document", *, author: str | None = None, kind: str | None
     if kind is not None:
         out = [c for c in out if c.kind == kind]
     return out
+
+
+def record_groups(document: "Document", part: str) -> list[list[Element]]:
+    """The part's revision records, grouped as :func:`changes` groups them: what accepting or
+    rejecting one of a table's structure records takes with it (R116)."""
+    records = [(identifier, element) for where, identifier, element in document._revision_elements()
+               if where == part]
+    if not records:
+        return []
+    by_id = dict(records)
+    return [[by_id[r] for r in change.revisions] for change in _part_changes(document, part, records)]
 
 
 def _part_changes(document: "Document", part: str, records: list[tuple[str, Element]]) -> list[Change]:
@@ -296,6 +296,13 @@ def _part_changes(document: "Document", part: str, records: list[tuple[str, Elem
                 join(parent, element)
                 break
             parent = parent.getparent()
+    # A table's structure: each edit to it on its own (R116) -- a column deletion, a merge, a
+    # split, a row inserted or deleted, with the text that went or came with it -- and not
+    # every record one person made in the table that minute.
+    labels: dict[int, str] = {}
+    claimed: set[int] = set()     # paragraph breaks a merge inserted
+    for table in root.iter(W_TBL):
+        _table_joins(table, key, join, union, labels, claimed)
     # Paragraphs: touching records, and the marks between paragraphs.
     paragraphs = [p for p in root.iter(W_P)]
     marks: dict[int, Element] = {}
@@ -324,7 +331,8 @@ def _part_changes(document: "Document", part: str, records: list[tuple[str, Elem
             if kind_a == kind_b == "rec":
                 join(a, b)
         mark = marks.get(id(paragraph))
-        if mark is not None and last_rec[id(paragraph)] is not None:
+        if mark is not None and last_rec[id(paragraph)] is not None and id(mark) not in claimed:
+            # (A break a merge inserted after a cell's text is the merge's, not that text's.)
             join(last_rec[id(paragraph)], mark, same_sign=True)
         change = property_changes.get(id(paragraph))
         if change is not None:
@@ -335,9 +343,16 @@ def _part_changes(document: "Document", part: str, records: list[tuple[str, Elem
                         and _CONTAINERS.get(candidate.tag) == "ins":
                     join(candidate, change)
                     break
+    cell_of = {id(p): next(p.iterancestors(W_TC), None) for p in paragraphs}
     for previous, paragraph in zip(paragraphs, paragraphs[1:]):
         mark = marks.get(id(previous))
         if mark is None:
+            continue
+        before, after = cell_of[id(previous)], cell_of[id(paragraph)]
+        if before is not None and after is not None and before is not after:
+            # A cell's last mark does not run on into the next cell: two cells' edits are two
+            # changes (R116); a row or column inserted or deleted whole is one by its own
+            # records (_table_joins).
             continue
         # The mark is the break between the two: it touches the next paragraph's start.
         start = first_rec[id(paragraph)]
@@ -347,43 +362,6 @@ def _part_changes(document: "Document", part: str, records: list[tuple[str, Elem
             join(mark, marks[id(paragraph)], same_sign=True)
         elif empty[id(paragraph)] and id(paragraph) in property_changes:
             join(mark, property_changes[id(paragraph)])
-    # A table's structure: its row, cell and grid records, and what was inserted or deleted in
-    # it at the same time.
-    for table in root.iter(W_TBL):
-        inside = [element for element in table.iter() if id(element) in key]
-        structural = [e for e in inside if revision_kind(e).startswith(("row-", "cell-", "table-"))]
-        # Round 55 (R115): a tracked merge is its own change -- its deleted cells whose content
-        # is kept, its cell merges and what was written in the cells it merges -- not joined
-        # to a column deletion or other table records made at the same time.
-        claimed: set[int] = set()
-        for scope in _merge_scopes(table):
-            members = [e for e in inside if any(_within(e, cell) for cell in scope)]
-            for record in [e for e in members if e.tag in (_W + "cellDel", _W + "cellMerge")]:
-                for other in members:
-                    if _who(other) == _who(record):
-                        join(record, other)
-                        claimed.add(id(other))
-        for record in structural:
-            if id(record) in claimed:
-                continue
-            for other in inside:
-                if id(other) not in claimed:
-                    join(record, other)
-        # A grid change carries no author or date: w:tblGridChange has only an id (ECMA-376,
-        # CT_TblGridChange; Word writes it so too, measured round 54).  It belongs with the
-        # change to the same table that recorded it -- its w:tblPrChange, or the latest of
-        # its row and cell records -- whose author it is listed under (R112).
-        for record in structural:
-            if record.tag != _W + "tblGridChange" or _who(record) != (None, None):
-                continue
-            owner = record.getparent().getparent() if record.getparent() is not None else None
-            mine = [e for e in structural if e is not record and e.get(_W + "author") is not None
-                    and next(e.iterancestors(W_TBL), None) is owner]
-            if not mine:
-                continue
-            table_level = [e for e in mine if e.tag == _W + "tblPrChange"]
-            partner = table_level[-1] if table_level else max(mine, key=lambda e: e.get(_W + "date") or "")
-            union.union(key[id(partner)], key[id(record)])
     # Groups, in document order.
     groups: dict[int, list[int]] = {}
     for k in range(len(held)):
@@ -392,11 +370,247 @@ def _part_changes(document: "Document", part: str, records: list[tuple[str, Elem
     out: list[Change] = []
     for members in sorted(groups.values(), key=lambda m: m[0]):
         elements = [held[k] for k in members]
-        out.append(_change(document, part, index, [records[k][0] for k in members], elements))
+        label = next((labels[id(e)] for e in elements if id(e) in labels), None)
+        out.append(_change(document, part, index, [records[k][0] for k in members], elements, label))
     return out
 
 
-def _change(document: "Document", part: str, index, identifiers: list[str], elements: list[Element]) -> Change:
+_PROPERTY_KINDS = ("row-properties", "cell-properties", "table-properties")
+
+
+def _nearest(element: Element, tag: str) -> Element | None:
+    return next(element.iterancestors(tag), None)
+
+
+def _sign(element: Element) -> str | None:
+    """``ins`` or ``del`` for an insertion or deletion record of any level (text, mark, row,
+    cell), else ``None``."""
+    if element.tag == _W + "cellIns":
+        return "ins"
+    if element.tag == _W + "cellDel":
+        return "del"
+    return _CONTAINERS.get(element.tag) if element.tag not in _MOVES else None
+
+
+def _row_cells(row: Element) -> list[tuple[Element, int]]:
+    """The row's cells with the grid column each starts at (``w:gridBefore`` and the spans
+    before it)."""
+    properties = row.find(_W + "trPr")
+    before = properties.find(_W + "gridBefore") if properties is not None else None
+    at = int(before.get(_W + "val") or 0) if before is not None else 0
+    out = []
+    for cell in row.iter(W_TC):
+        if _nearest(cell, W_TR) is not row:
+            continue
+        out.append((cell, at))
+        span = cell.find(f"{_W}tcPr/{_W}gridSpan")
+        at += int(span.get(_W + "val") or 1) if span is not None else 1
+    return out
+
+
+def _visible_texts(cell: Element) -> list[str]:
+    """The cell's paragraphs' text as it stands (deleted text left out), the empty ones too."""
+    out = []
+    for paragraph in cell.iter(W_P):
+        if _nearest(paragraph, W_TC) is not cell:
+            continue
+        out.append("".join(t.text or "" for t in paragraph.iter(_W + "t")
+                           if not any(a.tag in (_W + "del", _W + "moveFrom") for a in t.iterancestors())))
+    return out
+
+
+def _table_joins(table: Element, key: dict[int, int], join, union: _Union, labels: dict[int, str],
+                 claimed: set[int]) -> None:
+    """Join a table's structure records with what each edit made with them (R116), labelling
+    the edit for :class:`Change.structure`.
+
+    * a **row** inserted or deleted: its record, and the records of the same sign in its cells;
+      rows side by side inserted (or deleted) by one person at once are one (a table inserted);
+    * a **column** deleted: each deleted cell (``w:cellDel`` whose content is deleted) with its
+      deleted text and marks, and the column's cells together (same grid column); a column
+      inserted: each new cell (``w:cellIns``, or a cell whose last mark is inserted, outside
+      an inserted row) with what is inserted in it, the column's new cells together;
+    * a **merge**: a merged-away cell (``w:cellDel`` keeping its text) with the copy of its text
+      inserted in the cell it went into (and the paragraph breaks inserted there); a vertical
+      merge's ``w:cellMerge`` records down the column, the text deleted in the continued cells
+      and inserted in the first;
+    * **property** records (row, cell, table, grid) together: one restructure (a split), with
+      the new cell next to a split cell and a row a split inserted (its cells continue a
+      vertical merge).
+    """
+    inside = [e for e in table.iter() if id(e) in key and _nearest(e, W_TBL) is table]
+    if not inside:
+        return
+    rows = [row for row in table.iter(W_TR) if _nearest(row, W_TBL) is table]
+    _held = list(table.iter(W_TC))     # held: the maps below are keyed by the proxies' id()
+    row_of = {id(row): k for k, row in enumerate(rows)}
+    by_cell: dict[int, list[Element]] = {}
+    by_row: dict[int, list[Element]] = {}
+    for element in inside:
+        cell = _nearest(element, W_TC)
+        if cell is not None and _nearest(cell, W_TBL) is table:
+            by_cell.setdefault(id(cell), []).append(element)
+        row = _nearest(element, W_TR)
+        if row is not None and id(row) in row_of:
+            by_row.setdefault(id(row), []).append(element)
+
+    def label(element: Element, what: str) -> None:
+        labels.setdefault(id(element), what)
+
+    # Property records: one restructure.
+    properties = [e for e in inside if revision_kind(e).startswith(_PROPERTY_KINDS)]
+    for a, b in zip(properties, properties[1:]):
+        join(a, b)
+    # Rows inserted or deleted.
+    row_record: dict[int, Element] = {}
+    for row in rows:
+        record = next((e for e in by_row.get(id(row), []) if revision_kind(e) in ("row-insertion", "row-deletion")
+                       and e.getparent().getparent() is row), None)
+        if record is None:
+            continue
+        row_record[id(row)] = record
+        label(record, "row insertion" if _sign(record) == "ins" else "row deletion")
+        for element in by_row[id(row)]:
+            if element is not record and _sign(element) == _sign(record):
+                join(record, element)
+    for upper, lower in zip(rows, rows[1:]):
+        a, b = row_record.get(id(upper)), row_record.get(id(lower))
+        if a is not None and b is not None and _sign(a) == _sign(b):
+            join(a, b)
+    # Cells.
+    deleted_cells: dict[int, list[Element]] = {}      # grid column -> deleted cells' records
+    new_cells: dict[int, list[Element]] = {}          # grid column -> new cells' anchors
+    merge_chain: dict[int, Element] = {}              # grid column -> the cellMerge above
+    for k, row in enumerate(rows):
+        cells = _row_cells(row)
+        previous_kept: tuple[Element, int] | None = None
+        merged_away: Element | None = None
+        chain_now: dict[int, Element] = {}
+        for cell, column in cells:
+            records = by_cell.get(id(cell), [])
+            own = [e for e in records if e.getparent() is not None and e.getparent().tag == _W + "tcPr"
+                   and e.getparent().getparent() is cell]
+            deletions = [e for e in own if e.tag == _W + "cellDel"]
+            insertion = next((e for e in own if e.tag == _W + "cellIns"), None)
+            vertical = next((e for e in own if e.tag == _W + "cellMerge"), None)
+            content = [e for e in records if e not in own and not revision_kind(e).startswith(_PROPERTY_KINDS)]
+            last = [p for p in cell.iter(W_P) if _nearest(p, W_TC) is cell][-1:]
+            mark = _mark_record(last[0]) if last else None
+            new_mark = mark if mark is not None and id(mark) in key and _sign(mark) == "ins" else None
+            if deletions and (any(_sign(e) == "del" for e in content) or new_mark is not None):
+                # A deleted column's cell (a cell merged away earlier keeps its own record).
+                deletion = deletions[-1]
+                label(deletion, "column deletion")
+                for element in content:
+                    if _sign(element) == "del":
+                        join(deletion, element)
+                deleted_cells.setdefault(column, []).append(deletion)
+                deletions = deletions[:-1]
+            if deletions:
+                # A merged-away cell: its text kept, a copy inserted in the cell it went into.
+                deletion = deletions[0]
+                label(deletion, "merge")
+                if merged_away is not None:
+                    join(merged_away, deletion)
+                merged_away = deletion
+                if previous_kept is not None:
+                    _join_copies(deletion, by_cell.get(id(previous_kept[0]), []),
+                                 {t for t in _visible_texts(cell) if t}, join, claimed)
+                continue
+            if any(e.tag == _W + "cellDel" for e in own) and new_mark is None:
+                merged_away = None
+                continue
+            merged_away = None
+            if vertical is not None:
+                label(vertical, "merge")
+                if (vertical.get(_W + "vMerge") or "") == "cont" and column in merge_chain:
+                    join(merge_chain[column], vertical)
+                    head = merge_chain[column]
+                    moved = {_texts(e) for e in content if _sign(e) == "del" and _texts(e)}
+                    for element in content:
+                        if _sign(element) == "del":
+                            join(vertical, element)
+                    head_cell = _nearest(head, W_TC)
+                    if head_cell is not None:
+                        _join_copies(head, by_cell.get(id(head_cell), []), moved, join, claimed)
+                    chain_now[column] = head
+                else:
+                    chain_now[column] = vertical
+            anchor = insertion if insertion is not None else new_mark
+            if anchor is not None and id(row) not in row_record:
+                # A new cell: a column's, or a split's (next to the split cell).
+                label(anchor, "column insertion")
+                for element in content:
+                    if _sign(element) == "ins":
+                        join(anchor, element)
+                split_cell = previous_kept[0] if previous_kept is not None else None
+                beside = [e for e in by_cell.get(id(split_cell), [])
+                          if revision_kind(e) == "cell-properties"] if split_cell is not None else []
+                if beside:
+                    labels[id(anchor)] = "split"
+                    label(beside[0], "split")
+                    join(beside[0], anchor)
+                else:
+                    new_cells.setdefault(column, []).append(anchor)
+            if anchor is None:
+                previous_kept = (cell, column)
+            # A row a split inserted: its cells continue a vertical merge from the row above.
+            record = row_record.get(id(row))
+            if record is not None and _sign(record) == "ins" and k > 0:
+                continuing = cell.find(f"{_W}tcPr/{_W}vMerge")
+                if continuing is not None and (continuing.get(_W + "val") or "continue") == "continue":
+                    above = next((c for c, at in _row_cells(rows[k - 1]) if at == column), None)
+                    changed = [e for e in by_cell.get(id(above), [])
+                               if revision_kind(e) == "cell-properties"] if above is not None else []
+                    if changed:
+                        labels[id(record)] = "split"
+                        label(changed[0], "split")
+                        join(changed[0], record)
+        merge_chain = chain_now
+    for group in list(deleted_cells.values()) + list(new_cells.values()):
+        for a, b in zip(group, group[1:]):
+            join(a, b)
+    # A grid change carries no author or date: w:tblGridChange has only an id (ECMA-376,
+    # CT_TblGridChange; Word writes it so too, measured round 54).  It belongs with the change
+    # to the same table that recorded it -- its w:tblPrChange, its other property records, or
+    # the latest of its row and cell records -- whose author it is listed under (R112).
+    for record in inside:
+        if record.tag != _W + "tblGridChange" or _who(record) != (None, None):
+            continue
+        mine = [e for e in inside if e is not record and e.get(_W + "author") is not None
+                and revision_kind(e).startswith(("row-", "cell-", "table-"))]
+        if not mine:
+            continue
+        table_level = [e for e in mine if e.tag == _W + "tblPrChange"]
+        other_properties = [e for e in mine if revision_kind(e).startswith(_PROPERTY_KINDS)]
+        partner = (table_level[-1] if table_level else other_properties[0] if other_properties
+                   else max(mine, key=lambda e: e.get(_W + "date") or ""))
+        union.union(key[id(partner)], key[id(record)])
+
+
+def _mark_record(paragraph: Element) -> Element | None:
+    properties = paragraph.find(W_PPR)
+    mark = properties.find(W_RPR) if properties is not None else None
+    if mark is None:
+        return None
+    return next((child for child in mark if child.tag in (_W + "ins", _W + "del")), None)
+
+
+def _join_copies(record: Element, target: list[Element], moved: set[str], join, claimed: set[int]) -> None:
+    """A merge's record with what it inserted in the cell the text went into: the copies of
+    the moved text and the paragraph breaks inserted there."""
+    for element in target:
+        if _sign(element) != "ins":
+            continue
+        if revision_kind(element) == "paragraph-mark-insertion":
+            claimed.add(id(element))
+            join(record, element)
+        elif moved and _texts(element) in moved:
+            join(record, element)
+
+
+def _change(document: "Document", part: str, index, identifiers: list[str], elements: list[Element],
+            structure: str | None = None) -> Change:
     kinds = [revision_kind(e) for e in elements]
     # The first record that names its author (a grid change names none: R112).
     author, date = next((_who(e) for e in elements if e.get(_W + "author") is not None), _who(elements[0]))
@@ -407,8 +621,12 @@ def _change(document: "Document", part: str, index, identifiers: list[str], elem
                   for k in kinds)
     if moved:
         kind = "move"
-    elif any(e.tag == _W + "cellMerge" or (e.tag == _W + "cellDel" and _merged_away(e)) for e in elements):
-        kind = "table"     # round 55 (R115): a tracked merge, its text moved into the merged cell
+    elif structure in ("merge", "split"):
+        kind = "table"
+    elif structure == "column deletion":
+        kind = "deletion"
+    elif structure == "column insertion":
+        kind = "insertion"
     elif inserted and deleted:
         kind = "replacement"
     elif inserted:
@@ -434,7 +652,8 @@ def _change(document: "Document", part: str, index, identifiers: list[str], elem
     if kind == "move":
         text = text or _joined([e for e in elements if e.tag == _W + "moveFrom" and not _is_mark(e)
                                 and e.getparent().tag != W_RPR], paragraphs)
-    return Change(document, kind, author, date, identifiers, text, old, paragraph_ids, document._story_of(part))
+    return Change(document, kind, author, date, identifiers, text, old, paragraph_ids, document._story_of(part),
+                  structure)
 
 
 def _joined(containers: list[Element], paragraphs: list[Element]) -> str:
@@ -450,4 +669,4 @@ def _joined(containers: list[Element], paragraphs: list[Element]) -> str:
     return "".join(out)
 
 
-__all__ = ["CHANGE_KINDS", "Change", "REVISION_KINDS", "changes"]
+__all__ = ["CHANGE_KINDS", "Change", "REVISION_KINDS", "changes", "record_groups"]

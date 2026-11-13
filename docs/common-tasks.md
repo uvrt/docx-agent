@@ -162,6 +162,46 @@ one; `Revision.kind`'s docstring lists every kind. `changes()` groups them into
 `replacement`, `insertion`, `deletion`, `move`, `formatting`, `table` and `section`
 changes.
 
+A table edit is one change of its own, with what it was in `Change.structure` (`word_changes`
+list's `structure`): a `column deletion` (the column's cells and the text deleted in them), a
+`column insertion`, a `merge` (the merged-away cells and the copies of their text in the cell
+they went into), a `split`, a `row deletion` or a `row insertion` (the row and its text). A
+cell's new text beside them is a change of its own, though one person made all of them in
+the same minute, so each is accepted or rejected by its id and the others stay pending.
+Several ids in one `accept` or `reject` are resolved first and settled in one undo step: two
+records Word wrote with one `w:id` are listed `rev:95` and `rev:95#1`, and both may be named
+at once.
+
+#### A table cell Accept All takes out: the sample
+
+`check`'s `accept_loses_text` names a row's last cell (or a table's last cell) whose last
+paragraph's mark is a pending tracked deletion: Word's Accept All takes the cell, with its
+text, out of view. docx-agent's own edits never make that shape (a tracked `set_cells`
+keeps a cell's last mark), so a document with it ships with the package:
+
+```python
+from docx_agent import Document, samples
+from docx_agent.layout_facts import accept_loses_text
+
+data = samples.read("accept_loses_text")      # bytes; samples.path(...) is the file on disk
+doc = Document.open(data)                     # or a tool session's session.open(data, "sample.docx")
+for entry in accept_loses_text(doc):          # what check's layout gives
+    print(entry["cell"], entry["text"], entry["fix"])
+# t:3C773850/c0,1 Kept. Last. {'tool': 'word_changes', 'calls': [{'action': 'reject', 'ids': ['rev:901']}]}
+```
+
+It holds two tables of two rows and two columns: in the first, row 1's last cell (`c0,1`),
+in the second the table's last cell (`c1,1`), each "Kept." then "Last.", the mark after
+"Last." deleted by "Editor B" (`rev:901`, `rev:902`). On it, `check` (`include:
+["layout"]`) gives two `accept_loses_text` entries, each with its cell, text `Kept. Last.`,
+the change and the fix `{"action": "reject", "ids": ["rev:901"]}`; `word_changes` accept
+(all, or by id) removes each cell and moves its text into paragraphs after the row, the table
+split there, the result's warning saying where; reject keeps the text in its cell. Word's
+Accept All (Word 16.106 for Mac, measured round 55) takes the cells and their text out of
+view. To make the shape in a document of one's own, give the cell's last `w:p`
+`<w:pPr><w:rPr><w:del w:id="..." w:author="..." w:date="..."/></w:rPr></w:pPr>`;
+`tools/make_samples.py` writes the sample so.
+
 ### Write Markdown into the document
 
 ```python

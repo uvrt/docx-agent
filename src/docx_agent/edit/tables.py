@@ -1571,7 +1571,6 @@ def _drop_copies(origin: Element | None, cell: Element, stamp, part: str) -> Non
     there with the same text; the cell's paragraph marks around it set as a merge without
     ``cell`` writes them (the cell's last mark inserted only while a copy follows it)."""
     from ..revisions import track as _track
-    from . import text as _text
 
     for found in _copies_of(origin, cell):
         paragraphs = [p for p in origin if isinstance(p.tag, str) and p.tag == W_P]
