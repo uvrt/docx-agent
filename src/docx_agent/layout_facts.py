@@ -203,6 +203,7 @@ blocks, on their pages.
 
 from __future__ import annotations
 
+import copy
 import re
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any, Iterable
@@ -1509,7 +1510,87 @@ def table_grid_mismatch(document: "Document") -> list[dict[str, Any]]:
             entry["tracked"] = True
             entry["fix"] = {"tool": "word_changes", "calls": [{"action": "accept", "within": table.id}]}
         found.append(entry)
+    off_grid = {entry["table"] for entry in found}
+    for table in index.tables:
+        ragged = ragged_rows(document, table)
+        # A row off the grid is said above; as it is now, that is the ragged shape too.
+        if ragged is not None and (ragged["after_accept"] or table.id not in off_grid):
+            found.append(ragged)
     return found
+
+
+#: Records whose acceptance changes which cells a table's rows keep (round 57, R125).
+_ACCEPT_RESHAPES = (_W + "cellDel", _W + "cellIns", _W + "cellMerge")
+
+
+def _reshaped_on_accept(element: Any) -> bool:
+    """Whether accepting ``element``'s (a table's own) tracked changes changes which cells its
+    rows keep: a cell deleted, inserted or merged down, a row deleted, or a cell's last
+    paragraph mark deleted (Accept All joins the cell to the one before it)."""
+    def own(node: Any) -> bool:
+        return next(node.iterancestors(_W + "tbl"), None) is element
+
+    if any(own(node) for node in element.iter(*_ACCEPT_RESHAPES)):
+        return True
+    for node in element.iter(_W + "trPr"):
+        if node.find(_W + "del") is not None and own(node):
+            return True
+    for cell in element.iter(_W + "tc"):
+        last = cell.findall(_W + "p")
+        mark = last[-1].find(f"{_W}pPr/{_W}rPr/{_W}del") if last else None
+        if mark is not None and own(cell):
+            return True
+    return False
+
+
+def _accepted_copy(element: Any) -> Any:
+    """A copy of a table with its tracked changes accepted, by docx-agent's Accept All (whose
+    table shapes are Word's, measured: round 54, and round 57 on a column deleted under a
+    split cell), in a blank document of its own: the copy's table element."""
+    from .edit.document import Document as _Document
+
+    scratch = _Document.new()
+    body = scratch.package.tree(scratch.package.document_part()).find(_W + "body")
+    body.insert(0, copy.deepcopy(element))
+    scratch._invalidate()
+    scratch.accept()
+    return body.find(_W + "tbl")
+
+
+def ragged_rows(document: "Document", table: Any) -> dict[str, Any] | None:
+    """Round 57 (R125): ``table`` (an index entry) as Accept All leaves it when its rows'
+    cells do not all start and end on the same grid columns: a ragged table, drawn with rows
+    ending short of the others (``w:gridAfter`` keeps such a table on its grid, so
+    ``table_grid_mismatch``'s own test passes it).  ``{"table", "grid", "rows": [{"row",
+    "covers": [first, last]}], "drawn": "ragged", "after_accept"}``: ``grid`` the columns
+    the widest rows cover, ``rows`` the others (from 0 as ``word_edit_table`` counts them;
+    ``covers`` the first and last grid column their cells cover), ``after_accept`` whether
+    pending tracked changes make the shape (read from the table with them accepted: a copy,
+    by docx-agent's Accept All).  ``None`` for a table whose rows line up."""
+    from .edit.tables import _cells as _spans, own_table_rows
+
+    element = table.element
+    after_accept = _reshaped_on_accept(element)
+    if after_accept:
+        element = _accepted_copy(element)
+        if element is None:
+            return None
+    extents: list[tuple[int, int, int]] = []
+    for r, row in enumerate(own_table_rows(element)):
+        cells = _spans(row)
+        if cells:
+            extents.append((r, cells[0][1], cells[-1][1] + cells[-1][2] - 1))
+    if len(extents) < 2:
+        return None
+    low, high = min(e[1] for e in extents), max(e[2] for e in extents)
+    off = [{"row": r, "covers": [a, b]} for r, a, b in extents if (a, b) != (low, high)]
+    if not off:
+        return None
+    entry: dict[str, Any] = {"table": table.id, "grid": high - low + 1, "rows": off[:CAP], "drawn": "ragged",
+                             "after_accept": after_accept}
+    if len(off) > CAP:
+        entry["rows_left_out"] = len(off) - CAP
+    return entry
 
 
 def empty_paragraphs(document: "Document") -> list[dict[str, Any]]:

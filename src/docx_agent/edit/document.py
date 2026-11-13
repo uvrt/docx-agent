@@ -543,9 +543,9 @@ class Table:
             out.append(line)
         return out
 
-    def insert_row(self, index: int | None = None, *, below: bool = True) -> EditResult:
+    def insert_row(self, index: int | None = None, *, below: bool = True, plain: bool = False) -> EditResult:
         """A new row beside row ``index``: :meth:`Document.insert_row`."""
-        return self._document.insert_row(self._id, index, below=below)
+        return self._document.insert_row(self._id, index, below=below, plain=plain)
 
     def delete_row(self, index: int) -> EditResult:
         """Delete row ``index``: :meth:`Document.delete_row`."""
@@ -563,7 +563,7 @@ class Table:
         """Merge the cells from ``first`` to ``last`` (``(row, column)``, inclusive)."""
         return self._document.merge_cells(self._id, first, last)
 
-    def split(self, row: int, column: int, *, rows: int = 1, columns: int = 2) -> EditResult:
+    def split(self, row: int, column: int, *, rows: int = 1, columns: int | None = None) -> EditResult:
         """Split the cell at ``(row, column)`` (:meth:`Document.split_cell`)."""
         return self._document.split_cell(self._id, row, column, rows=rows, columns=columns)
 
