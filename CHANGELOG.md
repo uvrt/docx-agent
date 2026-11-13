@@ -5,7 +5,7 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
-## 0.1.110 -- unreleased
+## 0.1.111 -- unreleased
 
 - **A range-scoped check of a long report costs less, and says where every second went**
   (round 57, R124; ooxml-edit 0.115.0). Measured on a made-up 295-page report (six
@@ -23,9 +23,62 @@ snapshot commit; the development history before it is summarised here.
     by the table's own. A range's `kept` stops at the first block not kept. The facts of
     one chapter (48 pages): 8.0 s CPU before, 2.4 s after; of the whole report 18.0 s
     before, 4.7 s after. Same facts.
+  - `table_grid_mismatch`'s ragged-after-accept read (0.1.110: an accepted copy of each table
+    with tracked structural records, 20-60 ms a table) reads only the tables of the range or
+    pages asked for, and keeps each accepted table's shape by its bytes, so a table no edit
+    touched is not accepted again by the next check (a worker's copy of the next version
+    too).
   - `data.timing` now also says `numbers` and `validation` (the save gate's comparison,
     found once per version): the parts that ran outside the Word handler, so a check's
     timing accounts for all of it (a few more numbers; nothing else in the result changes).
+
+## 0.1.110 -- unreleased
+
+- **A table with a cell over several columns keeps a cell per value** (round 57, R125). On a
+  made-up 4-column table whose last row is `[Totals | one cell over columns 1-3]`, five calls
+  each did what was asked and left a ragged table: a row inserted beside that row copied its
+  span; four values written into it left one (the last) without a warning; a block `from` a
+  dataset over it was refused with "split it first"; the split, given no count, added a fifth
+  grid column (the header cell made to span two); two tracked column deletions and Accept All
+  left rows of three columns beside one of four, and `check` said nothing. Now:
+  - `insert_row` beside a row with a cell over several grid columns takes the cells of the
+    nearest row without one (else a cell per grid column) and says so: "row 4 has a cell over
+    several columns: the new row has row 3's cells, one per column (merge cells for a span
+    like row 4's)". Word's Insert Rows Above and Below copy the span (measured); the new row is
+    a row for values. A vertical merge the new row falls inside is carried on, as before.
+    `set_cells` `grow` and `sync` add their rows the same way. The library's
+    `Document.insert_row` keeps Word's form unless given `plain=True` (what the tools pass).
+  - `set_cells` giving different values to positions of one merged cell is refused, nothing
+    written: "(4, 1), (4, 2), (4, 3) are one merged cell of t:...: it holds one text, so of
+    'Pim', 'Q3', 'new' only the last would stay", each such cell in `details.merged` with its
+    positions, values and the `split` into its own grid that gives each value a cell
+    (`insert_row` the other way). One value repeated down a merged cell is written once.
+  - `set_cells` `from` over a row with a merged cell offers first the way that leaves that row
+    as it is: `insert_row` that index `side: before`, as many times as the block needs from
+    there, then the call again (`details.calls`), and the split second. Said before the
+    missing rows' `grow` advice, which would add the rows past it.
+  - `split` of a cell over several grid columns defaults to its own columns (each a cell
+    again, the grid kept); Word's Split Cells dialog offers 2 for any cell (measured) and adds
+    a grid column. Into fewer cells than it spans it divides along the grid's lines (the
+    first cells a column more) and says where Word, dividing the width evenly, would have
+    added grid columns; into more is refused with the counts that keep the grid (2 to its
+    span) and the split into its span, then a split of one of its cells. A plain cell still
+    splits in two by default.
+  - A tracked `delete_column` through a cell a tracked split inserted deletes its inserted
+    paragraph mark too: Accept All then leaves rows of one width, Reject All the table as it
+    was -- Word's Accept All of the old form gave the row a column more (measured).
+  - A column this session inserted with tracking on, deleted again, goes outright, as one's own
+    pending rows do (round 51): it was marked `w:cellDel`, a later `insert_row` copied the
+    deleted cell (its mark kept, so Accept All gave it to the cell before it) and `delete_row`
+    of that row was refused as "the first cell of a pending tracked merge". A new row's cell
+    in a column whose deletion is pending is now deleted with it, its mark too (Word's Accept
+    All leaves rows of one width, Reject All the table as it was, measured).
+  - `check`'s `table_grid_mismatch` also lists a table ragged as Accept All leaves it --
+    rows whose cells start or end on other grid columns than the widest rows', which
+    `w:gridAfter` keeps on the grid -- as `drawn: "ragged"` with `grid`, `rows` (`row`,
+    `covers`: first and last grid column) and `after_accept` (pending tracked changes make
+    the shape; read from a copy with them accepted). Where a `word_edit_table` call of this
+    session left it so, `made_by` names the call, and that call's result said so.
 ## 0.1.109 -- unreleased
 
 - **Deleting what the file held says so** (round 57, R122). A column rebuilt -- a new one

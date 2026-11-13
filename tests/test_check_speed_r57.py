@@ -154,3 +154,49 @@ def test_cell_margins_by_path_are_those_found_by_element(made):
         assert write_module._cell_margins(document, table, f"w:body/w:tbl[{n}]") == found
         # A wrong hint is only a hint: the table is still found.
         assert write_module._cell_margins(document, table, "w:body/w:tbl[99]") == found
+
+
+# -- table_grid_mismatch follows the range and reuses unchanged tables' accepted shape (R125's cost)
+
+
+def _ragged_document(monkeypatch):
+    """Lane T's made-up quarter plan, left ragged once Accept All runs (its own fixture)."""
+    import test_span_rows_r57 as spans
+
+    with Toolbox([*WORD_TOOLS, spans.plan_rows], formats=[FORMAT], groups=GROUPS, workers=0) as box:
+        session, _ = spans._ragged_by_a_column_deletion(box, monkeypatch)
+        return session.entry("d1").document
+
+
+def test_an_unchanged_tables_accepted_shape_is_reused(monkeypatch):
+    from docx_agent import layout_facts
+
+    document = _ragged_document(monkeypatch)
+    layout_facts._RAGGED.clear()
+    accepted = []
+    real = layout_facts._accepted_copy
+    monkeypatch.setattr(layout_facts, "_accepted_copy", lambda element: accepted.append(1) or real(element))
+    first = layout_facts.table_grid_mismatch(document)
+    again = layout_facts.table_grid_mismatch(document)
+    assert [e for e in first if e["drawn"] == "ragged"] and first == again
+    assert accepted == [1]                          # accepted once: the second read reused it
+    # A copy of the document (a check's worker reads one per version): the same bytes, reused.
+    assert layout_facts.table_grid_mismatch(Document.open(document.to_bytes())) == first
+    assert accepted == [1]
+    # The entries handed out are the caller's own.
+    first[-1]["rows"][0]["covers"].append(99)
+    assert layout_facts.table_grid_mismatch(document) == again
+
+
+def test_tables_outside_the_range_are_not_read(monkeypatch):
+    from docx_agent import layout_facts
+
+    document = _ragged_document(monkeypatch)
+    read = []
+    real = layout_facts.ragged_rows
+    monkeypatch.setattr(layout_facts, "ragged_rows", lambda doc, table: read.append(table.id) or real(doc, table))
+    assert layout_facts.table_grid_mismatch(document, keep=lambda table: False) == []
+    assert read == []
+    table = document.tables()[0].id
+    kept = layout_facts.table_grid_mismatch(document, keep=lambda t: t == table)
+    assert read == [table] and [e["table"] for e in kept if e["drawn"] == "ragged"] == [table]

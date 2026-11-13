@@ -634,7 +634,9 @@ def check(call: Any, doc: str, slides: list | None = None, pages: list[int] | No
                                  "punctuation_spacing": [e for e in punctuation_spacing(document)
                                                          if scope is None or scope.about(e)][:CAP],
                                  # Round 53 (R107): a table off its grid, read from the document.
-                                 "table_grid_mismatch": [e for e in table_grid_mismatch(document)
+                                 "table_grid_mismatch": [e for e in table_grid_mismatch(
+                                     document, keep=None if scope is None else
+                                     lambda table: scope.about({"table": table}))
                                                          if scope is None or scope.about(e)][:CAP],
                                  # Round 54 (lane R): text Word's Accept All loses.
                                  "accept_loses_text": [e for e in accept_loses_text(document)
@@ -643,6 +645,10 @@ def check(call: Any, doc: str, slides: list | None = None, pages: list[int] | No
             # Round 57 (R122): the file's text a pending deletion of this session removes --
             # read here, beside the file as opened (a worker's copy has only the bytes).
             report["layout"] = _original_lost(document, scope, report["layout"])
+            # Round 57 (R125): a ragged table's call of this session that made it so.
+            from .objects import ragged_made_by
+
+            ragged_made_by(document, report["layout"])
         # The rest of the layout's facts here, beside what the worker timed (layout, facts, waits).
         inner = sum(timing.parts.values()) - inner
         timing.add("facts", max(0.0, time.perf_counter() - started - inner))
