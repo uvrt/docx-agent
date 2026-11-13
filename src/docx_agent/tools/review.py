@@ -334,7 +334,7 @@ def _review_changes(call: Any, action: str, ids: list[str] | None, author: str |
     summary = f"{action.capitalize()}ed {count} revision record(s)"
     if how != "ids":
         summary += _session_text(session, count)
-    if blocks or count:
+    if blocks:
         summary += "; " + _removed_text(blocks)
     data: dict[str, Any] = {"records": count, "this_session": session, "changes_left": len(left),
                             "left_by_author": _by_author(left)}
