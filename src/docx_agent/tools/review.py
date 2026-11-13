@@ -55,6 +55,8 @@ def _within_paragraphs(call: Any, within: str | None) -> set[str] | None:
 
 def change_json(change: Any) -> dict[str, Any]:
     data = {"id": change.id, "kind": change.kind, "author": change.author, "date": change.date}
+    if change.structure:
+        data["structure"] = change.structure
     if change.old_text:
         data["old_text"] = short(change.old_text, 200)
     if change.text:
@@ -167,15 +169,30 @@ def _review_changes(call: Any, action: str, ids: list[str] | None, author: str |
     edits = []
     count = 0
     if ids:
+        # Every id named, resolved before anything is accepted, and accepted (or rejected) in one
+        # go: two records sharing one w:id are rev:95 and rev:95#1, and accepting the first
+        # renamed the second, so the next id named was refused (round 54, lane A open 4).
         grouped = {c.id: c for c in document.changes()}
+        known = {identifier for _, identifier, _ in document._revision_elements()}
+        wanted: list[str] = []
+        missing: list[str] = []
         for identifier in resolve(call, ids):
             change = grouped.get(identifier)
-            before = len(document.revisions())
-            if change is not None:
-                edits.append(change.accept() if action == "accept" else change.reject())
-            else:
-                edits.append(document.accept(identifier) if action == "accept" else document.reject(identifier))
-            count += before - len(document.revisions())
+            members = list(change.revisions) if change is not None else [identifier] if identifier in known else []
+            if not members:
+                missing.append(identifier)
+            wanted += [m for m in members if m not in wanted]
+        if missing:
+            listed = list(grouped)
+            raise ToolError("not_found", f"no change or record {', '.join(repr(m) for m in missing)}: the ids "
+                            f"are word_changes list's (changes) or list detail records' (records), as they "
+                            f"stand now", field="ids", valid_options=listed[:50],
+                            details={"changes": len(listed),
+                                     "call": {"tool": "word_changes",
+                                              "arguments": {"doc": call.entry.doc_id, "action": "list"}}})
+        before = len(document.revisions())
+        edits.append(document.accept(wanted) if action == "accept" else document.reject(wanted))
+        count = before - len(document.revisions())
     elif all and not (author or kind or within):
         before = len(document.revisions())
         edits.append(document.accept_all() if action == "accept" else document.reject_all())
