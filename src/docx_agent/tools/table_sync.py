@@ -210,10 +210,14 @@ def sync(call: Any, view: Any, source: str, from_columns: list[str] | None, key:
                 edits.extend(_set_cell(document, current, row, col, text))
     removed_rows: list[str] = []
     taken_out: list[int] = []            # rows deleted outright (a tracked deletion keeps its row)
+    from .originals import Watch, add as add_original
+
+    watch = Watch(document)           # round 57 (R122): the file's text the rows removed held
     with timing.part("rows_removed"):
         if remove and gone:
             for row in sorted((final[("old", plan.by_key[k])] for k in gone), reverse=True):
                 current = kept.current_id() or now
+                watch.row(current, row)
                 made = document.delete_row(current, row)
                 edits.append(made)
                 if made.removed:
@@ -246,6 +250,7 @@ def sync(call: Any, view: Any, source: str, from_columns: list[str] | None, key:
     result.warnings.extend(notes)
     if record_note:
         result.warnings.append(record_note)
+    add_original(result, watch.report(call))
     result = note_small_text(call, result, [now])
     timing.add("result", time.perf_counter() - started)
     return result

@@ -5,7 +5,7 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
-## 0.1.108 -- unreleased
+## 0.1.110 -- unreleased
 
 - **A table with a cell over several columns keeps a cell per value** (round 57, R125). On a
   made-up 4-column table whose last row is `[Totals | one cell over columns 1-3]`, five calls
@@ -52,6 +52,40 @@ snapshot commit; the development history before it is summarised here.
     `covers`: first and last grid column) and `after_accept` (pending tracked changes make
     the shape; read from a copy with them accepted). Where a `word_edit_table` call of this
     session left it so, `made_by` names the call, and that call's result said so.
+## 0.1.109 -- unreleased
+
+- **Deleting what the file held says so** (round 57, R122). A column rebuilt -- a new one
+  inserted and filled, the old one deleted -- took the old values out of the final view, and
+  `delete_column on t:60D6847F` was all the result said. Now `word_edit_table`'s
+  `delete_row`, `delete_column` and `sync` with `remove`, and `word_delete` of a paragraph, a
+  table or a span, say when what they removed held text the document had when it was opened:
+  `delete_column on t:60D6847F; 3 cells holding text the file had when opened left the final
+  view (t:60D6847F/c0,3 'Note', t:60D6847F/c1,3 'Pump check', t:60D6847F/c3,3 'Fence
+  repair'): undo takes the call back, or word_changes reject ids ['rev:1'] keeps them`, and
+  `data.original_removed` has `cells`, `paragraphs`, a `sample` of 5 places with their text
+  (`sample_left_out` the rest), the `undo` call and, tracked, the `reject` call. The file's
+  text is what its paragraphs held when opened (`package.opened()`), followed by id through
+  the stamping and renames since (a file without paraIds too), less what this session
+  inserted as tracked changes: removing this session's own rows, columns or the text it wrote
+  into an empty cell says nothing (`tools/originals.py`).
+- **`check`'s `accept_loses_original`** (round 57, R122): with `layout`, per listed change and
+  table (or the body's paragraphs), the text the file held when opened that a pending
+  deletion made this session takes out of the final view -- cells and paragraphs counted, a
+  sample, `fix` the `word_changes` reject that keeps them. Capped at 20; read beside the file
+  as opened, so not per page. A deletion pending when the document was opened is not listed.
+- **No comment describes a tracked structure change** (round 57, R123). A tracked column
+  deletion, merge or split wrote "Tracked structural change: column 4 deleted; Word does not
+  track deleting a column, so it is written as deleted cells." on the table: noise, and it
+  read as if something had gone wrong. `word_changes` list's `structure` says what each change
+  is; no comment is written now. A document holding such a comment keeps it until its
+  table's changes are settled, as before. Deleting a row or column that holds a comment's or
+  note's reference is still refused (the comment would be orphaned), now naming it and the
+  way out: `row 0 holds comment c:76FCC91F (docx-agent's note on a tracked structure change,
+  from before round 57): deleting it would orphan it; word_comments {action: 'delete', items:
+  [{comment: 'c:76FCC91F'}]} deletes it first; or word_changes accept or reject within
+  t:60D6847F settles the table's tracked changes, which removes docx-agent's note`. Without
+  the comment, the header row it was anchored in -- and the column beside a deleted one --
+  can be deleted again.
 
 ## 0.1.107 -- unreleased
 

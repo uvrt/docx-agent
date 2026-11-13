@@ -25,9 +25,10 @@ the grid recorded -- Word accepted to a fifth grid column: 54 px off.)
 A split, a column across a span and a merge's first row deleted (E5) are written with the
 new cells' and rows' marks inserted, every cell's old properties recorded, and a
 divided vertical merge as ``w:cellMerge`` (``vMerge`` the new, ``vMergeOrig`` the old).
-Each is described by a comment (opening with :data:`~docx_agent.revisions.review.
-DESCRIBES`), so a reviewer sees what changed; accepting or rejecting it here removes the
-comment (ROADMAP.md, decision 7).
+Until round 57 each was described by a comment (opening with :data:`~docx_agent.revisions.
+review.DESCRIBES`); now none is written (R123: ``word_changes`` list's ``structure`` says
+what each listed change is).  A document holding such a comment keeps it until accepting or
+rejecting its table's changes here removes it (ROADMAP.md, decision 7).
 
 Untracked, as Word does (``tools/e5_probe.py``): a merge gives the first cell of each row
 the span, ``w:vMerge`` restart and continue down the rows, and appends the other cells'
@@ -799,7 +800,7 @@ class TableOps:
         for paragraph in rows[index].iter(W_P):
             if moving is None and any(True for _ in paragraph.iter(_W + "footnoteReference", _W + "endnoteReference",
                                                                    _W + "commentReference")):
-                raise EditError(f"row {index} holds a note or comment reference")
+                raise EditError(self._references_held(rows[index], f"row {index}", entry.id))
         old_row_id = entry.rows[index][1]
         merged: list[tuple[Element, Element]] = []
         if tracking is not None:
@@ -816,7 +817,7 @@ class TableOps:
             for origin, cell in merged:
                 if any(True for copy_ in _copies_of(origin, cell)
                        for _ in copy_.iter(_W + "footnoteReference", _W + "endnoteReference", _W + "commentReference")):
-                    raise EditError(f"row {index} holds a note or comment reference")
+                    raise EditError(self._references_held(_copies_of(origin, cell), f"row {index}", entry.id))
         with self._edit():
             renames = self._prepare(part, [])
             part, entry = self._table_entry(renames.get(table, table))
@@ -968,8 +969,8 @@ class TableOps:
         """Delete grid column ``index``: the cells only in it, and the grid column; a cell
         spanning it and others spans one column fewer (its width less the column's), a row
         that skips it skips one fewer.  Tracked, the deleted cells are ``w:cellDel`` with
-        their content deleted, a spanning cell's old span a ``w:tcPrChange``, and a comment
-        says what changed (Word does not track a column's deletion: it applies it)."""
+        their content deleted, a spanning cell's old span a ``w:tcPrChange`` (Word does not
+        track a column's deletion: it applies it)."""
         from .document import EditError, EditResult
 
         part, entry = self._table_entry(table)
@@ -983,7 +984,7 @@ class TableOps:
             for cell, start, span in _cells(row):
                 if start == index and span == 1 and any(True for _ in cell.iter(
                         _W + "footnoteReference", _W + "endnoteReference", _W + "commentReference")):
-                    raise EditError(f"column {index} holds a note or comment reference")
+                    raise EditError(self._references_held(cell, f"column {index}", entry.id))
         if self._active_tracking() is not None:
             from ..revisions.review import merged_away
 
@@ -998,7 +999,8 @@ class TableOps:
                     if merged_away(cell) and any(True for copy_ in _copies_of(origins.get(id(cell), (None, None))[1], cell)
                                                  for _ in copy_.iter(_W + "footnoteReference", _W + "endnoteReference",
                                                                      _W + "commentReference")):
-                        raise EditError(f"column {index} holds a note or comment reference")
+                        raise EditError(self._references_held(
+                            _copies_of(origins.get(id(cell), (None, None))[1], cell), f"column {index}", entry.id))
         doomed_count = sum(1 for row, _ in entry.rows for cell, start, span in _cells(row)
                            if start <= index < start + span and span == 1)
         if doomed_count and all(len([c for c in _cells(row) if not (c[1] <= index < c[1] + c[2] and c[2] == 1)]) == 0
@@ -1082,15 +1084,8 @@ class TableOps:
                     _set_grid(element, widths)
                     tracker.record(stamp, part, table_level=False)
                 stamp.finish()
-                first_row = entry.rows[0][0]
-                cells = _cells(first_row)
-                anchor = next((cell for cell, start, span in cells if start + span == index), None)
-                if anchor is None:
-                    anchor = next((cell for cell, start, span in cells if not (start <= index < start + span and span == 1)),
-                                  cells[0][0] if cells else None)
-                if anchor is not None:
-                    self._describe(part, anchor, f"column {index + 1} deleted; Word does not track deleting a "
-                                                 "column, so it is written as deleted cells.")
+                # Round 57 (R123): no comment describing the deletion -- word_changes list's
+                # ``structure`` says what each listed change is.
                 self.package.mark_dirty(part)
                 table_id = renames.get(entry.id, entry.id)
                 # Round 54 (R110, lane M): what the reader sees now, and what positions count.
@@ -1386,7 +1381,6 @@ class TableOps:
         from ..revisions.review import merged_away
 
         stamp = Stamp(self, tracking)
-        across = any(len(plan_row) > 1 for plan_row in plan)
         copies: list[Element] = []
         for k, plan_row in enumerate(plan):
             lead = plan_row[0][0]
@@ -1461,9 +1455,6 @@ class TableOps:
             old = _track.clean_properties(last_paragraph.find(_W + "pPr"), "w:pPr")
             _track.record_paragraph_change(copies[-1], old, stamp, part)
         stamp.finish()
-        how = "deleted cells" + (" and a cell merge" if len(plan) > 1 else "") if across else "a cell merge"
-        self._describe(part, origin, f"cells ({first[0] + 1}, {first[1] + 1}) to ({last[0] + 1}, {last[1] + 1}) "
-                                     f"merged as {how}: Accept All merges them, Reject All keeps them apart.")
 
     # -- splitting --------------------------------------------------------------------------
 
@@ -1576,26 +1567,50 @@ class TableOps:
                 if not new_rows:
                     _merges_as_cell_merges(element, tracker, stamp, part)
                 stamp.finish()
-                self._describe(part, cell, f"cell ({row + 1}, {column + 1}) split into {rows} x {columns}, "
-                                           "written as inserted cells and rows: Reject All takes them out.")
             self.package.mark_dirty(part)
             created = [self._paragraph_id(part, p) for p in new_paragraphs]
         return EditResult(renames.get(entry.id, entry.id), renamed=renames, created=[c for c in created if c],
                           warnings=warnings)
 
-    def _describe(self: "Document", part: str, cell: Element, text: str) -> None:
-        """A comment on a cell's first paragraph saying what structural change the tracked
-        revisions in it stand for."""
+    def _references_held(self: "Document", held: "Element | list[Element]", what: str, table: str) -> str:
+        """Round 57 (R123): the refusal of deleting a row or column that holds a note's or a
+        comment's reference, naming each and the call that clears the way (rule 2) -- a
+        comment docx-agent wrote, before round 57, to describe a tracked structure change
+        (:data:`~docx_agent.revisions.review.DESCRIBES`) also goes when the table's changes
+        are settled."""
         from ..revisions.review import DESCRIBES
 
-        paragraph = cell.find(W_P)
-        entry = self._index(part).entry_for(paragraph)
-        if entry is None:
-            self._invalidate()
-            entry = self._index(part).entry_for(paragraph)
-        from .ranges import TextRange
-
-        self.add_comment(TextRange(self, entry.id, 0, entry.id, 0), f"{DESCRIBES} {text}")
+        nodes = [held] if not isinstance(held, list) else held
+        notes, comments = [], []
+        for node in nodes:
+            for found in node.iter(_W + "footnoteReference", _W + "endnoteReference", _W + "commentReference"):
+                if found.tag == _W + "commentReference":
+                    comments.append(found.get(_W + "id"))
+                else:
+                    notes.append(("fn:" if found.tag == _W + "footnoteReference" else "en:") + (found.get(_W + "id") or ""))
+        records = {r["w_id"]: r for r in self._comment_records()} if comments else {}
+        named, ours, others = [], [], []
+        for w_id in dict.fromkeys(comments):
+            record = records.get(w_id)
+            if record is None:
+                continue
+            text = "".join(t.text or "" for t in record["element"].iter(_W + "t"))
+            (ours if text.startswith(DESCRIBES) else others).append(record["id"])
+            named.append(f"comment {record['id']}" + (" (docx-agent's note on a tracked structure change, from "
+                                                      "before round 57)" if text.startswith(DESCRIBES) else ""))
+        named += [f"note {n}" for n in dict.fromkeys(notes)]
+        ways = []
+        if ours or others:
+            items = ", ".join(f"{{comment: '{c}'}}" for c in ours + others)
+            ways.append(f"word_comments {{action: 'delete', items: [{items}]}} deletes "
+                        + ("them" if len(ours + others) > 1 else "it") + " first")
+        if ours:
+            ways.append(f"word_changes accept or reject within {table} settles the table's tracked changes, "
+                        "which removes docx-agent's note")
+        if notes:
+            ways.append(f"word_delete {{target: '{notes[0]}'}} deletes a note first")
+        return (f"{what} holds {', '.join(named) or 'a note or comment reference'}: deleting it would orphan "
+                + ("them" if len(named) > 1 else "it") + ("; " + "; or ".join(ways) if ways else ""))
 
     def _paragraph_id(self: "Document", part: str, paragraph: Element) -> str:
         self._invalidate()

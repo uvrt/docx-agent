@@ -18,6 +18,8 @@ from ..edit.pictures import PictureError
 from . import positions
 from ._base import Timing, engage, need, note_small_text, outcome, remember, resolve, short, word_tool
 from .structure import _position
+from .originals import Watch
+from .originals import add as add_original
 from .table_data import DATE_FORMAT, HEADER, MAX_COLUMNS, MAX_ROWS, cell_text, fits, no_source, placed
 
 DOC = string("Document id.")
@@ -494,6 +496,7 @@ def word_edit_table(call: Any, doc: str, table: str, action: str, cells: list[di
     # its shape -- an edit that makes it so says so, and check names the edit.
     ragged_before = _ragged(document, table) if action not in ("set_cells", "insert_row") else None
     edits = []
+    watch: Watch | None = None          # round 57 (R122): the file's text a deletion removes
     facts: list[dict[str, Any]] | None = None
     fills: list[dict[str, Any]] = []
     held: set[str] = set()
@@ -537,6 +540,8 @@ def word_edit_table(call: Any, doc: str, table: str, action: str, cells: list[di
         if accepted.rows_active:
             index = accepted.to_row(index, "index")
         _no_reshape_over_merge_lead(document, doc, table, accepted, action, index)
+        watch = Watch(document)
+        watch.row(table, index)
         edits.append(document.delete_row(table, index))
     elif action == "insert_column":
         # Round 54 (lane M): beside the column named, as accepted -- a column whose deletion is
@@ -547,6 +552,8 @@ def word_edit_table(call: Any, doc: str, table: str, action: str, cells: list[di
     elif action == "delete_column":
         grid = accepted.to_grid(need(index, "index"), "index")
         _no_reshape_over_merge_lead(document, doc, table, accepted, action, grid)
+        watch = Watch(document)
+        watch.column(table, grid)
         edits.append(document.delete_column(table, grid))
     elif action == "merge":
         a, b = need(first, "first"), need(last, "last")
@@ -580,6 +587,8 @@ def word_edit_table(call: Any, doc: str, table: str, action: str, cells: list[di
                                   "counts as made)")
     if read_as:
         result.warnings.insert(0, read_as)
+    if watch is not None:
+        add_original(result, watch.report(call))
     result.warnings.extend(accepted.notes)
     result.warnings.extend(_loses_text(document, now))
     if action not in ("set_cells", "insert_row"):

@@ -181,6 +181,14 @@ takes its targets as one list with the values for all, so it is ``calls``, not `
     document's grid), ``text`` what would be lost (shortened), ``change`` the mark's
     deletion (``rev:``) and ``author`` its author; ``fix`` the ``word_changes`` reject that
     keeps the text.  Read from the document, so listed where the layout failed too.
+``accept_loses_original`` (round 57, R122)
+    ``{"change", "author", "table" | "paras", "cells", "paragraphs", "sample", "fix"}``:
+    text the file held when opened (its final view) that a pending tracked deletion made
+    this session takes out of the final view -- per listed change (``word_changes`` list's
+    id) and table (or the body's paragraphs, ``paras``): the cells and paragraphs counted, a
+    ``sample`` of up to 3 places (cells on the document's grid) with their text, ``fix`` the
+    reject that keeps them.  Made by ``check`` beside the file as opened
+    (:func:`docx_agent.tools.originals.accept_loses_original`), not per page.
 ``uncertain``
     ``{"page", "placeholders", "approximations", "story_stops"}``: the pages the layout drew
     a placeholder on, laid out by a rule it has not measured, or could not draw a header,
