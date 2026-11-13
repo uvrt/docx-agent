@@ -82,8 +82,9 @@ _MOVE_MARKERS = {
     _W + "moveToRangeStart": _W + "moveToRangeEnd",
 }
 
-#: The text that opens a comment docx-agent writes to describe a structural table change
-#: Word has no tracked form of its own for (ROADMAP.md, decision 7).
+#: The text that opens a comment docx-agent wrote, until round 57 (R123: none now), to
+#: describe a structural table change Word has no tracked form of its own for (ROADMAP.md,
+#: decision 7).  A document holding one keeps it until its table's changes are settled.
 DESCRIBES = "Tracked structural change:"
 
 

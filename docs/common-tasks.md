@@ -202,6 +202,28 @@ view. To make the shape in a document of one's own, give the cell's last `w:p`
 `<w:pPr><w:rPr><w:del w:id="..." w:author="..." w:date="..."/></w:rPr></w:pPr>`;
 `tools/make_samples.py` writes the sample so.
 
+#### Deleting what the file held
+
+`delete_row`, `delete_column`, a `sync` with `remove` and `word_delete` of a paragraph, table
+or span say when what they remove held text the document had when it was opened (round 57):
+
+```text
+call:    word_edit_table {"doc": "d1", "table": "t:60D6847F", "action": "delete_column", "index": 3}
+summary: delete_column on t:60D6847F; 3 cells holding text the file had when opened left the final
+         view (t:60D6847F/c0,3 'Note', ...): undo takes the call back, or word_changes reject
+         ids ['rev:1'] keeps them
+data.original_removed:
+  {"cells": 3, "paragraphs": 0, "sample": [{"at": "t:60D6847F/c0,3", "text": "Note"}, ...],
+   "undo": {"tool": "undo", "arguments": {"doc": "d1"}},
+   "reject": {"tool": "word_changes", "arguments": {"doc": "d1", "action": "reject", "ids": ["rev:1"]}}}
+```
+
+Removing only this session's own rows, columns or the text it wrote into an empty cell says
+nothing. `check` with `layout` lists, as `accept_loses_original`, the text a pending deletion
+of this session takes out of the final view, with the reject that keeps it. To change a
+column's values, `set_cells` rewrites them in place: a column rebuilt (a new one inserted, the
+old one deleted) takes the old values out of the final view.
+
 ### Write Markdown into the document
 
 ```python
