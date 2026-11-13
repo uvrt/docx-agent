@@ -34,7 +34,9 @@ WORDS = "lantern meadow river stone harbour quiet orchard copper valley signal".
 #: short (a 0.2 s sleep as 0.199).
 CLOCK = 0.01
 #: Every name a check's timing may hold.
-PARTS = {"resolve", "validate", "copies", "layout", "facts", "fields", "worker_wait", "document_wait"}
+PARTS = {"resolve", "validate", "copies", "layout", "facts", "fields", "worker_wait", "document_wait",
+         # Round 57 (R124, ooxml-edit 0.115.0): the save gate's validation, and numbers.
+         "validation", "numbers"}
 
 
 def _text(seed: int, words: int) -> str:
@@ -75,7 +77,8 @@ def test_a_lone_check_says_its_parts_and_its_waits(made, workers):
         timing = _timing(result)
         # The default include: validate, reflow (laid out in the worker holding the
         # layout), fields; the document let go while laying out, taken back after.
-        assert list(timing) == ["validate", "layout", "facts", "worker_wait", "document_wait", "fields"]
+        assert list(timing) == ["validate", "layout", "facts", "worker_wait", "document_wait", "fields",
+                                "validation"]
         assert timing["layout"] > 0
         # The timing is the data's last key; the rest is what it was, and (round 53) what
         # saving would refuse.

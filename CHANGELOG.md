@@ -5,6 +5,28 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.110 -- unreleased
+
+- **A range-scoped check of a long report costs less, and says where every second went**
+  (round 57, R124; ooxml-edit 0.115.0). Measured on a made-up 295-page report (six
+  chapters of headings, lists, tables, a contents, cross references, page X of Y), a check
+  of one chapter with `include: ["validate", "layout", "numbers", "reflow", "fields"]`:
+  - `numbers` named each text's page by laying the whole document out *in the caller's
+    process* (the layout pickled over from the worker, read and mapped to ids there: about
+    7 s of the interpreter every call shares, and 1 GB more in it). Now it asks the worker
+    holding the layout for those texts' pages alone (`pages_of`), as the check's own facts
+    are made there (round 38). The main process's CPU for three edit-and-check rounds:
+    26.6 s before, 13.0 s after.
+  - `layout`'s facts: `numbering_skips_level` listed the numbering part's lists and read
+    the styles again for every numbered paragraph (4 s of 8 on such a report); now once per
+    check. `column_fit` resolved every body table's path for each table it measured; now
+    by the table's own. A range's `kept` stops at the first block not kept. The facts of
+    one chapter (48 pages): 8.0 s CPU before, 2.4 s after; of the whole report 18.0 s
+    before, 4.7 s after. Same facts.
+  - `data.timing` now also says `numbers` and `validation` (the save gate's comparison,
+    found once per version): the parts that ran outside the Word handler, so a check's
+    timing accounts for all of it (a few more numbers; nothing else in the result changes).
+
 ## 0.1.107 -- unreleased
 
 - **`from` given the document's own table says so, and lists the rows there are** (round 56,

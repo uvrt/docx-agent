@@ -1023,7 +1023,7 @@ class _Facts:
             element = self.paths.resolve(tree, path)
             if element is None:
                 continue
-            found = _fit_columns(self.document, element, cells)
+            found = _fit_columns(self.document, element, cells, path)
             if not found:
                 continue
             identifier = _block_id(self.document, self.main, path, self.paths) or path
@@ -1248,7 +1248,8 @@ def _line_widths(spans) -> tuple[float, float] | None:
     return _pt(ink[1] - ink[0]), widest
 
 
-def _fit_columns(document: "Document", table, cells: dict[tuple[int, int], dict]) -> list[dict]:
+def _fit_columns(document: "Document", table, cells: dict[tuple[int, int], dict],
+                 path: str | None = None) -> list[dict]:
     """``column_fit``'s entries for one table: ``cells`` ``{(row, w:tc index): {"lines":
     {paragraph: [ink widths]}, "words": [widest word per line]}}``.  Only cells over one
     grid column count; a table of fewer than two columns, or with no grid, has none."""
@@ -1258,7 +1259,7 @@ def _fit_columns(document: "Document", table, cells: dict[tuple[int, int], dict]
     grid = [w / 20 for w in grid_widths(table)]
     if len(grid) < 2:
         return []
-    margins = _cell_margins(document, table)
+    margins = _cell_margins(document, table, path)
     columns: dict[int, dict] = {}
     for r, row in enumerate(table.findall(_W + "tr")):
         for k, (_, start, span) in enumerate(row_cells(row)):
@@ -1651,11 +1652,20 @@ def numbering_skips_level(document: "Document") -> list[dict[str, Any]]:
     their paragraph (round 30, W15; 0.1.32's interim ``first`` went in round 31).  A label that shows only its own level (``a)``, a bullet) never skips one.  The
     main story's paragraphs, a table's too; a paragraph whose style's level is tied to
     another style is numbered by none (Word draws no number) and is left out."""
-    from .edit.numbering import Numbering, definition_of, membership, paragraph_style_id, style_list
+    from .edit.numbering import Numbering, reading
 
     numbering = Numbering(document)
     if numbering.root is None:
         return []
+    # Round 57 (R124): the numbering part's lists and definitions listed once for the whole
+    # read, not again for every numbered paragraph (a 300-page report: 4 s of a check).
+    with reading(document):
+        return _skips_level(document, numbering)
+
+
+def _skips_level(document: "Document", numbering: Any) -> list[dict[str, Any]]:
+    from .edit.numbering import definition_of, membership, paragraph_style_id, style_list
+
     index = document._index(document.package.document_part())
     styles = {s.id: s.name or s.id for s in document.styles}
     default = document.styles.default("paragraph")

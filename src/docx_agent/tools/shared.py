@@ -537,7 +537,9 @@ def check(call: Any, doc: str, slides: list | None = None, pages: list[int] | No
     and comparing with the last check), ``fields`` -- and, apart, the waits: ``worker_wait``
     (for the worker holding the document's layout: its queue, a layout of the document in
     progress there, the bytes there and the facts back) and ``document_wait`` (taking the
-    document back after laying out with it let go).  The wait for the document before the
+    document back after laying out with it let go).  Round 57 (R124, ooxml-edit 0.115.0):
+    ``numbers`` (``include: ["numbers"]``) and ``validation`` (the save gate's comparison),
+    which run around this handler, are added there.  The wait for the document before the
     call ran is the result's duration less these."""
     timing = Timing()
     pages = _pages_of(call, slides, pages)

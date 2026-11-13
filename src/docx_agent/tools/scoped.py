@@ -139,7 +139,8 @@ def range_keeps(document: Any, found: Any, layout: Any) -> dict[str, Any]:
     drawn = [layout.pages_of(identifier) for identifier, _ in blocks]
     if not blocks or not all(drawn):
         return {}
-    changes, _ = document._keep_changes(blocks, True)
+    # Only whether the range is kept: the first block that is not answers it (round 57).
+    changes, _ = document._keep_changes(blocks, True, first=True)
     out: dict[str, Any] = {"one_page": len({p for pages in drawn for p in pages}) == 1, "kept": not changes}
     if out["one_page"]:
         return out
