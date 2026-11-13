@@ -378,6 +378,26 @@ def _locate(table: Any, cell: dict, header_row: int = 0, accepted: "_Accepted | 
     return row, col
 
 
+def _no_table(call: Any, doc: str, table: Any) -> ToolError:
+    """Round 56 (R120): no table ``table`` in the document: its tables are the options (the first
+    12, the rest counted), and a table of another open document (a workbook's ``t:stock``) is said to
+    be one, with the call that writes its rows into a table here."""
+    from ooxml_edit.tools import sources
+
+    ids = [found.id for found in call.document.tables()]
+    shown = ids[:12] + ([f"and {len(ids) - 12} more"] if len(ids) > 12 else [])
+    listed = f"{doc}'s tables: {', '.join(shown)}" if ids else f"{doc} has no table"
+    elsewhere = sources.resolving(table, call.session) if isinstance(table, str) else None
+    if elsewhere is not None:
+        handle = sources.qualify(elsewhere, dict(call.session.documents), call.session.formats)[0]
+        kind = call.session.documents[handle].kind
+        example = {"table": ids[0] if ids else "<id>", "action": "sync", "from": elsewhere}
+        return ToolError("not_found", f"{table} is a table of {handle} ({kind}), not of {doc}: word_edit_table "
+                         f"changes a table of {doc} ({', '.join(shown) or 'it has none'}); to keep one in step "
+                         f"with its rows, e.g. {example}", field="table", valid_options=ids[:12])
+    return ToolError("not_found", f"no table {table!r} in {doc}; {listed}", field="table", valid_options=ids[:12])
+
+
 def _text(table: Any, row: int, col: int) -> str:
     try:
         return table.cell(row, col).text
@@ -423,7 +443,12 @@ def word_edit_table(call: Any, doc: str, table: str, action: str, cells: list[di
                     **given: Any) -> Result:
     document = call.document
     table = resolve(call, table)
-    view = document.table(table)
+    try:
+        view = document.table(table)
+    except KeyError as error:
+        if type(error) is not KeyError:     # an AddressError: says what the id is, with options
+            raise
+        raise _no_table(call, doc, table) from None
     source = given.get("from") or None  # "": a strict decoder's placeholder for none (rule 1)
     if action == "sync":
         return _sync(call, view, source, cells, index, from_columns, header, date_format, grow, key, remove,

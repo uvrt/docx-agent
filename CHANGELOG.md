@@ -5,6 +5,28 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.105 -- unreleased
+
+- **`from` given the document's own table says so, and lists the rows there are** (round 56,
+  R120; ooxml-edit 0.114.0). A sync whose `from` was the report's own table id was refused as
+  "no table, name or region t:458D9849; there are ['t:stock']" (bare: no dataset listed,
+  nothing said of the table being the report's) or "d1 (docx) takes no t: addresses" with
+  `d2/t:458D9849` offered (with `d1/`: an address that does not exist). Now the docx format
+  says what such a value names (`own_source`: a table, a paragraph, a content control, part
+  of a table), and every `from` of the document -- sync, set_cells, a cell's, a new table's,
+  a reference in a text -- is refused as `invalid_arguments`: `t:458D9849 is a table of d1,
+  the document this call edits, not rows to take: from takes a dataset (d:<id>) or rows of
+  an open xlsx document (t:<name>); there are datasets d:counts and tables t:stock; e.g.
+  from: "d:counts"`, the datasets and workbook tables as `valid_options`, and with one
+  source alone the call that works in `details.call`. Every address a `from` refusal offers
+  resolves (ooxml-edit's `sources.refusal`), tested option by option.
+- **`key` and `table` refusals of `word_edit_table` offer what resolves** (round 56). A sync's
+  `key` naming no column taken offered `"0: code"`, which `key` does not take: now the
+  labels (`code`), or the index where a label is not one column's alone. A `table` the
+  document does not have offered nothing: now its tables (the first 12), and a workbook's
+  table given as `table` (`t:stock`, `d2/t:stock`) is said to be one, with the sync that
+  writes its rows into a table of the document.
+
 ## 0.1.104 -- unreleased
 
 - **A tracked merge or split over pending tracked structure changes, whatever the order**
