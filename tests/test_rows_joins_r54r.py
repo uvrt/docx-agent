@@ -199,7 +199,7 @@ def test_sync_and_describe_count_the_rows_as_accepted(box):
 
 
 def _p(text: str, deleted_mark: bool = False) -> str:
-    mark = f'<w:pPr><w:rPr><w:del w:id="9{len(text)}" w:author="Reviewer B" w:date="2026-11-13T09:00:00Z"/>' \
+    mark = f'<w:pPr><w:rPr><w:del w:id="9{len(text)}" w:author="Editor B" w:date="2026-11-13T09:00:00Z"/>' \
            '</w:rPr></w:pPr>' if deleted_mark else ""
     return f"<w:p>{mark}<w:r><w:t xml:space=\"preserve\">{text}</w:t></w:r></w:p>"
 
@@ -322,7 +322,7 @@ def test_check_names_the_text_accept_all_loses_with_the_reject_that_keeps_it(box
     found = ok(box, session, "check", doc="d1", include=["layout"]).data["layout"]["accept_loses_text"]
     assert len(found) == 1
     entry = found[0]
-    assert entry["text"] == "Kept. Last." and entry["author"] == "Reviewer B" and entry["change"].startswith("rev:")
+    assert entry["text"] == "Kept. Last." and entry["author"] == "Editor B" and entry["change"].startswith("rev:")
     assert entry["cell"].endswith("/c0,1" if shape == "a row's end" else "/c1,1")
     assert entry["fix"] == {"tool": "word_changes", "calls": [{"action": "reject", "ids": [entry["change"]]}]}
     ok(box, session, "word_changes", doc="d1", **entry["fix"]["calls"][0])
