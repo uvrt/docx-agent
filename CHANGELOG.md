@@ -22,7 +22,7 @@ snapshot commit; the development history before it is summarised here.
   was: `structure` in the list (`Change.structure`), `column deletion` `column insertion`
   `merge` `split` `row deletion` `row insertion`; a merge and a split are `table` changes,
   a column deletion a `deletion`, a column insertion an `insertion`. Accepting or rejecting
-  one by its id takes only its records (the review took every record of the table made
+  one by its id takes only its records (accept and reject took every record of the table made
   with it) and the others stay pending; one by one in any order gives the same document as
   accepting all, a valid file each step.
   Before: delete column + set_cells -> one `replacement` (`'Phase draft done open' ->
