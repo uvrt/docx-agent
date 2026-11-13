@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import copy
 import difflib
+import re
 from dataclasses import dataclass, field
 
 from ..oxml.xml import REVISION_PROPERTY_TAGS, XML_SPACE, Element, qn, remove
@@ -461,6 +462,40 @@ def _insert_run(paragraph: Element, reference: Atom | None, side: str, text: str
         anchor.addnext(run)
     else:
         anchor.addprevious(run)
+
+
+#: Round 55 (R117): the pieces a tracked replacement is diffed by -- a word (letters and
+#: digits), a stretch of white space, or one other character.
+_TOKEN = re.compile(r"\w+|\s+|[^\w\s]", re.UNICODE)
+
+
+def word_opcodes(old: str, new: str) -> list[tuple[str, int, int, int, int]]:
+    """Round 55 (R117): :func:`coarse_opcodes` at word boundaries, for a tracked
+    replacement -- whole words deleted and inserted, unchanged words kept, as Word's
+    Compare marks a changed text (measured, ``feedback-round55/probe-C/r117``): "Quarterly
+    report" -> "Half-yearly report" is "Quarterly" deleted, "Half-yearly" inserted, " report"
+    kept, never "Quarte" / "Half-yea" around a shared "rly".  White space alone between two
+    changed words is part of the change."""
+    a = [m.group() for m in _TOKEN.finditer(old)]
+    b = [m.group() for m in _TOKEN.finditer(new)]
+    at_a = [0]
+    for token in a:
+        at_a.append(at_a[-1] + len(token))
+    at_b = [0]
+    for token in b:
+        at_b.append(at_b[-1] + len(token))
+    raw = difflib.SequenceMatcher(None, a, b, autojunk=False).get_opcodes()
+    result: list[list] = []
+    for index, (tag, i1, i2, j1, j2) in enumerate(raw):
+        interior = 0 < index < len(raw) - 1
+        if tag == "equal" and interior and all(t.isspace() for t in a[i1:i2]):
+            tag = "replace"
+        if tag != "equal" and result and result[-1][0] != "equal":
+            result[-1][2] = at_a[i2]
+            result[-1][4] = at_b[j2]
+            continue
+        result.append([("equal" if tag == "equal" else "replace"), at_a[i1], at_a[i2], at_b[j1], at_b[j2]])
+    return [tuple(op) for op in result]  # type: ignore[misc]
 
 
 def coarse_opcodes(old: str, new: str) -> list[tuple[str, int, int, int, int]]:

@@ -1125,6 +1125,60 @@ def _content_kept(cell: Element) -> bool:
     return False
 
 
+def merged_away(cell: Element) -> bool:
+    """Whether ``cell`` is a pending tracked merge's cell merged away: ``w:cellDel`` with its
+    content or a mark kept (round 54, lane M)."""
+    return cell.find(f"{_W}tcPr/{_W}cellDel") is not None and _content_kept(cell)
+
+
+def column_deleted(cell: Element) -> bool:
+    """Whether ``cell`` is a pending tracked deletion's: ``w:cellDel``, nothing kept."""
+    return cell.find(f"{_W}tcPr/{_W}cellDel") is not None and not _content_kept(cell)
+
+
+def merge_groups(table: Element) -> list[list[tuple[int, Element]]]:
+    """Round 55 (R115): ``table``'s pending tracked merges, each as its cells ``(row index,
+    cell)``, the merge's first cell (where the text goes) first: across, a row's cell and
+    the cells merged away after it (a cell a pending column deletion removes, between them,
+    is not the merge's); down, the cells a ``w:cellMerge`` run joins (``rest``, then
+    ``cont`` in the rows below, a row whose deletion is pending passed over), each with the
+    cells merged away after it."""
+    grid = _grid_map(table)
+    segments: dict[int, list[tuple[int, Element]]] = {}
+    for r, (_row, cells) in enumerate(grid):
+        lead: Element | None = None
+        for cell, _start, _span in cells:
+            if cell.find(f"{_W}tcPr/{_W}cellDel") is None:
+                lead = cell
+                segments[id(cell)] = [(r, cell)]
+            elif lead is not None and _content_kept(cell):
+                segments[id(lead)].append((r, cell))
+    groups: list[list[tuple[int, Element]]] = []
+    taken: set[int] = set()
+    # Down: a w:cellMerge rest and the conts below it at the same grid column.
+    for r, (_row, cells) in enumerate(grid):
+        for cell, start, _span in cells:
+            record = cell.find(f"{_W}tcPr/{_W}cellMerge")
+            if record is None or record.get(_W + "vMerge") != "rest" or id(cell) in taken:
+                continue
+            group = list(segments.get(id(cell), [(r, cell)]))
+            for below in range(r + 1, len(grid)):
+                row_below, cells_below = grid[below]
+                if row_below.find(f"{_W}trPr/{_W}del") is not None:
+                    continue
+                found = next((c for c, s, _ in cells_below if s == start), None)
+                mark = found.find(f"{_W}tcPr/{_W}cellMerge") if found is not None else None
+                if mark is None or mark.get(_W + "vMerge") != "cont":
+                    break
+                group += segments.get(id(found), [(below, found)])
+            taken.update(id(c) for _, c in group)
+            groups.append(group)
+    for segment in segments.values():
+        if len(segment) > 1 and id(segment[0][1]) not in taken:
+            groups.append(segment)
+    return groups
+
+
 def _cell_before(cell: Element) -> Element | None:
     """The cell before ``cell`` in its row, or ``None``."""
     node = cell.getprevious()

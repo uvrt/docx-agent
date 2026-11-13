@@ -302,7 +302,7 @@ def replace_span(paragraph: Element, start: int, end: int, new: str, stamp: Stam
         stretches = [(start, end, new)]
     else:
         stretches = [(start + i1, start + i2, new[j1:j2])
-                     for tag, i1, i2, j1, j2 in _text.coarse_opcodes(old, new) if tag != "equal"]
+                     for tag, i1, i2, j1, j2 in _text.word_opcodes(old, new) if tag != "equal"]
     released: list[str] = []
     for a, b, text in reversed(stretches):
         items = _text.atoms(paragraph)
@@ -312,13 +312,76 @@ def replace_span(paragraph: Element, start: int, end: int, new: str, stamp: Stam
             reference = first.run if first.kind == "text" else _reference_run(items, a)
         if not old and a < len(items) and a > 0 and not _text._plain(items[a - 1]) and _text._plain(items[a]):
             reference = items[a].run
+        pieces = _pieces(items, a, b, text) if keep != "first" and b > a else []
+        before = list(paragraph.iter(W_DEL))      # held: their id()s stay theirs
         released += delete_span(paragraph, a, b, stamp, part)
         if text:
             if reference is None or reference.getparent() is None:
                 reference = _reference_run(_text.atoms(paragraph), a)
-            insert_text(paragraph, a, text, stamp, part, reference)
+            if len(pieces) > 1:
+                runs = [_text.make_run(piece, _text.run_properties_for(paragraph, source)) for piece, source in pieces]
+                parent, index = _inline.position(paragraph, a)
+                insert_nodes(parent, index, runs, stamp, part)
+                run = runs[0]
+            else:
+                run = insert_text(paragraph, a, text, stamp, part, reference)
+            _after_deletion(run, [node for node in paragraph.iter(W_DEL) if not any(node is o for o in before)])
     released += _inline.prune(paragraph)
     return released
+
+
+def _pieces(items, a: int, b: int, text: str) -> list[tuple[str, Element | None]]:
+    """Round 55 (R117): the text replacing the whole words ``[a, b)``, in pieces each with
+    the run whose formatting it takes -- each character as the untracked edit gives it (one
+    kept takes its own, a new one that of the character it replaces, or of the one before):
+    the accepted text is the untracked edit's, its formatting too."""
+    old = "".join(atom.char for atom in items[a:b])
+    sources: list[Element | None] = []
+    for tag, i1, i2, j1, j2 in _text.coarse_opcodes(old, text):
+        if tag == "equal":
+            sources += [items[a + i1 + k].run for k in range(j2 - j1)]
+            continue
+        k = a + i1
+        if i2 > i1 and _text._plain(items[k]):
+            source = items[k].run
+        elif k > 0 and items[k - 1].run is not None:
+            source = items[k - 1].run
+        else:
+            source = items[a].run
+        sources += [source] * (j2 - j1)
+    pieces: list[tuple[str, Element | None]] = []
+    for char, source in zip(text, sources):
+        if pieces and _same_look(pieces[-1][1], source):
+            pieces[-1] = (pieces[-1][0] + char, pieces[-1][1])
+        else:
+            pieces.append((char, source))
+    return pieces
+
+
+def _same_look(one: Element | None, other: Element | None) -> bool:
+    if one is other:
+        return True
+    if one is None or other is None:
+        return False
+    return _canonical(clean_properties(one.find(W_RPR), "w:rPr")) == \
+        _canonical(clean_properties(other.find(W_RPR), "w:rPr"))
+
+
+def _after_deletion(run: Element, made: list[Element]) -> None:
+    """Round 55 (R117): the insertion of a replacement after the deletion it replaces, as
+    Word writes text typed over a selection and its Compare writes a changed word -- at a
+    paragraph's end the current view's offset fell before the deleted text."""
+    container = run.getparent()
+    if container is None or container.tag != W_INS or not made:
+        return
+    following = container.getnext()
+    last = None
+    while following is not None and isinstance(following.tag, str) and following.tag == W_DEL \
+            and any(following is node for node in made):
+        last = following
+        following = following.getnext()
+    if last is not None:
+        last.addnext(container)
 
 
 # -- paragraph marks ------------------------------------------------------------------------

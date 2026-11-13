@@ -5,6 +5,43 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.104 -- unreleased
+
+- **A tracked merge or split over pending tracked structure changes, whatever the order**
+  (round 55, R115). Before, with a tracked column deletion, merge or split pending in a
+  table, a tracked merge or split was refused ("Word does not track a merge", the fix
+  accepting every change within the table), while merge-then-delete went through and
+  accepted to another table than delete-then-merge would mean (the deleted column's text
+  left in the merged cell). Now, measured with Word 16.106 for Mac on a made-up report table
+  (Accept All and Reject All saved by Word, against docx-agent's own): a merge leaves a cell a
+  pending column deletion removes out (it keeps its deletion; the cells merged away beyond it
+  go to the merge's first cell) -- the deleted column left of, right of or inside the merge,
+  a header row, a rectangle, merged down beside it; merged down over a row whose deletion is
+  pending, that row is passed over; a merge reaching a pending merge takes it in whole (two
+  merges in a row, one grown, one taking in another's first cell, across then down); a split
+  down beside a pending column deletion writes the new row's cell under it deleted too (before,
+  Word's Accept All kept that cell: a row one cell too long). Delete-then-merge and
+  merge-then-delete give the same accepted and rejected tables: deleting a column or row a
+  pending merge took a cell from takes that cell's text out of the merged cell again. Each
+  case: Word's Accept All and Reject All give the cells, spans, merges and text docx-agent's
+  give, in all 30 cases (widths aside: Word re-saves the grid its own way). A column or row holding a pending merge's first cell is refused, the
+  fix accepting that merge alone by id (`word_changes accept ids [rev:N]`), never `within`
+  the table. A split of a cell a pending merge makes likewise.
+- **A tracked text replacement marks whole words** (R117). `set_cells`, `set_text` and the other
+  text-rewriting edits recorded "Quarterly" -> "Half-yearly" as "Quarte" deleted, "Half-yea"
+  inserted around a kept "rly"; now "Quarterly" deleted and "Half-yearly" inserted, unchanged
+  words kept -- as Word 16.106's Compare marks it (measured, 13 made-up sentences: the same
+  stretches in each; a word is letters and digits, a hyphen, comma or full stop its own piece,
+  the space between two changed words part of the change). The deletion comes before the
+  insertion (as typing over a selection writes it; Word's Compare writes the insertion first,
+  which accepts and rejects the same); at a paragraph's end it came after. The new text takes
+  per character the formatting the untracked edit gives it, so Accept All is the untracked
+  edit. Untracked edits are unchanged.
+- The describing comment of a tracked merge or split says what was written ("merged as deleted
+  cells: Accept All merges them, Reject All keeps them apart"); "Word does not track a merge"
+  is gone from messages and docstrings.
+- Tool definitions and Word core unchanged (definitions sha 7a8d751ed0151521).
+
 ## 0.1.103 -- unreleased
 
 - **`word_changes` list gives one change per edit as it was made** (round 55, R116). A
