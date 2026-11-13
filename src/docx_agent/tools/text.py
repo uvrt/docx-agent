@@ -17,6 +17,8 @@ from ..markdown.stylemap import StyleMap
 from ..markdown.write import insert_blocks
 from . import positions
 from ._base import cached_layout, need, note_small_text, one_of, outcome, remember, resolve, short, word_tool
+from .originals import Watch
+from .originals import add as add_original
 from .table_data import (DATE_FORMAT, FROM_COLUMNS, HEADER, MAX_COLUMNS, MAX_ROWS, fits, no_source,
                          placed)
 
@@ -509,16 +511,21 @@ def word_delete(call: Any, doc: str, find: str | None = None, within: str | None
         return outcome([document.delete_note(target)], f"Deleted note {target}")
     if target.startswith("d:"):
         return outcome([document.picture(target).delete()], f"Deleted picture {target}")
+    # Round 57 (R122): the file's text the blocks held, when it leaves the final view.
+    watch = Watch(document)
     if ".." in target:
         elements, part = document._blocks_of(target)
         ids = [document._block_id(part, element) for element in elements]
         moved = _headings_kept(document, ids, force)
+        for identifier in ids:
+            watch.block(identifier)
         result = outcome([document.delete_block(i) for i in ids], f"Deleted {len(ids)} block(s)")
     else:
         moved = _headings_kept(document, [target], force)
+        watch.block(target)
         result = outcome([document.delete_block(target)], f"Deleted {target}")
     result.warnings += moved
-    return result
+    return add_original(result, watch.report(call))
 
 
 def _headings_kept(document: Any, ids: list[str], force: bool) -> list[str]:

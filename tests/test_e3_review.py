@@ -378,12 +378,12 @@ def test_a_tracked_column_insert_is_words_form_and_rejects_cleanly(table_doc):
     assert canonical(table_doc.to_bytes()) == canonical(base.to_bytes())
 
 
-def test_a_tracked_merge_is_described_and_the_comment_goes_with_it(table_doc):
+def test_a_tracked_merge_writes_no_describing_comment(table_doc):
+    """Round 57 (R123): word_changes list's structure says what the change is; no comment."""
     table = table_doc.tables()[0]
     with table_doc.tracking(author=AUTHOR, date=DATE):
         table_doc.merge_cells(table.id, (0, 0), (1, 0))
-    described = [c for c in table_doc.comments() if c.text.startswith(DESCRIBES)]
-    assert len(described) == 1 and "merged" in described[0].text
+    assert not [c for c in table_doc.comments() if c.text.startswith(DESCRIBES)]
     kinds = {r.kind for r in table_doc.revisions(author=AUTHOR)}
     assert {"cell-merge", "deletion"} <= kinds
     table_doc.accept(author=AUTHOR)

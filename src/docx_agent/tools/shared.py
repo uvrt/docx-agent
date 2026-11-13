@@ -638,6 +638,9 @@ def check(call: Any, doc: str, slides: list | None = None, pages: list[int] | No
                                  "accept_loses_text": [e for e in accept_loses_text(document)
                                                        if scope is None or scope.about(_of_table(e))][:CAP],
                                  **_text_language(document, scope)})
+            # Round 57 (R122): the file's text a pending deletion of this session removes --
+            # read here, beside the file as opened (a worker's copy has only the bytes).
+            report["layout"] = _original_lost(document, scope, report["layout"])
         # The rest of the layout's facts here, beside what the worker timed (layout, facts, waits).
         inner = sum(timing.parts.values()) - inner
         timing.add("facts", max(0.0, time.perf_counter() - started - inner))
@@ -655,6 +658,21 @@ def check(call: Any, doc: str, slides: list | None = None, pages: list[int] | No
                     f"{found['with_example_text']} with its example text")
     report["timing"] = timing.parts
     return Result(summary=summary, data=report)
+
+
+def _original_lost(document: Document, scope: Any, facts: Any) -> Any:
+    """The layout facts with ``accept_loses_original`` (:func:`.originals.accept_loses_original`)
+    added: at most :data:`CAP` entries, ``accept_loses_original_left_out`` the rest (a new
+    dict: the worker's may be kept)."""
+    from .originals import accept_loses_original
+
+    if not isinstance(facts, dict):
+        return facts
+    found = [e for e in accept_loses_original(document) if scope is None or scope.about(e)]
+    out = {**facts, "accept_loses_original": found[:CAP]}
+    if len(found) > CAP:
+        out["accept_loses_original_left_out"] = len(found) - CAP
+    return out
 
 
 def _text_language(document: Document, scope: Any) -> dict[str, Any]:

@@ -237,20 +237,13 @@ def _record_marks(document: Any) -> Counter:
                    for part, _, element in document._revision_elements())
 
 
-def _opened_stamps(document: Any, part: str) -> set[tuple[str | None, str | None]]:
+def _opened_stamps(document: Any, part: str) -> frozenset[tuple[str | None, str | None]]:
     """The ``(author, date)`` of every revision record ``part`` had when the document was
-    opened (kept on the document: what was read never changes)."""
-    from ..edit.annotations import REVISION_KINDS
-    from ..edit.ids import live_elements
+    opened (kept on the document: what was read never changes; round 57: read once with
+    the paraIds :mod:`.originals` needs)."""
+    from .originals import opened_facts
 
-    kept = document.__dict__.setdefault("_opened_stamps", {})
-    found = kept.get(part)
-    if found is None:
-        root = document.package.opened().tree(part)
-        found = set() if root is None else {(node.get(_W + "author"), node.get(_W + "date"))
-                                            for node in live_elements(root, frozenset(REVISION_KINDS))}
-        kept[part] = found
-    return found
+    return opened_facts(document, part)[1]
 
 
 def _this_session(document: Any, settled: Counter) -> int:
