@@ -20,9 +20,17 @@ own Accept All and Reject All by ``tools/e3_probe.py`` and the oracle):
   which keeps its own element, id and properties (measured: Word's accept keeps the
   second paragraph's paraId and properties; the first paragraph's properties survive
   only because Word, tracking the deletion, recorded them on the second in a
-  ``w:pPrChange``).  With no paragraph after it in its container, an empty paragraph goes
-  and one with content keeps its mark -- Word instead pulls a cell's first paragraph out
-  of the table, or keeps the body's last mark;
+  ``w:pPrChange``).  At a table's edge, accepted, as Word's Accept All leaves it (round
+  54, lane A; measured by lanes J and R): before a table (or a block-level content
+  control) it joins the first paragraph of the table's first cell (of the control's
+  content); a cell's last paragraph joins the first of the next cell of its row, which the
+  cell takes in (a row's first cell's other blocks leave the table before the row, the
+  table split there; the row ends short, ``w:gridAfter``, where another row keeps the
+  column); a row's last cell goes, and its text -- which Word's Accept All takes out of
+  view, saving it in a broken table -- moves after the row in paragraphs of its own, the
+  table split there (a clean file, user decision; the result says so).  Otherwise, with no
+  paragraph after it in its container, an empty paragraph goes and one with content keeps
+  its mark -- Word keeps the body's last mark;
 * a property change: accepted, the record goes; rejected, the old properties return;
 * a row: accepted deletion or rejected insertion removes it (the table too, when it was
   the last); a cell: ``w:cellDel`` accepted or ``w:cellIns`` rejected removes it, and a
@@ -268,6 +276,15 @@ class _Review:
         #: Round 51 (R103): cells whose only paragraph's deleted mark this review accepted,
         #: by their row: a row all of whose cells are such goes (:meth:`_emptied_rows`).
         self.emptied: dict[int, tuple[Element, set[int]]] = {}
+        #: Round 54 (lane A): the tables a deleted mark at a cell's end split (a part's
+        #: ``id`` -> the table the review found, whose grid map holds its rows), and the rows
+        #: that gave up a cell to it (they end short where the grid keeps its columns).
+        self.origin: dict[int, Element] = {}
+        self.grid_group: dict[int, int] = {}
+        #: The blocks a row's last cell's text moved out in (its text, the paragraphs):
+        #: said in the result (rule 7), since Word's Accept All shows no such text.
+        self.moved_out: list[tuple[str, list[Element]]] = []
+        self.edged_rows: set[int] = set()
 
     # -- grouping ---------------------------------------------------------------------------
 
@@ -405,7 +422,10 @@ class _Review:
         for element in markers:
             if element.getparent() is not None:
                 remove(element)
-        for element in marks:
+        # In document order: a mark at a cell's end that takes the next cell in hands that
+        # cell's last paragraph (and its mark) on to the next record (Accept All's chains).
+        order = {id(node): k for k, node in enumerate(self.root.iter())}
+        for element in sorted(marks, key=lambda e: order.get(id(e), -1)):
             self._mark(element)
         self._tidy()
 
@@ -610,6 +630,9 @@ class _Review:
         if paragraph.getparent() is None:
             return  # gone with what held it (a note whose reference the review removed)
         following = _track.next_paragraph(paragraph)
+        if following is None and self.accept and record.tag in _track.DELETED and (
+                self._into_table(paragraph) or self._cell_end(paragraph, record)):
+            return
         if following is None:
             cell = paragraph.getparent()
             empty = not _has_content(paragraph)
@@ -644,7 +667,11 @@ class _Review:
                     self.emptied.setdefault(id(row), (row, set()))[1].add(id(cell))
             self._drop(record)
             return
-        # The paragraph joins the next: its content moves to the next one's start.
+        self._join(paragraph, following)
+
+    def _join(self, paragraph: Element, following: Element) -> None:
+        """``paragraph`` joined to ``following``: its content moves to the start of
+        ``following``, which keeps its element, id and properties (Word's accept)."""
         properties = following.find(W_PPR)
         at = 1 if properties is not None else 0
         for child in [c for c in paragraph if not (isinstance(c.tag, str) and c.tag == W_PPR)]:
@@ -653,6 +680,142 @@ class _Review:
         self.joined.append((paragraph, following))
         self.removed_paragraphs.append(paragraph)
         remove(paragraph)
+
+    # -- a deleted mark at a table's edge (round 54, lane A) -----------------------------------
+    #
+    # What Word's Accept All makes of it (measured by lanes J and R, ``feedback-round54``;
+    # :mod:`.edges` is the final view's reading of the same rules), in a clean file.
+
+    def _into_table(self, paragraph: Element) -> bool:
+        """A paragraph whose mark goes just before a table joins the first paragraph of the
+        table's first cell (a nested table's, where the cell begins with one): its content
+        first, under the cell paragraph's properties.  A paragraph ending a section stays.
+        Before a block-level content control (or ``w:customXml``) it joins the first
+        paragraph of its content, as the final view reads the content as the container's
+        (docx2svg's revision probe, ``mark before a block control``: Word's Accept All)."""
+        if paragraph.find(f"{W_PPR}/{_W}sectPr") is not None:
+            return False
+        block = _next_block(paragraph)
+        if block is None or block.tag not in (W_TBL, _W + "sdt", _W + "customXml"):
+            return False
+        target = _first_in([block])
+        if target is None:
+            return False
+        self._join(paragraph, target)
+        return True
+
+    def _cell_end(self, paragraph: Element, record: Element) -> bool:
+        """A cell's last paragraph whose mark goes: the cell takes the next cell of its row
+        in (its last paragraph joined to that cell's first, the rest after; a row's first
+        cell's other blocks leave the table before the row, the table split there); a cell
+        with no next cell in its row goes, and what it holds -- which Word's Accept All takes
+        out of view and saves in a broken table after the row (a zero-span cell) -- goes
+        after the row in paragraphs of its own, the table split there (user decision
+        2026-11-13: a clean file)."""
+        from ..edit.tables import _cells
+        from .edges import cell_deleted
+
+        cell = next(paragraph.iterancestors(W_TC), None)
+        if cell is None or cell_deleted(cell) or _last_paragraph(cell) is not paragraph:
+            return False
+        row = cell.getparent()
+        table = row.getparent() if row is not None else None
+        if row is None or row.tag != W_TR or table is None or table.tag != W_TBL \
+                or row.find(f"{_W}trPr/{_W}del") is not None:
+            return False  # a cell or row inside a content control, a row being deleted
+        shown = [c for c, _, _ in _cells(row) if not cell_deleted(c)]
+        k = shown.index(cell)
+        origin = self.origin.get(id(table), table)
+        self._held += [row, cell, table]
+        if k + 1 < len(shown):
+            taken = shown[k + 1]
+            if taken.getparent() is not row:
+                return False
+            # A row's first cell's blocks before its last paragraph leave the table.
+            leaving = [c for c in paragraph.itersiblings(preceding=True)
+                       if not (isinstance(c.tag, str) and c.tag == _W + "tcPr")][::-1] \
+                if k == 0 and paragraph.getparent() is cell else []
+            if not any(isinstance(c.tag, str) and c.tag in (W_P, W_TBL, _W + "sdt", _W + "customXml")
+                       for c in leaving):
+                leaving = []
+            blocks = [c for c in taken if not (isinstance(c.tag, str) and c.tag == _W + "tcPr")]
+            head = next((c for c in blocks if isinstance(c.tag, str) and c.tag in (W_P, W_TBL, _W + "sdt")), None)
+            anchor = paragraph
+            for child in blocks:
+                anchor.addnext(child)
+                anchor = child
+            if head is not None and head.tag == W_P:
+                self._join(paragraph, head)
+            else:
+                self._drop(record)
+            self._held.append(taken)
+            self.removed_cells.setdefault(id(origin), set()).add(id(taken))
+            remove(taken)
+            self.edged_rows.add(id(row))
+            if leaving:
+                self._out(table, row, leaving, before=True)
+            return True
+        # No next cell: the cell goes; what it holds goes after the row.
+        self._drop(record)
+        items = [c for c in cell if isinstance(c.tag, str) and c.tag != _W + "tcPr"]
+        empty = [c for c in items if c.tag == W_P and not _has_content(c)]
+        # Its paragraphs with nothing in them go with it; nothing moves when that is all.
+        moving = [c for c in items if c not in empty] if any(
+            c.tag in (W_P, W_TBL, _W + "sdt", _W + "customXml") for c in items if c not in empty) else []
+        self.removed_paragraphs += [p for p in cell.iter(W_P) if not any(p in c.iter(W_P) for c in moving)]
+        self._removing_kept(cell, moving)
+        kept_ids = {rid for c in moving for rid in _inline.relationship_ids(c)}
+        self.released += [rid for rid in _inline.relationship_ids(cell) if rid not in kept_ids]
+        self.removed_cells.setdefault(id(origin), set()).add(id(cell))
+        self.edged_rows.add(id(row))
+        for child in moving:
+            remove(child)
+        remove(cell)
+        if moving:
+            self._out(table, row, moving, before=False)
+            paragraphs = [p for c in moving for p in ([c] if c.tag == W_P else list(c.iter(W_P)))]
+            self._held += paragraphs
+            text = " ".join(" ".join(_text.paragraph_text(p, "current") for p in paragraphs).split())
+            self.moved_out.append((text, paragraphs))
+        return True
+
+    def _removing_kept(self, cell: Element, kept: list[Element]) -> None:
+        """References in ``cell`` that go with it (not in ``kept``, which moves out)."""
+        inside = {id(n) for c in kept if isinstance(c.tag, str) for n in c.iter()}
+        for node in cell.iter(_W + "commentReference", _W + "footnoteReference", _W + "endnoteReference"):
+            if id(node) not in inside:
+                self._orphan(node)
+
+    def _out(self, table: Element, row: Element, blocks: list[Element], before: bool) -> None:
+        """``blocks`` out of ``table``, before or after ``row``: the table split there
+        (each part keeps the table's properties and its own grid, :meth:`_tidy`)."""
+        rows = [r for r in table if isinstance(r.tag, str) and r.tag == W_TR]
+        cut = rows.index(row) + (0 if before else 1)
+        if cut == 0:
+            for block in blocks:
+                table.addprevious(block)
+            return
+        if cut < len(rows):
+            part = make("w:tbl")
+            for child in table:
+                if isinstance(child.tag, str) and child.tag in (_W + "tblPr", _W + "tblGrid"):
+                    copied = copy.deepcopy(child)
+                    for record in list(copied.iter(_W + "tblPrChange", _W + "tblGridChange")):
+                        remove(record)
+                    part.append(copied)
+            first = rows[cut]
+            moving = [first] + list(first.itersiblings())
+            for child in moving:
+                part.append(child)
+            table.addnext(part)
+            origin = self.origin.get(id(table), table)
+            self.origin[id(part)] = origin
+            self.grid_group[id(part)] = id(part) if before else self.grid_group.get(id(table), id(origin))
+            self._held.append(part)
+        anchor = table
+        for block in blocks:
+            anchor.addnext(block)
+            anchor = block
 
     def _emptied_rows(self) -> None:
         """A row whose every cell's only paragraph had its deletion accepted here, nothing
@@ -681,8 +844,16 @@ class _Review:
         for key, removed in self.removed_cells.items():
             if removed and key in self.maps and key not in self.restored_grids:
                 table, grid = self.maps[key]
-                if table.getparent() is not None:
-                    _fix_grid(table, grid, removed)
+                # A table a deleted mark at a cell's end split: the parts a row's first cell's
+                # blocks leaving it made each have a grid of their own (as Word draws and
+                # saves them); the parts the text of a row's last cell moving out made keep
+                # the one they were split from (Word keeps that table whole).
+                groups: dict[int, list[Element]] = {}
+                for part in [table] + [p for p in self._held if p.tag == W_TBL and self.origin.get(id(p)) is table]:
+                    if part.getparent() is not None and not any(part is q for g in groups.values() for q in g):
+                        groups.setdefault(self.grid_group.get(id(part), id(table)), []).append(part)
+                for parts in groups.values():
+                    _fix_grid(parts, grid, removed, self.edged_rows)
         for key, table in self.respanned.items():
             if key not in self.restored_grids and table.getparent() is not None:
                 _normalise_grid(table)
@@ -720,6 +891,69 @@ def _remove_if_empty(owner: Element) -> None:
     remove(owner)
     if parent.tag == W_PPR:
         _remove_if_empty(parent)
+
+
+_BLOCKS = frozenset({W_P, W_TBL, _W + "sdt", _W + "customXml"})
+
+
+def _next_block(node: Element) -> Element | None:
+    """The block after ``node`` in its container (a paragraph, table, content control,
+    ``w:customXml``, or the body's ``w:sectPr``), range markers passed over."""
+    following = node.getnext()
+    while following is not None:
+        if isinstance(following.tag, str) and (following.tag in _BLOCKS or following.tag == _W + "sectPr"):
+            return following
+        following = following.getnext()
+    return None
+
+
+def _first_paragraph(table: Element) -> Element | None:
+    """The first paragraph of ``table``'s first cell as accepting leaves the table (a row
+    or cell whose deletion is pending passed over), a nested table's where the cell begins
+    with one, a content control's content seen through; ``None`` where there is none."""
+    from ..edit.tables import _cells
+    from .edges import cell_deleted
+
+    for row in table.iter(W_TR):
+        if _ancestor(row, W_TBL) is not table or row.find(f"{_W}trPr/{_W}del") is not None:
+            continue
+        shown = [c for c, _, _ in _cells(row) if not cell_deleted(c)]
+        if not shown:
+            continue
+        return _first_in(shown[0])
+    return None
+
+
+def _first_in(container) -> Element | None:
+    for node in container:
+        if not isinstance(node.tag, str) or node.tag not in _BLOCKS:
+            continue
+        if node.tag == W_P:
+            return node
+        if node.tag == W_TBL:
+            return _first_paragraph(node)
+        content = node.find(_W + "sdtContent") if node.tag == _W + "sdt" else node
+        return _first_in(content) if content is not None else None
+    return None
+
+
+def _last_paragraph(container: Element) -> Element | None:
+    """A cell's last block when it is a paragraph (a content control's or ``w:customXml``'s
+    content seen through), as :func:`.edges.last_mark_removed` reads it."""
+    for node in reversed([n for n in container if isinstance(n.tag, str)]):
+        if node.tag == W_P:
+            return node
+        if node.tag == W_TBL:
+            return None
+        if node.tag in (_W + "sdt", _W + "customXml"):
+            content = node.find(_W + "sdtContent") if node.tag == _W + "sdt" else node
+            if content is not None and any(isinstance(n.tag, str) and n.tag in _BLOCKS for n in content):
+                return _last_paragraph(content)
+    return None
+
+
+def _shortened(text: str, limit: int = 60) -> str:
+    return text if len(text) <= limit else text[:limit - 1] + "\u2026"
 
 
 def _made_with(node: Element, record: Element) -> bool:
@@ -909,39 +1143,80 @@ def _absorb(before: Element, cell: Element) -> None:
         mine.set(_W + "w", str(int(mine.get(_W + "w")) + int(theirs.get(_W + "w"))))
 
 
-def _fix_grid(table: Element, grid, removed: set[int]) -> None:
-    """Remove the grid columns that only removed cells covered (in every row that covered
-    them at all), and the rows left without a cell."""
+def _fix_grid(tables: list[Element], grid, removed: set[int], edged: set[int] = frozenset()) -> None:
+    """Remove the grid columns that only removed cells covered (in every row of ``tables``
+    that covered them at all), and the rows left without a cell -- a table, left without a
+    row.  ``tables``: a table, or the parts a deleted mark at a row's end split it into
+    (:meth:`_Review._out`), which keep one grid.  A row in ``edged`` (it gave up a cell to a
+    deleted mark at a cell's end) that ends short of the grid skips the rest of it
+    (``w:gridAfter``, ``w:wAfter``), as Word saves its Accept All (measured, round 54 lane R:
+    ``feedback-round54/probe-R/word/rows``)."""
+    members = {id(table) for table in tables}
+    rows = [(row, cells) for row, cells in grid if id(_ancestor(row, W_TBL)) in members]
     columns: dict[int, list[bool]] = {}
-    for row, cells in grid:
-        if _ancestor(row, W_TBL) is not table:
-            continue  # a row the review removed whole covers nothing
+    for _row, cells in rows:  # a row the review removed whole covers nothing
         for cell, start, span in cells:
             for column in range(start, start + span):
                 columns.setdefault(column, []).append(id(cell) in removed)
     vacated = sorted((c for c, flags in columns.items() if flags and all(flags)), reverse=True)
-    grid_node = table.find(_W + "tblGrid")
-    if grid_node is not None:
-        cols = grid_node.findall(_W + "gridCol")
-        # Never fewer columns than a remaining row needs: a tracked deletion across a span
-        # narrowed the grid already, and its deleted cells free nothing more.
-        needed = 0
-        for row, cells in grid:
-            if _ancestor(row, W_TBL) is not table:
-                continue
-            properties = row.find(_W + "trPr")
-            total = 0
-            for tag in ("gridBefore", "gridAfter"):
-                node = properties.find(_W + tag) if properties is not None else None
-                total += int(node.get(_W + "val")) if node is not None and (node.get(_W + "val") or "").isdigit() else 0
-            total += sum(span for cell, _, span in cells if id(cell) not in removed)
-            needed = max(needed, total)
-        for column in vacated[:max(0, len(cols) - needed)]:
-            if column < len(cols):
-                remove(cols[column])
-    for row in list(table.findall(W_TR)):
-        if row.find(W_TC) is None and row.find(_W + "sdt") is None:
-            remove(row)
+    # Never fewer columns than a remaining row needs: a tracked deletion across a span
+    # narrowed the grid already, and its deleted cells free nothing more.
+    needed = 0
+    for row, cells in rows:
+        properties = row.find(_W + "trPr")
+        total = 0
+        for tag in ("gridBefore", "gridAfter"):
+            node = properties.find(_W + tag) if properties is not None else None
+            total += int(node.get(_W + "val")) if node is not None and (node.get(_W + "val") or "").isdigit() else 0
+        total += sum(span for cell, _, span in cells if id(cell) not in removed)
+        needed = max(needed, total)
+    for table in tables:
+        grid_node = table.find(_W + "tblGrid")
+        if grid_node is not None:
+            cols = grid_node.findall(_W + "gridCol")
+            for column in vacated[:max(0, len(cols) - needed)]:
+                if column < len(cols):
+                    remove(cols[column])
+        for row in list(table.findall(W_TR)):
+            if row.find(W_TC) is None and row.find(_W + "sdt") is None:
+                remove(row)
+        if edged and grid_node is not None:
+            widths = [c.get(_W + "w") or "" for c in grid_node.findall(_W + "gridCol")]
+            for row, cells in _grid_map(table):
+                if id(row) in edged:
+                    _skip_after(row, cells, widths)
+        if table.find(W_TR) is None and table.getparent() is not None and not any(
+                isinstance(child.tag, str) and child.tag in (_W + "sdt", _W + "customXml") for child in table):
+            remove(table)
+
+
+def _skip_after(row: Element, cells: list[tuple[Element, int, int]], widths: list[str]) -> None:
+    """A row ending short of its grid skips the rest (``w:gridAfter``, and ``w:wAfter`` in
+    twips where the grid states them)."""
+    properties = row.find(_W + "trPr")
+    after = properties.find(_W + "gridAfter") if properties is not None else None
+    skipped = int(after.get(_W + "val")) if after is not None and (after.get(_W + "val") or "").isdigit() else 0
+    reach = (cells[-1][1] + cells[-1][2] if cells else 0) + skipped
+    if reach >= len(widths):
+        return
+    skipped += len(widths) - reach
+    if properties is None:
+        properties = make("w:trPr")
+        insert_in_order(row, properties)
+    if after is None:
+        after = make("w:gridAfter")
+        insert_in_order(properties, after)
+    after.set(_W + "val", str(skipped))
+    tail = widths[len(widths) - skipped:]
+    width = properties.find(_W + "wAfter")
+    if all(w.isdigit() for w in tail):
+        if width is None:
+            width = make("w:wAfter")
+            insert_in_order(properties, width)
+        width.set(_W + "w", str(sum(int(w) for w in tail)))
+        width.set(_W + "type", "dxa")
+    elif width is not None:
+        remove(width)
 
 
 # -- the Document half -------------------------------------------------------------------------
@@ -1025,6 +1300,18 @@ class RevisionOps:
         if isinstance(where, str) and where in [s.name for s in self.stories]:
             part = self._part_for_story(where)
             return [r for r in records if r[0] == part]
+        if isinstance(where, str) and where.startswith("t@"):
+            # A table's (or its row's, cell's) volatile id -- a table whose first row has no
+            # paraId -- is a block, not a text range (round 54, lane A).
+            try:
+                part, entry = self._resolve(where)
+            except (KeyError, ValueError):
+                pass
+            else:
+                element = getattr(entry, "element", None)
+                if element is not None:
+                    return [r for r in records if r[0] == part and (
+                        r[2] is element or any(a is element for a in r[2].iterancestors()))]
         if isinstance(where, str) and "@" in where:
             where = self.range(where, view="markup")
         if isinstance(where, TextRange):
@@ -1093,6 +1380,7 @@ class RevisionOps:
             described: set[int] = set()
             dropped: set[str] = set()
             notes: set[tuple[str, str]] = set()
+            warnings: list[str] = []
             for part, elements in by_part.items():
                 index = self._index(part)
                 ids_before = {id(e.element): e.id for e in index.paragraphs}
@@ -1108,6 +1396,16 @@ class RevisionOps:
                 if review.released:
                     self._release(part, sorted(set(review.released)))
                 described |= review.tables
+                if review.moved_out:
+                    self._invalidate()
+                    entries = {id(e.element): e.id for e in self._index(part).paragraphs}
+                    for text, paragraphs in review.moved_out:
+                        said = [entries[id(p)] for p in paragraphs if id(p) in entries]
+                        warnings.append(
+                            f"a row's last cell whose last paragraph mark was deleted went; its text "
+                            f"({_shortened(text)!r}) is now after the row in {', '.join(said) or 'paragraphs of its own'}, "
+                            "the table split there: Word's Accept All takes that text out of view (word_changes "
+                            "reject keeps it in the cell; undo brings the change back)")
                 dropped |= review.dropped_comments
                 notes |= review.dropped_notes
                 self.package.mark_dirty(part)
@@ -1128,7 +1426,7 @@ class RevisionOps:
             # the review left the control showing.
             self._invalidate()
             self._sync_bound_controls()
-        return EditResult(None, renamed=renames, removed=removed_ids, count=len(selected))
+        return EditResult(None, renamed=renames, removed=removed_ids, count=len(selected), warnings=warnings)
 
     def _drop_notes(self: "Document", notes: set[tuple[str, str]]) -> None:
         """Remove the notes a review removed the only reference of, and release what they
@@ -1174,6 +1472,8 @@ class RevisionOps:
         if not gone:
             return
         numbering = Numbering(self)
+        if numbering.part is None:
+            return  # numbered paragraphs with no numbering part: nothing to remove
         nums = numbering.nums()
         abstracts = {numbering.abstract_of(n) for n in gone if n in nums}
         for num_id in gone:

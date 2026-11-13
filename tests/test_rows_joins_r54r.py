@@ -309,7 +309,7 @@ def test_positions_follow_the_cells_accept_all_takes_in_and_removes(box):
     table = session.entry("d1").document.tables()[0].id
     refused = call(box, session, "word_edit_table", doc="d1", table=table, action="set_cells",
                    cells=[{"row": 0, "col": 1, "text": "lost"}])
-    assert refused.to_json()["error"]["code"] == "refused" and "would be lost" in refused.to_json()["error"]["message"]
+    assert refused.to_json()["error"]["code"] == "refused" and "moves the text after the row" in refused.to_json()["error"]["message"]
 
 
 # -- check: accept_loses_text --------------------------------------------------------------------
