@@ -5,6 +5,86 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.103 -- unreleased
+
+- **A tracked merge or split over pending tracked structure changes, whatever the order**
+  (round 55, R115). Before, with a tracked column deletion, merge or split pending in a
+  table, a tracked merge or split was refused ("Word does not track a merge", the fix
+  accepting every change within the table), while merge-then-delete went through and
+  accepted to another table than delete-then-merge would mean (the deleted column's text
+  left in the merged cell). Now, measured with Word 16.106 for Mac on a made-up report table
+  (Accept All and Reject All saved by Word, against docx-agent's own): a merge leaves a cell a
+  pending column deletion removes out (it keeps its deletion; the cells merged away beyond it
+  go to the merge's first cell) -- the deleted column left of, right of or inside the merge,
+  a header row, a rectangle, merged down beside it; merged down over a row whose deletion is
+  pending, that row is passed over; a merge reaching a pending merge takes it in whole (two
+  merges in a row, one grown, one taking in another's first cell, across then down); a split
+  down beside a pending column deletion writes the new row's cell under it deleted too (before,
+  Word's Accept All kept that cell: a row one cell too long). Delete-then-merge and
+  merge-then-delete give the same accepted and rejected tables: deleting a column or row a
+  pending merge took a cell from takes that cell's text out of the merged cell again. Each
+  case: Word's Accept All and Reject All give the cells, spans, merges and text docx-agent's
+  give (CASES_RESULT). A column or row holding a pending merge's first cell is refused, the
+  fix accepting that merge alone by id (`word_changes accept ids [rev:N]`), never `within`
+  the table. A split of a cell a pending merge makes likewise.
+- **`word_changes` lists a tracked merge as its own change** (kind `table`, the merged text as
+  its `text`), apart from a column deletion made at the same time; accepting or rejecting it
+  by id settles the merge alone (before, the review took the table's whole structure with it).
+- **A tracked text replacement marks whole words** (R117). `set_cells`, `set_text` and the other
+  text-rewriting edits recorded "Quarterly" -> "Half-yearly" as "Quarte" deleted, "Half-yea"
+  inserted around a kept "rly"; now "Quarterly" deleted and "Half-yearly" inserted, unchanged
+  words kept -- as Word 16.106's Compare marks it (measured, 13 made-up sentences: the same
+  stretches in each; a word is letters and digits, a hyphen, comma or full stop its own piece,
+  the space between two changed words part of the change). The deletion comes before the
+  insertion (as typing over a selection writes it; Word's Compare writes the insertion first,
+  which accepts and rejects the same); at a paragraph's end it came after. The new text takes
+  per character the formatting the untracked edit gives it, so Accept All is the untracked
+  edit. Untracked edits are unchanged.
+- The describing comment of a tracked merge or split says what was written ("merged as deleted
+  cells: Accept All merges them, Reject All keeps them apart"); "Word does not track a merge"
+  is gone from messages and docstrings.
+- Tool definitions and Word core unchanged (definitions sha 7a8d751ed0151521).
+
+## 0.1.102 -- unreleased
+
+- **Our accept gives Word's Accept All at a table's edge, in a clean file** (round 54
+  follow-up, lane A; user decision 2026-11-13). `word_changes` accept (all, by id, or
+  `within`) of a deleted paragraph mark at a table's edge now does what `word_read`'s final
+  view and render already show (lane R, lane J): a paragraph before a table joins the first
+  paragraph of the table's first cell (a nested table's; before a block-level content
+  control, the first paragraph of its content), under the cell paragraph's properties; a
+  cell whose last mark is deleted takes in the next cell of its row -- its last paragraph
+  joined to that cell's first, the rest after, the cell keeping its own width; a row's
+  first cell's other paragraphs leave the table before the row, the table split there in a
+  later row, each part with its own grid; the row ends short (`w:gridAfter`, `w:wAfter`)
+  where another row keeps the column, as Word saves it, and a grid column only the cell
+  taken in covered goes. Before, our accept kept Word's *No Markup* form (the paragraph
+  before the table, the cells apart).
+- **A row's last cell**: Word's Accept All takes the cell and its text out of view and saves
+  the text in a broken table (a zero-span cell) after the row. Ours removes the cell and
+  moves its text after the row in paragraphs of its own -- the table split there, both parts
+  keeping the grid, the row ending short as Word saves it -- and the result says so (`a
+  row's last cell whose last paragraph mark was deleted went; its text ('Kept. Last.') is
+  now after the row in p:..., p:..., the table split there ...`). check's
+  `accept_loses_text`, `word_edit_table`'s warning and refusal say what each accept does.
+- Measured: Word 16.106 for Mac drew docx-agent's accepted files of lane R's five edge
+  shapes; where Word's own result is clean (before a table, a first cell's end, a later
+  row's first cell) its drawing is Word's Accept All export -- every rule pixel, glyph
+  positions within 0.03 px (Word's own run splits) -- and the row's-end case's first part
+  is Word's saved table. docx2svg's revision probe (79 cases, three compatibility modes),
+  accepted by docx-agent and rendered, against Word's recorded Accept All: mark family 24
+  of 41 cases before, 39 now (the other two the row's-last-cell cases, by design).
+  `word_read` after our accept against before it, the 79 cases and lane R's eight shapes:
+  61 of 87 agreed, now 83 (the four row's-last-cell readings, by design).
+- `word_read`'s final view reads a cell merged down by a pending tracked merge
+  (`w:cellMerge`) as merged, as render draws it and accepting leaves it.
+- `style_by_value`'s column target (`t:X/colN`) counts the rows as accepted: a row whose
+  tracked deletion is pending is not among the values.
+- Fixed: `word_changes` `within` a table's volatile id (`t@body/0`, a table whose first row
+  has no paraId) was refused as "a table, not text"; accepting numbered paragraphs in a
+  document with no numbering part failed.
+- Tool definitions unchanged (sha 7a8d751ed0151521); Word core 4,671 online unchanged.
+
 ## 0.1.101 -- unreleased
 
 - **Row positions count the table as accepted** (round 54 follow-up, lane R; as lane M did

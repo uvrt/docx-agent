@@ -141,9 +141,10 @@ class _Accepted:
         removes with its text is refused, with the reject that keeps it (rule 2)."""
         if (row, grid) in self.lost:
             raise ToolError("refused", f"({self.from_row(row)}, {self.from_grid(grid)}) of {self.table} is a cell "
-                            "Word's Accept All removes with its text (its last paragraph mark is deleted and no "
-                            "cell follows it in its row): text written there would be lost. Reject that change "
-                            f"first (check's accept_loses_text gives the call)", field="cells",
+                            "accepting removes (its last paragraph mark is deleted and no cell follows it in its "
+                            "row): Word's Accept All takes its text out of view, word_changes accept moves the "
+                            "text after the row. Reject that change first to write in the cell (check's "
+                            f"accept_loses_text gives the call)", field="cells",
                             valid_options=["word_changes reject"])
         found = self.given.get((row, grid))
         if found is None:
@@ -190,9 +191,9 @@ def _loses_text(document: Any, table: str) -> list[str]:
     except (KeyError, ValueError):
         return []
     return [f"{e['cell']} ({e['text']!r}): Word's Accept All drops this cell and its text from view (its last "
-            f"paragraph mark is a pending deletion, no cell after it in the row; Word saves the text "
-            f"split off after the table); word_changes reject "
-            f"{e['change'] or 'within ' + e['cell']} keeps it"
+            f"paragraph mark is a pending deletion, no cell after it in the row); word_changes accept "
+            f"moves the text after the row, splitting the table; word_changes reject "
+            f"{e['change'] or 'within ' + e['cell']} keeps it in the cell"
             for e in accept_loses_text(document) if e["cell"].rsplit("/c", 1)[0] == table]
 
 
