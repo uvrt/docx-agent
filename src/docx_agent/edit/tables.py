@@ -277,6 +277,50 @@ def _set_after(row: Element, count: int, width: int) -> None:
     insert_in_order(properties, make("w:wAfter", **{"w:w": str(width), "w:type": "dxa"}))
 
 
+def _spanned(row: Element) -> bool:
+    """Whether a cell of ``row`` spans grid columns (``w:gridSpan`` over 1)."""
+    return any(span > 1 for _cell, _start, span in _cells(row))
+
+
+def _shape_row(rows: list[Element], at: int) -> int | None:
+    """Round 57 (R125): the row whose cells a new row beside ``rows[at]`` -- a row with a cell
+    over several grid columns -- takes: the nearest row with no such cell, the one above
+    first at equal distance, a row whose deletion is pending passed over; ``None`` where
+    there is none."""
+    for distance in range(1, len(rows)):
+        for k in (at - distance, at + distance):
+            if 0 <= k < len(rows) and not _spanned(rows[k]) and _cells(rows[k]) \
+                    and rows[k].find(f"{_W}trPr/{_W}del") is None:
+                return k
+    return None
+
+
+def _row_per_column(table: Element, reference: Element) -> Element:
+    """Round 57 (R125): a stand-in row with ``reference``'s properties and a cell for each
+    grid column its cells cover (each with the properties of the cell over it, as wide as
+    its column), for a new row where every row has a cell over several columns."""
+    widths = _grid_widths(table)
+    row = make("w:tr")
+    for tag in ("tblPrEx", "trPr"):
+        if reference.find(_W + tag) is not None:
+            row.append(copy.deepcopy(reference.find(_W + tag)))
+    for cell, start, span in _cells(reference):
+        for column in range(start, start + span):
+            new = copy.deepcopy(cell)
+            for child in list(new):
+                if isinstance(child.tag, str) and child.tag != _W + "tcPr":
+                    remove(child)
+            properties = new.find(_W + "tcPr")
+            if properties is None:
+                properties = make("w:tcPr")
+                new.insert(0, properties)
+            _set_span_width(properties, 1, widths[column] if column < len(widths) else None)
+            first = cell.find(W_P)
+            new.append(copy.deepcopy(first) if first is not None else make("w:p"))
+            row.append(new)
+    return row
+
+
 def _pending_column(cell: Element) -> list[Element]:
     """The records that make ``cell`` part of a column change still pending (round 53,
     R107): its ``w:cellDel`` or ``w:cellIns``, or -- Word's form of a column inserted,
@@ -370,10 +414,17 @@ class TableOps:
 
     # -- rows -------------------------------------------------------------------------------
 
-    def insert_row(self: "Document", table: str, index: int | None = None, *, below: bool = True) -> "EditResult":
+    def insert_row(self: "Document", table: str, index: int | None = None, *, below: bool = True,
+                   plain: bool = False) -> "EditResult":
         """A new row beside row ``index`` (0-based; the last by default), below it unless
         ``below=False``: its cells as that row's (properties, widths, and a vertical merge
-        carried on where the new row falls inside one), each with an empty paragraph."""
+        carried on where the new row falls inside one), each with an empty paragraph --
+        Word's Insert Rows, which copies a cell over several columns too (measured).
+
+        Round 57 (R125): with ``plain``, beside a row with a cell over several grid columns
+        the new row takes the cells of the nearest row without one (else a cell per grid
+        column), and the result's warning says so -- a row for values, one per column
+        (``word_edit_table``'s)."""
         from .document import EditError, EditResult
 
         part, entry = self._table_entry(table)
@@ -387,37 +438,62 @@ class TableOps:
             renames = self._prepare(part, [])
             part, entry = self._table_entry(renames.get(table, table))
             rows = [row for row, _ in entry.rows]
-            new_id = self._put_row_like(part, rows[index], neighbour, below, tracking)
-        return EditResult(new_id, created=[new_id], renamed=renames)
+            new_id, note = self._put_row_like(part, rows[index], neighbour, below, tracking,
+                                              entry.element if plain else None)
+        return EditResult(new_id, created=[new_id], renamed=renames, warnings=[note] if note else [])
 
     def _put_row_like(self: "Document", part: str, reference: Element, neighbour: Element | None,
-                      below: bool, tracking) -> str:
+                      below: bool, tracking, table: Element | None = None) -> tuple[str, str | None]:
         """:meth:`insert_row`'s change, inside its edit: the new row beside ``reference``
         (below it unless ``below`` is false), stamped, its insertion tracked under
-        ``tracking``; its id."""
+        ``tracking``; its id, and what it says of the row's shape (or ``None``).
+
+        Round 57 (R125): where a cell of ``reference`` spans grid columns (``w:gridSpan``)
+        and ``table`` is given, the new row takes the cells of the nearest row of ``table``
+        without such a cell (:func:`_shape_row`), else a cell for each grid column -- a row
+        for values, one per column; Word's Insert Rows copies the span (measured), which
+        made a row of one cell over three columns for four values."""
+        shape, note = reference, None
+        if table is not None and _spanned(reference):
+            rows = own_table_rows(table)
+            at = next(k for k, r in enumerate(rows) if r is reference)
+            found = _shape_row(rows, at)
+            if found is not None:
+                shape = rows[found]
+                note = (f"row {at} has a cell over several columns: the new row has row {found}'s cells, "
+                        f"one per column (merge cells for a span like row {at}'s)")
+            else:
+                shape = _row_per_column(table, reference)
+                note = (f"row {at} has a cell over several columns and every row has one: the new row has "
+                        f"a cell for each of the table's {len(_grid_widths(table))} grid columns")
         row = make("w:tr")
-        if reference.find(_W + "tblPrEx") is not None:
-            row.append(copy.deepcopy(reference.find(_W + "tblPrEx")))
-        if reference.find(_W + "trPr") is not None:
-            properties = copy.deepcopy(reference.find(_W + "trPr"))
+        if shape.find(_W + "tblPrEx") is not None:
+            row.append(copy.deepcopy(shape.find(_W + "tblPrEx")))
+        if shape.find(_W + "trPr") is not None:
+            properties = copy.deepcopy(shape.find(_W + "trPr"))
             for child in list(properties):
                 if child.tag in (_W + "ins", _W + "del", _W + "trPrChange"):
                     remove(child)
+                elif child.tag == _W + "tblHeader" and shape is not reference \
+                        and reference.find(f"{_W}trPr/{_W}tblHeader") is None:
+                    remove(child)               # a header row's shape, not its repeating
             if len(properties):
                 row.append(properties)
-        next_cells = {start: cell for cell, start, _ in _cells(neighbour)} if neighbour is not None else {}
+        # A cell carries a vertical merge on where the row after the new one continues it
+        # there (that row's cell over the same columns).
+        after = neighbour if below else reference
+        after_cells = {(start, span): cell for cell, start, span in _cells(after)} if after is not None else {}
         #: Round 53 (R107): the new cells of columns whose deletion or insertion is pending (a
         #: tracked change not yet accepted or rejected): ``(new cell, its paragraph, records)``.
         pending: list[tuple[Element, Element, list[Element]]] = []
-        for cell, start, span in _cells(reference):
+        for cell, start, span in _cells(shape):
             new_cell = make("w:tc")
             properties = _clean_cell_properties(cell.find(_W + "tcPr"))
             merge = properties.find(_W + "vMerge")
             if merge is not None:
                 remove(merge)
-                inside = (_vmerge(next_cells[start]) == "continue" if below and start in next_cells else False) \
-                    or (not below and _vmerge(cell) == "continue")
-                if inside:
+            if merge is not None or shape is not reference:
+                if (start, span) in after_cells and _vmerge(after_cells[(start, span)]) == "continue":
                     insert_in_order(properties, make("w:vMerge"))
             new_cell.append(properties)
             paragraph = _empty_paragraph_like(cell.find(W_P))
@@ -448,7 +524,7 @@ class TableOps:
             stamp.finish()
         self.package.mark_dirty(part)
         story = self._story_of(part)
-        return ("" if story == "body" else f"{story}/") + f"tr:{row.get(_ids.PARA_ID)}"
+        return ("" if story == "body" else f"{story}/") + f"tr:{row.get(_ids.PARA_ID)}", note
 
     def _follow_pending_columns(self: "Document", pending: list[tuple[Element, Element, list[Element]]]
                                 ) -> list[Element]:
@@ -568,7 +644,7 @@ class TableOps:
     # by one otherwise.
 
     def _rows_after_last(self: "Document", table: str, count: int) -> list["EditResult"]:
-        """``count`` rows after the table's last, each as ``insert_row(table, last)`` makes
+        """``count`` rows after the table's last, each as ``insert_row(table, last, plain=True)`` makes
         one -- and each that would repeat as a header row made a body row
         (``set_row(header=False)``), as ``word_edit_table``'s grow did, row by row: their
         edits, in order."""
@@ -581,16 +657,16 @@ class TableOps:
         with self._edit(), self._held_ids():
             last = entry.rows[-1][0]
             for k in range(count):
-                new_id = self._put_row_like(part, last, None, True, tracking)
+                new_id, note = self._put_row_like(part, last, None, True, tracking, entry.element)
                 last = last.getnext()
-                edits.append(EditResult(new_id, created=[new_id], renamed={}))
+                edits.append(EditResult(new_id, created=[new_id], renamed={}, warnings=[note] if note else []))
                 if last.find(f"{_W}trPr/{_W}tblHeader") is not None:
                     self._invalidate()          # set_row finds the row in the index
                     edits.append(self.set_row(table_id, height + k, header=False))
         return edits
 
     def _rows_beside(self: "Document", table: str, places: list[tuple[int, bool, int]]) -> list["EditResult"]:
-        """For each ``(index, below, count)`` of ``places``, in order: ``count`` rows as
+        """For each ``(index, below, count)`` of ``places``, in order: ``count`` rows (``plain``) as
         ``insert_row(table, index, below=below)`` makes the first and ``insert_row`` below
         the row just made each next one -- and each that would repeat as a header row made a
         body row (``set_row(header=False)``) -- as ``word_edit_table``'s ``sync`` makes them
@@ -610,10 +686,10 @@ class TableOps:
                     reference = rows[at]
                     neighbour = (rows[at + 1] if side and at + 1 < len(rows)
                                  else (rows[at - 1] if not side and at else None))
-                    new_id = self._put_row_like(part, reference, neighbour, side, tracking)
+                    new_id, note = self._put_row_like(part, reference, neighbour, side, tracking, entry.element)
                     at = at + 1 if side else at
                     rows.insert(at, reference.getnext() if side else reference.getprevious())
-                    edits.append(EditResult(new_id, created=[new_id], renamed={}))
+                    edits.append(EditResult(new_id, created=[new_id], renamed={}, warnings=[note] if note else []))
                     side = True
                     if rows[at].find(f"{_W}trPr/{_W}tblHeader") is not None:
                         self._invalidate()          # set_row finds the row in the index
@@ -944,7 +1020,11 @@ class TableOps:
                             if holder is not None and not len(holder):
                                 remove(holder)
                             record = None
-                        if record is None:
+                        if record is None or (record.tag == _W + "ins" and record.getparent().find(_W + "del") is None):
+                            # Round 57 (R125): a mark a pending insertion made (a split's new
+                            # cell) is deleted beside it -- else Accept All keeps the cell, given
+                            # to the one before it: a row a column wider than the others (Word's
+                            # Accept All too, measured).
                             _track.mark(paragraph, "del", stamp, part)
                 if spans:
                     # The grid as it will be, the old one in a w:tblGridChange; a cell that
@@ -1343,7 +1423,7 @@ class TableOps:
     # -- splitting --------------------------------------------------------------------------
 
     def split_cell(self: "Document", table: str, row: int, column: int, *, rows: int = 1,
-                   columns: int = 2) -> "EditResult":
+                   columns: int | None = None) -> "EditResult":
         """Split the cell over grid position ``(row, column)`` into ``rows`` x ``columns``
         cells, as Word splits one (measured): across, a cell spanning enough grid columns
         is divided among the new cells, otherwise its grid column is divided and every other
@@ -1352,21 +1432,32 @@ class TableOps:
         down into them.  The content stays in the first cell; the new cells hold an empty
         paragraph.  Tracked (Word's own split is applied untracked), the new cells' and
         rows' paragraph marks are insertions, the other cells' old properties
-        ``w:tcPrChange``s and the old grid a ``w:tblGridChange``, and a comment says so."""
+        ``w:tcPrChange``s and the old grid a ``w:tblGridChange``, and a comment says so.
+
+        Round 57 (R125): ``columns`` defaults to the cell's grid columns where it spans
+        several (each its own cell again), else 2 -- Word's dialog offers 2 for any cell
+        (measured), which on a cell over 3 columns adds a grid column and changes every other
+        row.  A cell over several grid columns split into no more cells than it spans is
+        divided along the grid's own lines, the first cells a column more where they do not
+        share evenly; the result warns where Word, dividing the width evenly, would have
+        added grid columns instead."""
         from .document import EditError, EditResult
 
-        if not (isinstance(rows, int) and isinstance(columns, int) and 1 <= rows <= 63 and 1 <= columns <= 63):
-            raise EditError("rows and columns are whole numbers from 1 to 63")
         part, entry = self._table_entry(table)
-        if rows == 1 and columns == 1:
-            return EditResult(entry.id, changed=False)
         all_rows = [r for r, _ in entry.rows]
         target = next(((cell, start, span) for cell, start, span in _cells(all_rows[row])
                        if start <= column < start + span), None) if 0 <= row < len(all_rows) else None
+        if columns is None:
+            columns = target[2] if target is not None and target[2] > 1 else 2
+        if not (isinstance(rows, int) and isinstance(columns, int) and 1 <= rows <= 63 and 1 <= columns <= 63):
+            raise EditError("rows and columns are whole numbers from 1 to 63")
+        if rows == 1 and columns == 1:
+            return EditResult(entry.id, changed=False)
         if target is None:
             from .document import no_cell_message
 
             raise EditError(no_cell_message(entry.id, row, column, self.table(entry.id).grid()))
+        warnings: list[str] = []
         tracking = self._active_tracking()
         with self._edit():
             renames = self._prepare(part, [])
@@ -1383,7 +1474,13 @@ class TableOps:
             cell = next((c for c, s, sp in _cells(rows_before[top]) if s == cell_start), cell)
             new_cells: list[Element] = []
             if columns > 1:
-                new_cells += _split_across(element, rows_before, top, bottom, cell, columns)
+                made, uneven = _split_across(element, rows_before, top, bottom, cell, columns)
+                new_cells += made
+                if uneven:
+                    warnings.append(f"cell ({row}, {column}) over {uneven[0]} grid columns split into {columns} "
+                                    f"along the table's grid, over {', '.join(map(str, uneven[1]))} column(s) "
+                                    "each: Word's Split Cells divides the width evenly, adding grid columns "
+                                    "and changing every other row; the grid kept")
             heads = [cell] + [c for c in new_cells if _row_of(c) is rows_before[top]]
             new_rows: list[Element] = []
             if rows > 1:
@@ -1438,7 +1535,8 @@ class TableOps:
                                            "written as inserted cells and rows: Reject All takes them out.")
             self.package.mark_dirty(part)
             created = [self._paragraph_id(part, p) for p in new_paragraphs]
-        return EditResult(renames.get(entry.id, entry.id), renamed=renames, created=[c for c in created if c])
+        return EditResult(renames.get(entry.id, entry.id), renamed=renames, created=[c for c in created if c],
+                          warnings=warnings)
 
     def _describe(self: "Document", part: str, cell: Element, text: str) -> None:
         """A comment on a cell's first paragraph saying what structural change the tracked
@@ -1764,11 +1862,15 @@ def _set_merge(cell: Element, merge: str | None) -> None:
         remove(properties)
 
 
-def _split_across(table: Element, rows: list[Element], top: int, bottom: int, cell: Element, n: int) -> list[Element]:
+def _split_across(table: Element, rows: list[Element], top: int, bottom: int, cell: Element,
+                  n: int) -> tuple[list[Element], tuple[int, list[int]] | None]:
     """Split ``cell`` (and the cells under it in its vertical merge) into ``n`` across, as
     Word does: the grid divided where the new edges fall between its lines (every other
     cell over a divided column spanning the new columns), the cell's span shared where
-    they fall on them.  The new cells, in document order."""
+    they fall on them.  Round 57 (R125): a cell over at least ``n`` grid columns is divided
+    along the grid's lines instead (its columns shared out, the first cells one more), so
+    no grid column is added.  The new cells, in document order; and where Word's even
+    division would have added grid columns, ``(the cell's span, each new cell's)``."""
     widths = _grid_widths(table)
     lines = [0]
     for width in widths:
@@ -1776,6 +1878,12 @@ def _split_across(table: Element, rows: list[Element], top: int, bottom: int, ce
     start, span = next((s, sp) for c, s, sp in _cells(rows[top]) if c is cell)
     x0, x1 = lines[start], lines[start + span]
     cuts = [x0 + round((x1 - x0) * k / n) for k in range(1, n)]
+    uneven = None
+    if 1 < n <= span and start + span < len(lines):
+        sizes = [span // n + (1 if k < span % n else 0) for k in range(n)]
+        if not set(cuts) <= set(lines):
+            uneven = (span, sizes)
+        cuts = [lines[start + sum(sizes[:k])] for k in range(1, n)]
     new_lines = sorted(set(lines) | set(cuts))
     if new_lines != lines:
         # Every row's cells and skips as positions, then spans over the new grid.
@@ -1826,7 +1934,7 @@ def _split_across(table: Element, rows: list[Element], top: int, bottom: int, ce
             anchor.addnext(new)
             anchor = new
             made.append(new)
-    return made
+    return made, uneven
 
 
 def own_table_rows(table: Element) -> list[Element]:

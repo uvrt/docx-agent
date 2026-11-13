@@ -632,7 +632,7 @@ def _insert(document: Any, kept: Any, table: str, slots: list[tuple[int, bool, l
     for row, below, count in places:
         index, side = row, below
         for _ in range(count):
-            edit = document.insert_row(current, index, below=side)
+            edit = document.insert_row(current, index, below=side, plain=True)
             edits.append(edit)
             created.append(edit.id)
             current = kept.current_id() or current      # a row added above the first renames it

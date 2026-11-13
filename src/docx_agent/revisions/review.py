@@ -1120,8 +1120,8 @@ def _content_kept(cell: Element) -> bool:
         if next((a for a in paragraph.iterancestors(W_TC)), None) is not cell:
             continue
         record = _track.mark_record(paragraph)
-        if record is None or record.tag not in _track.DELETED:
-            return True
+        if record is None or not any(child.tag in _track.DELETED for child in record.getparent()):
+            return True                 # round 57: an inserted mark deleted after (ins, del) goes
     return False
 
 

@@ -428,7 +428,8 @@ def _text(table: Any, row: int, col: int) -> str:
             "side": string("insert_*: relative to index. Default after.", enum=["after", "before"], optional=True),
             "first": POSITION, "last": POSITION,
             "rows": integer("split: into rows. Default 1.", minimum=1, maximum=63, optional=True),
-            "columns": integer("split: into columns. Default 2.", minimum=1, maximum=63, optional=True)},
+            "columns": integer("split: into columns. Default the cell's columns, else 2.", minimum=1,
+                               maximum=63, optional=True)},
            refs=('table',), group="word_objects", mutates=True, sources=("from", "cells[].from"),
            facts=("cells[].text",), aliases={"columns": names_as("columns", "from_columns")},
            # Round 51: key is sync's key column, never a retry key -- a sync repeated with the
@@ -436,7 +437,7 @@ def _text(table: Any, row: int, col: int) -> str:
            retry_key=False)
 def word_edit_table(call: Any, doc: str, table: str, action: str, cells: list[dict] | None = None,
                     index: int | None = None, side: str = "after", first: dict | None = None,
-                    last: dict | None = None, rows: int = 1, columns: int = 2,
+                    last: dict | None = None, rows: int = 1, columns: int | None = None,
                     from_columns: list[str] | None = None, header: list[str] | None = None,
                     date_format: str | None = None, grow: bool | None = None, key: str | None = None,
                     remove: bool | None = None, loose: str | None = None, match: list[dict] | None = None,
@@ -489,6 +490,9 @@ def word_edit_table(call: Any, doc: str, table: str, action: str, cells: list[di
                         valid_options=["from", "insert_row"])
     kept = _Kept(document, table)
     accepted = _Accepted(document, table)
+    # Round 57 (R125): whether the table is ragged as Accept All leaves it, before a change of
+    # its shape -- an edit that makes it so says so, and check names the edit.
+    ragged_before = _ragged(document, table) if action not in ("set_cells", "insert_row") else None
     edits = []
     facts: list[dict[str, Any]] | None = None
     fills: list[dict[str, Any]] = []
@@ -501,6 +505,7 @@ def word_edit_table(call: Any, doc: str, table: str, action: str, cells: list[di
         _limit_cells(call, len(places))
         values = [_cell_value(call, cell, k) for k, cell in enumerate(cells)]   # all read first, once each
         texts = [values[k][0] for k in owners]
+        _one_value_per_cell(view, places, owners, texts, accepted)
         placed_at: list[tuple[int, int]] = []
         writes = _by_position(document, view, places, texts, accepted)
         if writes is not None:
@@ -526,7 +531,7 @@ def word_edit_table(call: Any, doc: str, table: str, action: str, cells: list[di
         # pending stays on its other side.
         if accepted.rows_active:
             index = accepted.to_row(accepted.height - 1 if index is None else index, "index")
-        edits.append(document.insert_row(table, index, below=side == "after"))
+        edits.append(document.insert_row(table, index, below=side == "after", plain=True))
     elif action == "delete_row":
         index = need(index, "index")
         if accepted.rows_active:
@@ -556,7 +561,8 @@ def word_edit_table(call: Any, doc: str, table: str, action: str, cells: list[di
         a = need(first, "first", " (the cell to split)")
         r1, c1 = _corner(accepted, a, "first")
         _no_split_over_pending(document, doc, table, accepted, r1, c1)
-        edits.append(document.split_cell(table, r1, c1, rows=rows, columns=columns))
+        _no_split_past_span(document, doc, table, accepted, a, r1, c1, columns or None)
+        edits.append(document.split_cell(table, r1, c1, rows=rows, columns=columns or None))
     kept.follow(call, action, index, side)
     # A row inserted or deleted at the top renames the table (its id is its first row's).
     now = kept.current_id() or table
@@ -576,6 +582,10 @@ def word_edit_table(call: Any, doc: str, table: str, action: str, cells: list[di
         result.warnings.insert(0, read_as)
     result.warnings.extend(accepted.notes)
     result.warnings.extend(_loses_text(document, now))
+    if action not in ("set_cells", "insert_row"):
+        made = _made_ragged(call, document, now, ragged_before)
+        if made:
+            result.warnings.append(made)
     if fills:
         # The cells' paragraphs (changed, made and removed) are the table's: named by it, not
         # one by one (rule 4; a 431-row column listed 431 ids).
@@ -587,6 +597,9 @@ def word_edit_table(call: Any, doc: str, table: str, action: str, cells: list[di
             result.warnings.extend(fill["notes"])
     if now != table:
         result.renamed[table] = now
+        made = document.__dict__.get(RAGGED_BY)
+        if made and table in made:
+            made[now] = made.pop(table)
     return note_small_text(call, result, [now]) if action == "set_cells" else result
 
 
@@ -612,6 +625,144 @@ def _sync(call: Any, view: Any, source: str | None, cells: Any, index: Any, from
         notes.append("grow not needed: sync adds the rows of new keys")
     return sync(call, view, source, from_columns, key, bool(remove), date_format, notes, loose=loose or None,
                 match=[(p["table"], p["data"]) for p in match or ()])
+
+
+def _one_value_per_cell(view: Any, places: list[dict], owners: list[int], texts: list[str],
+                        accepted: "_Accepted") -> None:
+    """Round 57 (R125): refuse ``set_cells`` giving different values to positions of one merged
+    cell -- it holds one text, so all but the last would be lost (an ``ok`` that dropped two
+    of four values).  Each such cell is named with its positions and values, and the calls
+    that give each value a cell: a split into the cell's own columns and rows, or a new row
+    (``insert_row`` gives one a cell per column).  The same value at each position is
+    written once (a label repeated down a merged column)."""
+    try:
+        grid = view.grid()
+    except Exception:  # noqa: BLE001 - a table it cannot read is refused where it is written
+        return
+    found: dict[tuple[int, int], list[tuple[int, tuple[int, int], str]]] = {}
+    for k, (cell, text) in enumerate(zip(places, texts)):
+        if not isinstance(cell, dict) or not isinstance(text, str):
+            continue
+        try:
+            row, col = _locate(view, cell, accepted=accepted)
+        except (ToolError, KeyError, IndexError, ValueError, TypeError):
+            continue                        # refused where it is written, with the table's shape
+        if not (0 <= row < len(grid) and 0 <= col < len(grid[row])) or grid[row][col] is None:
+            continue
+        origin = grid[row][col]
+        given = (cell["row"], cell["col"]) if isinstance(cell.get("row"), int) and isinstance(cell.get("col"), int) \
+            else (row, col)
+        found.setdefault((origin.row, origin.column), []).append((owners[k], given, text))
+    clashes = []
+    for (r0, c0), hits in found.items():
+        if len({given for _, given, _ in hits}) < 2 or len({text for _, _, text in hits}) < 2:
+            continue
+        covered = [(r, c) for r, line in enumerate(grid) for c, cell in enumerate(line)
+                   if cell is not None and (cell.row, cell.column) == (r0, c0)]
+        rows = len({r for r, _ in covered})
+        columns = len({c for _, c in covered})
+        first = min(given for _, given, _ in hits)
+        clashes.append({"cell": f"{view.id}/c{r0},{c0}", "positions": [list(g) for _, g, _ in hits],
+                        "values": [short(t, 40) for _, _, t in hits], "cells": [k for k, _, _ in hits],
+                        "split": {"tool": "word_edit_table", "arguments": {
+                            "table": view.id, "action": "split", "first": {"row": first[0], "col": first[1]},
+                            "rows": rows, "columns": columns}}})
+    if not clashes:
+        return
+    first = clashes[0]
+    named = ", ".join(f"({r}, {c})" for r, c in first["positions"])
+    values = ", ".join(repr(v) for v in first["values"])
+    more = f" ({len(clashes) - 1} more merged cell(s) in details)" if len(clashes) > 1 else ""
+    split = first["split"]["arguments"]
+    raise ToolError("refused", f"{named} are one merged cell of {view.id}: it holds one text, so of {values} "
+                    f"only the last would stay{more}; nothing written. Give each value a cell first: split "
+                    f"({split['first']['row']}, {split['first']['col']}) into {split['rows']} row(s) x {split['columns']} column(s) (the "
+                    "cell's own grid), or insert_row for a new row with a cell per column; or give the cell "
+                    "one value", field="cells", valid_options=["split", "insert_row"],
+                    details={"merged": clashes[:_LISTED], "merged_left_out": max(0, len(clashes) - _LISTED)}
+                    if len(clashes) > _LISTED else {"merged": clashes})
+
+
+def _no_split_past_span(document: Any, doc: str, table: str, accepted: "_Accepted", given: dict, row: int,
+                        col: int, columns: int | None) -> None:
+    """Round 57 (R125): a cell over several grid columns split into more cells than it spans
+    is refused: Word divides the width evenly, adding grid columns, which changes every
+    other row's cells (a header cell made to span two).  Into 2 up to its span keeps the
+    grid; more is that split, then a split of one of its cells (a single column's split
+    divides it, as it must)."""
+    if columns is None:
+        return
+    cells = [(c, s, sp) for c, s, sp in _row_cells(document, table, row) if s <= col < s + sp]
+    if not cells:
+        return
+    _cell, _start, span = cells[0]
+    if span < 2 or columns <= span:
+        return
+    at = {"row": given.get("row", row), "col": given.get("col", col)}
+    keeps = list(range(2, span + 1))
+    raise ToolError("refused", f"cell ({at['row']}, {at['col']}) of {table} spans {span} grid columns: a split into "
+                    f"{columns} would add grid columns, changing every other row's cells (Word's Split Cells does "
+                    f"that); into {', '.join(map(str, keeps))} keeps the grid ({span}: a cell per column). For "
+                    f"{columns}, split into {span}, then split one of the new cells", field="columns",
+                    valid_options=keeps, details={"call": {"tool": "word_edit_table", "arguments": {
+                        "doc": doc, "table": table, "action": "split", "first": at, "columns": span}}})
+
+
+def _row_cells(document: Any, table: str, row: int) -> list:
+    """Document row ``row``'s ``(cell, first grid column, span)``."""
+    from ..edit.tables import _cells
+
+    entry = _table_entry(document, table)
+    if entry is None or not 0 <= row < len(entry.rows):
+        return []
+    return _cells(entry.rows[row][0])
+
+
+def _ragged(document: Any, table: str) -> dict[str, Any] | None:
+    """``check``'s ragged entry for ``table`` (:func:`~docx_agent.layout_facts.ragged_rows`),
+    or ``None``."""
+    from ..layout_facts import ragged_rows
+
+    entry = _table_entry(document, table)
+    return ragged_rows(document, entry) if entry is not None else None
+
+
+#: Where a document keeps the call that left each table ragged after Accept All, this
+#: session (round 57, R125): table id -> ``{"tool", "arguments"}``.
+RAGGED_BY = "_ragged_by"
+
+
+def _made_ragged(call: Any, document: Any, table: str, before: dict[str, Any] | None) -> str | None:
+    """Round 57 (R125, rule 7): a ``word_edit_table`` change that leaves ``table`` ragged as
+    Accept All leaves it -- rows ending on different grid columns -- where it was not: the
+    call is kept on the document for ``check``'s ``table_grid_mismatch`` (its ``made_by``),
+    and the warning says so, with the undo."""
+    if before is not None:
+        return None
+    after = _ragged(document, table)
+    if after is None:
+        return None
+    arguments = {k: v for k, v in (call.arguments or {}).items() if v is not None}
+    document.__dict__.setdefault(RAGGED_BY, {})[table] = {"tool": "word_edit_table", "arguments": arguments}
+    rows = after["rows"]
+    named = ", ".join(f"{e['row']} (columns {e['covers'][0]}-{e['covers'][1]})" for e in rows[:5])
+    more = f" and {len(rows) - 5} more" if len(rows) > 5 else ""
+    return (f"{table} is ragged {'once its tracked changes are accepted' if after['after_accept'] else 'now'}: "
+            f"rows {named}{more} end short of the others' {after['grid']} columns; this call made it so "
+            "(undo reverses it)")
+
+
+def ragged_made_by(document: Any, layout: Any) -> None:
+    """Round 57 (R125): each ragged entry of ``check``'s ``table_grid_mismatch`` in
+    ``layout`` given ``made_by``, the call of this session that left its table so, where one
+    did (:func:`_made_ragged`)."""
+    live = document.__dict__.get("_live", document)       # a read copy: the document's
+    made = live.__dict__.get(RAGGED_BY) if isinstance(layout, dict) else None
+    if not made:
+        return
+    for entry in layout.get("table_grid_mismatch") or ():
+        if isinstance(entry, dict) and entry.get("drawn") == "ragged" and entry.get("table") in made:
+            entry["made_by"] = made[entry["table"]]
 
 
 def _by_position(document: Any, view: Any, cells: list[dict], texts: list[str],
@@ -994,24 +1145,33 @@ def _set_from(call: Any, view: Any, source: str, from_columns: list[str] | None,
                         field="index", valid_options=["grow"] if top == height else ())
     need_rows, need_columns = block.size
     short_by = need_rows - (height - top)
+    grid = _accepted_grid(view.grid(), accepted)
+    if accepted.rows_active:
+        grid = [_positioned(grid[r], accepted.from_row) for r in accepted.rows]
     if short_by > 0 and not grow:
+        # Round 57 (R125): a merged row in the way is said before the rows the block lacks --
+        # grow would add them past it.
+        if need_columns <= width:
+            _one_cell_each(view.id, block, grid, top, height - top, need_columns, {}, asked=asked or {},
+                           need_rows=need_rows)
         _no_room(block, view.id, height - top, top, short_by, asked or {})
     if grow:
         fits(block, need_rows, width, room=f"{view.id} has {width} columns")   # its columns
         fits(block, MAX_ROWS - top, MAX_COLUMNS)                               # Word's rows
     else:
         fits(block, height - top, width, room=f"{view.id} has {height - top} rows from row {top}")
-    grid = _accepted_grid(view.grid(), accepted)
-    if accepted.rows_active:
-        grid = [_positioned(grid[r], accepted.from_row) for r in accepted.rows]
-    _one_cell_each(view.id, block, grid, top, min(need_rows, height - top), need_columns, {})
+    _one_cell_each(view.id, block, grid, top, min(need_rows, height - top), need_columns, {},
+                   asked=asked or {}, need_rows=need_rows)
     edits: list[Any] = []
     added: list[str] = []
     # Round 45 (R67): in one pass where nothing needs stamping -- the same edits, in order.
     at_once = not document._stamping_due()
     if short_by > 0:
-        # The rows added are the last row's likeness: checked as the block's other rows are.
-        _one_cell_each(view.id, block, [grid[-1]] * short_by, 0, short_by, need_columns, {}, first=height)
+        # The rows added are the last row's likeness -- round 57 (R125): the nearest row's
+        # without a cell over several columns where the last has one: checked as the block's
+        # other rows are.
+        _one_cell_each(view.id, block, [_grown_like(document, view.id, grid, accepted)] * short_by, 0, short_by,
+                       need_columns, {}, first=height)
         timing.add("check", time.perf_counter() - started)
         with timing.part("rows"):
             edits, added = _grow(document, view.id, short_by, at_once=at_once)
@@ -1101,9 +1261,15 @@ class _AcceptedCell:
 
 
 def _one_cell_each(table: str, block: Any, grid: list, top: int, count: int, columns: int,
-                   seen: dict[tuple[int, int], tuple[int, int]], first: int | None = None) -> None:
+                   seen: dict[tuple[int, int], tuple[int, int]], first: int | None = None, *,
+                   asked: dict[str, Any] | None = None, need_rows: int | None = None) -> None:
     """Refuse a block over a merged cell, or where a row has no cell: rows ``top`` to
-    ``top + count - 1`` of ``grid`` (named from ``first`` when they are rows to add)."""
+    ``top + count - 1`` of ``grid`` (named from ``first`` when they are rows to add).
+
+    Round 57 (R125): over a merged cell of a row the table has, the way out that leaves that
+    row as it is comes first -- rows inserted above it (``insert_row`` ``side: before``, as
+    many as the block needs from there; each with a cell per column), then the call again --
+    and splitting the cell, which changes the row, second."""
     for k in range(count):
         row = top + k
         for col in range(columns):
@@ -1113,11 +1279,55 @@ def _one_cell_each(table: str, block: Any, grid: list, top: int, count: int, col
                 named = row if first is None else first + k
                 what = (f"merged with ({seen[origin][0]}, {seen[origin][1]})" if origin in seen
                         else "not a cell")
-                raise ToolError("refused", f"({named}, {col}) of {table} is {what}"
-                                + (" in the rows grow adds (each like the last row)" if first is not None else "")
-                                + f": the block from {block.rows.address} needs one cell per value; split it "
-                                "first", field="from")
+                message = (f"({named}, {col}) of {table} is {what}"
+                           + (" in the rows grow adds (each like the last row)" if first is not None else "")
+                           + f": the block from {block.rows.address} needs one cell per value")
+                if first is not None or asked is None or need_rows is None:
+                    raise ToolError("refused", message + "; split it first", field="from")
+                times = need_rows - k
+                doc = {"doc": asked["doc"]} if "doc" in asked else {}
+                insert = {**doc, "table": table, "action": "insert_row", "index": row, "side": "before"}
+                again = {k_: v for k_, v in asked.items() if k_ != "grow"}
+                calls: list[dict[str, Any]] = [{"tool": "word_edit_table", "arguments": insert, "times": times},
+                                               {"tool": "word_edit_table", "arguments": again}]
+                message += (f". To keep row {row} as it is, insert the rows above it: insert_row index {row} side "
+                            f"before, {times} time(s) (each new row a cell per column), then this call again "
+                            f"(index {top}, without grow)")
+                if origin is not None and origin in seen:
+                    lead = seen[origin]
+                    span = sum(1 for c in range(len(grid[row])) if grid[row][c] is cell)
+                    calls.append({"tool": "word_edit_table", "arguments": {
+                        **doc, "table": table, "action": "split", "first": {"row": lead[0], "col": lead[1]},
+                        "columns": span}})
+                    message += f"; or split ({lead[0]}, {lead[1]}) into {span} columns, which changes row {row}"
+                raise ToolError("refused", message, field="from", valid_options=["insert_row", "split"],
+                                details={"calls": calls})
             seen[origin] = (row, col)
+
+
+class _GridCell:
+    """A stand-in cell of a row grow adds where no row of the table gives its shape."""
+
+    def __init__(self, column: int) -> None:
+        self.row, self.column = 0, column
+
+
+def _grown_like(document: Any, table: str, grid: list, accepted: "_Accepted") -> list:
+    """The grid row the rows ``grow`` adds are like (round 57, R125): the last row, or where a
+    cell of it spans columns the nearest row without one (``Document.insert_row``'s), else a
+    cell per column."""
+    from ..edit.tables import _shape_row, _spanned, own_table_rows
+
+    element = _table_entry(document, table).element
+    rows = own_table_rows(element)
+    if not rows or not _spanned(rows[-1]):
+        return grid[-1]
+    found = _shape_row(rows, len(rows) - 1)
+    if found is None:
+        return [_GridCell(c) for c in range(len(grid[-1]))]
+    if accepted.rows_active:
+        return grid[accepted.rows.index(found)] if found in accepted.rows else grid[-1]
+    return grid[found]
 
 
 def _no_room(block: Any, table: str, room: int, top: int, short_by: int, asked: dict[str, Any]) -> None:
@@ -1145,7 +1355,7 @@ def _grow(document: Any, table: str, count: int, *, at_once: bool = False) -> tu
     edits, added = [], []
     for _ in range(count):
         last = len(document.table(table).rows) - 1
-        edit = document.insert_row(table, last, below=True)
+        edit = document.insert_row(table, last, below=True, plain=True)
         edits.append(edit)
         added.append(edit.id)
         if _is_header_row(document, table, last + 1):
