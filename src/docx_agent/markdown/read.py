@@ -569,6 +569,11 @@ class Reader:
                     continue
                 merge = tc.find(f"{_W}tcPr/{_W}vMerge")
                 continues = merge is not None and merge.get(_W + "val") in (None, "continue")
+                tracked = tc.find(f"{_W}tcPr/{_W}cellMerge") if self.view == "current" else None
+                if tracked is not None:
+                    # A pending tracked vertical merge, as accepting leaves it (round 54,
+                    # lane A: docx2svg's revision probe, "cellMerge alone").
+                    continues = tracked.get(_W + "vMerge") == "cont"
                 if continues and column in origins:
                     origins[column].row_span += 1
                 else:

@@ -9,7 +9,8 @@ chooses each value's step and reports; this module reads the values and writes t
 * a cell (``t:X/c1,2``): its text, the cell shaded and its text styled;
 * a table's column (``t:X/col2``, a grid column from 0): every body cell of it -- the rows
   marked to repeat as a header (``w:tblHeader``) left out, and the first row where none is
-  marked and the table's look has its header row on (as Word draws it);
+  marked and the table's look has its header row on (as Word draws it); rows counted as
+  accepted (round 54, lane A): a row whose tracked deletion is pending is left out;
 * values written by reference (``{{d:scores/*/score}}``): each value a text tool wrote from
   a matching reference and still where it was written (:meth:`docx_agent.Document.text_facts`)
   -- its characters, or its cell where it is the cell's whole text.
@@ -314,9 +315,18 @@ def _column(document: Any, scale: _scales.Scale, target: str, table_id: str, col
     if not header and (properties.get("look") or {}).get("first_row"):
         header = 1
     grid = table.grid()
+    # Round 54 (lane A): the rows as accepted, as row positions count them -- a row whose
+    # tracked deletion is pending is not among the values (word_read's final view leaves it
+    # out); the header rows are the document's, or the first row as accepted.
+    from ..edit.provenance import accepted_rows
+    from .objects import _table_entry
+
+    entry = _table_entry(document, table.id)
+    rows = accepted_rows(entry) if entry is not None else list(range(len(grid)))
+    body = [r for r in rows if r >= header] if properties.get("header_rows") else rows[header:]
     out: list[ScaleValue] = []
     seen: set[str] = set()
-    for r in range(header, len(grid)):
+    for r in body:
         cell = grid[r][column] if column < len(grid[r]) else None
         if cell is None or cell.id in seen:
             continue
@@ -325,7 +335,9 @@ def _column(document: Any, scale: _scales.Scale, target: str, table_id: str, col
             continue
         out.append(_cell_value(document, scale, cell, target, reader))
     if not out:
-        raise ToolError("not_found", f"{target}: no body cells ({header} header row(s) of {len(grid)})")
+        pending = len(grid) - len(rows)
+        raise ToolError("not_found", f"{target}: no body cells ({header} header row(s) of {len(rows)}"
+                        + (f"; {pending} more deleted by a pending tracked change" if pending else "") + ")")
     return out
 
 

@@ -5,6 +5,46 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.102 -- unreleased
+
+- **Our accept gives Word's Accept All at a table's edge, in a clean file** (round 54
+  follow-up, lane A; user decision 2026-11-13). `word_changes` accept (all, by id, or
+  `within`) of a deleted paragraph mark at a table's edge now does what `word_read`'s final
+  view and render already show (lane R, lane J): a paragraph before a table joins the first
+  paragraph of the table's first cell (a nested table's; before a block-level content
+  control, the first paragraph of its content), under the cell paragraph's properties; a
+  cell whose last mark is deleted takes in the next cell of its row -- its last paragraph
+  joined to that cell's first, the rest after, the cell keeping its own width; a row's
+  first cell's other paragraphs leave the table before the row, the table split there in a
+  later row, each part with its own grid; the row ends short (`w:gridAfter`, `w:wAfter`)
+  where another row keeps the column, as Word saves it, and a grid column only the cell
+  taken in covered goes. Before, our accept kept Word's *No Markup* form (the paragraph
+  before the table, the cells apart).
+- **A row's last cell**: Word's Accept All takes the cell and its text out of view and saves
+  the text in a broken table (a zero-span cell) after the row. Ours removes the cell and
+  moves its text after the row in paragraphs of its own -- the table split there, both parts
+  keeping the grid, the row ending short as Word saves it -- and the result says so (`a
+  row's last cell whose last paragraph mark was deleted went; its text ('Kept. Last.') is
+  now after the row in p:..., p:..., the table split there ...`). check's
+  `accept_loses_text`, `word_edit_table`'s warning and refusal say what each accept does.
+- Measured: Word 16.106 for Mac drew docx-agent's accepted files of lane R's five edge
+  shapes; where Word's own result is clean (before a table, a first cell's end, a later
+  row's first cell) its drawing is Word's Accept All export -- every rule pixel, glyph
+  positions within 0.03 px (Word's own run splits) -- and the row's-end case's first part
+  is Word's saved table. docx2svg's revision probe (79 cases, three compatibility modes),
+  accepted by docx-agent and rendered, against Word's recorded Accept All: mark family 24
+  of 41 cases before, 39 now (the other two the row's-last-cell cases, by design).
+  `word_read` after our accept against before it, the 79 cases and lane R's eight shapes:
+  61 of 87 agreed, now 83 (the four row's-last-cell readings, by design).
+- `word_read`'s final view reads a cell merged down by a pending tracked merge
+  (`w:cellMerge`) as merged, as render draws it and accepting leaves it.
+- `style_by_value`'s column target (`t:X/colN`) counts the rows as accepted: a row whose
+  tracked deletion is pending is not among the values.
+- Fixed: `word_changes` `within` a table's volatile id (`t@body/0`, a table whose first row
+  has no paraId) was refused as "a table, not text"; accepting numbered paragraphs in a
+  document with no numbering part failed.
+- Tool definitions unchanged (sha 7a8d751ed0151521); Word core 4,671 online unchanged.
+
 ## 0.1.101 -- unreleased
 
 - **Row positions count the table as accepted** (round 54 follow-up, lane R; as lane M did

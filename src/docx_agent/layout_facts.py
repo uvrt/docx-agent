@@ -175,7 +175,9 @@ takes its targets as one list with the values for all, so it is ``calls``, not `
     deletion -- Word's Accept All takes such a cell and its text out of view (measured, round
     54 lanes J and R; the final view, word_read's and render's, shows it gone).  Saved and
     reopened, Word's accepted document still holds the text, split off after the row in a
-    table of its own with a zero-span cell: either way not where it was.  ``cell`` its id (on the
+    broken table (a zero-span cell); docx-agent's own accept (``word_changes``) moves it,
+    in paragraphs of its own, after the row -- the table split there -- (round 54, lane A:
+    a clean file): either way not where it was.  ``cell`` its id (on the
     document's grid), ``text`` what would be lost (shortened), ``change`` the mark's
     deletion (``rev:``) and ``author`` its author; ``fix`` the ``word_changes`` reject that
     keeps the text.  Read from the document, so listed where the layout failed too.
