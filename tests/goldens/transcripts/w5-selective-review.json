@@ -77,15 +77,16 @@
    "expect": {
     "ok": true,
     "summary": "Accepted 4 revision record(s)",
-    "data_sha": "92b6dcc2c102c617",
+    "data_sha": "83a14baee777b3a3",
     "data_keys": [
      "changes_left",
      "left_by_author",
      "left_by_author.Bob Lindqvist",
      "left_by_author.Chen Wei",
-     "records"
+     "records",
+     "this_session"
     ],
-    "data_sha_core": "92b6dcc2c102c617"
+    "data_sha_core": "83a14baee777b3a3"
    }
   },
   {
@@ -98,14 +99,15 @@
    "expect": {
     "ok": true,
     "summary": "Rejected 5 revision record(s)",
-    "data_sha": "add0c94837912e2a",
+    "data_sha": "e9f57ae54ca6db00",
     "data_keys": [
      "changes_left",
      "left_by_author",
      "left_by_author.Chen Wei",
-     "records"
+     "records",
+     "this_session"
     ],
-    "data_sha_core": "add0c94837912e2a"
+    "data_sha_core": "e9f57ae54ca6db00"
    }
   },
   {

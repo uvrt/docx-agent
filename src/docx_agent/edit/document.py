@@ -123,6 +123,9 @@ class EditResult:
     #: What new paragraphs kept of the ones they replaced (``insert_markdown`` at
     #: ``replace:``, round 42): ``{"block", "from", "settings"}`` per paragraph.
     kept: list[dict] = field(default_factory=list)
+    #: What an accept or reject removed, by kind (round 56, R121):
+    #: :meth:`~docx_agent.revisions.review.RevisionOps._blocks_gone`'s ``typed``.
+    removed_blocks: dict = field(default_factory=dict)
     #: The document edited, set for an edit made through the API: what :attr:`object`
     #: resolves ``id`` in.
     document: "Document | None" = field(default=None, repr=False, compare=False)

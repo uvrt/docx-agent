@@ -5,7 +5,7 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
-## 0.1.105 -- unreleased
+## 0.1.107 -- unreleased
 
 - **`from` given the document's own table says so, and lists the rows there are** (round 56,
   R120; ooxml-edit 0.114.0). A sync whose `from` was the report's own table id was refused as
@@ -26,6 +26,34 @@ snapshot commit; the development history before it is summarised here.
   document does not have offered nothing: now its tables (the first 12), and a workbook's
   table given as `table` (`t:stock`, `d2/t:stock`) is said to be one, with the sync that
   writes its rows into a table of the document.
+
+## 0.1.106 -- unreleased
+
+- **An accept or reject names every block it removed** (round 56, R121). `word_changes` reject
+  all of a tracked inserted table said "Rejected 19 revision record(s)" and listed paragraph ids
+  only; now, on every path (ids, author, kind, within, all; accept and reject; the library's
+  `Document.accept`/`reject` too, `EditResult.removed_blocks`), the summary names the table by
+  its `t:` id -- "removed table t:60D6847F (3 rows, 6 paragraphs)" -- rows removed from a table
+  that stays (with that table's id), paragraphs (one whose mark went: the paragraph it merged
+  into), content controls; at most six named, the rest counted ("and 3 more (data.removed)").
+  `data.removed` has them by kind (`tables` with rows and paragraphs counted, `rows`,
+  `paragraphs`, `merged`, `controls`); the envelope's `removed` lists every id, the rows and
+  paragraphs inside a removed table too, as the caller had them (before any stamping). A table
+  that gets its old name back (a tracked row at the top rejected) is in `renamed`, and both
+  names find it.
+- **Whose changes a broad call settled** (R121). `data.this_session` counts the records settled
+  that were written since the document was opened -- told apart by author and date against the
+  file as read, so an earlier session's records by the same tracking author are not counted, and
+  a record an edit split keeps its earlier author and date; a call by author, kind, within or
+  all says it in the summary: "Rejected 21 revision record(s) (2 written this session, since the
+  document was opened)".
+- **`word_changes` `preview`** (R121): what accept and what reject would settle and remove (the
+  same selection and refusals as accept and reject), worked out on copies: nothing changes, no
+  undo step. An action value, not a parameter: word_changes is strict and the strict set is
+  full (24 optional parameters). Accept's role, as accept and reject.
+- Tool definitions: +2 estimated tokens to every definition (15,735 -> 15,737) and to
+  the review role's core with accept (2,999 -> 3,001 estimated; 4,374 -> 4,377 counted online);
+  Word core 4,671 online unchanged.
 
 ## 0.1.104 -- unreleased
 
