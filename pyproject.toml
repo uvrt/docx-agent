@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "docx-agent"
-version = "0.1.102"
+version = "0.1.103"
 description = "An AI-editable Word layer: inspect, edit and re-render .docx documents losslessly"
 readme = "README.md"
 license = { text = "MIT" }
@@ -41,8 +41,9 @@ Repository = "https://github.com/uvrt/docx-agent"
 where = ["src"]
 
 # py.typed: the package's annotations are for its callers' type checkers (PEP 561).
+# samples/*.docx: documents with shapes docx-agent's own edits never make (docx_agent.samples).
 [tool.setuptools.package-data]
-docx_agent = ["py.typed"]
+docx_agent = ["py.typed", "samples/*.docx"]
 
 # A small set of bug-finding rules, not a style: pyflakes (F), syntax errors (E9),
 # mutable or called defaults (B006, B008), return in finally (B012), comparisons that do
