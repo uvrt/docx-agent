@@ -227,7 +227,7 @@ def test_settling_nothing_changes_nothing(box):
     assert result.data["records"] == 0 and "removed" not in result.data and result.removed == []
 
 
-def test_the_library_says_what_a_review_removed():
+def test_the_library_says_what_an_accept_or_reject_removed():
     """Document.reject_all's EditResult: removed_blocks, a content control in a removed
     paragraph among them, and ids as the caller had them before stamping."""
     para = ('<w:p><w:pPr><w:rPr><w:ins w:id="1" w:author="Editor B" w:date="2026-01-02T00:00:00Z"/></w:rPr></w:pPr>'

@@ -228,7 +228,7 @@ def _settle(document: Any, action: str, how: str, what: Any, author: str | None,
     return edits
 
 
-# -- R121: what a review removed, and whose changes it settled -----------------------------------
+# -- R121: what an accept or reject removed, and whose changes it settled -----------------------------------
 
 
 def _record_marks(document: Any) -> Counter:
@@ -265,7 +265,7 @@ def _this_session(document: Any, settled: Counter) -> int:
 
 
 def _merged_blocks(edits: list[Any]) -> dict:
-    """The blocks a review's edits removed, by kind (each edit's ``removed_blocks``)."""
+    """The blocks an accept's or reject's edits removed, by kind (each edit's ``removed_blocks``)."""
     merged: dict = {}
     for edit in edits:
         for key, value in (getattr(edit, "removed_blocks", None) or {}).items():
