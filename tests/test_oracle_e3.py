@@ -204,10 +204,8 @@ def test_words_review_of_the_structural_forms(word, operation, accept):
     assert export, f"Word did not export it: {export.outcome} {export.detail}"
     ours = _ours(data, accept)
     words = _words(word, data, accept, operation)
-    # Word keeps the comment that describes the change; ours goes with the change.
-    assert [c.text for c in words.comments()] and all(
-        c.text.startswith("Tracked structural change:") for c in words.comments())
-    assert ours.comments() == []
+    # Round 57 (R123): no comment describes the change any more, so neither review keeps one.
+    assert words.comments() == [] and ours.comments() == []
     same = _final(words) == _final(ours)
     assert ("same" if same else "differs") == STRUCTURAL[(operation, accept)], \
         "\n".join(_final(words)) + "\n----\n" + "\n".join(_final(ours))
