@@ -697,6 +697,10 @@ class TableOps:
                     raise EditError(f"row {index} holds the first cell of a pending tracked merge (its text and "
                                     "the cells merged into it); settle that merge first")
                 merged += [(group[0][1], cell) for r, cell in group[1:] if r == index]
+            for origin, cell in merged:
+                if any(True for copy_ in _copies_of(origin, cell)
+                       for _ in copy_.iter(_W + "footnoteReference", _W + "endnoteReference", _W + "commentReference")):
+                    raise EditError(f"row {index} holds a note or comment reference")
         with self._edit():
             renames = self._prepare(part, [])
             part, entry = self._table_entry(renames.get(table, table))
