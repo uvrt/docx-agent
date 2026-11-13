@@ -26,7 +26,7 @@ from ..edit.ranges import AmbiguousAnchor, AnchorNotFound
 from ..layout import read_copy
 from ._base import checks, problem_key
 from .render import warm_up
-from .table_data import source_hint
+from .table_data import own_source, source_hint
 from .scales import scale_values
 from .textfacts import number_texts
 from .touched import touched
@@ -247,7 +247,7 @@ FORMAT = DocumentFormat(
     kind=KIND, open=open_docx, detect=detect, problems=problems, problem_key=problem_key,
     warnings=(AuthoringWarning, UntrackedChartEdit, DiagramDrawingDropped, ChartDataWarning),
     prompt=PROMPT, errors=ERRORS, summary=summary, checks=checks, strict_first=STRICT_FIRST,
-    configure=configure, source_hint=source_hint, store_provenance=store_provenance,
+    configure=configure, source_hint=source_hint, own_source=own_source, store_provenance=store_provenance,
     read_provenance=read_provenance, restored=restored, own_facts=dict(OWN_REFUSED),
     tool_hints=TOOL_HINTS, warm_up=warm_up, touched=touched, number_texts=number_texts,
     scale_values=scale_values, state=id_state, open_with_state=open_docx_with_state,

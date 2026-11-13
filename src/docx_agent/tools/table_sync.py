@@ -344,10 +344,25 @@ def _key_column(plan: _Plan, key: Any, grid: list, header: int, rows: Any, field
             hits = [c for c, pick in mapped.items() if str(rows.dataset.columns[fields[pick]]).casefold() == said.casefold()]
             col = hits[0] if len(hits) == 1 else None
         if col is None or col not in mapped:
+            # Round 56 (R120): the options are what key takes -- a column's label where it names that
+            # column alone, else its index -- never the "0: code" the message lists them as.
             raise ToolError("not_found", f"key {key!r} is not a column sync takes from the source; the columns "
-                            f"taken: {', '.join(named)}", field="key", valid_options=named)
+                            f"taken: {', '.join(named)}", field="key", valid_options=_key_options(plan, labels))
     plan.key_col = col
     plan.key_pick = mapped[col]
+
+
+def _key_options(plan: _Plan, labels: list[str]) -> list[str]:
+    """What ``key`` takes for each column sync takes, as :func:`_key_column` reads it: the column's
+    label when no other column taken has it (case aside), else the column's index."""
+    mapped = [col for col, _ in plan.pairs]
+    out = []
+    for col in mapped:
+        label = labels[col] if col < len(labels) else ""
+        alone = label and not label.isdigit() and sum(
+            1 for c in mapped if c < len(labels) and labels[c].casefold() == label.casefold()) == 1
+        out.append(label if alone else str(col))
+    return out
 
 
 def _body(document: Any, table: str, plan: _Plan, grid: list, header: int, height: int, rows: Any,

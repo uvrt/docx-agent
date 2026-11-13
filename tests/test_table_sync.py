@@ -317,7 +317,7 @@ def test_the_key_column_by_label_index_or_field(toolbox):
         result = _sync(toolbox, session, table, **{"from": "d:next", "key": key})
         assert result.ok and result.data["key"]["col"] == 1, (key, result.to_json())
     result = _sync(toolbox, session, table, **{"from": "d:next", "key": "number"})
-    assert not result.ok and result.error.field == "key" and "0: title" in result.error.valid_options
+    assert not result.ok and result.error.field == "key" and "title" in result.error.valid_options  # round 56: what key takes
 
 
 def test_a_sync_repeated_with_the_same_key_column_runs_again(toolbox):

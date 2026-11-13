@@ -22,7 +22,9 @@ per call, or bigger than the table it is written into, is refused.
 
 ``d:`` is also how a Word document names a drawing (``d:3``); a ``from`` only ever names a
 dataset (whose id starts with a letter or ``_``), and :func:`source_hint` says so when a
-drawing's id is given.
+drawing's id is given.  A Word document's own tables give no rows either (round 56, R120): a
+``from`` naming one (``t:60D6847F``, ``d1/t:60D6847F``) is told it is a table of the document
+being edited, with the datasets and workbook tables there are (:func:`own_source`).
 """
 
 from __future__ import annotations
@@ -171,3 +173,26 @@ def source_hint(document: Any, value: str) -> str | None:
                 "d:<id>, its id starting with a letter, or a table t:<name>")
     return (f"{value} is a drawing in this document, not a dataset: a source is a dataset "
             "d:<id>, its id starting with a letter, or a table t:<name>")
+
+
+#: Round 56 (R120): the kinds of a Word document's blocks, as a refusal names them.
+_KINDS = {"TableEntry": "a table", "ParagraphEntry": "a paragraph", "ControlBlock": "a content control"}
+
+
+def own_source(document: Any, address: str) -> str | None:
+    """The docx format's ``own_source`` (round 56, R120): what a source value names in a Word
+    document, which gives no rows -- ``"a table"`` for one of its tables (``t:60D6847F``),
+    ``"a paragraph"``, ``"a content control"``; ``"part of a table"`` for a table's id with
+    more after it (``t:60D6847F/#2``).  ``None`` when it names none of its blocks."""
+    if not isinstance(address, str) or not address.startswith(("t:", "p:", "p@", "cc:", "cc@")):
+        return None
+    base, slash, _rest = address.partition("/")
+    for identifier in ((address, base) if slash else (address,)):
+        try:
+            entry = document._resolve_block(identifier)[1]
+        except Exception:  # noqa: BLE001 -- not one of its blocks
+            continue
+        what = _KINDS.get(type(entry).__name__)
+        if what is not None:
+            return what if identifier == address else f"part of {what}"
+    return None
