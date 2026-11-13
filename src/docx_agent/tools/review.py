@@ -3,6 +3,7 @@ and ``word_comments``."""
 
 from __future__ import annotations
 
+from collections import Counter
 from typing import Any
 
 from ooxml_edit.tools import ACCEPT, REVIEW, Result, ToolError, array, boolean, obj, shared, string
@@ -13,6 +14,7 @@ from .text import find_range
 
 DOC = string("Document id.")
 CURSOR = string("next_cursor of the previous page.", optional=True)
+_W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 
 
 # -- W4 word_set_tracking ----------------------------------------------------------------------
@@ -45,12 +47,12 @@ def word_set_tracking(call: Any, doc: str, on: bool, author: str | None = None,
 # -- W13, W14 word_changes --------------------------------------------------------------------------
 
 
-def _within_paragraphs(call: Any, within: str | None) -> set[str] | None:
+def _within_paragraphs(call: Any, within: str | None, document: Any = None) -> set[str] | None:
     if not within:
         return None
     from .text import paragraphs_of
 
-    return {p.id for p in paragraphs_of(call.document, resolve(call, within))}
+    return {p.id for p in paragraphs_of(document if document is not None else call.document, resolve(call, within))}
 
 
 def change_json(change: Any) -> dict[str, Any]:
@@ -76,22 +78,22 @@ def revision_json(revision: Any) -> dict[str, Any]:
 
 
 def _listing(arguments: Any) -> bool:
-    return arguments.get("action") == "list"
+    return arguments.get("action") in ("list", "preview")
 
 
-@word_tool("word_changes", "Tracked changes: list them as a reviewer reads them (a replacement is one change, old and new text) or as Word's records; accept or reject them by id, author, kind, within, or all, reporting what remains.",
+@word_tool("word_changes", "Tracked changes: list them as a reviewer reads them (a replacement is one change, old and new text) or as Word's records; accept, reject or preview them by id, author, kind, within, or all, reporting what remains.",
            {"doc": DOC,
-            "action": string("What to do; list changes nothing.", enum=["list", "accept", "reject"]),
-            "ids": array(string(), "accept, reject: these changes (rev: ids).", optional=True),
+            "action": string("What to do; list changes nothing.", enum=["list", "accept", "reject", "preview"]),
+            "ids": array(string(), "Not list: these changes (rev: ids).", optional=True),
             "author": string("Only this author's.", optional=True),
             "kind": string("Only this kind.", enum=list(CHANGE_KINDS), optional=True),
             "within": string("Only in this block or span.", optional=True),
-            "all": boolean("accept, reject: every change.", optional=True),
+            "all": boolean("Not list: every change.", optional=True),
             "detail": string("list. Default grouped.", enum=["grouped", "records"], optional=True),
             "cursor": CURSOR},
            refs=('ids[]', 'within'), group="word_review", mutates=True, track=False, reads=_listing,
-           action_roles={"list": REVIEW, "accept": ACCEPT, "reject": ACCEPT}, review_core=True,
-           action_fields={"ids": ("accept", "reject"), "all": ("accept", "reject")})
+           action_roles={"list": REVIEW, "preview": ACCEPT, "accept": ACCEPT, "reject": ACCEPT}, review_core=True,
+           action_fields={"ids": ("accept", "reject", "preview"), "all": ("accept", "reject", "preview")})
 def word_changes(call: Any, doc: str, action: str, ids: list[str] | None = None, author: str | None = None,
                  kind: str | None = None, within: str | None = None, all: bool = False,
                  detail: str = "grouped", cursor: str | None = None) -> Result:
@@ -103,6 +105,8 @@ def word_changes(call: Any, doc: str, action: str, ids: list[str] | None = None,
     if detail != "grouped" or cursor is not None:
         raise ToolError("invalid_arguments", "detail and cursor are for list",
                         field="detail" if detail != "grouped" else "cursor")
+    if action == "preview":
+        return _preview_changes(call, ids, author, kind, within, all)
     return _review_changes(call, action, ids, author, kind, within, all)
 
 
@@ -157,17 +161,15 @@ def _follow_review(call: Any, action: str, recorded: dict[str, tuple[Any, bytes,
             call.store_provenance(now, record)
 
 
-def _review_changes(call: Any, action: str, ids: list[str] | None, author: str | None, kind: str | None,
-                    within: str | None, all: bool) -> Result:
-    document = call.document
+def _selection(call: Any, document: Any, ids: list[str] | None, author: str | None, kind: str | None,
+               within: str | None, all: bool) -> tuple[str, Any]:
+    """Which changes an accept, reject or preview settles: ``("ids", record ids)``, ``("all",
+    None)`` or ``("filter", (paragraphs, records))`` -- refused as the call that would work."""
     if not (ids or author or kind or within or all):
         raise ToolError("invalid_arguments", "say which changes: ids, author, kind, within or all",
                         valid_options=["ids", "author", "kind", "within", "all"])
     if ids and (author or kind or within or all):
         raise ToolError("invalid_arguments", "give ids, or filters, not both", field="ids")
-    recorded = _recorded_tables(document)
-    edits = []
-    count = 0
     if ids:
         # Every id named, resolved before anything is accepted, and accepted (or rejected) in one
         # go: two records sharing one w:id are rev:95 and rev:95#1, and accepting the first
@@ -190,41 +192,210 @@ def _review_changes(call: Any, action: str, ids: list[str] | None, author: str |
                             details={"changes": len(listed),
                                      "call": {"tool": "word_changes",
                                               "arguments": {"doc": call.entry.doc_id, "action": "list"}}})
-        before = len(document.revisions())
-        edits.append(document.accept(wanted) if action == "accept" else document.reject(wanted))
-        count = before - len(document.revisions())
-    elif all and not (author or kind or within):
-        before = len(document.revisions())
-        edits.append(document.accept_all() if action == "accept" else document.reject_all())
-        count = before - len(document.revisions())
-    else:
-        before = len(document.revisions())
-        inside = _within_paragraphs(call, within)
-        # Round 54 (lane M): and the records inside it -- a paragraph whose mark is deleted is
-        # named by the one it joins in the final view, so a table's deleted cells' changes
-        # were missed by paragraph ids alone.
-        records = {identifier for _, identifier, _ in document._select_revisions(None, within=resolve(call, within))} \
-            if within else set()
+        return "ids", wanted
+    if all and not (author or kind or within):
+        return "all", None
+    # Round 54 (lane M): and the records inside it -- a paragraph whose mark is deleted is
+    # named by the one it joins in the final view, so a table's deleted cells' changes
+    # were missed by paragraph ids alone.
+    records = {identifier for _, identifier, _ in document._select_revisions(None, within=resolve(call, within))} \
+        if within else set()
+    return "filter", (_within_paragraphs(call, within, document), records)
 
-        def matching() -> list[Any]:
-            return [c for c in document.changes(author=author, kind=kind)
-                    if inside is None or inside & set(c.paragraph_ids) or records & set(c.revisions)]
 
-        seen: set[tuple] = set()
-        while True:
-            pending = [c for c in matching() if (c.kind, c.author, tuple(c.revisions), c.text, c.old_text) not in seen]
-            if not pending:
-                break
-            change = pending[0]
-            seen.add((change.kind, change.author, tuple(change.revisions), change.text, change.old_text))
-            edits.append(change.accept() if action == "accept" else change.reject())
-        count = before - len(document.revisions())
+def _matching(document: Any, author: str | None, kind: str | None, place: tuple) -> list[Any]:
+    inside, records = place
+    return [c for c in document.changes(author=author, kind=kind)
+            if inside is None or inside & set(c.paragraph_ids) or records & set(c.revisions)]
+
+
+def _settle(document: Any, action: str, how: str, what: Any, author: str | None, kind: str | None) -> list[Any]:
+    """Accept or reject what :func:`_selection` chose; the edits made."""
+    if how == "ids":
+        return [document.accept(what) if action == "accept" else document.reject(what)]
+    if how == "all":
+        return [document.accept_all() if action == "accept" else document.reject_all()]
+    edits = []
+    seen: set[tuple] = set()
+    while True:
+        pending = [c for c in _matching(document, author, kind, what)
+                   if (c.kind, c.author, tuple(c.revisions), c.text, c.old_text) not in seen]
+        if not pending:
+            break
+        change = pending[0]
+        seen.add((change.kind, change.author, tuple(change.revisions), change.text, change.old_text))
+        edits.append(change.accept() if action == "accept" else change.reject())
+    return edits
+
+
+# -- R121: what a review removed, and whose changes it settled -----------------------------------
+
+
+def _record_marks(document: Any) -> Counter:
+    """Every revision record as ``(part, tag, w:id, author, date)``, counted."""
+    return Counter((part, element.tag, element.get(_W + "id"), element.get(_W + "author"), element.get(_W + "date"))
+                   for part, _, element in document._revision_elements())
+
+
+def _opened_stamps(document: Any, part: str) -> set[tuple[str | None, str | None]]:
+    """The ``(author, date)`` of every revision record ``part`` had when the document was
+    opened (kept on the document: what was read never changes)."""
+    from ..edit.annotations import REVISION_KINDS
+    from ..edit.ids import live_elements
+
+    kept = document.__dict__.setdefault("_opened_stamps", {})
+    found = kept.get(part)
+    if found is None:
+        root = document.package.opened().tree(part)
+        found = set() if root is None else {(node.get(_W + "author"), node.get(_W + "date"))
+                                            for node in live_elements(root, frozenset(REVISION_KINDS))}
+        kept[part] = found
+    return found
+
+
+def _this_session(document: Any, settled: Counter) -> int:
+    """How many of the records ``settled`` were written since the document was opened: a
+    record whose part is as it was read, or whose author and date a record had then, was
+    there before (a record an edit split keeps its author and date); every other one an
+    edit of this session wrote (its date the edit's time)."""
+    live = document.__dict__.get("_live", document)       # a read copy: the document's
+    changed = live.package.changed_parts()
+    return sum(count for (part, _, _, author, date), count in settled.items()
+               if part in changed and date is not None and (author, date) not in _opened_stamps(live, part))
+
+
+def _merged_blocks(edits: list[Any]) -> dict:
+    """The blocks a review's edits removed, by kind (each edit's ``removed_blocks``)."""
+    merged: dict = {}
+    for edit in edits:
+        for key, value in (getattr(edit, "removed_blocks", None) or {}).items():
+            if isinstance(value, dict):
+                merged.setdefault(key, {}).update(value)
+            else:
+                merged.setdefault(key, []).extend(value)
+    joins = merged.get("merged", {})
+    for gone in joins:                      # merged into one a later step merged in turn
+        seen = {gone}
+        while joins[gone] in joins and joins[gone] not in seen:
+            seen.add(joins[gone])
+            joins[gone] = joins[joins[gone]]
+    tables = {t["id"] for t in merged.get("tables", [])}
+    if "rows" in merged:
+        merged["rows"] = [r for r in merged["rows"] if r.get("table") not in tables]
+        if not merged["rows"]:
+            del merged["rows"]
+    return merged
+
+
+#: How many removed blocks a summary names; the rest are counted (data.removed has them all).
+NAMED = 6
+
+
+def _plural(count: int, word: str) -> str:
+    return f"{count} {word}{'' if count == 1 else 's'}"
+
+
+def _removed_text(blocks: dict) -> str:
+    """``removed table t:A (3 rows, 6 paragraphs), paragraph p:B`` -- or ``removed no block``."""
+    named = [f"table {t['id']} ({_plural(t['rows'], 'row')}, {_plural(t['paragraphs'], 'paragraph')})"
+             for t in blocks.get("tables", [])]
+    named += [f"row {r['id']}" + (f" of {r['table']}" if r.get("table") else "") for r in blocks.get("rows", [])]
+    named += [f"paragraph {p}" for p in blocks.get("paragraphs", [])]
+    named += [f"paragraph {p} (merged into {into})" for p, into in blocks.get("merged", {}).items()]
+    named += [f"content control {c}" for c in blocks.get("controls", [])]
+    if not named:
+        return "removed no block"
+    more = len(named) - NAMED
+    return "removed " + ", ".join(named[:NAMED]) + (f" and {more} more (data.removed)" if more > 0 else "")
+
+
+def _session_text(count: int, records: int) -> str:
+    if not count:
+        return ""
+    return f" ({'all' if count == records else count} written this session, since the document was opened)"
+
+
+def _review_changes(call: Any, action: str, ids: list[str] | None, author: str | None, kind: str | None,
+                    within: str | None, all: bool) -> Result:
+    document = call.document
+    how, what = _selection(call, document, ids, author, kind, within, all)
+    recorded = _recorded_tables(document)
+    marks = _record_marks(document)
+    before = sum(marks.values())
+    edits = _settle(document, action, how, what, author, kind)
+    count = before - len(document.revisions())
+    settled = marks - _record_marks(document)
+    session = _this_session(document, settled)
     _follow_review(call, action, recorded)
     left = document.changes()
-    result = outcome(edits, f"{action.capitalize()}ed {count} revision record(s)",
-                     data={"records": count, "changes_left": len(left),
-                           "left_by_author": _by_author(left)})
+    blocks = _merged_blocks(edits)
+    # Round 56 (R121): the blocks removed named, and -- for a call by author, kind, within or
+    # all -- how many of the records were this session's own.
+    summary = f"{action.capitalize()}ed {count} revision record(s)"
+    if how != "ids":
+        summary += _session_text(session, count)
+    if blocks or count:
+        summary += "; " + _removed_text(blocks)
+    data: dict[str, Any] = {"records": count, "this_session": session, "changes_left": len(left),
+                            "left_by_author": _by_author(left)}
+    if blocks:
+        data["removed"] = blocks
+    result = outcome(edits, summary, data=data)
     result.changed = [e.id for e in edits if e is not None and e.id]
+    return result
+
+
+def _scratch(document: Any) -> Any:
+    """An editable copy of the document as it is now, with its ids (a preview's)."""
+    from .. import Document
+    from ..edit import ids as _ids
+
+    copy = Document.open(document.to_bytes(), stamping=document.stamping)
+    copy._ledger = _ids.copy_ledger(document._ledger)
+    copy._aliases.update(document._aliases)
+    return copy
+
+
+def _preview_changes(call: Any, ids: list[str] | None, author: str | None, kind: str | None,
+                     within: str | None, all: bool) -> Result:
+    """R121: what accept and what reject would settle and remove, on copies: nothing changed."""
+    document = call.document
+    how, what = _selection(call, document, ids, author, kind, within, all)
+    if how == "all":
+        changes = document.changes()
+    elif how == "ids":
+        wanted = set(what)
+        changes = [c for c in document.changes() if wanted & set(c.revisions)]
+    else:
+        changes = _matching(document, author, kind, what)
+    data: dict[str, Any] = {}
+    parts = []
+    for action in ("accept", "reject"):
+        copy = _scratch(document)
+        if how == "filter":
+            # The places as the copy names them: its own paragraphs and records.
+            what = _selection(call, copy, ids, author, kind, within, all)[1]
+        marks = _record_marks(copy)
+        before = sum(marks.values())
+        edits = _settle(copy, action, how, what, author, kind)
+        count = before - len(copy.revisions())
+        settled = marks - _record_marks(copy)
+        blocks = _merged_blocks(edits)
+        outcome_data = {"records": count, "this_session": _this_session(document, settled),
+                        "changes_left": len(copy.changes())}
+        if blocks:
+            outcome_data["removed"] = blocks
+        data[action] = outcome_data
+        parts.append(f"{action} would settle {count} record(s)"
+                     + _session_text(outcome_data["this_session"], count) + " and " + _removed_text(blocks)
+                     .replace("removed no block", "remove no block").replace("removed ", "remove ", 1))
+    shown, total, _ = page([change_json(c) for c in changes], None, call.limits.max_list_items)
+    data["changes"] = shown
+    if total > len(shown):
+        data["changes_not_shown"] = {"count": total - len(shown),
+                                     "call": {"tool": "word_changes",
+                                              "arguments": {"doc": call.entry.doc_id, "action": "list"}}}
+    result = Result(summary=f"Preview, nothing changed: {len(changes)} change(s); " + "; ".join(parts), data=data)
     return result
 
 

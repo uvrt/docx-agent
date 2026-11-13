@@ -1441,6 +1441,10 @@ class RevisionOps:
         for part, _, element in selected:
             by_part.setdefault(part, []).append(element)
         removed_ids: list[str] = []
+        # Round 56 (R121): every block as the caller knows it (before any stamping), to name
+        # each one the review removed -- a table, its rows, a paragraph, a content control.
+        known = self._blocks_now()
+        joined: list[tuple[Element, Element]] = []
         with self._edit():
             renames = self._prepare_many([(part, []) for part in by_part])
             before = referenced_nums(self)
@@ -1461,6 +1465,7 @@ class RevisionOps:
                 for gone, survivor in review.joined:
                     if id(gone) in ids_before and id(survivor) in ids_before:
                         self._rename({ids_before[id(gone)]: ids_before[id(survivor)]})
+                joined += review.joined
                 if review.released:
                     self._release(part, sorted(set(review.released)))
                 described |= review.tables
@@ -1494,7 +1499,140 @@ class RevisionOps:
             # the review left the control showing.
             self._invalidate()
             self._sync_bound_controls()
-        return EditResult(None, renamed=renames, removed=removed_ids, count=len(selected), warnings=warnings)
+            blocks, gone, tables_renamed = self._blocks_gone(known, joined)
+            if tables_renamed:
+                # A table is named by its first row: that row gone, the table has the next
+                # one's name -- its old one still finds it (as a tracked row deletion does).
+                self._rename(tables_renamed)
+        # The review's own list names a block by its id after stamping: the caller's id first.
+        named = set(gone) | {renames[i] for i in gone if i in renames}
+        removed_ids = gone + [i for i in removed_ids if i not in named]
+        renames = {**{old: new for old, new in renames.items() if old not in removed_ids}, **tables_renamed}
+        return EditResult(None, renamed=renames, removed=removed_ids, count=len(selected), warnings=warnings,
+                          removed_blocks=blocks)
+
+    def _blocks_now(self: "Document") -> list[tuple]:
+        """Every table, row, paragraph and content control of every story, as ``(part, kind,
+        id, element, table)`` (``table``: a row's) -- what :meth:`_blocks_gone` compares the
+        document with afterwards."""
+        out: list[tuple] = []
+        for part in self._parts():
+            if self.package.tree(part) is None:
+                continue
+            index = self._index(part)
+            for table in index.tables:
+                out.append((part, "table", table.id, table.element, None))
+                out += [(part, "row", row_id, row, table.element) for row, row_id in table.rows]
+            out += [(part, "paragraph", entry.id, entry.element, None) for entry in index.paragraphs]
+        out += [(part, "control", identifier, node, None) for part, identifier, node in self._content_controls()]
+        return out
+
+    def _blocks_gone(self: "Document", known: list[tuple],
+                     joined: list[tuple[Element, Element]]) -> tuple[dict, list[str], dict[str, str]]:
+        """What a review removed of ``known`` (:meth:`_blocks_now`, before it): ``(typed,
+        flat, tables renamed)``.  ``typed`` names each removed block once at its outermost:
+        ``tables`` (id, its rows and paragraphs counted), ``rows`` removed from a table that
+        stays (with that table's id now), ``paragraphs`` outside those (``merged``: the ones
+        whose content went into the next paragraph, by that paragraph's id), ``controls``.
+        ``flat`` is every id removed, the ones inside a removed table or row too."""
+        from ..edit import ids as _ids
+
+        alive: set[int] = set()
+        for part in {entry[0] for entry in known}:
+            root = self.package.tree(part) if self.package.has_part(part) else None
+            if root is not None:
+                alive.update(map(id, _ids.live_elements(root, frozenset({W_P, W_TR, W_TBL, _W + "sdt"}))))
+        gone = [entry for entry in known if id(entry[3]) not in alive]
+        renamed: dict[str, str] = {}
+        now_ids: dict[int, str] = {}
+
+        para_ids: dict[str, dict[str, int]] = {}
+
+        def now_id(part: str, element: Element) -> str | None:
+            raw = element.get(_ids.PARA_ID) if element.tag == W_P else None
+            if raw is not None and _ids.valid_long_hex(raw) and id(element) not in now_ids:
+                # A paragraph's own paraId, read without indexing the part again (the index
+                # tells a repeat apart: used only when the paraId is taken twice).
+                if part not in para_ids:
+                    counts: dict[str, int] = {}
+                    for node in self.package.tree(part).iter(W_P, W_TR):
+                        value = node.get(_ids.PARA_ID)
+                        if value is not None:
+                            counts[value.upper()] = counts.get(value.upper(), 0) + 1
+                    para_ids[part] = counts
+                if para_ids[part].get(raw.upper()) == 1:
+                    story = self._story_of(part)
+                    now_ids[id(element)] = ("" if story == "body" else f"{story}/") + f"p:{raw}"
+            if id(element) not in now_ids and self.package.has_part(part):
+                found = self._index(part).entry_for(element)
+                if found is not None:
+                    now_ids[id(element)] = found.id
+            return now_ids.get(id(element))
+
+        # A table is named by its first row: only one that lost a row can have another name.
+        shortened = {id(e[4]) for e in known if e[1] == "row" and id(e[3]) not in alive and e[4] is not None}
+        for part, kind, identifier, element, _ in known:
+            if kind == "table" and id(element) in alive and id(element) in shortened:
+                now = now_id(part, element)
+                if now is not None and now != identifier:
+                    renamed[identifier] = now
+        if not gone:
+            return {}, [], renamed
+        holders = {id(e[3]): e for e in gone if e[1] in ("table", "row")}
+
+        def outer(element: Element, owner: Element | None = None) -> tuple | None:
+            """The outermost removed table or row holding ``element`` (a row: its table, as it
+            was -- a review removes a table's rows one by one, the table with its last)."""
+            found = None
+            chain = list(element.iterancestors())
+            if owner is not None:
+                chain.append(owner)
+            for ancestor in chain:
+                if id(ancestor) in holders:
+                    found = holders[id(ancestor)]
+                    if found[1] == "row" and found[4] is not None:
+                        chain.append(found[4])
+            return found
+
+        tables: dict[int, dict] = {}
+        typed: dict = {"tables": [], "rows": [], "paragraphs": [], "merged": {}, "controls": []}
+        into = {id(g): s for g, s in joined}
+        for part, kind, identifier, element, owner in gone:
+            holder = outer(element, owner)
+            if holder is not None:
+                if holder[1] == "table" and id(holder[3]) in tables:
+                    counts = tables[id(holder[3])]
+                    if kind in ("row", "paragraph"):
+                        counts[kind + "s"] += 1
+                elif holder[1] == "row":
+                    for entry in typed["rows"]:
+                        if entry["id"] == holder[2] and kind == "paragraph":
+                            entry["paragraphs"] += 1
+                continue
+            if kind == "table":
+                counts = {"id": identifier, "rows": 0, "paragraphs": 0}
+                tables[id(element)] = counts
+                typed["tables"].append(counts)
+            elif kind == "row":
+                entry = {"id": identifier, "paragraphs": 0}
+                table_now = now_id(part, owner) if owner is not None and id(owner) in alive else None
+                if table_now is not None:
+                    entry["table"] = table_now
+                typed["rows"].append(entry)
+            elif kind == "paragraph":
+                survivor = into.get(id(element))
+                while survivor is not None and id(survivor) not in alive:   # joined again
+                    survivor = into.get(id(survivor))
+                survivor_id = now_id(part, survivor) if survivor is not None and id(survivor) in alive else None
+                if survivor_id is not None:
+                    typed["merged"][identifier] = survivor_id
+                else:
+                    typed["paragraphs"].append(identifier)
+            else:
+                typed["controls"].append(identifier)
+        order = {"table": 0, "row": 1, "paragraph": 2, "control": 3}
+        flat = [e[2] for e in sorted(gone, key=lambda e: order[e[1]])]
+        return {key: value for key, value in typed.items() if value}, list(dict.fromkeys(flat)), renamed
 
     def _drop_notes(self: "Document", notes: set[tuple[str, str]]) -> None:
         """Remove the notes a review removed the only reference of, and release what they

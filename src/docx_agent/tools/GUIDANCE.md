@@ -48,6 +48,12 @@ How to use them:
   where Word's screen keeps the deleted cells until accepted; so is a deleted paragraph mark at a
   table's edge. Table `row` and `col` positions count the accepted table (cell ids stay on the
   document's grid); check's `accept_loses_text` names text Word's Accept All drops (`word_changes` accept moves it after the row). `word_changes` accept gives Word's Accept All at a table's edge (joins into a first cell, a cell taking in the next) in a clean file.
+- **Before a broad accept or reject:** `word_changes` `preview` (with the same `ids`, `author`, `kind`,
+  `within` or `all`) says what accept and what reject would settle and remove, changing nothing.
+  Every accept and reject names the blocks it removed (a table by its `t:` id, with its rows and
+  paragraphs counted; rows of a table that stays; paragraphs, and the one a paragraph merged
+  into) in its summary and in `data.removed`, and `data.this_session` counts the records written
+  since the document was opened: rejecting all also undoes this session's own tracked work.
 - **Formatting differences are facts too:** `word_inspect` shows direct formatting a pasted
   paragraph carries (font, size, colour on its runs) against its style; `word_format` with
   `clear_direct` takes it off, with `clear` only the properties named. `check` with

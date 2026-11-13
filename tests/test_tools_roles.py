@@ -47,7 +47,8 @@ from test_tools_word import AGREEMENT, CLOCK_AT
 #: scale's ``show``, ooxml-edit 0.87.0, +15) 2,923; round 39 (render's ``fast``, approximate
 #: pixels of the same layout, ooxml-edit 0.92.0, +40) 2,963; round 43 (a copy's ``lists``:
 #: ``run_on``, numbered lists counting on from copy to copy as stated, ooxml-edit 0.94.0, +35)
-#: 2,998; round 45, R68 (word_comments' ``target`` names a table or row, +3) 3,001.
+#: 2,998; round 45, R68 (word_comments' ``target`` names a table or row, +3) 3,001; round 56,
+#: R121 (word_changes' ``preview``, accept's, +2 from 2,999) 3,001.
 REVIEW_CORE_GUARD = 3001
 #: Every definition a reviewer is sent, estimated.  Measured 6,820 (6,813 before); round 9,
 #: N1, 6,884; round 12, Q1, 6,919; round 15, T2, 6,955; round 16, F11, 6,997; F8, 7,064; F9
@@ -71,8 +72,8 @@ REVIEW_CORE_GUARD = 3001
 #: +40) 8,310; round 43 (a copy's ``lists``, +35; word_lists' ``join`` is an editor's) 8,345;
 #: round 45, R68 (word_comments' ``target`` names a table or row, +4; the R65/R66 tools are an
 #: editor's) 8,349; round 49, R91 (word_links' ``target`` says add_bookmark takes blocks,
-#: +12: 8,346 -> 8,358) 8,358.
-REVIEW_ALL_GUARD = 8358
+#: +12: 8,346 -> 8,358) 8,358; round 56, R121 (word_changes' ``preview``, +2) 8,360.
+REVIEW_ALL_GUARD = 8360
 
 REVIEW_CORE = {"save_document", "describe", "find_text", "render", "check", "open_document",
                "batch", "read_batch", "word_read", "word_comments", "word_changes"}
@@ -137,7 +138,8 @@ def test_a_reviewer_is_sent_the_reading_tools_the_list_actions_and_comments(box)
     assert _enum(_sent(box, ["review", "resolve"])["word_comments"]) == [
         "list", "add", "reply", "resolve", "reopen", "edit", "delete"]
     chief = _sent(box, ["review", "accept"])
-    assert _enum(chief["word_changes"]) == ["list", "accept", "reject"]
+    # Round 56 (R121): preview (accept's and reject's outcomes, nothing changed) is accept's.
+    assert _enum(chief["word_changes"]) == ["list", "accept", "reject", "preview"]
     assert "word_changes" not in _sent(box, ["edit"])
 
 
