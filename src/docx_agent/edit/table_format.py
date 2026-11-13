@@ -539,14 +539,18 @@ class TableFormatOps:
         return EditResult(renames.get(first, first), renamed=renames, warnings=warnings)
 
     def _keep_changes(self: "Document", blocks: list[tuple[str, Element]],
-                      on: bool) -> tuple[list[tuple[Element, dict]], list[str]]:
+                      on: bool, *, first: bool = False) -> tuple[list[tuple[Element, dict]], list[str]]:
         """What :meth:`keep_blocks_together` writes on ``blocks`` (``(id, element)`` in
         order): ``(paragraph, values)`` each, and warnings.  None to write, on: the blocks
-        are kept together (``check``'s ``range`` reads it so, round 36)."""
+        are kept together (``check``'s ``range`` reads it so, round 36).  ``first`` (round
+        57, R124): only whether there is any -- the first change alone, found without reading
+        the rest of a long range."""
         changes: list[tuple[Element, dict]] = []
         warnings: list[str] = []
         last = len(blocks) - 1
         for k, (identifier, element) in enumerate(blocks):
+            if first and changes:
+                break
             if element.tag == W_P:
                 wanted = ("keep_together", "keep_with_next") if k < last else ("keep_together",)
                 values = self._keep_values(element, wanted, on)

@@ -204,9 +204,14 @@ blocks, on their pages.
 from __future__ import annotations
 
 import copy
+import hashlib
 import re
+import threading
+from collections import OrderedDict
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any, Iterable
+
+from lxml import etree
 
 from docx2svg.table import resolve_table, row_keeps_with_next, table_style_id
 from docx2svg.resolve.cascade import style_chain
@@ -396,7 +401,7 @@ class _Facts:
         self.capped([e for e in numbering_skips_level(self.document) if self.shown(self.pages_of(e["para"]))],
                     "numbering_skips_level", out)
         mismatched = []
-        for entry in table_grid_mismatch(self.document):
+        for entry in table_grid_mismatch(self.document, keep=self._table_wanted):
             pages = self._table_pages(entry["table"])
             if self.shown(pages) and (self.scope is None or self.scope.about(entry)):
                 mismatched.append({**entry, "pages": pages})
@@ -626,6 +631,13 @@ class _Facts:
         if self.scope is not None and not self.scope.holds(identifier):
             return
         groups.setdefault((kind, style_id), {"blocks": []})["blocks"].append(identifier)
+
+    def _table_wanted(self, identifier: str) -> bool:
+        """Whether a table's facts are asked for: on the pages asked for and in the scope
+        (round 57: read before the work, not after)."""
+        if self.scope is not None and not self.scope.about({"table": identifier}):
+            return False
+        return self.wanted is None or self.shown(self._table_pages(identifier))
 
     def _table_pages(self, identifier: str) -> list[int]:
         try:
@@ -1032,7 +1044,7 @@ class _Facts:
             element = self.paths.resolve(tree, path)
             if element is None:
                 continue
-            found = _fit_columns(self.document, element, cells)
+            found = _fit_columns(self.document, element, cells, path)
             if not found:
                 continue
             identifier = _block_id(self.document, self.main, path, self.paths) or path
@@ -1257,7 +1269,8 @@ def _line_widths(spans) -> tuple[float, float] | None:
     return _pt(ink[1] - ink[0]), widest
 
 
-def _fit_columns(document: "Document", table, cells: dict[tuple[int, int], dict]) -> list[dict]:
+def _fit_columns(document: "Document", table, cells: dict[tuple[int, int], dict],
+                 path: str | None = None) -> list[dict]:
     """``column_fit``'s entries for one table: ``cells`` ``{(row, w:tc index): {"lines":
     {paragraph: [ink widths]}, "words": [widest word per line]}}``.  Only cells over one
     grid column count; a table of fewer than two columns, or with no grid, has none."""
@@ -1267,7 +1280,7 @@ def _fit_columns(document: "Document", table, cells: dict[tuple[int, int], dict]
     grid = [w / 20 for w in grid_widths(table)]
     if len(grid) < 2:
         return []
-    margins = _cell_margins(document, table)
+    margins = _cell_margins(document, table, path)
     columns: dict[int, dict] = {}
     for r, row in enumerate(table.findall(_W + "tr")):
         for k, (_, start, span) in enumerate(row_cells(row)):
@@ -1483,14 +1496,18 @@ def _shortened(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[:limit - 1] + "\u2026"
 
 
-def table_grid_mismatch(document: "Document") -> list[dict[str, Any]]:
+def table_grid_mismatch(document: "Document", keep: Any = None) -> list[dict[str, Any]]:
     """``check``'s ``table_grid_mismatch`` (round 53, R107): every table of the body, nested
     ones too, with a row whose cells -- ``w:gridBefore``, their spans, ``w:gridAfter`` -- do
-    not reach exactly across its ``w:tblGrid`` (the module says what each entry holds)."""
+    not reach exactly across its ``w:tblGrid`` (the module says what each entry holds).
+    ``keep`` (round 57, R124: ``keep(table id)``): only the tables it keeps are read -- a
+    check of a range or of some pages reads the tables there, not every table's accepted
+    copy (:func:`ragged_rows`)."""
     part = document.package.document_part()
     index = document._index(part)
+    tables = [table for table in index.tables if keep is None or keep(table.id)]
     found: list[dict[str, Any]] = []
-    for table in index.tables:
+    for table in tables:
         grid = table.element.find(_W + "tblGrid")
         count = len(grid.findall(_W + "gridCol")) if grid is not None else 0
         rows = []
@@ -1511,7 +1528,7 @@ def table_grid_mismatch(document: "Document") -> list[dict[str, Any]]:
             entry["fix"] = {"tool": "word_changes", "calls": [{"action": "accept", "within": table.id}]}
         found.append(entry)
     off_grid = {entry["table"] for entry in found}
-    for table in index.tables:
+    for table in tables:
         ragged = ragged_rows(document, table)
         # A row off the grid is said above; as it is now, that is the ragged shape too.
         if ragged is not None and (ragged["after_accept"] or table.id not in off_grid):
@@ -1557,6 +1574,30 @@ def _accepted_copy(element: Any) -> Any:
     return body.find(_W + "tbl")
 
 
+#: Accepted tables' shapes by the table's bytes (:func:`ragged_rows`), the newest last.
+_RAGGED: "OrderedDict[bytes, Any]" = OrderedDict()
+_RAGGED_LOCK = threading.Lock()
+_RAGGED_SIZE = 512
+_MISSING = object()
+
+
+def _shape(element: Any) -> "tuple[int, list[dict[str, Any]]] | None":
+    """A table's columns covered by its widest rows and the rows that cover others
+    (``{"row", "covers"}``), or ``None`` where its rows line up."""
+    from .edit.tables import _cells as _spans, own_table_rows
+
+    extents: list[tuple[int, int, int]] = []
+    for r, row in enumerate(own_table_rows(element)):
+        cells = _spans(row)
+        if cells:
+            extents.append((r, cells[0][1], cells[-1][1] + cells[-1][2] - 1))
+    if len(extents) < 2:
+        return None
+    low, high = min(e[1] for e in extents), max(e[2] for e in extents)
+    off = [{"row": r, "covers": [a, b]} for r, a, b in extents if (a, b) != (low, high)]
+    return (high - low + 1, off) if off else None
+
+
 def ragged_rows(document: "Document", table: Any) -> dict[str, Any] | None:
     """Round 57 (R125): ``table`` (an index entry) as Accept All leaves it when its rows'
     cells do not all start and end on the same grid columns: a ragged table, drawn with rows
@@ -1567,26 +1608,30 @@ def ragged_rows(document: "Document", table: Any) -> dict[str, Any] | None:
     ``covers`` the first and last grid column their cells cover), ``after_accept`` whether
     pending tracked changes make the shape (read from the table with them accepted: a copy,
     by docx-agent's Accept All).  ``None`` for a table whose rows line up."""
-    from .edit.tables import _cells as _spans, own_table_rows
-
     element = table.element
     after_accept = _reshaped_on_accept(element)
     if after_accept:
-        element = _accepted_copy(element)
-        if element is None:
-            return None
-    extents: list[tuple[int, int, int]] = []
-    for r, row in enumerate(own_table_rows(element)):
-        cells = _spans(row)
-        if cells:
-            extents.append((r, cells[0][1], cells[-1][1] + cells[-1][2] - 1))
-    if len(extents) < 2:
+        # Round 57 (R124): the accepted copy's shape kept by the table's bytes, so a table no
+        # edit touched is not accepted again by every check (20-60 ms a table).
+        key = hashlib.sha256(etree.tostring(element)).digest()
+        with _RAGGED_LOCK:
+            shape = _RAGGED.get(key, _MISSING)
+            if shape is not _MISSING:
+                _RAGGED.move_to_end(key)
+        if shape is _MISSING:
+            accepted = _accepted_copy(element)
+            shape = _shape(accepted) if accepted is not None else None
+            with _RAGGED_LOCK:
+                _RAGGED[key] = shape
+                while len(_RAGGED) > _RAGGED_SIZE:
+                    _RAGGED.popitem(last=False)
+    else:
+        shape = _shape(element)
+    if shape is None:
         return None
-    low, high = min(e[1] for e in extents), max(e[2] for e in extents)
-    off = [{"row": r, "covers": [a, b]} for r, a, b in extents if (a, b) != (low, high)]
-    if not off:
-        return None
-    entry: dict[str, Any] = {"table": table.id, "grid": high - low + 1, "rows": off[:CAP], "drawn": "ragged",
+    high_low, off = shape
+    off = [dict(row, covers=list(row["covers"])) for row in off]
+    entry: dict[str, Any] = {"table": table.id, "grid": high_low, "rows": off[:CAP], "drawn": "ragged",
                              "after_accept": after_accept}
     if len(off) > CAP:
         entry["rows_left_out"] = len(off) - CAP
@@ -1740,11 +1785,20 @@ def numbering_skips_level(document: "Document") -> list[dict[str, Any]]:
     their paragraph (round 30, W15; 0.1.32's interim ``first`` went in round 31).  A label that shows only its own level (``a)``, a bullet) never skips one.  The
     main story's paragraphs, a table's too; a paragraph whose style's level is tied to
     another style is numbered by none (Word draws no number) and is left out."""
-    from .edit.numbering import Numbering, definition_of, membership, paragraph_style_id, style_list
+    from .edit.numbering import Numbering, reading
 
     numbering = Numbering(document)
     if numbering.root is None:
         return []
+    # Round 57 (R124): the numbering part's lists and definitions listed once for the whole
+    # read, not again for every numbered paragraph (a 300-page report: 4 s of a check).
+    with reading(document):
+        return _skips_level(document, numbering)
+
+
+def _skips_level(document: "Document", numbering: Any) -> list[dict[str, Any]]:
+    from .edit.numbering import definition_of, membership, paragraph_style_id, style_list
+
     index = document._index(document.package.document_part())
     styles = {s.id: s.name or s.id for s in document.styles}
     default = document.styles.default("paragraph")

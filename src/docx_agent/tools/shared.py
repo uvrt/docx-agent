@@ -537,7 +537,9 @@ def check(call: Any, doc: str, slides: list | None = None, pages: list[int] | No
     and comparing with the last check), ``fields`` -- and, apart, the waits: ``worker_wait``
     (for the worker holding the document's layout: its queue, a layout of the document in
     progress there, the bytes there and the facts back) and ``document_wait`` (taking the
-    document back after laying out with it let go).  The wait for the document before the
+    document back after laying out with it let go).  Round 57 (R124, ooxml-edit 0.115.0):
+    ``numbers`` (``include: ["numbers"]``) and ``validation`` (the save gate's comparison),
+    which run around this handler, are added there.  The wait for the document before the
     call ran is the result's duration less these."""
     timing = Timing()
     pages = _pages_of(call, slides, pages)
@@ -632,7 +634,9 @@ def check(call: Any, doc: str, slides: list | None = None, pages: list[int] | No
                                  "punctuation_spacing": [e for e in punctuation_spacing(document)
                                                          if scope is None or scope.about(e)][:CAP],
                                  # Round 53 (R107): a table off its grid, read from the document.
-                                 "table_grid_mismatch": [e for e in table_grid_mismatch(document)
+                                 "table_grid_mismatch": [e for e in table_grid_mismatch(
+                                     document, keep=None if scope is None else
+                                     lambda table: scope.about({"table": table}))
                                                          if scope is None or scope.about(e)][:CAP],
                                  # Round 54 (lane R): text Word's Accept All loses.
                                  "accept_loses_text": [e for e in accept_loses_text(document)

@@ -177,11 +177,6 @@ def number_texts(call: Any, scope: Mapping[str, Any]) -> list[NumberText]:
     pages = _pages_of(call, scope.get("slides"), scope.get("pages"))
     ranges = ranges_of(resolve(call, scope.get("range")))
     held = Scope(document, ranges) if ranges else None
-    engage(call)
-    try:
-        layout = _layout(call, required=pages is not None)
-    finally:
-        release(call.entries.values())
     main = document.package.document_part()
     index = document._index(main)
     toc = {id(p) for found in scan(main, document.package.tree(main)) if found.keyword == "TOC"
@@ -208,7 +203,9 @@ def number_texts(call: Any, scope: Mapping[str, Any]) -> list[NumberText]:
             groups[key] = []
             order.append((key, cell))
         groups[key].append((entry, text, spans))
-    out: list[NumberText] = []
+    # Each text with digits, read before the layout: where the call lets the document go
+    # while it is laid out, another call may change it meanwhile.
+    found: list[tuple[str, str, tuple[tuple[int, int], ...], list[str]]] = []
     for key, cell in order:
         members = groups[key]
         joined = "\n".join(text for _, text, _ in members)
@@ -222,26 +219,56 @@ def number_texts(call: Any, scope: Mapping[str, Any]) -> list[NumberText]:
         for _, text, own in members:
             marked += [(offset + a, offset + b) for a, b in own]
             offset += len(text) + 1
+        found.append((at, joined, tuple(marked), [entry.id for entry, _, _ in members]))
+    # Round 57 (R124): only those texts' pages, asked for where the layout is held (a check
+    # of a 300-page report pulled the whole layout here to name each text's first page:
+    # seconds of the interpreter every call shares).
+    engage(call)
+    try:
+        layout = _layout(call, [i for *_, ids in found for i in ids], required=pages is not None)
+    finally:
+        release(call.entries.values())
+    out: list[NumberText] = []
+    for at, joined, marked, ids in found:
         where: dict[str, Any] = {}
         if layout is not None:
-            on = sorted({n for entry, _, _ in members for n in layout.pages_of(entry.id)})
+            on = sorted({n for identifier in ids for n in layout.pages_of(identifier)})
             if pages is not None and not set(on) & set(pages):
                 continue
             if on:
                 where["page"] = on[0]
-        out.append(NumberText(at, joined, tuple(marked), {"range": at}, where))
+        out.append(NumberText(at, joined, marked, {"range": at}, where))
     return out
 
 
-def _layout(call: Any, required: bool) -> Any:
-    """The document's layout, laid out as ``check`` lays it out (its lock let go where the
-    call may); ``None`` where it failed, unless ``required`` (``pages`` given): refused."""
-    from ..layout import lay_out_unlocked
+class _PagesOf:
+    """The pages of some blocks, as :meth:`~docx_agent.layout.DocumentLayout.pages_of` says
+    them, read where the layout is held (round 57, R124)."""
+
+    def __init__(self, pages: dict[str, list[int]]) -> None:
+        self._pages = pages
+
+    def pages_of(self, identifier: str) -> list[int]:
+        return list(self._pages.get(identifier, ()))
+
+
+def _layout(call: Any, ids: list[str], required: bool) -> Any:
+    """The document's layout -- anything with ``pages_of`` for ``ids`` -- laid out as
+    ``check`` lays it out (its lock let go where the call may): the pages of ``ids`` read in
+    the worker holding the layout where it can (:func:`docx_agent.layout.check_facts`),
+    else the layout itself; ``None`` where it failed, unless ``required`` (``pages``
+    given): refused."""
+    from ..layout import check_facts, lay_out_unlocked
 
     entry, document = call.entry, call.document
     version = entry.version
     try:
         if call.may_unlock:
+            request = {"pages": None, "ranges": None, "layout": False, "min_size": None, "styles": None,
+                       "keeps": None, "pages_of": sorted(set(ids))}
+            made = check_facts(document, call.unlocked, request)
+            if made is not None:
+                return _PagesOf(made[0].get("pages_of") or {})
             return lay_out_unlocked(document, call.unlocked, lambda: entry.version == version)
         return document.layout()
     except ToolError as error:

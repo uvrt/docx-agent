@@ -60,7 +60,8 @@ def check_bytes(data: bytes, options: dict, state: tuple, request: dict) -> dict
       ``range`` (each as reported, with its extent) and ``on`` (every page they are on);
       with ``keeps`` (round 40), each range's keep tried (:mod:`.keep_trials`);
     * ``layout`` (asked): the layout facts of ``pages`` -- the ranges' pages among them
-      when ranges are given -- with ``min_size`` and ``styles``.
+      when ranges are given -- with ``min_size`` and ``styles``;
+    * ``pages_of`` (round 57, R124: ids): ``{id: [pages]}`` for those drawn.
 
     Plus how the layout was found or made (:func:`docx_agent.layout.made_facts`), and
     (round 47, R82) ``worker``: the seconds this task spent laying out (``layout``) and
@@ -119,6 +120,11 @@ def _facts(held: Any, data: bytes, options: dict, request: dict) -> dict:
             keep_effects(held.laid[0], data, options, layout, scope, out["range"],
                          trials=caps["trials"], seconds=caps["seconds"])
         scoped_pages = on if pages is None else [p for p in on if p in pages]
+    if request.get("pages_of") is not None:
+        # Round 57 (R124): the pages of some blocks -- a check of numbers says each text's
+        # first page -- read here, so the layout never goes to the caller for them.
+        out["pages_of"] = {identifier: pages for identifier in request["pages_of"]
+                           for pages in [layout.pages_of(identifier)] if pages}
     if request.get("layout"):
         out["layout"] = layout_facts(layout, pages=scoped_pages, min_size=request.get("min_size"),
                                      styles=request.get("styles"), scope=scope)

@@ -195,7 +195,19 @@ def _int(value: str | None) -> int | None:
 
 
 def _style_numbering(document: "Document", style_id: str | None) -> tuple[int | None, int | None]:
-    """``(numId, ilvl)`` a paragraph style gives through its ``w:basedOn`` chain."""
+    """``(numId, ilvl)`` a paragraph style gives through its ``w:basedOn`` chain; inside
+    :func:`reading` found once per style (round 57, R124: the styles were listed again for
+    every paragraph asked about)."""
+    held = document.__dict__.get("_numbering_held")
+    if held is None:
+        return _style_numbering_now(document, style_id)
+    kept = held.setdefault("style numbering", {})
+    if style_id not in kept:
+        kept[style_id] = _style_numbering_now(document, style_id)
+    return kept[style_id]
+
+
+def _style_numbering_now(document: "Document", style_id: str | None) -> tuple[int | None, int | None]:
     part = document.package.styles_part()
     root = document.package.tree(part) if part else None
     if root is None:

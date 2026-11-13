@@ -334,9 +334,13 @@ def cell_indent_warnings(document: "Document", tables: list[tuple[Element, list[
 _DEFAULT_CELL_MARGIN = 5.4
 
 
-def _cell_margins(document: "Document", table: Element) -> dict[tuple[int, int], tuple[float, float]]:
+def _cell_margins(document: "Document", table: Element, path: str | None = None
+                  ) -> dict[tuple[int, int], tuple[float, float]]:
     """``{(row, cell): (left, right)}`` margins in points, as docx2svg resolves the table
-    (its style's, the table's, the cell's own); empty when it is not a body table."""
+    (its style's, the table's, the cell's own); empty when it is not a body table.
+    ``path``: the table's docx2svg path where the caller knows it (round 57, R124: tried
+    first, so a check of a long report does not resolve every body table's path for each
+    table it measures)."""
     from docx2svg import model as _model
     from docx2svg.paths import resolve_path
     from docx2svg.table import resolve_table
@@ -345,7 +349,12 @@ def _cell_margins(document: "Document", table: Element) -> dict[tuple[int, int],
 
     state = _effective.model(document).model
     tree = document.package.tree(document.package.document_part())
-    for block in state.body or ():
+    blocks = state.body or ()
+    if path is not None:
+        hinted = [block for block in blocks if isinstance(block, _model.Table) and block.path == path]
+        first = {id(block) for block in hinted}
+        blocks = hinted + [block for block in blocks if id(block) not in first]
+    for block in blocks:
         if isinstance(block, _model.Table) and block.path and resolve_path(tree, block.path) is table:
             resolved = resolve_table(state, block)
             return {(r, k): (cell.margins.get("left", 0) / 20, cell.margins.get("right", 0) / 20)
