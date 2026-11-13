@@ -207,16 +207,15 @@ view. To make the shape in a document of one's own, give the cell's last `w:p`
 `delete_row`, `delete_column`, a `sync` with `remove` and `word_delete` of a paragraph, table
 or span say when what they remove held text the document had when it was opened (round 57):
 
-```python
-result = toolbox.dispatch(session, "word_edit_table",
-                          {"doc": "d1", "table": "t:60D6847F", "action": "delete_column", "index": 3})
-result.summary   # "delete_column on t:60D6847F; 3 cells holding text the file had when opened left
-                 #  the final view (t:60D6847F/c0,3 'Note', ...): undo takes the call back, or
-                 #  word_changes reject ids ['rev:1'] keeps them"
-result.data["original_removed"]
-# {"cells": 3, "paragraphs": 0, "sample": [{"at": "t:60D6847F/c0,3", "text": "Note"}, ...],
-#  "undo": {"tool": "undo", "arguments": {"doc": "d1"}},
-#  "reject": {"tool": "word_changes", "arguments": {"doc": "d1", "action": "reject", "ids": ["rev:1"]}}}
+```text
+call:    word_edit_table {"doc": "d1", "table": "t:60D6847F", "action": "delete_column", "index": 3}
+summary: delete_column on t:60D6847F; 3 cells holding text the file had when opened left the final
+         view (t:60D6847F/c0,3 'Note', ...): undo takes the call back, or word_changes reject
+         ids ['rev:1'] keeps them
+data.original_removed:
+  {"cells": 3, "paragraphs": 0, "sample": [{"at": "t:60D6847F/c0,3", "text": "Note"}, ...],
+   "undo": {"tool": "undo", "arguments": {"doc": "d1"}},
+   "reject": {"tool": "word_changes", "arguments": {"doc": "d1", "action": "reject", "ids": ["rev:1"]}}}
 ```
 
 Removing only this session's own rows, columns or the text it wrote into an empty cell says
