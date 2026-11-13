@@ -1,7 +1,7 @@
 """Round 56 (R120): ``word_edit_table`` given the document's own table as ``from``.
 
 A sync (or set_cells, or a new table from data) whose ``from`` names a table of the document
-being edited -- bare (``t:458D9849``) or with its handle (``d1/t:458D9849``) -- is refused
+being edited -- bare (``t:60D6847F``) or with its handle (``d1/t:60D6847F``) -- is refused
 saying so: ``from`` takes the rows to place, a dataset (``d:...``) or a workbook table
 (``t:...``); the datasets and workbook tables there are are listed, with the call shape, and
 the call itself when there is one source alone.  Every address a refusal offers resolves:

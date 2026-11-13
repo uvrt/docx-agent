@@ -9,12 +9,12 @@ snapshot commit; the development history before it is summarised here.
 
 - **`from` given the document's own table says so, and lists the rows there are** (round 56,
   R120; ooxml-edit 0.114.0). A sync whose `from` was the report's own table id was refused as
-  "no table, name or region t:458D9849; there are ['t:stock']" (bare: no dataset listed,
+  "no table, name or region t:60D6847F; there are ['t:stock']" (bare: no dataset listed,
   nothing said of the table being the report's) or "d1 (docx) takes no t: addresses" with
-  `d2/t:458D9849` offered (with `d1/`: an address that does not exist). Now the docx format
+  `d2/t:60D6847F` offered (with `d1/`: an address that does not exist). Now the docx format
   says what such a value names (`own_source`: a table, a paragraph, a content control, part
   of a table), and every `from` of the document -- sync, set_cells, a cell's, a new table's,
-  a reference in a text -- is refused as `invalid_arguments`: `t:458D9849 is a table of d1,
+  a reference in a text -- is refused as `invalid_arguments`: `t:60D6847F is a table of d1,
   the document this call edits, not rows to take: from takes a dataset (d:<id>) or rows of
   an open xlsx document (t:<name>); there are datasets d:counts and tables t:stock; e.g.
   from: "d:counts"`, the datasets and workbook tables as `valid_options`, and with one

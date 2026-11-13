@@ -23,7 +23,7 @@ per call, or bigger than the table it is written into, is refused.
 ``d:`` is also how a Word document names a drawing (``d:3``); a ``from`` only ever names a
 dataset (whose id starts with a letter or ``_``), and :func:`source_hint` says so when a
 drawing's id is given.  A Word document's own tables give no rows either (round 56, R120): a
-``from`` naming one (``t:458D9849``, ``d1/t:458D9849``) is told it is a table of the document
+``from`` naming one (``t:60D6847F``, ``d1/t:60D6847F``) is told it is a table of the document
 being edited, with the datasets and workbook tables there are (:func:`own_source`).
 """
 
@@ -181,9 +181,9 @@ _KINDS = {"TableEntry": "a table", "ParagraphEntry": "a paragraph", "ControlBloc
 
 def own_source(document: Any, address: str) -> str | None:
     """The docx format's ``own_source`` (round 56, R120): what a source value names in a Word
-    document, which gives no rows -- ``"a table"`` for one of its tables (``t:458D9849``),
+    document, which gives no rows -- ``"a table"`` for one of its tables (``t:60D6847F``),
     ``"a paragraph"``, ``"a content control"``; ``"part of a table"`` for a table's id with
-    more after it (``t:458D9849/#2``).  ``None`` when it names none of its blocks."""
+    more after it (``t:60D6847F/#2``).  ``None`` when it names none of its blocks."""
     if not isinstance(address, str) or not address.startswith(("t:", "p:", "p@", "cc:", "cc@")):
         return None
     base, slash, _rest = address.partition("/")
