@@ -245,6 +245,31 @@ def test_a_split_of_a_pending_merged_cell_is_refused_with_its_id(box):
     assert error["details"]["fix"]["calls"] == [{"action": "accept", "ids": [merge["id"]]}]
 
 
+def SC(row, col, text):
+    return {"action": "set_cells", "cells": [{"row": row, "col": col, "text": text}]}
+
+
+@pytest.mark.parametrize("steps", [
+    [M(1, 0, 1, 2), SC(1, 0, "Haven"), DC(1)],
+    [M(1, 0, 1, 1), SC(1, 0, "Haven"), DC(1)],
+    [M(1, 1, 2, 2), SC(1, 1, "Bo"), DC(2)],
+    [DC(1), M(1, 0, 1, 1), SC(1, 0, "Haven")],
+    [M(1, 0, 1, 2), DC(1), DC(1)],
+    [S(1, 0, rows=2, columns=1), DC(2), M(1, 1, 2, 1)],
+], ids=lambda steps: "-".join(s["action"] for s in steps))
+def test_a_cell_never_carries_two_deletion_records_and_the_file_validates(box, steps):
+    """A merge, a cell's text and a column deletion in any order: one w:cellDel per cell at
+    most (the schema allows one), and nothing for validation to find."""
+    from docx_agent.validate import check
+
+    document = _made(box, steps)
+    _part, entry = document.tables()[-1]._entry()
+    for row, _ in entry.rows:
+        for cell in row.iter(_W + "tc"):
+            assert len(cell.findall(f"{_W}tcPr/{_W}cellDel")) <= 1
+    assert check(Document.open(document.to_bytes()).package) == []
+
+
 def test_untracked_a_merge_over_a_pending_deletion_is_still_refused(box):
     session, table = _opened(box)
     ok(box, session, "word_edit_table", doc="d1", table=table, **DC(1))
