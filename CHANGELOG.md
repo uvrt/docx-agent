@@ -40,6 +40,12 @@ snapshot commit; the development history before it is summarised here.
   - A tracked `delete_column` through a cell a tracked split inserted deletes its inserted
     paragraph mark too: Accept All then leaves rows of one width, Reject All the table as it
     was -- Word's Accept All of the old form gave the row a column more (measured).
+  - A column this session inserted with tracking on, deleted again, goes outright, as one's own
+    pending rows do (round 51): it was marked `w:cellDel`, a later `insert_row` copied the
+    deleted cell (its mark kept, so Accept All gave it to the cell before it) and `delete_row`
+    of that row was refused as "the first cell of a pending tracked merge". A new row's cell
+    in a column whose deletion is pending is now deleted with it, its mark too (Word's Accept
+    All leaves rows of one width, Reject All the table as it was, measured).
   - `check`'s `table_grid_mismatch` also lists a table ragged as Accept All leaves it --
     rows whose cells start or end on other grid columns than the widest rows', which
     `w:gridAfter` keeps on the grid -- as `drawn: "ragged"` with `grid`, `rows` (`row`,

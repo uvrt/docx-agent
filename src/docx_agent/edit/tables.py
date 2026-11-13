@@ -153,6 +153,28 @@ def _row_fate(row: Element, author: str) -> str:
     return "relocate" if others else "remove"
 
 
+def _own_inserted_cell(cell: Element, author: str) -> bool:
+    """Round 57: whether ``cell`` is wholly ``author``'s pending insertion -- every paragraph
+    mark inserted by them, every run inside their insertion, no nested table, no cell
+    record (a deletion, a merge) on it."""
+    from ..revisions import track as _track
+
+    if any(True for _ in cell.iter(W_TBL)) or any(
+            cell.find(f"{_W}tcPr/{tag}") is not None for tag in _CELL_RECORDS[:3]):
+        return False
+    paragraphs = list(cell.iter(W_P))
+    for paragraph in paragraphs:
+        mark = _track.mark_record(paragraph)
+        if mark is None or mark.tag != _W + "ins" or mark.get(_W + "author") != author \
+                or paragraph.find(f"{_W}pPr/{_W}rPr/{_W}del") is not None:
+            return False
+        for run in paragraph.iter(_W + "r"):
+            inserted = next((a for a in run.iterancestors(_W + "ins", _W + "del", W_P)), None)
+            if inserted is None or inserted.tag != _W + "ins" or inserted.get(_W + "author") != author:
+                return False
+    return bool(paragraphs)
+
+
 def _paragraph_after(row: Element, going: set[int]) -> Element | None:
     """The first paragraph after ``row`` in its story, in document order, that is not in a
     row of ``going`` (rows removed outright)."""
@@ -547,6 +569,24 @@ class TableOps:
                 copied = copy.deepcopy(record)
                 copied.set(_W + "id", str(next_id))
                 next_id += 1
+                if record.tag == _W + "cellDel":
+                    # Round 57: deleted with the column, its mark too -- a cell w:cellDel whose
+                    # mark is kept is one Accept All gives to the cell before it (a row a
+                    # column wider), and reads as a pending merge (delete_row refused it).
+                    mark = copy.deepcopy(record)
+                    mark.tag = _W + "del"
+                    mark.set(_W + "id", str(next_id))
+                    next_id += 1
+                    properties = paragraph.find(_W + "pPr")
+                    if properties is None:
+                        properties = make("w:pPr")
+                        paragraph.insert(0, properties)
+                    run_properties = properties.find(_W + "rPr")
+                    if run_properties is None:
+                        run_properties = make("w:rPr")
+                        insert_in_order(properties, run_properties)
+                    insert_in_order(run_properties, mark)
+                    marked.append(paragraph)
                 if record.tag in _track.MARKS:
                     properties = paragraph.find(_W + "pPr")
                     if properties is None:
@@ -984,7 +1024,12 @@ class TableOps:
                 else:
                     narrowed.append(covering[0])
             spans = bool(narrowed or skipped)
-            if tracking is not None:
+            # Round 57: a column wholly this author's pending insertion (insert_column, tracked,
+            # and what was typed into it) goes outright, as one's own pending rows do (round 51,
+            # R103) -- marked deleted, its cells stayed for a later row to copy.
+            own_column = tracking is not None and bool(doomed) and not spans and all(
+                _own_inserted_cell(cell, tracking.author) for cell in doomed)
+            if tracking is not None and not own_column:
                 from ..revisions import track as _track
                 from ..revisions.stamp import Stamp
                 from .table_format import TableTracker

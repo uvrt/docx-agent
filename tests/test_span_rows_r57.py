@@ -335,3 +335,42 @@ def test_a_ragged_table_from_the_file_has_no_made_by(box, monkeypatch):
 def test_rows_of_one_width_are_not_listed(box):
     session, _table_id = _plan(box, tracked=True)
     assert table_grid_mismatch(session.entry("d1").document) == []
+
+
+# -- a column this session inserted, deleted again (lane D's find) ------------------------------------
+
+
+def test_an_own_inserted_column_deleted_goes_outright_and_rows_still_delete(box):
+    """Tracking on: insert_column, fill it, delete it again -- gone outright, as one's own rows
+    are (round 51); a row inserted after it has no cell there, and deletes."""
+    session, table = _plan(box, tracked=True)
+    before = _shape(session)
+    ok(box, session, "word_edit_table", doc="d1", table=table, action="insert_column", index=3)
+    ok(box, session, "word_edit_table", doc="d1", table=_table(session), action="set_cells",
+       cells=[{"row": r, "col": 4, "text": f"n{r}"} for r in range(4)])
+    ok(box, session, "word_edit_table", doc="d1", table=_table(session), action="delete_column", index=4)
+    assert _shape(session) == before
+    document = session.entry("d1").document
+    assert not any(True for _ in document._table_entry(_table(session))[1].element.iter(f"{_W}cellDel"))
+    ok(box, session, "word_edit_table", doc="d1", table=_table(session), action="insert_row", index=3)
+    ok(box, session, "word_edit_table", doc="d1", table=_table(session), action="delete_row", index=4)
+    assert _shape(session) == before
+
+
+def test_a_new_row_beside_a_column_deleted_pending_is_deleted_there_too(box):
+    """A column of the file deleted, tracked: a row inserted after has its cell in that column
+    deleted with it (w:cellDel and its mark), so Accept All leaves rows of one width, and the
+    new row deletes (it was read as a pending merge)."""
+    session, table = _plan(box, tracked=True)
+    ok(box, session, "word_edit_table", doc="d1", table=table, action="delete_column", index=3)
+    ok(box, session, "word_edit_table", doc="d1", table=_table(session), action="insert_row", index=2)
+    element = session.entry("d1").document._table_entry(_table(session))[1].element
+    new = own_table_rows(element)[3]
+    last = _cells(new)[-1][0]
+    assert last.find(f"{_W}tcPr/{_W}cellDel") is not None
+    assert last.find(f"{_W}p/{_W}pPr/{_W}rPr/{_W}del") is not None
+    assert not [e for e in table_grid_mismatch(session.entry("d1").document) if e["drawn"] == "ragged"]
+    ok(box, session, "word_edit_table", doc="d1", table=_table(session), action="delete_row", index=3)
+    ok(box, session, "word_edit_table", doc="d1", table=_table(session), action="insert_row", index=2)
+    session.entry("d1").document.accept()
+    assert _shape(session) == [[1, 1, 1]] * 5 + [[1, 2]]
