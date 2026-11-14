@@ -122,6 +122,34 @@ def layout_waited() -> float | None:
     return _WAITED.pop(threading.get_ident(), None)
 
 
+def layout_first(call: Any) -> None:
+    """Lane O: a change that lays its document out ahead of its work (``word_fields``
+    update) first waits -- the document's lock let go -- for the owner's layout of the
+    version the document has: the one its checks read, laid out once and held where the
+    document's layouts are, rather than laid out again beside them (and, its holder busy
+    with them, laid out whole on another worker)."""
+    entry = call.entry
+    if entry is None or not call.may_unlock or getattr(entry, "kind", None) != "docx":
+        return
+    from ._base import Engine, engage
+
+    engage(call)
+    engine = call.document.converter
+    committed = entry.committed
+    if not isinstance(engine, Engine) or not engine.keyed or committed is None \
+            or committed.version != entry.version:
+        return
+    document = entry.document
+    _keeper(document)
+    owner = document._layout_owner
+    with call.unlocked():
+        try:
+            owner.serve(committed.version, lambda: entry.committed,
+                        lambda target: own_layout(document, target.data, engine.arm()), ask=False, wait=True)
+        except Exception:  # noqa: BLE001 -- the work ahead lays the document out itself
+            pass
+
+
 def commit_relayout(entry: Any, engine: Any) -> None:
     """Lane O: a change committed while its document's checks ask lays the new version out
     at once (:data:`ASKED_SECONDS`), on a thread of its own, when nothing is laid out for

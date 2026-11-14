@@ -1552,14 +1552,17 @@ class Owner:
     def recently_asked(self, seconds: float) -> bool:
         return time.monotonic() - self.asked_at <= seconds
 
-    def serve(self, version: int, newest: Any, lay: Any, *, ask: bool = True) -> Any:
+    def serve(self, version: int, newest: Any, lay: Any, *, ask: bool = True, wait: bool | None = None) -> Any:
         """The version (an object with ``version``: ooxml-edit's ``Committed``) whose layout
         serves a check of ``version``: the newest laid out when it is at least ``version``;
         else the one in flight when it is; else -- once the one in flight is done -- the
         newest committed then (``newest()``), laid out by this caller (``lay(target) ->
         bool``) for every caller waiting meanwhile.  ``None`` where that layout failed: the
-        caller reads its own version as before.  ``ask`` false (a relayout on commit): lays
-        out only when nothing is in flight, and is not counted as a check asking."""
+        caller reads its own version as before.  ``ask`` false (a relayout on commit, a
+        change's work ahead): not counted as a check asking, nor as a reader of what it is
+        served; ``wait`` (default: ``ask``) false lays out only when nothing is in flight."""
+        if wait is None:
+            wait = ask
         with self._cond:
             if ask:
                 self.asked_at = time.monotonic()
@@ -1582,7 +1585,7 @@ class Owner:
                     while self.readers and time.monotonic() < deadline:
                         self._cond.wait(max(0.0, deadline - time.monotonic()))
                     break
-                if not ask:
+                if not wait:
                     return None
                 self._cond.wait()
         ok = False

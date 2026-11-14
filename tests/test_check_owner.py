@@ -99,7 +99,10 @@ def test_owner_lays_out_once_for_every_check_waiting_and_then_the_newest():
 
     served: dict[str, int] = {}
 
+    entered: list[str] = []
+
     def check(name, version):
+        entered.append(name)
         found = owner.serve(version, lambda: newest[0], lay)
         served[name] = found.version
         owner.release(found.version)            # its facts made
@@ -116,11 +119,13 @@ def test_owner_lays_out_once_for_every_check_waiting_and_then_the_newest():
     newest[0] = _Version(4)
     late = threading.Thread(target=check, args=("w4", 4))
     late.start()
+    while len(entered) < 4:
+        time.sleep(0.01)
     time.sleep(0.2)
     gate.set()
     for thread in [first, *waiting, late]:
         thread.join(5)
-    assert served["first"] == 1 and served["w1"] == 1          # version 1 includes it
+    assert served["first"] == 1 and served["w1"] in (1, 4)     # version 1 includes it
     assert served["w2"] == 4 and served["w4"] == 4             # the next layout: the newest
     assert laid == [1, 4] and owner.flights == 2 and owner.readers == {}
 

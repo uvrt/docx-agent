@@ -264,6 +264,9 @@ def _fields_ahead(call: Any, doc: str, action: str, kind: str | None = None,
     if action == "update":
         started = time.perf_counter()
         if any(found.keyword in _LAID_OUT for found in call.document._all_fields()):
+            from .owner import layout_first
+
+            layout_first(call)      # lane O: the layout its document's checks read, first
             update_fields_ahead(call, ids)
         ahead_timed(time.perf_counter() - started)    # round 45: the update's timing says it
     elif action == "insert_cross_reference" and kind == "page":
