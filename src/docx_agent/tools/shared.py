@@ -540,7 +540,11 @@ def check(call: Any, doc: str, slides: list | None = None, pages: list[int] | No
     document back after laying out with it let go).  Round 57 (R124, ooxml-edit 0.115.0):
     ``numbers`` (``include: ["numbers"]``) and ``validation`` (the save gate's comparison),
     which run around this handler, are added there.  The wait for the document before the
-    call ran is the result's duration less these."""
+    call ran is the result's duration less these.  0.1.112 (lane O): a check that needs the
+    layout first waits for its document's owner (:mod:`.owner`) -- ``layout`` and ``facts``
+    the worker's where this check laid the version out, ``worker_wait`` the rest (another's
+    layout, the checks reading the last) -- and nothing is taken back after
+    (``document_wait``) where its facts were made by then."""
     try:
         return _check(call, doc, slides, pages, include, boxes, spacing, contrast, min_size, styles, range,
                       copies)
