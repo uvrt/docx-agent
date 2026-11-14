@@ -25,7 +25,7 @@ import threading
 import time
 from typing import Any
 
-from ..layout import _keeper, own_layout, read_done, reading
+from ..layout import _keeper, own_layout, reading
 
 #: The tools a document's owner serves (their reads wait for its next layout).
 SERVED = frozenset({"check"})
