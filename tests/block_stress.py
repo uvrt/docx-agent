@@ -21,8 +21,8 @@ committed while the check waited; its result then describes that version, and sa
 (``of version V: N commit(s) newer than at the call (version v), ...``).  Such a check is
 placed after the commit that made V, like any read of V, and compared there whole -- but for
 that note, which a call run alone never has: the note is checked against the commits recorded
-instead (:func:`read_problems`): some commit made v, no earlier than the version the call
-began at, and V is the N-th commit after it.  Every read (:data:`READS`) must have seen the
+instead (:func:`read_problems`): v is the version the call began at or a later one, and V
+was first committed N commits after v was.  Every read (:data:`READS`) must have seen the
 version it began at or one committed while it ran (never one already replaced then: an undo
 brings an earlier version number back), and the serial run's results carry no such note.
 """
@@ -526,21 +526,27 @@ def read_problems(calls: list[dict], commits: list[tuple[int, int]], initial: in
     notes): a read (:data:`READS`) saw the version it began at or one committed while it ran
     -- a commit no earlier than the last one before it began made its version -- and a
     :data:`NEWER` note is true of the commits recorded: V is the version the result
-    describes, and a commit no earlier than the last one before the call began made v, N
-    commits before one that made V."""
+    describes; v the version the document had when the call began or one committed after;
+    and V was first committed N commits after v was (a version is committed when it is first
+    made: a change counted at the version it left -- refs, tracking -- is no new one)."""
     committing = {call for call, _ in commits}
+    # The runs of commits that left one version: (version, first, last), -1 the run's start.
+    runs: list[list[int]] = [[initial, -1, -1]]
+    for k, (_call, version) in enumerate(commits):
+        if version == runs[-1][0]:
+            runs[-1][2] = k
+        else:
+            runs.append([version, k, k])
     out = []
     for item in calls:
         if item["call"] in committing or item["version"] is None:
             continue                    # (a call refused before it saw a version: none to check)
         last = min(item["end"], len(commits))
-
-        def making(version: int) -> list[int]:
-            # The commits before the call ended that made ``version`` (-1: the run's first).
-            return [k for k in range(-1, last) if (commits[k][1] if k >= 0 else initial) == version]
-
+        began = item["start"] - 1       # the last commit before the call began (-1: none)
         name = f"call {item['call']} ({item['name']})"
-        if item["name"] in READS and not any(k >= item["start"] - 1 for k in making(item["version"])):
+        # The runs current when the call began or after, until it ended.
+        current = [run for run in runs if run[2] >= began and run[1] < last]
+        if item["name"] in READS and not any(run[0] == item["version"] for run in current):
             out.append(f"{name} saw version {item['version']}, not the one it began at "
                        f"(commit {item['start']}) nor one committed while it ran")
         note = item.get("note")
@@ -550,8 +556,8 @@ def read_problems(calls: list[dict], commits: list[tuple[int, int]], initial: in
         if described != item["version"]:
             out.append(f"{name}: its note names version {described}, its result {item['version']}")
             continue
-        if not any(after - before == count for after in making(described) for before in making(at_call)
-                   if item["start"] - 1 <= before < after):
+        if not any(after[1] - before[1] == count for before in current if before[0] == at_call
+                   for after in current if after[0] == described and after[1] > before[1]):
             out.append(f"{name}: of version {described}, {count} commit(s) newer than version {at_call} at the "
                        f"call -- not what the commits recorded say ({[version for _, version in commits[:last]]}, "
                        f"began after commit {item['start']})")
