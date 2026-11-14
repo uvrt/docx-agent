@@ -915,6 +915,18 @@ def test_a_ranged_check_is_warned_only_when_its_blocks_changed_meanwhile(monkeyp
             yield released
 
     monkeypatch.setattr(dispatch.Call, "unlocked", slow)
+    # 0.1.112 (lane O): a check lays its document out before it takes its version (the
+    # document's owner), and one whose facts are kept never lets the lock go: it is slowed
+    # there too, so the edit lands while it reads.
+    from docx_agent.tools import owner as owner_module
+
+    reading = owner_module.reading
+
+    def slow_reading(*args, **kwargs):
+        reading(*args, **kwargs)
+        time.sleep(1.0)
+
+    monkeypatch.setattr(owner_module, "reading", slow_reading)
 
     def run(arguments, target):
         with opened("auto") as (box, session, doc, layout):

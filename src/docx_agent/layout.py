@@ -1502,6 +1502,207 @@ class _Flight:
         return self.result
 
 
+class Owner:
+    """One owner of a document's layouts for the checks that wait for one (lane O, step 2):
+    at most one layout of the document in flight, of its newest committed version; checks
+    that come while it is laid out wait, and are all served by the next layout -- again of
+    the newest version -- so that the document is laid out once for every check waiting,
+    however many writers commit meanwhile.  A check is served by the first layout of a
+    version at least the one the document had when it was called (:meth:`serve`).
+
+    Kept on the document (:func:`_keeper`; a read copy shares its document's).  Its lock is
+    taken with no other of the module's held, and nothing is waited for under it but its
+    own condition."""
+
+    def __init__(self) -> None:
+        self._cond = threading.Condition()
+        #: The version laid out now (the leader's), or ``None``.
+        self.flying: Any = None
+        #: The newest version laid out: what a check of an older or equal version reads.
+        self.done: Any = None
+        #: The newest version whose layout failed: a check of it or older is not served.
+        self.failed_at = -1
+        #: When a check last asked (``time.monotonic``): a relayout on commit is started
+        #: only while checks ask (:meth:`recently_asked`), and once per check asking
+        #: (:attr:`armed`, taken by :meth:`take_arm`): a run of edits between two checks
+        #: lays out the first one's version at once, not each.
+        self.asked_at = 0.0
+        self.armed = False
+        #: How many layouts this owner made, and how many checks it served (for tests and measurements).
+        self.flights = 0
+        self.served = 0
+        #: Per version served, the checks reading it that have not yet had their facts made
+        #: where it is held (:meth:`release`): the next layout -- which takes that worker's
+        #: layout of the document on to the next version -- waits for them, at most
+        #: :data:`READERS_WAIT` s, so that their facts are made from the layout they read
+        #: and not laid out back to it.
+        self.readers: dict[int, int] = {}
+
+    def release(self, version: int) -> None:
+        """A check served ``version`` has had its facts made (or ended without)."""
+        with self._cond:
+            left = self.readers.get(version, 0) - 1
+            if left > 0:
+                self.readers[version] = left
+            else:
+                self.readers.pop(version, None)
+            self._cond.notify_all()
+
+    def _read(self, version: int) -> None:
+        self.served += 1
+        self.readers[version] = self.readers.get(version, 0) + 1
+
+    def recently_asked(self, seconds: float) -> bool:
+        return time.monotonic() - self.asked_at <= seconds
+
+    def take_arm(self, seconds: float) -> bool:
+        """Whether a commit now lays its version out at once: a check asked within
+        ``seconds`` and no commit since took that (and nothing is laid out now)."""
+        with self._cond:
+            if not self.armed or self.flying is not None or time.monotonic() - self.asked_at > seconds:
+                return False
+            self.armed = False
+            return True
+
+    def serve(self, version: int, newest: Any, lay: Any, *, ask: bool = True, wait: bool | None = None) -> Any:
+        """The version (an object with ``version``: ooxml-edit's ``Committed``) whose layout
+        serves a check of ``version``: the newest laid out when it is at least ``version``;
+        else the one in flight when it is; else -- once the one in flight is done -- the
+        newest committed then (``newest()``), laid out by this caller (``lay(target) ->
+        bool``) for every caller waiting meanwhile.  ``None`` where that layout failed: the
+        caller reads its own version as before.  ``ask`` false (a relayout on commit, a
+        change's work ahead): not counted as a check asking, nor as a reader of what it is
+        served; ``wait`` (default: ``ask``) false lays out only when nothing is in flight."""
+        if wait is None:
+            wait = ask
+        with self._cond:
+            if ask:
+                self.asked_at = time.monotonic()
+                self.armed = True
+            while True:
+                done = self.done
+                if done is not None and done.version >= version:
+                    if ask:
+                        self._read(done.version)
+                    return done
+                if self.failed_at >= version:
+                    return None
+                if self.flying is None:
+                    target = newest()
+                    if target is None or target.version < version:
+                        return None
+                    self.flying = target
+                    # The checks reading the version laid out last have their facts made
+                    # first (:attr:`readers`): those tasks are queued before this layout.
+                    deadline = time.monotonic() + READERS_WAIT
+                    while self.readers and time.monotonic() < deadline:
+                        self._cond.wait(max(0.0, deadline - time.monotonic()))
+                    break
+                if not wait:
+                    return None
+                self._cond.wait()
+        ok = False
+        try:
+            ok = bool(lay(target))
+        finally:
+            with self._cond:
+                self.flying = None
+                self.flights += 1
+                if ok and (self.done is None or target.version > self.done.version):
+                    self.done = target
+                elif not ok:
+                    self.failed_at = max(self.failed_at, target.version)
+                self._cond.notify_all()
+        if not ok:
+            return None
+        if ask:
+            with self._cond:
+                self._read(target.version)
+        return target
+
+
+#: Per thread, the owner and version the check running on it reads (:func:`reading`).
+_READING = threading.local()
+
+
+def reading(owner: "Owner", version: int) -> None:
+    """The check on this thread reads ``version``, served by ``owner``: it counts as one of
+    the version's readers until :func:`read_done`."""
+    read_done()
+    _READING.held = (owner, version)
+
+
+def read_done() -> None:
+    """The check on this thread has had its facts made, or ends: no longer a reader."""
+    held = getattr(_READING, "held", None)
+    if held is not None:
+        _READING.held = None
+        held[0].release(held[1])
+
+
+#: How long the next layout of a document waits for the checks reading its last one to have
+#: their facts made (:attr:`Owner.readers`): a check that never asks is not waited for longer.
+READERS_WAIT = 20.0
+
+
+def own_layout(document: "Document", data: bytes, converter: Any) -> "dict | None":
+    """Lay ``data`` -- a committed version of ``document`` -- out where the document's layouts
+    are held (:func:`docx_agent.tools.check_worker.check_bytes` through ``converter``, a
+    tool layer's engine), kept as the document's last, with its summary and the facts every
+    check of it reads (:class:`Owner`'s flight): the seconds the worker spent laying it out
+    and reading those facts (``{"layout", "facts"}``; noughts where it was laid out already),
+    or ``None`` where it could not be.  Nothing comes back but those small facts; a layout
+    that fails is kept as failed, as :func:`check_facts` keeps one."""
+    if converter is None or not hasattr(converter, "check"):
+        return None
+    options = layout_options(document, {})
+    key = layout_key(data, options)
+    lock = _keeper(document)
+    with lock:
+        kept = document._layout_kept
+        if kept is not None and isinstance(kept[1], (bytes, bytearray)):
+            return None
+    if known_summary(document, key) is not None:
+        return {"layout": 0.0, "facts": 0.0}
+    if _kept_failure(document, cache_key(data, options)) is not None:
+        return None
+    request = dict(_BARE_REQUEST)
+    state = kept_layout(document, data, options)
+    try:
+        result = converter.check(data, dict(options), state, {**request, "summary": True})
+    except _PASSED_ON:
+        return None
+    except Exception as error:  # noqa: BLE001 -- kept as this version's failure, logged once
+        _failed(document, cache_key(data, options), error)
+        return None
+    worker = result.pop("worker", None) or {}
+    keep_layout(document, data, options, key)
+    note_made(document, result)
+    summary_for(document, key, result.pop("summary", None))
+    _keep_facts(document, (key, repr(sorted(request.items()))), result, data, options)
+    return {"layout": float(worker.get("layout", 0.0)), "facts": float(worker.get("facts", 0.0))}
+
+
+#: The request of a check that asks nothing but the layout's own facts (:func:`check_facts`).
+_BARE_REQUEST = {"pages": None, "ranges": None, "layout": False, "min_size": None, "styles": None,
+                 "keeps": None}
+
+
+def _keep_facts(document: "Document", asked: tuple, result: dict, data: bytes, options: dict) -> None:
+    """Keep a check's facts of one version (:func:`check_facts`), and the stats of its layout."""
+    with _keeper(document):
+        document._check_facts[asked] = result
+        while len(document._check_facts) > _FACTS_SIZE:
+            document._check_facts.popitem(last=False)
+        if result.get("stats") is not None:
+            stats = getattr(document, "_layout_stats", None)
+            if stats is None:      # round 45: an attribute, so a read copy keeps the document's
+                stats = document._layout_stats = OrderedDict()
+            stats[cache_key(data, options)] = result["stats"]
+            while len(stats) > _CACHE_SIZE:
+                stats.popitem(last=False)
+
+
 def _keeper(document: "Document") -> threading.Lock:
     """The lock over ``document``'s layouts: the cache, the layouts in progress and the
     one kept for the next version, which concurrent callers (threads; with the GIL off,
@@ -1524,6 +1725,8 @@ def _keeper(document: "Document") -> threading.Lock:
                 document._layout_summaries = OrderedDict()
                 document._check_facts = OrderedDict()
                 document._layout_failures = OrderedDict()
+                # Lane O: one owner of the document's layouts for the checks that wait.
+                document._layout_owner = Owner()
     return lock
 
 
@@ -1799,6 +2002,7 @@ def twin(data: bytes, like: dict) -> "Document":
 _SHARED_LAYOUT = ("_layout_lock", "_layout_flights", "_layout_kept", "_layout_count",
                   "_layout_tickets", "_layout_lineage", "_layout_fresh", "_layout_summaries",
                   "_check_facts", "_layout_failures", "_layouts", "_layout_stats", "_tool_seen_layout",
+                  "_layout_owner",
                   # The tools' caches keyed by content or by version, set whole (a tuple) or
                   # under a lock of their own: a check's copy comparisons, the styles' digest,
                   # a render's coverage, the settings read for a like.
@@ -1982,7 +2186,7 @@ _FACTS_SIZE = 16
 
 
 def check_facts(document: "Document", unlocked: Any, request: dict, *,
-                timed: Any = None) -> "tuple[dict, LayoutSummary] | None":
+                timed: Any = None, also: dict | None = None) -> "tuple[dict, LayoutSummary] | None":
     """``check``'s layout facts of the document now, made in the worker holding its layout
     (round 38, :func:`docx_agent.tools.check_worker.check_bytes`, through the document's
     converter, with the lock let go: ``unlocked``) -- ``(facts, summary)``, the summary that
@@ -1990,6 +2194,11 @@ def check_facts(document: "Document", unlocked: Any, request: dict, *,
     same check of the same version again is answered here.  ``None`` where the converter
     cannot (a converter of the old protocol, a layout kept as its pickle): the caller lays
     the document out here, as before.
+
+    ``also`` (lane O, step 1: one trip per check): a request that ``request`` holds with
+    more besides (a check's own, ``request`` that and the pages its numbers' texts are on):
+    its facts -- ``request``'s less the keys only ``request`` has -- are kept for it too,
+    so the check asking it next finds them without another trip to the worker.
 
     ``timed`` (round 47, R82: ``timed(part, seconds)``) is told where the time went: the
     worker's ``layout`` and ``facts`` (:func:`~docx_agent.tools.check_worker.check_bytes`)
@@ -2012,6 +2221,7 @@ def check_facts(document: "Document", unlocked: Any, request: dict, *,
         found = document._check_facts.get(asked)
     summary = known_summary(document, key)
     if found is not None and summary is not None:
+        read_done()
         return copy.deepcopy(found), summary
     failed = _kept_failure(document, cache_key(data, options))
     if failed is not None:
@@ -2025,6 +2235,8 @@ def check_facts(document: "Document", unlocked: Any, request: dict, *,
             raise
         except Exception as error:
             raise _failed(document, cache_key(data, options), error) from error
+        finally:
+            read_done()             # lane O: its facts are made; the next layout may start
         waited = time.perf_counter() - started
         worker = result.pop("worker", None)
         keep_layout(document, data, options, key)
@@ -2035,17 +2247,11 @@ def check_facts(document: "Document", unlocked: Any, request: dict, *,
             timed("worker_wait", max(0.0, waited - worker["layout"] - worker["facts"]))
     made = result.pop("summary", None)
     summary = summary if summary is not None else summary_for(document, key, made)
-    with lock:
-        document._check_facts[asked] = result
-        while len(document._check_facts) > _FACTS_SIZE:
-            document._check_facts.popitem(last=False)
-        if result.get("stats") is not None:
-            stats = getattr(document, "_layout_stats", None)
-            if stats is None:      # round 45: an attribute, so a read copy keeps the document's
-                stats = document._layout_stats = OrderedDict()
-            stats[cache_key(data, options)] = result["stats"]
-            while len(stats) > _CACHE_SIZE:
-                stats.popitem(last=False)
+    _keep_facts(document, asked, result, data, options)
+    if also is not None:
+        extra = set(request) - set(also)
+        _keep_facts(document, (key, repr(sorted(also.items()))),
+                    {name: value for name, value in result.items() if name not in extra}, data, options)
     return copy.deepcopy(result), summary
 
 

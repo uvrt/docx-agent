@@ -540,8 +540,30 @@ def check(call: Any, doc: str, slides: list | None = None, pages: list[int] | No
     document back after laying out with it let go).  Round 57 (R124, ooxml-edit 0.115.0):
     ``numbers`` (``include: ["numbers"]``) and ``validation`` (the save gate's comparison),
     which run around this handler, are added there.  The wait for the document before the
-    call ran is the result's duration less these."""
+    call ran is the result's duration less these.  0.1.112 (lane O): a check that needs the
+    layout first waits for its document's owner (:mod:`.owner`) -- ``layout`` and ``facts``
+    the worker's where this check laid the version out, ``worker_wait`` the rest (another's
+    layout, the checks reading the last) -- and nothing is taken back after
+    (``document_wait``) where its facts were made by then."""
+    try:
+        return _check(call, doc, slides, pages, include, boxes, spacing, contrast, min_size, styles, range,
+                      copies)
+    finally:
+        from ..layout import read_done
+
+        read_done()             # lane O: a check served by its document's owner ends
+
+
+def _check(call: Any, doc: str, slides: list | None, pages: list[int] | None, include: list[str] | None,
+           boxes: bool | None, spacing: float | None, contrast: float | None, min_size: float | None,
+           styles: list[str] | None, range: Any, copies: list | None) -> Result:
     timing = Timing()
+    from .owner import layout_waited
+
+    # Lane O: the wait for the document's layout, made by its owner before the check read
+    # anything (laid out once for every check waiting then): said where the layout's parts
+    # are (_layout_facts), else with the rest.
+    timing.owner = layout_waited()
     pages = _pages_of(call, slides, pages)
     if boxes is not None:
         raise _decks_only("boxes", "include")
@@ -585,6 +607,9 @@ def check(call: Any, doc: str, slides: list | None = None, pages: list[int] | No
         with timing.part("copies"):
             report["copies"] = compare_copies(call, copies)
     if "reflow" in wanted or "layout" in wanted:
+        for name, seconds in timing.owner.items():
+            timing.add(name, seconds)        # lane O: the owner's layout, before the check
+        timing.owner = {}
         started, inner = time.perf_counter(), sum(timing.parts.values())
         reflow, layout = _layout_facts(call, pages, seen="reflow" in wanted, scope=scope,
                                        layout_wanted="layout" in wanted, min_size=min_size, styles=styles,
@@ -652,6 +677,9 @@ def check(call: Any, doc: str, slides: list | None = None, pages: list[int] | No
         # The rest of the layout's facts here, beside what the worker timed (layout, facts, waits).
         inner = sum(timing.parts.values()) - inner
         timing.add("facts", max(0.0, time.perf_counter() - started - inner))
+    for name, seconds in timing.owner.items():
+        timing.add(name, seconds)            # (not said with the layout's parts: none asked)
+    timing.owner = {}
     if "fields" in wanted:
         with timing.part("fields"):
             report["fields"] = _field_facts(document)
@@ -768,10 +796,7 @@ def _layout_facts(call: Any, pages: list[int] | None, seen: bool = True, *, scop
         if call.may_unlock:
             # Laid out with the lock let go (a check outside a batch): of this version, the
             # one validate and fields read and the result reports.
-            request = {"pages": list(pages) if pages is not None else None,
-                       "ranges": scope.spec() if scope is not None else None,
-                       "layout": layout_wanted, "min_size": min_size, "styles": styles,
-                       "keeps": keep_trials.asked() if keeps and scope is not None else None}
+            request = _request(pages, scope, layout_wanted, min_size, styles, keeps)
             made = check_facts(document, unlocked, request, timed=timing.add)
             if made is None:
                 started, waited = time.perf_counter(), timing.parts.get("document_wait", 0.0)
@@ -822,6 +847,68 @@ def _layout_facts(call: Any, pages: list[int] | None, seen: bool = True, *, scop
         result.pop("reflow")
         return facts, result
     return facts, layout
+
+
+def _request(pages: list[int] | None, scope: Any, layout_wanted: bool, min_size: Any,
+             styles: list[str] | None, keeps: bool) -> dict[str, Any]:
+    """What a check asks of the worker holding the document's layout
+    (:func:`docx_agent.layout.check_facts`)."""
+    return {"pages": list(pages) if pages is not None else None,
+            "ranges": scope.spec() if scope is not None else None,
+            "layout": layout_wanted, "min_size": min_size, "styles": styles,
+            "keeps": keep_trials.asked() if keeps and scope is not None else None}
+
+
+#: What a check's handler is asked besides its include that the numbers wrapper hands it
+#: (ooxml-edit's ``with_numbers`` ``asks``): with any, it runs though only numbers is included.
+_ASKS = ("boxes", "spacing", "contrast", "min_size", "styles", "copies")
+
+
+def check_plan(call: Any, arguments: Any) -> dict[str, Any] | None:
+    """The request ``check``'s handler will send the worker for these ``arguments`` (a
+    check's, ``numbers`` included or not) -- :func:`_layout_facts`', built as the handler
+    builds it -- or ``None`` where it sends none (no ``reflow`` nor ``layout`` asked; a
+    check the handler refuses; one not run outside a batch).  Lane O (step 1): the texts a
+    check of numbers reads ask the worker for their pages in that same trip
+    (:func:`docx_agent.tools.textfacts.number_texts`), so the check goes there once."""
+    if not isinstance(arguments, dict) or not call.may_unlock:
+        return None
+    include = arguments.get("include")
+    if include and "numbers" in include:
+        rest = [item for item in include if item != "numbers"]
+        if not rest and not any(arguments.get(name) not in (None, False, [], {}) for name in _ASKS):
+            return None
+        include = rest or None
+    if any(arguments.get(name) is not None for name in ("boxes", "spacing", "contrast")):
+        return None
+    wanted = list(include or ["validate", "reflow", "fields"])
+    if any(k in ("fit", "collisions", "facts", "design") for k in wanted):
+        return None
+    pages, slides = arguments.get("pages"), arguments.get("slides")
+    if pages is None and slides is not None:
+        if any(isinstance(item, str) and not item.strip().isdigit() for item in slides):
+            return None
+        pages = [int(item) for item in slides]
+    document = call.document
+    min_size = arguments.get("min_size")
+    if min_size is None:
+        min_size = getattr(document, "min_text_size", None)
+    styles = arguments.get("styles")
+    if (min_size is not None or styles is not None) and "layout" not in wanted:
+        wanted.append("layout")
+    try:
+        ranges = ranges_of(resolve(call, arguments.get("range")))
+        if len(ranges) > MAX_RANGES:
+            return None
+        scope = Scope(document, ranges) if ranges else None
+    except Exception:  # noqa: BLE001 -- the handler refuses it, in its own words
+        return None
+    if scope is not None and "layout" not in wanted:
+        wanted.append("layout")
+    if "reflow" not in wanted and "layout" not in wanted:
+        return None
+    keeps = scope is not None and (KEEP_TRIALS or "keeps" in wanted)
+    return _request(pages, scope, "layout" in wanted, min_size, styles, keeps)
 
 
 def _field_facts(document: Document) -> dict[str, Any]:

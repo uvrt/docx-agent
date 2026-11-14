@@ -5,6 +5,48 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.112 -- unreleased
+
+- **Many writers on one long document: a check costs about one layout, not one per writer**
+  (performance architecture, step 1; needs ooxml-edit 0.116.0). Measured on a made-up
+  295-page report (six chapters, contents, page X of Y), six writers editing their own
+  chapter and checking it three times, two layout workers, one machine (Intel, 2026-11-14):
+  a check's median 44.8 s before, 14.1-14.5 s now; the slowest 72.4 s before, 19.1-21.3 s
+  now; the layout workers' CPU for the run 306 s before, 128-129 s now; the run 221 s
+  before, 121-124 s now; the main process's peak memory 0.95 GB before, 0.97-0.99 GB now.
+  Two such reports with three writers each: median 22.8 s before, 10.2 s now; workers' CPU
+  234 s before, 203 s now. One writer: 6.1-7.7 s before, 5.2-6.7 s now (most of it the
+  relayout itself). Every check's result, replayed version by version through 0.1.111 (both
+  made-up reports), is the same, apart from its timing and the notes on versions.
+  - **One layout owner per document** (`layout.Owner`, `tools/owner.py`). A check that needs
+    the layout waits, before it reads anything, for the document's next layout: at most one
+    is in flight, of the newest committed version, and every check waiting meanwhile is
+    served by it (ooxml-edit's `read_version`). The check then reads *that* version -- its
+    validation, fields, numbers and layout facts are all of it -- and its result is the one a
+    check of that version alone gives; a version newer than at the call is said in a
+    warning (`of version 13: 1 commit(s) newer than at the call (version 12), ...`), and a
+    document that moved on after it as before (`changed while this call read it`).
+    `timing` says the wait: `layout` and `facts` (the worker's, where this check laid the
+    version out), `worker_wait` (the rest: another's layout, the checks reading the last).
+  - **One trip per check.** A check with `numbers` asked the worker twice -- the texts'
+    pages, then the check's own facts -- and the second queued behind other work; now the
+    texts' pages go in the check's own request (`shared.check_plan`), whose facts are kept
+    for the handler.
+  - **The worker keeps the document.** The checks reading a version have their facts made
+    before the next layout takes the worker's layout on (`Owner.readers`); a task of the
+    very bytes its worker holds waits for that worker instead of laying the document out
+    whole on the other one; a fields update waits for the owner's layout before its work
+    ahead.
+  - **Facts made once per layout** (`layout_facts`): the line index, the body's blocks, the
+    document's own facts (empty paragraphs, skipped list levels, text lost on accept,
+    punctuation spacing) and each table's rows, not once per check; tables and rows off the
+    pages asked for are skipped before the work. A chapter's layout facts: 1.84 s CPU the
+    first time on a layout and 1.39 s after, before; 1.16 s and 0.50 s now; the same facts.
+  - **Relayout on commit**: a change committed within 30 s of a check of its document lays
+    its version out at once, when nothing is laid out then -- once per check asking (of a
+    run of edits between two checks, the first), so the next check finds it made or in
+    flight. `DOCX_AGENT_COMMIT_RELAYOUT` sets the seconds; `0` turns it off.
+
 ## 0.1.111 -- unreleased
 
 - **A range-scoped check of a long report costs less, and says where every second went**
