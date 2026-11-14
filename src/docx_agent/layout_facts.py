@@ -273,6 +273,23 @@ def _pt(px) -> float:
     return round(float(Fraction(px) / PX_PER_PT), 2)
 
 
+_NONE = object()
+
+
+def _memo(layout: "DocumentLayout") -> dict:
+    """What :class:`_Facts` makes once per layout (lane O, step 4), kept on the layout while
+    its document is in the state it was (no change since, the same aliases); else anew."""
+    document = layout._document
+    aliases = document._aliases
+    state = getattr(document, "_state", None)
+    kept = layout.__dict__.get("_facts_memo")
+    if kept is not None and kept[0] == state and kept[1] is aliases and kept[2] == aliases:
+        return kept[3]
+    memo: dict = {}
+    layout.__dict__["_facts_memo"] = (state, aliases, dict(aliases), memo)
+    return memo
+
+
 def layout_facts(layout: "DocumentLayout", *, pages: Iterable[int] | None = None,
                  min_size: float | None = None, styles: list[str] | None = None,
                  scope: "Scope | None" = None) -> dict[str, Any]:
@@ -303,18 +320,18 @@ class _Facts:
         self.styles = styles
         document = self.document
         self.main = document.package.document_part()
-        self.style_names = {s.id: s.name or s.id for s in document.styles}
+        #: Lane O (step 4): what every check of this layout reads alike -- its index of the
+        #: lines by paragraph, the body's blocks, the tables kept together, the document's
+        #: own facts -- made once per layout (:meth:`_once`), not once per check.
+        self.memo = _memo(layout)
+        self.style_names = self._once("style_names", lambda: {s.id: s.name or s.id for s in document.styles})
         default = document.styles.default("paragraph")
         self.default_paragraph = default.id if default is not None else None
         default = document.styles.default("table")
         self.default_table = default.id if default is not None else None
         #: canon id -> [(1-based page, line)], every story's.
-        self.placed: dict[str, list] = {}
-        for number, lines in enumerate(layout._lines, start=1):
-            for key, line in lines:
-                if key is not None:
-                    self.placed.setdefault(layout._canon(key), []).append((number, line))
-        self.top_level = self._top_level()
+        self.placed: dict[str, list] = self._once("placed", self._placed)
+        self.top_level = self._once("top_level", self._top_level)
         #: The tables kept together (``keep_together``): ``[(table id, part, rows)]``
         #: (:func:`docx_agent.edit.table_format.row_keeps`), and the ``id()`` of each of their
         #: rows' deciding paragraphs, whose keep is the table's.
@@ -324,6 +341,21 @@ class _Facts:
         #: on whole where it fits on one), reported once, as ``taller_than_page``.
         self.taller_kept = {identifier for identifier, _, _ in self.kept_tables
                             if len(self._table_pages(identifier)) > 1}
+
+    def _once(self, name: str, make: Any) -> Any:
+        """``make()``, made once per layout (:attr:`memo`) -- never changed after."""
+        found = self.memo.get(name, _NONE)
+        if found is _NONE:
+            found = self.memo[name] = make()
+        return found
+
+    def _placed(self) -> dict[str, list]:
+        placed: dict[str, list] = {}
+        for number, lines in enumerate(self.layout._lines, start=1):
+            for key, line in lines:
+                if key is not None:
+                    placed.setdefault(self.layout._canon(key), []).append((number, line))
+        return placed
 
     # -- helpers ---------------------------------------------------------------------------
 
@@ -393,12 +425,13 @@ class _Facts:
         if self.styles is not None:
             self.style_list(out)
         self.capped(self.spacers(), "spacers", out)
-        self.capped([e for e in empty_paragraphs(self.document)
+        self.capped([e for e in self._once("empty_paragraphs", lambda: empty_paragraphs(self.document))
                      if self.shown({p for i in e["ids"] for p in self.pages_of(i)})],
                     "empty_paragraphs", out)
         self.capped(self.keep_with_next(), "keep_with_next_at_foot", out)
         self.capped(self.table_parted(), "table_parted", out)
-        self.capped([e for e in numbering_skips_level(self.document) if self.shown(self.pages_of(e["para"]))],
+        self.capped([e for e in self._once("numbering_skips_level", lambda: numbering_skips_level(self.document))
+                     if self.shown(self.pages_of(e["para"]))],
                     "numbering_skips_level", out)
         mismatched = []
         for entry in table_grid_mismatch(self.document, keep=self._table_wanted):
@@ -407,12 +440,13 @@ class _Facts:
                 mismatched.append({**entry, "pages": pages})
         self.capped(mismatched, "table_grid_mismatch", out)
         lost = []
-        for entry in accept_loses_text(self.document):
+        for entry in self._once("accept_loses_text", lambda: accept_loses_text(self.document)):
             pages = self._table_pages(entry["cell"].rsplit("/c", 1)[0])
             if self.shown(pages) and (self.scope is None or self.scope.about(_of_table(entry))):
                 lost.append({**entry, "pages": pages})
         self.capped(lost, "accept_loses_text", out)
-        self.capped([e for e in punctuation_spacing(self.document) if self.shown(self.pages_of(e["para"]))],
+        self.capped([e for e in self._once("punctuation_spacing", lambda: punctuation_spacing(self.document))
+                     if self.shown(self.pages_of(e["para"]))],
                     "punctuation_spacing", out)
         # Round 49, R94: the text's language next to its tag.
         found = self.text_language()
@@ -640,6 +674,12 @@ class _Facts:
         return self.wanted is None or self.shown(self._table_pages(identifier))
 
     def _table_pages(self, identifier: str) -> list[int]:
+        found = self._once("table_pages", dict).get(identifier)
+        if found is None:
+            found = self._once("table_pages", dict)[identifier] = self._table_pages_of(identifier)
+        return list(found)
+
+    def _table_pages_of(self, identifier: str) -> list[int]:
         try:
             _, entry = self.document._resolve(identifier)
         except KeyError:
@@ -783,7 +823,9 @@ class _Facts:
             if k > 0 and blocks[k - 1][0] == "p":
                 _, lead, lead_id = blocks[k - 1]
                 drawn = self.pages_of(lead_id)
-                why = self._parted_kind(lead, lead_id, before=True)
+                # Lane O: on the pages asked for first, before the work.
+                why = (self._parted_kind(lead, lead_id, before=True)
+                       if drawn and max(drawn) < pages[0] and self.shown([max(drawn), pages[0]]) else None)
                 if (why and drawn and max(drawn) < pages[0] and self.shown([max(drawn), pages[0]])
                         and not _effective.paragraph(self.document, lead).keep_with_next
                         and not self._new_page_after(k - 1)):
@@ -794,7 +836,8 @@ class _Facts:
             if k + 1 < len(blocks) and blocks[k + 1][0] == "p":
                 _, after, after_id = blocks[k + 1]
                 drawn = self.pages_of(after_id)
-                why = self._parted_kind(after, after_id, before=False)
+                why = (self._parted_kind(after, after_id, before=False)
+                       if drawn and min(drawn) > pages[-1] and self.shown([pages[-1], min(drawn)]) else None)
                 if not (why and drawn and min(drawn) > pages[-1] and self.shown([pages[-1], min(drawn)])):
                     continue
                 if (_effective.paragraph(self.document, after).page_break_before
@@ -862,15 +905,25 @@ class _Facts:
                 "next_page": following[0]}
 
     def _kept_tables(self) -> list[tuple[str, Any, list]]:
+        """The tables kept together, ``[(id, part, rows)]``: of those on the pages asked for
+        or drawn nowhere -- the only ones a fact of this check reads (lane O: each table's
+        rows read once per layout, :meth:`_once`)."""
         from .edit.table_format import kept_together, row_keeps
 
+        keeps = self._once("row_keeps", dict)
         out = []
         for part in self.document._parts():
             index = self.document._index(part)
             if index.story == "comments":
                 continue
             for table in index.tables:
-                rows = row_keeps(self.document, table.element)
+                if self.wanted is not None:
+                    pages = self._table_pages(table.id)
+                    if pages and not self.shown(pages):
+                        continue
+                rows = keeps.get(table.id)
+                if rows is None:
+                    rows = keeps[table.id] = row_keeps(self.document, table.element)
                 if kept_together(rows):
                     out.append((table.id, part, rows))
         return out
@@ -922,11 +975,14 @@ class _Facts:
     def _kept_rows(self) -> list[dict]:
         """Tables split after a row that keeps with the next (docx2svg's rule, the one its
         layout paginates by: :func:`docx2svg.table.row_keeps_with_next`)."""
-        rows, _ = self._drawn_rows()
+        rows, _ = self._once("drawn_rows", self._drawn_rows)
         tree = self.document.package.tree(self.main)
         state = _effective.model(self.document).model
         entries = []
         for table, drawn_rows in rows.items():
+            if self.wanted is not None and not any(
+                    page in self.wanted for drawn in drawn_rows.values() for page in drawn):
+                continue          # no row on the pages asked for: nothing to say (lane O)
             element = self.paths.resolve(tree, table)
             found = _model_table(state.body, table)
             if element is None or found is None:
@@ -974,12 +1030,12 @@ class _Facts:
         return rows, table_pages
 
     def tables(self) -> tuple[list[dict], list[dict]]:
-        rows, table_pages = self._drawn_rows()
+        rows, table_pages = self._once("drawn_rows", self._drawn_rows)
         split, unrepeated = [], []
         tree = self.document.package.tree(self.main)
         for table, pages in table_pages.items():
-            if len(pages) < 2:
-                continue
+            if len(pages) < 2 or (self.wanted is not None and not pages & self.wanted):
+                continue          # (lane O: not on the pages asked for, before the work)
             identifier = _block_id(self.document, self.main, table, self.paths) or table
             element = self.paths.resolve(tree, table)
             header_rows = _header_rows(element) if element is not None else 0

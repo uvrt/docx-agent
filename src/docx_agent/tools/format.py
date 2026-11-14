@@ -25,6 +25,7 @@ from ..edit.pictures import PictureError
 from ..edit.ranges import AmbiguousAnchor, AnchorNotFound
 from ..layout import read_copy
 from ._base import checks, problem_key
+from .owner import read_version
 from .render import warm_up
 from .table_data import own_source, source_hint
 from .scales import scale_values
@@ -251,4 +252,4 @@ FORMAT = DocumentFormat(
     read_provenance=read_provenance, restored=restored, own_facts=dict(OWN_REFUSED),
     tool_hints=TOOL_HINTS, warm_up=warm_up, touched=touched, number_texts=number_texts,
     scale_values=scale_values, state=id_state, open_with_state=open_docx_with_state,
-    read_copy=read_copy, blocks=BLOCKS)
+    read_copy=read_copy, blocks=BLOCKS, read_version=read_version)

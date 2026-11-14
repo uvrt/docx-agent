@@ -264,9 +264,14 @@ def _layout(call: Any, ids: list[str], required: bool) -> Any:
     version = entry.version
     try:
         if call.may_unlock:
-            request = {"pages": None, "ranges": None, "layout": False, "min_size": None, "styles": None,
-                       "keeps": None, "pages_of": sorted(set(ids))}
-            made = check_facts(document, call.unlocked, request)
+            # Lane O (step 1): the check's own request with these pages besides, in one trip
+            # to the worker; the check's handler then finds its facts kept (check_facts).
+            from .shared import check_plan
+
+            plan = check_plan(call, getattr(call, "arguments", None))
+            request = {**(plan or {"pages": None, "ranges": None, "layout": False, "min_size": None,
+                                   "styles": None, "keeps": None}), "pages_of": sorted(set(ids))}
+            made = check_facts(document, call.unlocked, request, also=plan)
             if made is not None:
                 return _PagesOf(made[0].get("pages_of") or {})
             return lay_out_unlocked(document, call.unlocked, lambda: entry.version == version)
