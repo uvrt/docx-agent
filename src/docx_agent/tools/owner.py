@@ -30,13 +30,14 @@ from ..layout import _keeper, own_layout, reading
 #: The tools a document's owner serves (their reads wait for its next layout).
 SERVED = frozenset({"check"})
 def _asked_seconds() -> float:
-    """``DOCX_AGENT_COMMIT_RELAYOUT`` (seconds) where it is set to a positive number, else 0."""
+    """``DOCX_AGENT_COMMIT_RELAYOUT`` (seconds; ``0`` turns it off) where it is set to a
+    number, else 30."""
     import os
 
     try:
-        return max(0.0, float(os.environ.get("DOCX_AGENT_COMMIT_RELAYOUT", "0")))
+        return max(0.0, float(os.environ.get("DOCX_AGENT_COMMIT_RELAYOUT", "30")))
     except ValueError:
-        return 0.0
+        return 30.0
 
 
 #: A change committed this many seconds after a check of its document asked starts the
@@ -169,14 +170,16 @@ def layout_first(call: Any) -> None:
 def commit_relayout(entry: Any, engine: Any) -> None:
     """Lane O: a change committed while its document's checks ask lays the new version out
     at once (:data:`ASKED_SECONDS`), on a thread of its own, when nothing is laid out for
-    the document then -- the next check finds the layout made or in flight."""
+    the document then -- the next check finds the layout made or in flight.  Once per check
+    asking (:meth:`~docx_agent.layout.Owner.take_arm`): of a run of edits between two
+    checks only the first is laid out at once (the next check's layout starts from it)."""
     if not ASKED_SECONDS or engine is None:
         return
     live = getattr(entry, "live", None) or entry
     document = live.document
     _keeper(document)
     owner = document._layout_owner
-    if not owner.recently_asked(ASKED_SECONDS) or owner.flying is not None:
+    if not owner.take_arm(ASKED_SECONDS):
         return
     committed = live.committed
     if committed is None:

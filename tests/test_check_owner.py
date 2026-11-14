@@ -294,6 +294,16 @@ def test_relayout_on_commit_lays_out_the_new_version_while_checks_ask(made, monk
         result = box.dispatch(session, "check", {"doc": doc})
         assert result.ok and result.version == owner.done.version
         assert owner.flights == flights + 1                   # nothing laid out again
+        # Once per check asking: of two edits after it, the first is laid out at once.
+        for k in range(2):
+            assert box.dispatch(session, "word_insert_markdown", {"doc": doc, "at": f"before:{heads[2]}",
+                                                                  "markdown": f"Edit {k}."}).ok
+            deadline = time.monotonic() + 60
+            while owner.flying is not None or (k == 0 and owner.flights == flights + 1
+                                               and time.monotonic() < deadline):
+                time.sleep(0.05)
+        time.sleep(0.5)
+        assert owner.flights == flights + 2 and owner.done.version == session.entry(doc).version - 1
     monkeypatch.setattr(owner_module, "ASKED_SECONDS", 0.0)
     with Toolbox(TOOLS, formats=[FORMAT], groups=GROUPS, workers=0) as box:
         session, doc, document = _session(box, made)

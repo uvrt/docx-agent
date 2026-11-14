@@ -1523,8 +1523,11 @@ class Owner:
         #: The newest version whose layout failed: a check of it or older is not served.
         self.failed_at = -1
         #: When a check last asked (``time.monotonic``): a relayout on commit is started
-        #: only while checks ask (:meth:`recently_asked`).
+        #: only while checks ask (:meth:`recently_asked`), and once per check asking
+        #: (:attr:`armed`, taken by :meth:`take_arm`): a run of edits between two checks
+        #: lays out the first one's version at once, not each.
         self.asked_at = 0.0
+        self.armed = False
         #: How many layouts this owner made, and how many checks it served (for tests and measurements).
         self.flights = 0
         self.served = 0
@@ -1552,6 +1555,15 @@ class Owner:
     def recently_asked(self, seconds: float) -> bool:
         return time.monotonic() - self.asked_at <= seconds
 
+    def take_arm(self, seconds: float) -> bool:
+        """Whether a commit now lays its version out at once: a check asked within
+        ``seconds`` and no commit since took that (and nothing is laid out now)."""
+        with self._cond:
+            if not self.armed or self.flying is not None or time.monotonic() - self.asked_at > seconds:
+                return False
+            self.armed = False
+            return True
+
     def serve(self, version: int, newest: Any, lay: Any, *, ask: bool = True, wait: bool | None = None) -> Any:
         """The version (an object with ``version``: ooxml-edit's ``Committed``) whose layout
         serves a check of ``version``: the newest laid out when it is at least ``version``;
@@ -1566,6 +1578,7 @@ class Owner:
         with self._cond:
             if ask:
                 self.asked_at = time.monotonic()
+                self.armed = True
             while True:
                 done = self.done
                 if done is not None and done.version >= version:
