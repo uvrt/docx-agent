@@ -5,6 +5,28 @@ docx-agent has not been released to PyPI. Each version that reaches `main` is ta
 snapshot commit; the development history before it is summarised here.
 [`ROADMAP.md`](ROADMAP.md) has the detail of every phase.
 
+## 0.1.113 -- unreleased
+
+- **A check after an undo reads the document as the undo left it** (needs ooxml-edit
+  0.116.1). The document's layout owner (0.1.112) took a version with a higher number for a
+  newer one: an undo brings an earlier number back, so a check called after undoing an edit
+  whose version a check had laid out was served that version -- the edit the undo took out
+  -- and said it was "1 commit(s) newer". Versions are now placed by commit order
+  (ooxml-edit's `Committed.seq`), the owner hands ooxml-edit the committed version at the
+  call (its note counts the commits between), and such a check reads the undone document.
+- **A relayout on commit never raises out of its thread** (it met a test's skip there, said
+  as an unhandled thread exception), and `tools.owner.wait_for_relayouts()` waits for those
+  running; the tests wait for them before the next test.
+- **The serial-replay stresses place and compare a check served a later version.** Such a
+  check was placed after the commit that made the version it describes, as any read, but its
+  note (`of version V: N commit(s) newer than at the call (version v)`), which a call run
+  alone never has, made it differ. `block_stress` now compares the whole result but that
+  note, and checks the note against the commits it recorded instead (V is the result's
+  version; some commit no earlier than the one the call began at made v, N commits before
+  V's); it also checks that every call that changed nothing saw the version it began at or
+  one committed while it ran (the undo above broke that), and that no call run alone has
+  the note.
+
 ## 0.1.112 -- unreleased
 
 - **Many writers on one long document: a check costs about one layout, not one per writer**

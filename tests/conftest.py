@@ -243,3 +243,13 @@ def _skip_where_faces_are_absent(request, monkeypatch):
     monkeypatch.setattr(docx2svg, "lay_out_docx", checked_lay_out)
     monkeypatch.setattr(agent_layout, "convert", checked_convert)
     monkeypatch.setattr(agent_shared, "check_facts", checked_facts)
+
+
+@pytest.fixture(autouse=True)
+def _relayouts_end_with_their_test():
+    # 0.1.113: a relayout on commit (docx_agent.tools.owner) runs on a thread of its own; it
+    # ends with the test that started it, so none lays out under the next test's patches.
+    yield
+    from docx_agent.tools.owner import wait_for_relayouts
+
+    wait_for_relayouts(timeout=120)
