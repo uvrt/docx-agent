@@ -22,9 +22,9 @@ committed while the check waited; its result then describes that version, and sa
 placed after the commit that made V, like any read of V, and compared there whole -- but for
 that note, which a call run alone never has: the note is checked against the commits recorded
 instead (:func:`read_problems`): some commit made v, no earlier than the version the call
-began at, and V is the N-th commit after it.  Every call that changed nothing must have seen
-the version it began at or one committed while it ran (never one already replaced then: an
-undo brings an earlier version number back), and the serial run's results carry no such note.
+began at, and V is the N-th commit after it.  Every read (:data:`READS`) must have seen the
+version it began at or one committed while it ran (never one already replaced then: an undo
+brings an earlier version number back), and the serial run's results carry no such note.
 """
 
 from __future__ import annotations
@@ -515,30 +515,32 @@ def revision_count(data: bytes) -> int:
     return sum(1 for tag, _value in _annotation_ids(data) if tag != b"bookmarkStart")
 
 
-def _placed(item: dict, commits: list[tuple[int, int]]) -> int:
-    """The index of the commit a call that committed nothing is placed after: the last one
-    before it ended that made the version it saw (``-1``: none, the version the run began
-    with)."""
-    for k in range(min(item["end"], len(commits)) - 1, -1, -1):
-        if commits[k][1] == item["version"]:
-            return k
-    return -1
+#: The calls of the stress that only read: each sees the version it began at or a later one.
+#: (An edit prepared on a draft that ends up changing nothing reports the version it was
+#: prepared on, which may be older -- it is placed there, as of that version.)
+READS = frozenset({"check", "word_read", "describe"})
 
 
 def read_problems(calls: list[dict], commits: list[tuple[int, int]], initial: int) -> list[str]:
     """What is wrong with the versions the calls that committed nothing saw (the module's
-    notes): each saw the version it began at or one committed while it ran -- its placing
-    commit (:func:`_placed`) is no earlier than the last one before it began -- and a
-    :data:`NEWER` note is true of the commits recorded: V is the version the result describes,
-    and some commit no earlier than the version the call began at made v, N commits before V's."""
+    notes): a read (:data:`READS`) saw the version it began at or one committed while it ran
+    -- a commit no earlier than the last one before it began made its version -- and a
+    :data:`NEWER` note is true of the commits recorded: V is the version the result
+    describes, and a commit no earlier than the last one before the call began made v, N
+    commits before one that made V."""
     committing = {call for call, _ in commits}
     out = []
     for item in calls:
         if item["call"] in committing or item["version"] is None:
             continue                    # (a call refused before it saw a version: none to check)
-        at = _placed(item, commits)
+        last = min(item["end"], len(commits))
+
+        def making(version: int) -> list[int]:
+            # The commits before the call ended that made ``version`` (-1: the run's first).
+            return [k for k in range(-1, last) if (commits[k][1] if k >= 0 else initial) == version]
+
         name = f"call {item['call']} ({item['name']})"
-        if at < item["start"] - 1 or (at == -1 and item["version"] != initial):
+        if item["name"] in READS and not any(k >= item["start"] - 1 for k in making(item["version"])):
             out.append(f"{name} saw version {item['version']}, not the one it began at "
                        f"(commit {item['start']}) nor one committed while it ran")
         note = item.get("note")
@@ -548,11 +550,11 @@ def read_problems(calls: list[dict], commits: list[tuple[int, int]], initial: in
         if described != item["version"]:
             out.append(f"{name}: its note names version {described}, its result {item['version']}")
             continue
-        made = [k for k in range(max(item["start"] - 1, -1), at)
-                if (commits[k][1] if k >= 0 else initial) == at_call]
-        if not any(at - k == count for k in made):
+        if not any(after - before == count for after in making(described) for before in making(at_call)
+                   if item["start"] - 1 <= before < after):
             out.append(f"{name}: of version {described}, {count} commit(s) newer than version {at_call} at the "
-                       f"call -- the commits recorded say otherwise ({[commits[k][1] for k in range(max(at - count - 1, 0), at + 1)]})")
+                       f"call -- not what the commits recorded say ({[version for _, version in commits[:last]]}, "
+                       f"began after commit {item['start']})")
     return out
 
 
