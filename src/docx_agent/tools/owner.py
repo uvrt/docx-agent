@@ -25,7 +25,7 @@ import threading
 import time
 from typing import Any
 
-from ..layout import _keeper, own_layout, reading
+from ..layout import _keeper, own_layout, rank, reading
 
 #: The tools a document's owner serves (their reads wait for its next layout).
 SERVED = frozenset({"check"})
@@ -81,7 +81,8 @@ def _committed(entry: Any, fmt: Any) -> Any:
 def read_version(toolbox: Any, session: Any, entry: Any, tool: Any, arguments: Any) -> Any:
     """ooxml-edit's ``DocumentFormat.read_version`` for a Word document: for a check that
     needs the layout, ``(committed, at_call)`` -- the version the owner laid out for it (the
-    module's notes) and the version the document had when the check came; ``None`` for any
+    module's notes) and the committed version the document had when the check came (both
+    ooxml-edit's ``Committed``: compared by commit order, 0.116.1); ``None`` for any
     other read, or where the owner could not lay the document out (the check then reads
     its own version, as before)."""
     _WAITED.pop(threading.get_ident(), None)        # none left by an earlier call
@@ -97,7 +98,7 @@ def read_version(toolbox: Any, session: Any, entry: Any, tool: Any, arguments: A
     committed = _committed(entry, fmt)
     if committed is None:
         return None
-    at_call = committed.version
+    at_call = committed
     _keeper(document)
     owner = document._layout_owner
 
@@ -122,7 +123,13 @@ def read_version(toolbox: Any, session: Any, entry: Any, tool: Any, arguments: A
         _WAITED[threading.get_ident()] = {"worker_wait": waited}   # for another's layout
     if served is None:
         return None
-    reading(owner, served.version)      # until its facts are made (check_facts) or it ends
+    newest = entry.committed
+    if newest is not None and newest is not served and rank(newest) == rank(served):
+        # The same version committed again with its refs or tracking now (ooxml-edit's
+        # Committed.with_refs): read that one, as every other read of the version does --
+        # its copy and its lock, its refs.
+        served = newest
+    reading(owner, served)              # until its facts are made (check_facts) or it ends
     return served, at_call
 
 
@@ -161,7 +168,7 @@ def layout_first(call: Any) -> None:
     owner = document._layout_owner
     with call.unlocked():
         try:
-            owner.serve(committed.version, lambda: entry.committed,
+            owner.serve(committed, lambda: entry.committed,
                         lambda target: own_layout(document, target.data, engine.arm()) is not None, ask=False, wait=True)
         except Exception:  # noqa: BLE001 -- the work ahead lays the document out itself
             pass
@@ -187,9 +194,35 @@ def commit_relayout(entry: Any, engine: Any) -> None:
 
     def run() -> None:
         try:
-            owner.serve(committed.version, lambda: live.committed,
+            owner.serve(committed, lambda: live.committed,
                         lambda target: own_layout(document, target.data, engine.arm()) is not None, ask=False)
-        except Exception:  # noqa: BLE001 -- the next check lays the version out itself
-            pass
+        except BaseException:  # noqa: BLE001 -- nothing leaves this thread: the next check lays
+            pass               # the version out itself, and meets whatever this met
+        finally:
+            with _RUNNING_LOCK:
+                _RUNNING.discard(threading.current_thread())
 
-    threading.Thread(target=run, name="docx-agent relayout on commit", daemon=True).start()
+    thread = threading.Thread(target=run, name="docx-agent relayout on commit", daemon=True)
+    with _RUNNING_LOCK:
+        _RUNNING.add(thread)
+    thread.start()
+
+
+#: The relayouts on commit running now (their threads; :func:`wait_for_relayouts`).
+_RUNNING: set = set()
+_RUNNING_LOCK = threading.Lock()
+
+
+def wait_for_relayouts(timeout: float | None = None) -> bool:
+    """Wait for the relayouts on commit started so far to end -- an application closing its
+    toolbox, a test before the next -- at most ``timeout`` s in all; whether none is left."""
+    deadline = None if timeout is None else time.monotonic() + timeout
+    while True:
+        with _RUNNING_LOCK:
+            running = list(_RUNNING)
+        if not running:
+            return True
+        left = None if deadline is None else deadline - time.monotonic()
+        if left is not None and left <= 0:
+            return False
+        running[0].join(left)

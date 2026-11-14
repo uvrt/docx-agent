@@ -1507,8 +1507,10 @@ class Owner:
     at most one layout of the document in flight, of its newest committed version; checks
     that come while it is laid out wait, and are all served by the next layout -- again of
     the newest version -- so that the document is laid out once for every check waiting,
-    however many writers commit meanwhile.  A check is served by the first layout of a
-    version at least the one the document had when it was called (:meth:`serve`).
+    however many writers commit meanwhile.  A check is served by the first layout of the
+    version the document had when it was called, or of one committed after it
+    (:meth:`serve`).  Versions are placed by commit order (:func:`rank`: ooxml-edit's
+    ``Committed.seq``), never by their numbers: an undo brings an earlier number back.
 
     Kept on the document (:func:`_keeper`; a read copy shares its document's).  Its lock is
     taken with no other of the module's held, and nothing is waited for under it but its
@@ -1518,9 +1520,11 @@ class Owner:
         self._cond = threading.Condition()
         #: The version laid out now (the leader's), or ``None``.
         self.flying: Any = None
-        #: The newest version laid out: what a check of an older or equal version reads.
+        #: The version committed last of those laid out: what a check called at it, or at
+        #: one committed before it, reads.
         self.done: Any = None
-        #: The newest version whose layout failed: a check of it or older is not served.
+        #: The commit order (:func:`rank`) of the last version whose layout failed: a check
+        #: called at it, or before it, is not served.
         self.failed_at = -1
         #: When a check last asked (``time.monotonic``): a relayout on commit is started
         #: only while checks ask (:meth:`recently_asked`), and once per check asking
@@ -1531,26 +1535,29 @@ class Owner:
         #: How many layouts this owner made, and how many checks it served (for tests and measurements).
         self.flights = 0
         self.served = 0
-        #: Per version served, the checks reading it that have not yet had their facts made
-        #: where it is held (:meth:`release`): the next layout -- which takes that worker's
-        #: layout of the document on to the next version -- waits for them, at most
-        #: :data:`READERS_WAIT` s, so that their facts are made from the layout they read
-        #: and not laid out back to it.
+        #: Per version served (by :func:`rank`), the checks reading it that have not yet had
+        #: their facts made where it is held (:meth:`release`): the next layout -- which takes
+        #: that worker's layout of the document on to the next version -- waits for them, at
+        #: most :data:`READERS_WAIT` s, so that their facts are made from the layout they
+        #: read and not laid out back to it.
         self.readers: dict[int, int] = {}
 
-    def release(self, version: int) -> None:
-        """A check served ``version`` has had its facts made (or ended without)."""
+    def release(self, version: Any) -> None:
+        """A check served ``version`` (it, or its :func:`rank`) has had its facts made (or
+        ended without)."""
+        key = rank(version)
         with self._cond:
-            left = self.readers.get(version, 0) - 1
+            left = self.readers.get(key, 0) - 1
             if left > 0:
-                self.readers[version] = left
+                self.readers[key] = left
             else:
-                self.readers.pop(version, None)
+                self.readers.pop(key, None)
             self._cond.notify_all()
 
-    def _read(self, version: int) -> None:
+    def _read(self, version: Any) -> None:
         self.served += 1
-        self.readers[version] = self.readers.get(version, 0) + 1
+        key = rank(version)
+        self.readers[key] = self.readers.get(key, 0) + 1
 
     def recently_asked(self, seconds: float) -> bool:
         return time.monotonic() - self.asked_at <= seconds
@@ -1564,32 +1571,34 @@ class Owner:
             self.armed = False
             return True
 
-    def serve(self, version: int, newest: Any, lay: Any, *, ask: bool = True, wait: bool | None = None) -> Any:
+    def serve(self, version: Any, newest: Any, lay: Any, *, ask: bool = True, wait: bool | None = None) -> Any:
         """The version (an object with ``version``: ooxml-edit's ``Committed``) whose layout
-        serves a check of ``version``: the newest laid out when it is at least ``version``;
-        else the one in flight when it is; else -- once the one in flight is done -- the
-        newest committed then (``newest()``), laid out by this caller (``lay(target) ->
-        bool``) for every caller waiting meanwhile.  ``None`` where that layout failed: the
-        caller reads its own version as before.  ``ask`` false (a relayout on commit, a
-        change's work ahead): not counted as a check asking, nor as a reader of what it is
-        served; ``wait`` (default: ``ask``) false lays out only when nothing is in flight."""
+        serves a check called at ``version`` (the ``Committed`` then; :func:`rank` places
+        both): the one laid out last when it was committed at or after ``version``; else the
+        one in flight when it was; else -- once the one in flight is done -- the newest
+        committed then (``newest()``), laid out by this caller (``lay(target) -> bool``) for
+        every caller waiting meanwhile.  ``None`` where that layout failed: the caller reads
+        its own version as before.  ``ask`` false (a relayout on commit, a change's work
+        ahead): not counted as a check asking, nor as a reader of what it is served;
+        ``wait`` (default: ``ask``) false lays out only when nothing is in flight."""
         if wait is None:
             wait = ask
+        at = rank(version)
         with self._cond:
             if ask:
                 self.asked_at = time.monotonic()
                 self.armed = True
             while True:
                 done = self.done
-                if done is not None and done.version >= version:
+                if done is not None and rank(done) >= at:
                     if ask:
-                        self._read(done.version)
+                        self._read(done)
                     return done
-                if self.failed_at >= version:
+                if self.failed_at >= at:
                     return None
                 if self.flying is None:
                     target = newest()
-                    if target is None or target.version < version:
+                    if target is None or rank(target) < at:
                         return None
                     self.flying = target
                     # The checks reading the version laid out last have their facts made
@@ -1608,26 +1617,37 @@ class Owner:
             with self._cond:
                 self.flying = None
                 self.flights += 1
-                if ok and (self.done is None or target.version > self.done.version):
+                if ok and (self.done is None or rank(target) > rank(self.done)):
                     self.done = target
                 elif not ok:
-                    self.failed_at = max(self.failed_at, target.version)
+                    self.failed_at = max(self.failed_at, rank(target))
                 self._cond.notify_all()
         if not ok:
             return None
         if ask:
             with self._cond:
-                self._read(target.version)
+                self._read(target)
         return target
+
+
+def rank(version: Any) -> int:
+    """Where a version stands in its document's commit order: a ``Committed``'s ``seq`` (the
+    document's count of changes when it was committed) -- never its number, which an undo
+    brings back for a later commit -- else, for anything without one, its ``version``; a
+    plain number is its own."""
+    if isinstance(version, int):
+        return version
+    seq = getattr(version, "seq", None)
+    return seq if isinstance(seq, int) else version.version
 
 
 #: Per thread, the owner and version the check running on it reads (:func:`reading`).
 _READING = threading.local()
 
 
-def reading(owner: "Owner", version: int) -> None:
-    """The check on this thread reads ``version``, served by ``owner``: it counts as one of
-    the version's readers until :func:`read_done`."""
+def reading(owner: "Owner", version: Any) -> None:
+    """The check on this thread reads ``version`` (a ``Committed``, or its :func:`rank`),
+    served by ``owner``: it counts as one of the version's readers until :func:`read_done`."""
     read_done()
     _READING.held = (owner, version)
 

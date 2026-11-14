@@ -14,6 +14,17 @@ its turn, and each call that changed nothing (a read, a refusal, a no-op) right 
 that made the version it saw.  Every call's result (less what is about time: ``duration``,
 ``data.timing``, a check's reflow, which is there when the layout before was) and the final
 bytes and id state must be the same.
+
+The version a call that changed nothing saw is the one its result describes (``version``).
+docx-agent 0.1.112 serves a check from its document's next layout, which can be of a version
+committed while the check waited; its result then describes that version, and says so
+(``of version V: N commit(s) newer than at the call (version v), ...``).  Such a check is
+placed after the commit that made V, like any read of V, and compared there whole -- but for
+that note, which a call run alone never has: the note is checked against the commits recorded
+instead (:func:`read_problems`): v is the version the call began at or a later one, and V
+was first committed N commits after v was.  Every read (:data:`READS`) must have seen the
+version it began at or one committed while it ran (never one already replaced then: an undo
+brings an earlier version number back), and the serial run's results carry no such note.
 """
 
 from __future__ import annotations
@@ -331,8 +342,22 @@ def plan(seed: int, threads: int, calls: int, layout: Layout, doc: str, sync: bo
     return out
 
 
+#: The note of a check served a version committed after it was called (docx-agent 0.1.112).
+NEWER = re.compile(r"^of version (\d+): (\d+) commit\(s\) newer than at the call \(version (\d+)\), ")
+
+
+def newer_note(result: Result) -> tuple[int, int, int] | None:
+    """``(V, N, v)`` of ``result``'s :data:`NEWER` note, or ``None``."""
+    for warning in result.warnings:
+        found = NEWER.match(warning)
+        if found:
+            return int(found.group(1)), int(found.group(2)), int(found.group(3))
+    return None
+
+
 def normal(result: Result) -> dict:
-    """What a result says that is not about time."""
+    """What a result says that is not about time (a version note, :data:`NEWER`, is about
+    when the call came: checked apart, :func:`read_problems`)."""
     out = copy.deepcopy(result.to_json())
     data = out.get("data")
     if isinstance(data, dict):
@@ -346,7 +371,8 @@ def normal(result: Result) -> dict:
     checks = out.get("checks")
     if isinstance(checks, dict):
         checks.pop("reflow", None)
-    out["warnings"] = [w for w in out.get("warnings") or [] if "changed while this call read it" not in w]
+    out["warnings"] = [w for w in out.get("warnings") or [] if "changed while this call read it" not in w
+                       and not NEWER.match(w)]
     out["touched"] = result.touched
     out["touched_by_op"] = {str(op): found for op, found in result.touched_by_op.items()}
     return out
@@ -408,6 +434,7 @@ def run(seed: int, threads: int, calls: int, chapters: int = 4, mode: str = "alw
             track(box, session, doc)
         plans = (plan_short(seed, threads, calls, layout, doc) if shape == "short"
                  else plan(seed, threads, calls, layout, doc, sync=sync))
+        initial = session.entry(doc).version
         made_calls: list[dict] = []
         lock = threading.Lock()
         errors: list[str] = []
@@ -430,7 +457,7 @@ def run(seed: int, threads: int, calls: int, chapters: int = 4, mode: str = "alw
                     end = len(recorder.commits)
                 made_calls.append({"call": number, "thread": k, "name": name, "arguments": arguments,
                                    "result": normal(result), "version": result.version, "start": start,
-                                   "end": end, "block": result.block})
+                                   "end": end, "block": result.block, "note": newer_note(result)})
                 time.sleep(0)
 
         workers = [threading.Thread(target=worker, args=(k,)) for k in range(threads)]
@@ -442,7 +469,10 @@ def run(seed: int, threads: int, calls: int, chapters: int = 4, mode: str = "alw
         state = session.entry(doc).document.id_state()
         commits = list(recorder.commits)
     order = _order(made_calls, commits)
+    errors += read_problems(made_calls, commits, initial)
     replayed = replay(data, order, threads, sync=sync, tracked=tracked)
+    errors += [f"call {item['call']} ({item['name']}) run alone says it was served a later version"
+               for item, note in zip(order, replayed["notes"]) if note is not None]
     differ = []
     for item, again in zip(order, replayed["results"]):
         if item["result"] != again:
@@ -483,6 +513,55 @@ def repeated_ids(data: bytes) -> list[str]:
 def revision_count(data: bytes) -> int:
     """The revision records in ``data``'s parts."""
     return sum(1 for tag, _value in _annotation_ids(data) if tag != b"bookmarkStart")
+
+
+#: The calls of the stress that only read: each sees the version it began at or a later one.
+#: (An edit prepared on a draft that ends up changing nothing reports the version it was
+#: prepared on, which may be older -- it is placed there, as of that version.)
+READS = frozenset({"check", "word_read", "describe"})
+
+
+def read_problems(calls: list[dict], commits: list[tuple[int, int]], initial: int) -> list[str]:
+    """What is wrong with the versions the calls that committed nothing saw (the module's
+    notes): a read (:data:`READS`) saw the version it began at or one committed while it ran
+    -- a commit no earlier than the last one before it began made its version -- and a
+    :data:`NEWER` note is true of the commits recorded: V is the version the result
+    describes; v the version the document had when the call began or one committed after;
+    and V was first committed N commits after v was (a version is committed when it is first
+    made: a change counted at the version it left -- refs, tracking -- is no new one)."""
+    committing = {call for call, _ in commits}
+    # The runs of commits that left one version: (version, first, last), -1 the run's start.
+    runs: list[list[int]] = [[initial, -1, -1]]
+    for k, (_call, version) in enumerate(commits):
+        if version == runs[-1][0]:
+            runs[-1][2] = k
+        else:
+            runs.append([version, k, k])
+    out = []
+    for item in calls:
+        if item["call"] in committing or item["version"] is None:
+            continue                    # (a call refused before it saw a version: none to check)
+        last = min(item["end"], len(commits))
+        began = item["start"] - 1       # the last commit before the call began (-1: none)
+        name = f"call {item['call']} ({item['name']})"
+        # The runs current when the call began or after, until it ended.
+        current = [run for run in runs if run[2] >= began and run[1] < last]
+        if item["name"] in READS and not any(run[0] == item["version"] for run in current):
+            out.append(f"{name} saw version {item['version']}, not the one it began at "
+                       f"(commit {item['start']}) nor one committed while it ran")
+        note = item.get("note")
+        if note is None:
+            continue
+        described, count, at_call = note
+        if described != item["version"]:
+            out.append(f"{name}: its note names version {described}, its result {item['version']}")
+            continue
+        if not any(after[1] - before[1] == count for before in current if before[0] == at_call
+                   for after in current if after[0] == described and after[1] > before[1]):
+            out.append(f"{name}: of version {described}, {count} commit(s) newer than version {at_call} at the "
+                       f"call -- not what the commits recorded say ({[version for _, version in commits[:last]]}, "
+                       f"began after commit {item['start']})")
+    return out
 
 
 def _order(calls: list[dict], commits: list[tuple[int, int]]) -> list[dict]:
@@ -531,9 +610,10 @@ def replay(data: bytes, order: list[dict], threads: int, sync: bool = False, tra
         if tracked:
             track(box, session, doc)
         views = {k: session.view(context={"agent": f"b{k}"}) for k in range(threads)}
-        results = [normal(box.dispatch(views[item["thread"]], item["name"], item["arguments"])) for item in order]
+        found = [box.dispatch(views[item["thread"]], item["name"], item["arguments"]) for item in order]
         entry = session.entry(doc)
-        return {"results": results, "final": entry.document.to_bytes(), "state": entry.document.id_state()}
+        return {"results": [normal(result) for result in found], "notes": [newer_note(result) for result in found],
+                "final": entry.document.to_bytes(), "state": entry.document.id_state()}
 
 
 def _seeds(text: str) -> list[int]:

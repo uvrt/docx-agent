@@ -275,6 +275,80 @@ def test_a_check_waiting_for_a_layout_reads_the_newest_version_and_says_so(made,
         assert mine == theirs
 
 
+def test_owner_places_versions_by_commit_order_not_number():
+    """0.1.113: an undo brings an earlier version number back; the version committed last is
+    the newest whatever its number."""
+
+    @dataclasses.dataclass
+    class _Committed:
+        version: int
+        seq: int
+
+    owner = Owner()
+    edited, undone = _Committed(version=2, seq=1), _Committed(version=1, seq=2)
+    assert owner.serve(edited, lambda: edited, lambda target: True) is edited
+    owner.release(edited)
+    # A check called once the edit was undone: version 1, committed after version 2.
+    laid: list = []
+    served = owner.serve(undone, lambda: undone, lambda target: laid.append(target) or True)
+    assert served is undone and laid == [undone]
+    owner.release(undone)
+    assert owner.serve(edited, lambda: undone, lambda target: True) is undone     # committed later
+
+
+@pytest.mark.parametrize("workers", [0, 2])
+def test_a_check_after_an_undo_reads_the_undone_document(made, workers):
+    """A check called after an undo reads the document as the undo left it -- never the layout
+    of the version before the undo, though that one's number is higher."""
+    with Toolbox(TOOLS, formats=[FORMAT], groups=GROUPS, workers=workers) as box:
+        session, doc, document = _session(box, made)
+        heads = _heads(document)
+        assert box.dispatch(session, "check", {"doc": doc}).ok
+        inserted = box.dispatch(session, "word_insert_markdown", {"doc": doc, "at": f"before:{heads[1]}",
+                                                                  "markdown": "A paragraph the undo takes out."})
+        assert inserted.ok
+        edited = box.dispatch(session, "check", {"doc": doc, "include": INCLUDE})
+        assert edited.ok and edited.version == inserted.version
+        assert box.dispatch(session, "undo", {"doc": doc}).ok
+        now = session.entry(doc).version
+        assert now < edited.version
+        after = box.dispatch(session, "check", {"doc": doc, "include": INCLUDE})
+        assert after.ok and after.version == now, (after.version, now)
+        assert not [w for w in after.warnings if "newer than at the call" in w]
+        data = session.entry(doc).document.to_bytes()
+    alone = dataclasses.replace(FORMAT, read_version=None)
+    with Toolbox(TOOLS, formats=[alone], groups=GROUPS, workers=0) as box:
+        other = box.session()
+        copy_doc = other.open(data, "report.docx")
+        assert box.dispatch(other, "ds_put", {"id": "values"}).ok
+        reference = box.dispatch(other, "check", {"doc": copy_doc, "include": INCLUDE})
+    mine, theirs = _same(after), _same(reference)
+    for result in (mine, theirs):
+        result["data"]["reflow"].pop("since_last_check", None)
+    assert mine == theirs
+
+
+def test_a_check_reads_its_version_as_committed_last_with_its_tracking(made):
+    """0.1.113: a version committed again with other refs or tracking (ooxml-edit's
+    ``Committed.with_refs``, no new version) is read as committed last -- the copy every other
+    read of it reads -- not as the owner laid it out before."""
+    from docx_agent.layout import read_done
+
+    with Toolbox(TOOLS, formats=[FORMAT], groups=GROUPS, workers=0) as box:
+        session, doc, _document = _session(box, made)
+        assert box.dispatch(session, "check", {"doc": doc}).ok
+        entry = session.entry(doc)
+        laid = entry.document._layout_owner.done
+        assert box.dispatch(session, "word_set_tracking", {"doc": doc, "on": True, "author": "A. Writer"}).ok
+        assert entry.version == laid.version and entry.committed is not laid and entry.committed.tracking
+        served, at_call = owner_module.read_version(box, session, entry, box.tools["check"], {"doc": doc})
+        read_done()
+        assert served is entry.committed and at_call is entry.committed
+        result = box.dispatch(session, "check", {"doc": doc})
+        assert result.ok and result.version == laid.version
+        assert not [w for w in result.warnings if "newer than at the call" in w]
+
+
 def test_relayout_on_commit_lays_out_the_new_version_while_checks_ask(made, monkeypatch):
     # As for a long document: an edit's own checks say "stale" and lay nothing out.
     monkeypatch.setattr(base_module, "REFLOW_PAGES", 0)
