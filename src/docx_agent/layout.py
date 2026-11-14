@@ -1525,7 +1525,7 @@ class Owner:
         #: When a check last asked (``time.monotonic``): a relayout on commit is started
         #: only while checks ask (:meth:`recently_asked`).
         self.asked_at = 0.0
-        #: How many layouts this owner made, and how many checks it served (for probes).
+        #: How many layouts this owner made, and how many checks it served (for tests and measurements).
         self.flights = 0
         self.served = 0
         #: Per version served, the checks reading it that have not yet had their facts made
