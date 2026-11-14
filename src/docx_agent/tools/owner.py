@@ -25,13 +25,22 @@ import threading
 import time
 from typing import Any
 
-from ..layout import _keeper, own_layout
+from ..layout import _keeper, own_layout, read_done, reading
 
 #: The tools a document's owner serves (their reads wait for its next layout).
 SERVED = frozenset({"check"})
 #: A change committed this many seconds after a check of its document asked starts the
 #: layout of its version at once (:func:`commit_relayout`); ``0`` turns it off.
-ASKED_SECONDS = 0.0
+def _asked_seconds() -> float:
+    import os
+
+    try:
+        return max(0.0, float(os.environ.get("DOCX_AGENT_COMMIT_RELAYOUT", "0")))
+    except ValueError:
+        return 0.0
+
+
+ASKED_SECONDS = _asked_seconds()
 
 
 def _needs_layout(arguments: Any) -> bool:
@@ -98,6 +107,7 @@ def read_version(toolbox: Any, session: Any, entry: Any, tool: Any, arguments: A
     _WAITED[threading.get_ident()] = time.perf_counter() - began
     if served is None:
         return None
+    reading(owner, served.version)      # until its facts are made (check_facts) or it ends
     return served, at_call
 
 

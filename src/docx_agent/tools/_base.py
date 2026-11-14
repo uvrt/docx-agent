@@ -91,6 +91,11 @@ class Engine:
         if not self.keyed or not held_state(state):
             return {}
         wait = affinity(self.document)[1] if self.document is not None else None
+        if state[2] is not None and state[1] == state[2]:
+            # Lane O: the layout of these very bytes is held there (a check's facts after its
+            # owner laid the version out): going elsewhere would lay the document out whole
+            # and move it -- the task waits for its holder.
+            wait = None
         return {"affinity": ("docx-agent layout", state[3]), "affinity_wait": wait}
 
     def _remaining(self) -> float:
@@ -417,6 +422,11 @@ def checks(entry: Any, touched: Sequence[Any]) -> dict[str, Any]:
         document.converter = handed
     before = next((t.layout for t in touched if isinstance(t, Before)), None)
     timing = next((t for t in touched if isinstance(t, Timing)), None) or Timing()
+    if before is None or before.count > REFLOW_PAGES:
+        # Lane O: while the document's checks ask, its new version is laid out at once.
+        from .owner import commit_relayout
+
+        commit_relayout(entry, document.converter if isinstance(document.converter, Engine) else None)
     with timing.part("validate"):
         out: dict[str, Any] = {"validate": validate_delta(entry), "reflow": None}
     try:

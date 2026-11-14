@@ -1528,6 +1528,26 @@ class Owner:
         #: How many layouts this owner made, and how many checks it served (for probes).
         self.flights = 0
         self.served = 0
+        #: Per version served, the checks reading it that have not yet had their facts made
+        #: where it is held (:meth:`release`): the next layout -- which takes that worker's
+        #: layout of the document on to the next version -- waits for them, at most
+        #: :data:`READERS_WAIT` s, so that their facts are made from the layout they read
+        #: and not laid out back to it.
+        self.readers: dict[int, int] = {}
+
+    def release(self, version: int) -> None:
+        """A check served ``version`` has had its facts made (or ended without)."""
+        with self._cond:
+            left = self.readers.get(version, 0) - 1
+            if left > 0:
+                self.readers[version] = left
+            else:
+                self.readers.pop(version, None)
+            self._cond.notify_all()
+
+    def _read(self, version: int) -> None:
+        self.served += 1
+        self.readers[version] = self.readers.get(version, 0) + 1
 
     def recently_asked(self, seconds: float) -> bool:
         return time.monotonic() - self.asked_at <= seconds
@@ -1547,7 +1567,7 @@ class Owner:
                 done = self.done
                 if done is not None and done.version >= version:
                     if ask:
-                        self.served += 1
+                        self._read(done.version)
                     return done
                 if self.failed_at >= version:
                     return None
@@ -1556,6 +1576,11 @@ class Owner:
                     if target is None or target.version < version:
                         return None
                     self.flying = target
+                    # The checks reading the version laid out last have their facts made
+                    # first (:attr:`readers`): those tasks are queued before this layout.
+                    deadline = time.monotonic() + READERS_WAIT
+                    while self.readers and time.monotonic() < deadline:
+                        self._cond.wait(max(0.0, deadline - time.monotonic()))
                     break
                 if not ask:
                     return None
@@ -1576,8 +1601,32 @@ class Owner:
             return None
         if ask:
             with self._cond:
-                self.served += 1
+                self._read(target.version)
         return target
+
+
+#: Per thread, the owner and version the check running on it reads (:func:`reading`).
+_READING = threading.local()
+
+
+def reading(owner: "Owner", version: int) -> None:
+    """The check on this thread reads ``version``, served by ``owner``: it counts as one of
+    the version's readers until :func:`read_done`."""
+    read_done()
+    _READING.held = (owner, version)
+
+
+def read_done() -> None:
+    """The check on this thread has had its facts made, or ends: no longer a reader."""
+    held = getattr(_READING, "held", None)
+    if held is not None:
+        _READING.held = None
+        held[0].release(held[1])
+
+
+#: How long the next layout of a document waits for the checks reading its last one to have
+#: their facts made (:attr:`Owner.readers`): a check that never asks is not waited for longer.
+READERS_WAIT = 20.0
 
 
 def own_layout(document: "Document", data: bytes, converter: Any) -> bool:
@@ -2155,6 +2204,7 @@ def check_facts(document: "Document", unlocked: Any, request: dict, *,
         found = document._check_facts.get(asked)
     summary = known_summary(document, key)
     if found is not None and summary is not None:
+        read_done()
         return copy.deepcopy(found), summary
     failed = _kept_failure(document, cache_key(data, options))
     if failed is not None:
@@ -2168,6 +2218,8 @@ def check_facts(document: "Document", unlocked: Any, request: dict, *,
             raise
         except Exception as error:
             raise _failed(document, cache_key(data, options), error) from error
+        finally:
+            read_done()             # lane O: its facts are made; the next layout may start
         waited = time.perf_counter() - started
         worker = result.pop("worker", None)
         keep_layout(document, data, options, key)

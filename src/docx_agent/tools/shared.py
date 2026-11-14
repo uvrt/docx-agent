@@ -541,6 +541,18 @@ def check(call: Any, doc: str, slides: list | None = None, pages: list[int] | No
     ``numbers`` (``include: ["numbers"]``) and ``validation`` (the save gate's comparison),
     which run around this handler, are added there.  The wait for the document before the
     call ran is the result's duration less these."""
+    try:
+        return _check(call, doc, slides, pages, include, boxes, spacing, contrast, min_size, styles, range,
+                      copies)
+    finally:
+        from ..layout import read_done
+
+        read_done()             # lane O: a check served by its document's owner ends
+
+
+def _check(call: Any, doc: str, slides: list | None, pages: list[int] | None, include: list[str] | None,
+           boxes: bool | None, spacing: float | None, contrast: float | None, min_size: float | None,
+           styles: list[str] | None, range: Any, copies: list | None) -> Result:
     timing = Timing()
     from .owner import layout_waited
 
