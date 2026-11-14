@@ -29,9 +29,8 @@ from ..layout import _keeper, own_layout, reading
 
 #: The tools a document's owner serves (their reads wait for its next layout).
 SERVED = frozenset({"check"})
-#: A change committed this many seconds after a check of its document asked starts the
-#: layout of its version at once (:func:`commit_relayout`); ``0`` turns it off.
 def _asked_seconds() -> float:
+    """``DOCX_AGENT_COMMIT_RELAYOUT`` (seconds) where it is set to a positive number, else 0."""
     import os
 
     try:
@@ -40,6 +39,8 @@ def _asked_seconds() -> float:
         return 0.0
 
 
+#: A change committed this many seconds after a check of its document asked starts the
+#: layout of its version at once (:func:`commit_relayout`); ``0`` turns it off.
 ASKED_SECONDS = _asked_seconds()
 
 
@@ -99,27 +100,42 @@ def read_version(toolbox: Any, session: Any, entry: Any, tool: Any, arguments: A
     _keeper(document)
     owner = document._layout_owner
 
+    made: list[dict] = []
+
     def lay(target: Any) -> bool:
-        return own_layout(document, target.data, engine.arm())
+        found = own_layout(document, target.data, engine.arm())
+        if found is not None:
+            made.append(found)
+        return found is not None
 
     began = time.perf_counter()
     served = owner.serve(at_call, lambda: entry.committed, lay)
-    _WAITED[threading.get_ident()] = time.perf_counter() - began
+    waited = time.perf_counter() - began
+    if made:
+        # This check laid the version out (for every check waiting): the worker's seconds
+        # laying it out and reading its facts, and the rest of the wait.
+        _WAITED[threading.get_ident()] = {
+            "layout": made[0]["layout"], "facts": made[0]["facts"],
+            "worker_wait": max(0.0, waited - made[0]["layout"] - made[0]["facts"])}
+    elif waited >= 0.001:
+        _WAITED[threading.get_ident()] = {"worker_wait": waited}   # for another's layout
     if served is None:
         return None
     reading(owner, served.version)      # until its facts are made (check_facts) or it ends
     return served, at_call
 
 
-#: Per thread, the seconds the last check on it waited for its document's layout
+#: Per thread, where the last check on it spent its wait for its document's layout
 #: (:func:`read_version`; the hook and the check run on one thread, one after the other).
-_WAITED: dict[int, float] = {}
+_WAITED: dict[int, dict[str, float]] = {}
 
 
-def layout_waited() -> float | None:
-    """The seconds this thread's check waited for the owner's layout, taken (``None``: it
-    did not ask): ``check``'s ``timing`` says it as ``layout``."""
-    return _WAITED.pop(threading.get_ident(), None)
+def layout_waited() -> dict[str, float]:
+    """Where this thread's check spent its wait for the owner's layout, taken: ``layout``
+    and ``facts`` (the worker's, where it laid the version out) and ``worker_wait`` (the
+    rest: the worker's queue, the checks reading the version before, another's layout) --
+    the parts ``check``'s ``timing`` says (round 47); empty where it did not wait."""
+    return _WAITED.pop(threading.get_ident(), None) or {}
 
 
 def layout_first(call: Any) -> None:
@@ -145,7 +161,7 @@ def layout_first(call: Any) -> None:
     with call.unlocked():
         try:
             owner.serve(committed.version, lambda: entry.committed,
-                        lambda target: own_layout(document, target.data, engine.arm()), ask=False, wait=True)
+                        lambda target: own_layout(document, target.data, engine.arm()) is not None, ask=False, wait=True)
         except Exception:  # noqa: BLE001 -- the work ahead lays the document out itself
             pass
 
@@ -169,7 +185,7 @@ def commit_relayout(entry: Any, engine: Any) -> None:
     def run() -> None:
         try:
             owner.serve(committed.version, lambda: live.committed,
-                        lambda target: own_layout(document, target.data, engine.arm()), ask=False)
+                        lambda target: own_layout(document, target.data, engine.arm()) is not None, ask=False)
         except Exception:  # noqa: BLE001 -- the next check lays the version out itself
             pass
 

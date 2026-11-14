@@ -556,11 +556,10 @@ def _check(call: Any, doc: str, slides: list | None, pages: list[int] | None, in
     timing = Timing()
     from .owner import layout_waited
 
-    waited = layout_waited()
-    if waited is not None:
-        # Lane O: the wait for the document's layout, made by its owner before the check
-        # read anything (laid out once for every check waiting then).
-        timing.add("layout", waited)
+    # Lane O: the wait for the document's layout, made by its owner before the check read
+    # anything (laid out once for every check waiting then): said where the layout's parts
+    # are (_layout_facts), else with the rest.
+    timing.owner = layout_waited()
     pages = _pages_of(call, slides, pages)
     if boxes is not None:
         raise _decks_only("boxes", "include")
@@ -604,6 +603,9 @@ def _check(call: Any, doc: str, slides: list | None, pages: list[int] | None, in
         with timing.part("copies"):
             report["copies"] = compare_copies(call, copies)
     if "reflow" in wanted or "layout" in wanted:
+        for name, seconds in timing.owner.items():
+            timing.add(name, seconds)        # lane O: the owner's layout, before the check
+        timing.owner = {}
         started, inner = time.perf_counter(), sum(timing.parts.values())
         reflow, layout = _layout_facts(call, pages, seen="reflow" in wanted, scope=scope,
                                        layout_wanted="layout" in wanted, min_size=min_size, styles=styles,
@@ -671,6 +673,9 @@ def _check(call: Any, doc: str, slides: list | None, pages: list[int] | None, in
         # The rest of the layout's facts here, beside what the worker timed (layout, facts, waits).
         inner = sum(timing.parts.values()) - inner
         timing.add("facts", max(0.0, time.perf_counter() - started - inner))
+    for name, seconds in timing.owner.items():
+        timing.add(name, seconds)            # (not said with the layout's parts: none asked)
+    timing.owner = {}
     if "fields" in wanted:
         with timing.part("fields"):
             report["fields"] = _field_facts(document)

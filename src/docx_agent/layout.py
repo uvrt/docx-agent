@@ -1632,41 +1632,42 @@ def read_done() -> None:
 READERS_WAIT = 20.0
 
 
-def own_layout(document: "Document", data: bytes, converter: Any) -> bool:
+def own_layout(document: "Document", data: bytes, converter: Any) -> "dict | None":
     """Lay ``data`` -- a committed version of ``document`` -- out where the document's layouts
     are held (:func:`docx_agent.tools.check_worker.check_bytes` through ``converter``, a
     tool layer's engine), kept as the document's last, with its summary and the facts every
-    check of it reads (:class:`Owner`'s flight): whether it was laid out.  Nothing comes back
-    but those small facts; a layout that fails is kept as failed, as :func:`check_facts`
-    keeps one."""
+    check of it reads (:class:`Owner`'s flight): the seconds the worker spent laying it out
+    and reading those facts (``{"layout", "facts"}``; noughts where it was laid out already),
+    or ``None`` where it could not be.  Nothing comes back but those small facts; a layout
+    that fails is kept as failed, as :func:`check_facts` keeps one."""
     if converter is None or not hasattr(converter, "check"):
-        return False
+        return None
     options = layout_options(document, {})
     key = layout_key(data, options)
     lock = _keeper(document)
     with lock:
         kept = document._layout_kept
         if kept is not None and isinstance(kept[1], (bytes, bytearray)):
-            return False
+            return None
     if known_summary(document, key) is not None:
-        return True
+        return {"layout": 0.0, "facts": 0.0}
     if _kept_failure(document, cache_key(data, options)) is not None:
-        return False
+        return None
     request = dict(_BARE_REQUEST)
     state = kept_layout(document, data, options)
     try:
         result = converter.check(data, dict(options), state, {**request, "summary": True})
     except _PASSED_ON:
-        return False
+        return None
     except Exception as error:  # noqa: BLE001 -- kept as this version's failure, logged once
         _failed(document, cache_key(data, options), error)
-        return False
-    result.pop("worker", None)
+        return None
+    worker = result.pop("worker", None) or {}
     keep_layout(document, data, options, key)
     note_made(document, result)
     summary_for(document, key, result.pop("summary", None))
     _keep_facts(document, (key, repr(sorted(request.items()))), result, data, options)
-    return True
+    return {"layout": float(worker.get("layout", 0.0)), "facts": float(worker.get("facts", 0.0))}
 
 
 #: The request of a check that asks nothing but the layout's own facts (:func:`check_facts`).

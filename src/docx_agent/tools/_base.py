@@ -359,6 +359,9 @@ class Timing:
     def __init__(self) -> None:
         #: The parts so far, in order: what the result's ``timing`` is (the same dict).
         self.parts: dict[str, float] = {}
+        #: Lane O: a check's wait for its document's owner layout, by part, not yet added
+        #: (``check`` adds them where its layout's parts go).
+        self.owner: dict[str, float] = {}
 
     @contextmanager
     def part(self, name: str) -> Iterator[None]:

@@ -76,9 +76,9 @@ def test_a_lone_check_says_its_parts_and_its_waits(made, workers):
         result = box.dispatch(session, "check", {"doc": doc})
         timing = _timing(result)
         # The default include: validate, reflow (laid out in the worker holding the
-        # layout), fields; the document let go while laying out, taken back after.
-        assert list(timing) == ["validate", "layout", "facts", "worker_wait", "document_wait", "fields",
-                                "validation"]
+        # layout), fields.  0.1.112 (lane O): laid out by the document's owner before the
+        # check took its version, so nothing is taken back after (no document_wait).
+        assert list(timing) == ["validate", "layout", "facts", "worker_wait", "fields", "validation"]
         assert timing["layout"] > 0
         # The timing is the data's last key; the rest is what it was, and (round 53) what
         # saving would refuse.
