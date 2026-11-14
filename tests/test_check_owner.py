@@ -328,6 +328,27 @@ def test_a_check_after_an_undo_reads_the_undone_document(made, workers):
     assert mine == theirs
 
 
+def test_a_check_reads_its_version_as_committed_last_with_its_tracking(made):
+    """0.1.113: a version committed again with other refs or tracking (ooxml-edit's
+    ``Committed.with_refs``, no new version) is read as committed last -- the copy every other
+    read of it reads -- not as the owner laid it out before."""
+    from docx_agent.layout import read_done
+
+    with Toolbox(TOOLS, formats=[FORMAT], groups=GROUPS, workers=0) as box:
+        session, doc, _document = _session(box, made)
+        assert box.dispatch(session, "check", {"doc": doc}).ok
+        entry = session.entry(doc)
+        laid = entry.document._layout_owner.done
+        assert box.dispatch(session, "word_set_tracking", {"doc": doc, "on": True, "author": "A. Writer"}).ok
+        assert entry.version == laid.version and entry.committed is not laid and entry.committed.tracking
+        served, at_call = owner_module.read_version(box, session, entry, box.tools["check"], {"doc": doc})
+        read_done()
+        assert served is entry.committed and at_call is entry.committed
+        result = box.dispatch(session, "check", {"doc": doc})
+        assert result.ok and result.version == laid.version
+        assert not [w for w in result.warnings if "newer than at the call" in w]
+
+
 def test_relayout_on_commit_lays_out_the_new_version_while_checks_ask(made, monkeypatch):
     # As for a long document: an edit's own checks say "stale" and lay nothing out.
     monkeypatch.setattr(base_module, "REFLOW_PAGES", 0)

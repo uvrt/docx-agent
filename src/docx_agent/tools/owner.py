@@ -25,7 +25,7 @@ import threading
 import time
 from typing import Any
 
-from ..layout import _keeper, own_layout, reading
+from ..layout import _keeper, own_layout, rank, reading
 
 #: The tools a document's owner serves (their reads wait for its next layout).
 SERVED = frozenset({"check"})
@@ -123,6 +123,12 @@ def read_version(toolbox: Any, session: Any, entry: Any, tool: Any, arguments: A
         _WAITED[threading.get_ident()] = {"worker_wait": waited}   # for another's layout
     if served is None:
         return None
+    newest = entry.committed
+    if newest is not None and newest is not served and rank(newest) == rank(served):
+        # The same version committed again with its refs or tracking now (ooxml-edit's
+        # Committed.with_refs): read that one, as every other read of the version does --
+        # its copy and its lock, its refs.
+        served = newest
     reading(owner, served)              # until its facts are made (check_facts) or it ends
     return served, at_call
 

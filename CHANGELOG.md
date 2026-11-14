@@ -14,6 +14,9 @@ snapshot commit; the development history before it is summarised here.
   -- and said it was "1 commit(s) newer". Versions are now placed by commit order
   (ooxml-edit's `Committed.seq`), the owner hands ooxml-edit the committed version at the
   call (its note counts the commits between), and such a check reads the undone document.
+  A version committed again with other refs or tracking (no new version: ooxml-edit's
+  `Committed.with_refs`) is read as committed last -- the copy, lock and refs every other
+  read of it has -- not as the owner laid it out before.
 - **A relayout on commit never raises out of its thread** (it met a test's skip there, said
   as an unhandled thread exception), and `tools.owner.wait_for_relayouts()` waits for those
   running; the tests wait for them before the next test.
