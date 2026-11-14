@@ -23,9 +23,9 @@ snapshot commit; the development history before it is summarised here.
   alone never has, made it differ. `block_stress` now compares the whole result but that
   note, and checks the note against the commits it recorded instead (V is the result's
   version; some commit no earlier than the one the call began at made v, N commits before
-  V's); it also checks that every call that changed nothing saw the version it began at or
-  one committed while it ran (the undo above broke that), and that no call run alone has
-  the note.
+  V's); it also checks that every read (`check`, `word_read`, `describe`) saw the version it
+  began at or one committed while it ran (the undo above broke that), and that no call run
+  alone has the note.
 
 ## 0.1.112 -- unreleased
 
